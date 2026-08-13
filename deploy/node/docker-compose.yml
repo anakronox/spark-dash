@@ -1,0 +1,89 @@
+# Per-node monitoring stack for a GX10.
+#
+# Identical on all three nodes — only NODE_ID (in .env) differs. That's the
+# whole Phase 2 rollout story: copy this directory, change one value.
+#
+# Host preconditions: Docker Engine and the NVIDIA Container Toolkit. Both are
+# already present for the existing GPU-enabled inference containers, so this
+# adds nothing to the base OS.
+
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: sparkdash-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+    ports:
+      - "9100:9100"
+    networks:
+      - sparkdash
+
+  spark-dash-agent:
+    image: ${AGENT_IMAGE:-spark-dash-agent:latest}
+    container_name: sparkdash-agent
+    restart: unless-stopped
+
+    # NVML access via the Container Toolkit. No CUDA runtime is installed in
+    # the image — it only reads telemetry from the host driver.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, utility]
+
+    # Required for per-process GPU attribution: NVML returns HOST pids, so
+    # without the host PID namespace they can't be resolved to process names
+    # and the process table would show bare numbers.
+    pid: "host"
+
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+
+    environment:
+      # The one value that differs between nodes.
+      - NODE_ID=${NODE_ID:?set NODE_ID in .env}
+
+      # Read the host's view, not the container's — a container's
+      # /proc/pressure/memory and MemAvailable describe the container.
+      - PROC_PATH=/host/proc
+      - SYS_PATH=/host/sys
+
+      # Unset on a node that runs only vLLM; the collector then reports nothing
+      # and the same image works unchanged.
+      - LLAMA_ROUTER_URL=${LLAMA_ROUTER_URL:-}
+
+      # Comma-separated vLLM /metrics endpoints on this node.
+      - VLLM_URLS=${VLLM_URLS:-}
+
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    ports:
+      - "9500:9500"
+
+    networks:
+      - sparkdash
+      - inference
+
+networks:
+  sparkdash:
+    driver: bridge
+
+  # The existing llama.cpp/vLLM Compose network. Joining it lets the agent
+  # reach those containers by service name instead of depending on published
+  # ports that may change. Set INFERENCE_NETWORK in .env to its actual name
+  # (`docker network ls`); if the runtimes aren't in a shared Compose network,
+  # drop this and point LLAMA_ROUTER_URL/VLLM_URLS at host ports instead.
+  inference:
+    external: true
+    name: ${INFERENCE_NETWORK:-inference-net}
