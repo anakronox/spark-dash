@@ -55,7 +55,21 @@ jobs running on them.
 4. **History, not just live state**
    - At least short-to-medium retention (days-to-weeks) of time-series history for
      trend/regression spotting, not just an instantaneous snapshot.
-5. **Access**
+5. **Live view — full replacement for SSH + TUI monitoring**
+   - Confirmed goal: the dashboard should be good enough that there's no need
+     to SSH in and run `nvtop`/`nvitop`/`sparkview` for day-to-day monitoring.
+   - Near-real-time refresh (~1-2s) for live state — GPU utilization/memory/
+     temp/power, per-node process list sorted by GPU memory (matching what
+     `nvitop`/`sparkview` show today) — not just Prometheus's coarser scrape
+     interval.
+   - Color-coded, at-a-glance health signals (temperature, memory pressure,
+     clock-throttle state) rather than raw numbers only — same instinct a TUI
+     gives you. See [metrics.md](metrics.md) for the specific GB10 signals
+     (PSI, clock throttle, power rails) this depends on.
+   - Strictly **read-only** — no process/model control actions (no "kill" from
+     the dashboard, unlike `nvitop`'s interactive process management). See
+     non-goals below.
+6. **Access**
    - Usable unauthenticated on the LAN (or with minimal friction).
    - Safe to expose through the existing Cloudflare Tunnel + Google OAuth front door
      without the dashboard itself needing to reimplement auth (OAuth is handled at
@@ -78,8 +92,9 @@ jobs running on them.
 ## Explicit non-goals (for now)
 
 - Multi-tenant / multi-user access control beyond the OAuth front door.
-- Managing or scheduling inferencing jobs (this is a monitoring dashboard, not an
-  orchestrator) — though the design shouldn't preclude adding control actions later.
+- Managing or scheduling inferencing jobs, or any process/model control actions
+  (no "kill," no unload) — confirmed as strictly read-only monitoring, not an
+  orchestrator. Revisit only on explicit request.
 - Cross-cluster (i.e., beyond these 3 nodes) or cloud-hybrid monitoring.
 
 ## Open questions

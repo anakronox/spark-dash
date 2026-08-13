@@ -13,18 +13,29 @@ before the other 2 GX10 units even arrive.
 Goal: something real running on the existing GX10, informative for day-to-day use.
 
 - [ ] Stand up `node_exporter` on the GX10.
-- [ ] Evaluate `dgx-spark-prometheus` vs. `dcgm-exporter` for GPU metrics; validate
-  memory numbers against `nvidia-smi --query-compute-apps` (unified-memory
-  caveat — see [metrics.md](metrics.md)).
+- [ ] Evaluate `dgx-spark-prometheus` vs. `dcgm-exporter` (+ `nvml-unified-shim`)
+  for baseline GPU metrics; validate memory numbers against
+  `nvidia-smi --query-compute-apps` (unified-memory caveat — see
+  [metrics.md](metrics.md)).
+- [ ] Install the `spark_hwmon` kernel module (`antheas/spark_hwmon`, via `dkms`)
+  on the GX10 for GB10 power-rail telemetry.
+- [ ] Build `gb10-node-exporter` (custom): UMA-correct memory, PSI pressure,
+  clock-throttle state, `spark_hwmon` power rails — modeled on `sparkview`'s
+  validated technique. See [metrics.md](metrics.md).
 - [ ] Confirm vLLM containers already expose `/metrics` and add them as
   Prometheus scrape targets.
 - [ ] Build `llama-router-exporter` sidecar (custom) for llama.cpp router-mode
   aggregation, being careful not to trigger autoload/anti-sleep side effects.
 - [ ] Stand up Prometheus, scraping all of the above on the one node.
-- [ ] Backend API (FastAPI, proposed) with a first cut of endpoints: node health,
-  GPU utilization/memory, loaded models + their live stats.
-- [ ] Frontend MVP: single-node view — GPU tiles, loaded-models table,
-  tokens/sec, request queue depth.
+- [ ] Backend API (FastAPI, proposed): REST endpoints backed by Prometheus for
+  history, plus a WebSocket live-poll path (~1-2s) hitting `gb10-node-exporter`/
+  vLLM/`llama-router-exporter` directly for the near-real-time view. See
+  [architecture.md](architecture.md#live-view-fast-path).
+- [ ] Frontend MVP: single-node live view — GPU tiles (color-coded against the
+  [anomaly thresholds](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting)),
+  per-process list sorted by GPU memory, loaded-models table, tokens/sec,
+  request queue depth. This is the "replaces SSH + nvtop/nvitop/sparkview"
+  milestone — worth actually using day-to-day before calling Phase 1 done.
 
 ## Phase 2 — Multi-node cluster
 
@@ -47,7 +58,11 @@ Triggered by the 2 additional GX10 units arriving.
   backend.
 - [ ] Set real Prometheus retention based on observed disk usage.
 - [ ] Basic alerting for the things that actually matter at 2am: node down, GPU
-  temp/power outlier, disk filling up on a node.
+  temp/power outlier, disk filling up on a node. Start from the
+  [anomaly thresholds](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting)
+  `sparkview` already field-validated (PSI ≥ MOD, THROTTLED/LOCKED clock under
+  load, mem >85% + swap active, temp >80°C, `PROCHOT` active) rather than
+  guessing from scratch.
 
 ## Phase 4 — Polish / nice-to-haves (unscheduled)
 
@@ -68,8 +83,13 @@ get lost:
 2. **Where the central Prometheus/backend/frontend stack runs** — on one of the
    3 GX10 nodes (simplest) vs. a separate always-on host (cleaner isolation).
    See [architecture.md](architecture.md#where-does-the-central-stack-run).
-3. **`dcgm-exporter` vs. `dgx-spark-prometheus`** for GPU metrics on GB10 — needs
-   hands-on evaluation against real hardware, not just docs research.
+3. **`dcgm-exporter` vs. `dgx-spark-prometheus`** for *baseline* GPU metrics on
+   GB10 — needs hands-on evaluation against real hardware, not just docs
+   research. (Narrower than before: the GB10-specific signals — UMA memory,
+   PSI, clock throttle, power rails — are now planned as our own
+   `gb10-node-exporter` regardless of which baseline exporter wins, modeled on
+   `sparkview`'s validated approach. See [metrics.md](metrics.md) and
+   [architecture.md](architecture.md).)
 4. **Cross-node orchestration** (still Compose-per-host vs. eventually Swarm/k8s)
    is out of scope for *this* project but affects how much Prometheus service
    discovery needs to do — revisit if orchestration changes.
