@@ -162,6 +162,25 @@ else
     ok "process names resolved"
   fi
   while IFS= read -r line; do info "$line"; done <<< "$PROCS"
+
+  UNLABELED=$(awk -F'\t' '$4=="-"' <<< "$PROCS" | wc -l | tr -d ' ')
+  if [[ "$UNLABELED" -gt 0 ]]; then
+    warn "$UNLABELED process(es) have no runtime label"
+    info "run the diagnose command below to see what name/cmdline/cwd report"
+  fi
+
+  # Non-LLM workloads share the same unified pool as the models, so their
+  # footprint is real capacity pressure, not a footnote.
+  printf '%s' "$SNAP" | python3 -c "
+import json,sys
+LLM={'vllm','llama.cpp','sglang','tgi','ollama'}
+procs=json.load(sys.stdin).get('processes') or []
+llm=sum(p['gpu_mem_bytes'] for p in procs if p.get('runtime') in LLM)
+other=sum(p['gpu_mem_bytes'] for p in procs if p.get('runtime') not in LLM)
+if other:
+    print(f'      GPU memory: {llm/1024**3:.1f} GiB LLM runtimes, {other/1024**3:.1f} GiB other workloads')
+    print('      (other workloads compete for the same unified pool)')
+"
 fi
 
 # --------------------------------------------------------------------- PSI

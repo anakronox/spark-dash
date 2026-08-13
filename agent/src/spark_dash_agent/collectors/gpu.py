@@ -58,9 +58,9 @@ def _mask(attr_names: tuple[str, ...]) -> int:
 def _command_line(proc) -> str:
     """Best-effort command line for a GPU process.
 
-    Matters because vLLM runs as bare `python` — without the command line
-    there's no way to tell it apart from any other Python process. `cmdline()`
-    is tried first (structured), then `command()` (shell-escaped string).
+    Matters because several GPU workloads run as a bare `python` process —
+    without argv there's no telling them apart. `cmdline()` is tried first
+    (structured), then `command()` (shell-escaped string).
 
     Returns "" when neither is readable: /proc/<pid>/cmdline can be denied when
     the agent runs as non-root and the process belongs to another user, and a
@@ -80,20 +80,44 @@ def _command_line(proc) -> str:
     return ""
 
 
-def infer_runtime(name: str, command: str = "") -> str | None:
-    """Guess which inference runtime a GPU process belongs to.
+def _cwd(proc) -> str:
+    """Working directory, when readable.
 
-    Matching on the process name alone is not enough: vLLM runs as plain
-    `python`, so its identity only appears in the command line (typically
-    `python -m vllm.entrypoints.openai.api_server`). Hence both are searched.
-
-    Best-effort by design — an unrecognized process still shows up in the
-    table, just without a runtime label.
+    The deciding signal for apps launched as `python main.py`, where neither
+    the process name nor argv names the application but the directory does
+    (ComfyUI being the case that prompted this).
     """
-    haystack = f"{name} {command}".lower()
+    getter = getattr(proc, "cwd", None)
+    if getter is None:
+        return ""
+    try:
+        value = getter()
+    except Exception:  # noqa: BLE001 — denied or exited
+        return ""
+    return "" if not value or value is NA else str(value)
 
-    # vLLM is checked first: a vLLM process serving a Llama model has "llama"
-    # in its command line, so testing llama.cpp first would misattribute it.
+
+def infer_runtime(name: str, command: str = "", cwd: str = "") -> str | None:
+    """Identify the software behind a GPU process.
+
+    Not every GPU consumer is an LLM runtime — image-generation and notebook
+    workloads share the same unified memory pool on GB10, and knowing that is
+    the difference between "12GB used, unexplained" and "12GB used by
+    ComfyUI". So this labels GPU workloads generally, not just inference
+    servers.
+
+    Three signals are needed because process names are frequently useless:
+    vLLM and ComfyUI both run as bare `python`, identifiable only by argv and
+    working directory respectively.
+
+    Best-effort by design — an unrecognized process still appears in the table,
+    just unlabeled. That's honest; a confident wrong guess is not.
+    """
+    haystack = f"{name} {command} {cwd}".lower()
+
+    # --- LLM inference runtimes ---
+    # vLLM is checked before llama.cpp: a vLLM process serving a Llama model
+    # has "llama" in its argv and would otherwise be misattributed.
     if "vllm" in haystack:
         return "vllm"
     if "llama-server" in haystack or "llama.cpp" in haystack or "llama_cpp" in haystack:
@@ -104,7 +128,20 @@ def infer_runtime(name: str, command: str = "") -> str | None:
         return "tgi"
     if "ollama" in haystack:
         return "ollama"
+
+    # --- other GPU workloads sharing the same memory pool ---
+    if "comfy" in haystack:
+        return "comfyui"
+    if "stable-diffusion" in haystack or "stable_diffusion" in haystack or "sd-webui" in haystack:
+        return "stable-diffusion"
+    if "jupyter" in haystack or "ipykernel" in haystack:
+        return "jupyter"
     return None
+
+
+# Runtimes that serve LLM inference, as opposed to other GPU consumers. Lets
+# the UI separate "what's serving models" from "what else is eating the pool".
+LLM_RUNTIMES = frozenset({"vllm", "llama.cpp", "sglang", "tgi", "ollama"})
 
 
 class GpuCollector(Collector[GpuMetrics]):
@@ -187,13 +224,12 @@ class GpuCollector(Collector[GpuMetrics]):
             try:
                 name = proc.name()
                 gpu_mem = _num(proc.gpu_memory()) or 0.0
-                command = _command_line(proc)
                 out.append(
                     ProcessInfo(
                         pid=pid,
                         name=str(name) if name is not NA else f"pid-{pid}",
                         gpu_mem_bytes=int(gpu_mem),
-                        runtime=infer_runtime(str(name), str(command)),
+                        runtime=infer_runtime(str(name), _command_line(proc), _cwd(proc)),
                     )
                 )
             except Exception:  # noqa: BLE001 — a process exiting mid-scan is normal

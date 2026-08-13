@@ -35,7 +35,7 @@ def dump_processes() -> None:
     try:
         from nvitop import NA, Device
 
-        from spark_dash_agent.collectors.gpu import _command_line, infer_runtime
+        from spark_dash_agent.collectors.gpu import _command_line, _cwd, infer_runtime
     except Exception as exc:  # noqa: BLE001
         print(f"NVML unavailable: {type(exc).__name__}: {exc}")
         return
@@ -53,7 +53,7 @@ def dump_processes() -> None:
 
     for pid, proc in sorted(processes.items()):
         print(f"\n--- pid {pid} ---")
-        for label, attr in (("name", "name"), ("username", "username")):
+        for label, attr in (("name", "name"), ("username", "username"), ("cwd", "cwd")):
             try:
                 value = getattr(proc, attr)()
                 print(f"  {label:9}: {value!r}")
@@ -77,12 +77,14 @@ def dump_processes() -> None:
             print(f"  gpu_mem  : <FAILED {exc}>")
 
         resolved = _command_line(proc)
+        cwd = _cwd(proc)
         try:
             name = str(proc.name())
         except Exception:  # noqa: BLE001
             name = ""
         print(f"  -> command line used : {resolved[:160]!r}")
-        print(f"  -> inferred runtime  : {infer_runtime(name, resolved)}")
+        print(f"  -> cwd used          : {cwd!r}")
+        print(f"  -> inferred runtime  : {infer_runtime(name, resolved, cwd)}")
 
 
 def dump_routers(urls: list[str]) -> None:

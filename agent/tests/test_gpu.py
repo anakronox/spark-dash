@@ -1,12 +1,18 @@
 """Runtime inference and command-line resolution.
 
-Motivated by a real finding on the GX10: vLLM processes showed up as bare
-`python` with no runtime label, because matching on the process name alone
-can't identify them.
+Motivated by real findings on the GX10: several GPU workloads run as a bare
+`python` process, so the process name alone identifies nothing. vLLM is
+identifiable from argv; ComfyUI only from its working directory.
 """
 
 import pytest
-from spark_dash_agent.collectors.gpu import _command_line, _num, infer_runtime
+from spark_dash_agent.collectors.gpu import (
+    LLM_RUNTIMES,
+    _command_line,
+    _cwd,
+    _num,
+    infer_runtime,
+)
 
 
 class TestInferRuntime:
@@ -50,6 +56,65 @@ class TestInferRuntime:
 
     def test_case_insensitive(self):
         assert infer_runtime("PYTHON", "-m VLLM.entrypoints") == "vllm"
+
+
+class TestNonLlmGpuWorkloads:
+    """Not every GPU consumer is an inference runtime. On GB10 these share the
+    same unified pool as the models, so labeling them is the difference between
+    "12GB used, unexplained" and "12GB used by ComfyUI".
+    """
+
+    def test_comfyui_identified_by_cwd_alone(self):
+        """The GX10 case: ComfyUI runs as `python main.py`, so neither the name
+        nor argv names it — only the working directory does."""
+        assert infer_runtime("python", "python main.py --listen", "/app/ComfyUI") == "comfyui"
+
+    def test_comfyui_identified_from_argv_path(self):
+        assert infer_runtime("python", "python /opt/comfyui/main.py") == "comfyui"
+
+    def test_stable_diffusion_webui(self):
+        assert infer_runtime("python", "python launch.py", "/home/u/stable-diffusion-webui") == (
+            "stable-diffusion"
+        )
+
+    def test_jupyter(self):
+        assert infer_runtime("python", "python -m ipykernel_launcher -f kernel.json") == "jupyter"
+
+    def test_bare_python_main_without_cwd_stays_unlabeled(self):
+        """With cwd unreadable there is genuinely nothing to go on — better
+        unlabeled than guessed."""
+        assert infer_runtime("python", "python main.py") is None
+
+    def test_llm_runtimes_set_excludes_non_inference_workloads(self):
+        assert "vllm" in LLM_RUNTIMES
+        assert "llama.cpp" in LLM_RUNTIMES
+        assert "comfyui" not in LLM_RUNTIMES
+        assert "stable-diffusion" not in LLM_RUNTIMES
+        assert "jupyter" not in LLM_RUNTIMES
+
+    def test_inference_runtime_still_wins_over_workload_match(self):
+        """A vLLM process whose cwd happens to mention comfy must still be
+        labeled vllm — inference runtimes are checked first."""
+        assert infer_runtime("python", "python -m vllm.entrypoints", "/data/comfy") == "vllm"
+
+
+class TestCwd:
+    def test_reads_cwd(self):
+        class P:
+            def cwd(self):
+                return "/app/ComfyUI"
+
+        assert _cwd(P()) == "/app/ComfyUI"
+
+    def test_denied_cwd_is_empty_not_fatal(self):
+        class P:
+            def cwd(self):
+                raise PermissionError("denied")
+
+        assert _cwd(P()) == ""
+
+    def test_missing_attribute(self):
+        assert _cwd(object()) == ""
 
 
 class TestCommandLine:

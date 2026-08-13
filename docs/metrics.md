@@ -56,6 +56,17 @@ Modeled directly on `sparkview`'s validated techniques:
   sustained load → THROTTLED**, degraded systems have been observed in the
   500-850MHz range. This is a real "something's wrong with this node" signal
   that neither NVML nor DCGM surfaces on its own.
+- **Non-LLM GPU workloads share the pool.** The GX10 also runs ComfyUI
+  (image generation) alongside the inference runtimes, and on GB10 that
+  competes for the *same* unified memory the models need — there's no separate
+  VRAM to isolate it. The process table therefore labels GPU workloads
+  generally, not just inference servers, so "12GB used with no models loaded"
+  has a visible answer. `LLM_RUNTIMES` in the agent separates the two
+  categories for the UI.
+
+  Identification needs three signals, because process names are frequently
+  useless: vLLM and ComfyUI both run as bare `python`, distinguishable only by
+  command line and working directory respectively.
 - **Per-process GPU memory attribution** (part of `gpu`) — `nvidia-smi --query-compute-apps`
   (GPU UUID, PID, process name, used memory), for tying usage back to a
   specific llama.cpp/vLLM container and for the process-list panel (see
