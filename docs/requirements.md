@@ -82,6 +82,15 @@ jobs running on them.
   driver — see [architecture.md](architecture.md).
 - **Low operational overhead.** This is a homelab-scale project for one primary
   operator; avoid components that need significant ongoing babysitting.
+- **Deployable entirely via Docker; base OS stays untouched.** Confirmed
+  priority: every component ships as a container. The only host-level
+  preconditions are Docker Engine and the NVIDIA Container Toolkit — both
+  already present for the existing GPU-enabled inference containers, so not
+  new scope. No `apt install`s, hand-written systemd units, or kernel modules
+  on the GX10s for the monitoring stack itself. This is why GB10 power-rail
+  telemetry via `spark_hwmon` was evaluated and deliberately descoped — it
+  requires a real kernel module with no containerized workaround. See
+  [deployment.md](deployment.md).
 - **Runs on ARM64.** GB10 is ARM-based (Cortex-X925/A725 + Blackwell GPU) — every
   component in the stack (exporters, backend, base images) must have ARM64 support,
   which rules out some x86-only tooling.
@@ -100,3 +109,8 @@ jobs running on them.
 ## Open questions
 
 Tracked in [roadmap.md](roadmap.md#open-decisions) so they don't get lost.
+
+## See also
+
+[Deployment](deployment.md) covers how the Docker-only requirement above
+translates into an actual per-node/central Compose layout.

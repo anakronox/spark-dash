@@ -18,6 +18,8 @@ Currently 1 node, growing to 3.
   caveats (unified memory, router autoload behavior).
 - [Roadmap](docs/roadmap.md) — phased plan from single-node MVP to the full
   3-node cluster, plus open decisions.
+- [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
+  stays untouched) and the per-node/central Compose service breakdown.
 
 Project tracking (issues/milestones) mirrors the roadmap on the
 [Forgejo project](https://forgejo.indielab.tech/brian/spark-dash-homegrown).

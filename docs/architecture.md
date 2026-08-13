@@ -32,6 +32,11 @@ confirmed non-goal, see [requirements.md](requirements.md)).
 
 ## Components
 
+Every box below is a Docker container — see [deployment.md](deployment.md) for
+the Compose layout, the containerization approach for each piece, and why
+GB10 power-rail telemetry (`spark_hwmon`) was deliberately left out since it
+requires a host kernel module.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ Node 1 (GX10 #1)         Node 2 (GX10 #2)      Node 3 (GX10 #3) │
@@ -42,9 +47,8 @@ confirmed non-goal, see [requirements.md](requirements.md)).
 │ │ dcgm-exporter /    │    │ (same)       │      │ (same)       │ │
 │ │  dgx-spark-prom.   │    │              │      │              │ │
 │ │ gb10-node-exporter │    │ (same)       │      │ (same)       │ │
-│ │  (custom — PSI,    │    │              │      │              │ │
-│ │  throttle, spark_  │    │              │      │              │ │
-│ │  hwmon power rails)│    │              │      │              │ │
+│ │  (custom — UMA mem,│    │              │      │              │ │
+│ │  PSI, clock state) │    │              │      │              │ │
 │ │ llama-router-      │    │ (same)       │      │ (same)       │ │
 │ │  exporter (custom) │    │              │      │              │ │
 │ └─────────┬──────────┘    └──────┬───────┘      └──────┬───────┘ │
@@ -87,14 +91,16 @@ confirmed non-goal, see [requirements.md](requirements.md)).
   See [metrics.md](metrics.md) for the specific caveats.
 - **`gb10-node-exporter` (new, ours to build)** — covers what the baseline
   exporter doesn't: UMA-correct memory (`vm.total - vm.available`), PSI memory
-  pressure, load-gated clock-throttle state, and — where the `spark_hwmon`
-  kernel module ([antheas/spark_hwmon](https://github.com/antheas/spark_hwmon),
-  installed via `dkms`) is present — GB10 power-rail detail (`gpu`, `dc_input`,
-  `syspl1`, `PROCHOT`, power-limit level, `Tj-rise`). Modeled directly on
+  pressure, and load-gated clock-throttle state. Fully containerized — only
+  needs `/proc`, `/sys`, and NVML/`nvidia-smi` access via the Container
+  Toolkit, no host install. Modeled directly on
   [`sparkview`](https://github.com/parallelArchitect/sparkview)'s
-  field-validated technique rather than re-derived from scratch. Also serves
-  as the data source for the [live-view fast path](#live-view-fast-path) below,
-  polled far more frequently than Prometheus scrapes it.
+  field-validated technique rather than re-derived from scratch. Deliberately
+  excludes GB10 power-rail/`PROCHOT` telemetry (`spark_hwmon`) — that requires
+  a real kernel module and was descoped to keep the base OS untouched; see
+  [deployment.md](deployment.md). Also serves as the data source for the
+  [live-view fast path](#live-view-fast-path) below, polled far more
+  frequently than Prometheus scrapes it.
 - **`llama-router-exporter` (new, ours to build)** — a small sidecar that talks to
   the local llama.cpp router's status endpoint to find currently *loaded* models
   only, fans out to `/metrics?model=<name>` for just those, and republishes an

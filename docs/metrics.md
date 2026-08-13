@@ -53,17 +53,18 @@ covers what `dcgm-exporter`/`dgx-spark-prometheus` don't:
   sustained load → THROTTLED**, degraded systems have been observed in the
   500-850MHz range. This is a real "something's wrong with this node" signal
   that neither NVML nor DCGM surfaces on its own.
-- **GB10 power rails:** requires the
-  [`spark_hwmon`](https://github.com/antheas/spark_hwmon) kernel module
-  (installed via `dkms` — a real per-node system dependency, not just app
-  config; see [roadmap.md](roadmap.md)). Once installed, exposes `gpu`,
-  `dc_input`, `syspl1`, `PROCHOT`, power-limit level, and `Tj-rise` — actual
-  hardware power telemetry rather than an estimate. `PROCHOT` active is itself
-  an important alert condition.
 - **Per-process GPU memory attribution** — `nvidia-smi --query-compute-apps`
   (GPU UUID, PID, process name, used memory), for tying usage back to a
   specific llama.cpp/vLLM container and for the process-list panel (see
   [architecture.md](architecture.md#live-view-fast-path)).
+
+**Out of scope: GB10 power rails via `spark_hwmon`.** This would have added
+`gpu`, `dc_input`, `syspl1`, `PROCHOT`, power-limit level, and `Tj-rise`
+telemetry, but [`spark_hwmon`](https://github.com/antheas/spark_hwmon) is a
+real ACPI-binding kernel driver (`dkms`, kernel headers, possibly Secure Boot
+MOK signing) — a genuine host kernel modification with no container-based
+workaround. Deliberately descoped to keep the base OS untouched (see
+[deployment.md](deployment.md)); revisit only if that priority changes.
 
 **Known GB10 caveat — time-slicing:** if GPU time-slicing is ever used (e.g.
 under k8s with `KUBERNETES_VIRTUAL_GPUS=true`), `dcgm-exporter` reports
@@ -80,7 +81,8 @@ the Docker Compose setup today, but worth remembering if the
 - Memory pressure (PSI) state
 - Clock state (IDLE/PASS/LOCKED/THROTTLED)
 - Temperature (GPU + CPU, current and session peak)
-- Power draw, plus GB10 power-rail detail where `spark_hwmon` is installed
+- Power draw (from NVML/baseline exporter — no `spark_hwmon` power-rail detail;
+  see out-of-scope note above)
 - Per-process GPU memory attribution (for tying usage back to a specific
   llama.cpp/vLLM container)
 - Host-level: CPU load, system memory, disk usage, network throughput
@@ -156,7 +158,9 @@ scratch:
 - GPU clock drops to THROTTLED or LOCKED while under load
 - Memory usage > 85% with swap active
 - GPU or CPU temperature exceeds 80°C
-- `PROCHOT` hardware throttle active (GB10 `spark_hwmon` only)
+
+(sparkview also treats `PROCHOT` hardware throttle as a trigger — not available
+to us since `spark_hwmon` is out of scope; see above.)
 
 Tune from there once we have real multi-node history to look at.
 

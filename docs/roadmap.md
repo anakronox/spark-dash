@@ -12,16 +12,24 @@ before the other 2 GX10 units even arrive.
 
 Goal: something real running on the existing GX10, informative for day-to-day use.
 
-- [ ] Stand up `node_exporter` on the GX10.
+- [ ] Write the per-node Compose file (`node-exporter`, GPU baseline exporter,
+  `gb10-node-exporter`, `llama-router-exporter`, joined to the existing
+  inference stack's Docker network) — see [deployment.md](deployment.md).
+  Everything Docker-only; no host installs beyond Docker + NVIDIA Container
+  Toolkit (already present).
+- [ ] Stand up `node_exporter` container on the GX10.
 - [ ] Evaluate `dgx-spark-prometheus` vs. `dcgm-exporter` (+ `nvml-unified-shim`)
   for baseline GPU metrics; validate memory numbers against
   `nvidia-smi --query-compute-apps` (unified-memory caveat — see
-  [metrics.md](metrics.md)).
-- [ ] Install the `spark_hwmon` kernel module (`antheas/spark_hwmon`, via `dkms`)
-  on the GX10 for GB10 power-rail telemetry.
-- [ ] Build `gb10-node-exporter` (custom): UMA-correct memory, PSI pressure,
-  clock-throttle state, `spark_hwmon` power rails — modeled on `sparkview`'s
-  validated technique. See [metrics.md](metrics.md).
+  [metrics.md](metrics.md)). If `dgx-spark-prometheus` wins, package it in our
+  own Dockerfile rather than its upstream systemd install path (see
+  [deployment.md](deployment.md)).
+- [ ] Build `gb10-node-exporter` (custom, containerized): UMA-correct memory,
+  PSI pressure, clock-throttle state — modeled on `sparkview`'s validated
+  technique. GB10 power-rail/`PROCHOT` telemetry via `spark_hwmon` was
+  evaluated and deliberately descoped (real kernel module, no container
+  workaround, conflicts with keeping the base OS untouched) — see
+  [deployment.md](deployment.md#spark_hwmon--evaluated-deliberately-descoped).
 - [ ] Confirm vLLM containers already expose `/metrics` and add them as
   Prometheus scrape targets.
 - [ ] Build `llama-router-exporter` sidecar (custom) for llama.cpp router-mode
@@ -61,8 +69,8 @@ Triggered by the 2 additional GX10 units arriving.
   temp/power outlier, disk filling up on a node. Start from the
   [anomaly thresholds](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting)
   `sparkview` already field-validated (PSI ≥ MOD, THROTTLED/LOCKED clock under
-  load, mem >85% + swap active, temp >80°C, `PROCHOT` active) rather than
-  guessing from scratch.
+  load, mem >85% + swap active, temp >80°C) rather than guessing from scratch —
+  note `PROCHOT` isn't available to us since `spark_hwmon` is out of scope.
 
 ## Phase 4 — Polish / nice-to-haves (unscheduled)
 
@@ -86,9 +94,9 @@ get lost:
 3. **`dcgm-exporter` vs. `dgx-spark-prometheus`** for *baseline* GPU metrics on
    GB10 — needs hands-on evaluation against real hardware, not just docs
    research. (Narrower than before: the GB10-specific signals — UMA memory,
-   PSI, clock throttle, power rails — are now planned as our own
-   `gb10-node-exporter` regardless of which baseline exporter wins, modeled on
-   `sparkview`'s validated approach. See [metrics.md](metrics.md) and
+   PSI, clock throttle — are now planned as our own `gb10-node-exporter`
+   regardless of which baseline exporter wins, modeled on `sparkview`'s
+   validated approach. See [metrics.md](metrics.md) and
    [architecture.md](architecture.md).)
 4. **Cross-node orchestration** (still Compose-per-host vs. eventually Swarm/k8s)
    is out of scope for *this* project but affects how much Prometheus service
