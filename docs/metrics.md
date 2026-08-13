@@ -5,47 +5,50 @@ for exporter/scrape config once we start implementing.
 
 ## 1. GPU / system-level (per node)
 
-Split into two sources rather than one: a **baseline exporter** for standard
-multi-GPU/Prometheus plumbing, plus a **custom `gb10-node-exporter`** (ours to
-build) for the GB10-specific signals that nothing generic exposes correctly.
-This split exists because of hard lessons already documented by
+Collected by **`spark-dash-agent`** (ours to build) — one container per node,
+reading NVML directly plus the GB10-specific signals that nothing generic
+exposes correctly. Third-party GPU exporters are deferred to Phase 4 (see
+[below](#baseline-exporter--deferred-to-phase-4)).
+The approach follows hard lessons already documented by
 [`sparkview`](https://github.com/parallelArchitect/sparkview) — a GB10-aware TUI
 monitor (see [related tools](https://github.com/parallelArchitect) — same author
 also publishes `nvml-unified-shim`, `spark-gpu-throttle-check`, and
 `cuda-unified-memory-analyzer`) — and worth treating as the reference
 implementation rather than re-deriving these from scratch.
 
-### Baseline exporter
+### Baseline exporter — deferred to Phase 4
 
-- [`dcgm-exporter`](https://github.com/NVIDIA/dcgm-exporter) — NVIDIA's standard
-  Prometheus exporter, built on DCGM. Runs as a container
-  (`nvcr.io/nvidia/k8s/dcgm-exporter`), needs `--gpus all --cap-add SYS_ADMIN`.
-  Optionally paired with
-  [`nvml-unified-shim`](https://github.com/parallelArchitect/nvml-unified-shim)
-  to correct its memory reporting on UMA platforms (see caveat below).
-- [`dgx-spark-prometheus`](https://github.com/ateska/dgx-spark-prometheus) —
-  purpose-built Prometheus exporter for DGX Spark / GB10 clusters specifically.
-  Still worth evaluating as an alternative to `dcgm-exporter` + shim.
-- `nvidia-smi` (what we have today) — fine for ad hoc checks, not a metrics
-  source for the dashboard on its own.
+[`dcgm-exporter`](https://github.com/NVIDIA/dcgm-exporter) and
+[`dgx-spark-prometheus`](https://github.com/ateska/dgx-spark-prometheus) are
+**not** in the Phase 1 stack. The agent reads NVML directly for
+utilization/temp/power/clocks, and `dcgm-exporter`'s headline advantage (GPU
+memory) is exactly the number unified memory breaks on GB10. What DCGM would
+still add is deep profiling telemetry — SM/tensor-core activity, memory
+bandwidth — genuinely useful for inference tuning, but not MVP-critical and of
+uncertain GB10 support. Revisit in Phase 4.
 
-### `gb10-node-exporter` (custom, ours to build)
+`nvidia-smi` remains fine for ad hoc checks, but isn't a metrics source for the
+dashboard on its own.
 
-A small exporter, modeled directly on `sparkview`'s validated techniques, that
-covers what `dcgm-exporter`/`dgx-spark-prometheus` don't:
+### `spark-dash-agent` collectors
 
-- **Unified memory, done correctly:** `nvmlDeviceGetMemoryInfo` on GB10 reports
-  `total ≈ MemTotal` regardless of actual usage — not useful. Use
+Modeled directly on `sparkview`'s validated techniques:
+
+- **`gpu` — NVML via `nvitop`:** utilization, temperature, power, clock
+  frequency. Standard NVML reads, no GB10 caveat.
+- **`memory` — unified memory, done correctly:** `nvmlDeviceGetMemoryInfo` on
+  GB10 reports `total ≈ MemTotal` regardless of actual usage — not useful. Use
   `vm.total - vm.available` (`/proc/meminfo` `MemTotal`/`MemAvailable`, or
   `psutil.virtual_memory()`) for used memory instead, with `vm.total` as the
-  display total. This is accurate under heavy inference load; `nvml-unified-shim`
-  does the same fix at the NVML layer if we'd rather patch the baseline exporter
-  than duplicate the logic.
-- **Memory pressure (PSI):** `/proc/pressure/memory` gives a LOW/MOD/HIGH/CRITICAL
+  display total. This is accurate under heavy inference load.
+  ([`nvml-unified-shim`](https://github.com/parallelArchitect/nvml-unified-shim)
+  does the same fix at the NVML layer — relevant only if a third-party exporter
+  is adopted in Phase 4.)
+- **`psi` — memory pressure:** `/proc/pressure/memory` gives a LOW/MOD/HIGH/CRITICAL
   signal that catches contention *before* swap or a system freeze — raw
   percent-used doesn't. Worth its own gauge/alert, not just folded into the
   memory-used number.
-- **Clock throttle state:** a load-gated state machine —
+- **`clock` — throttle state:** a load-gated state machine —
   `IDLE` (not under load, not evaluated) / `PASS` (healthy under load) /
   `LOCKED` (externally capped via `nvidia-smi -lgc`) / `THROTTLED` (low clock
   under load — power-delivery issue suspected). sparkview's field-derived
@@ -53,7 +56,7 @@ covers what `dcgm-exporter`/`dgx-spark-prometheus` don't:
   sustained load → THROTTLED**, degraded systems have been observed in the
   500-850MHz range. This is a real "something's wrong with this node" signal
   that neither NVML nor DCGM surfaces on its own.
-- **Per-process GPU memory attribution** — `nvidia-smi --query-compute-apps`
+- **Per-process GPU memory attribution** (part of `gpu`) — `nvidia-smi --query-compute-apps`
   (GPU UUID, PID, process name, used memory), for tying usage back to a
   specific llama.cpp/vLLM container and for the process-list panel (see
   [architecture.md](architecture.md#live-view-fast-path)).
@@ -67,7 +70,8 @@ workaround. Deliberately descoped to keep the base OS untouched (see
 [deployment.md](deployment.md)); revisit only if that priority changes.
 
 **Known GB10 caveat — time-slicing:** if GPU time-slicing is ever used (e.g.
-under k8s with `KUBERNETES_VIRTUAL_GPUS=true`), `dcgm-exporter` reports
+under k8s with `KUBERNETES_VIRTUAL_GPUS=true`), `dcgm-exporter` (should it be
+adopted in Phase 4) reports
 utilization/power/temperature as identical across all virtual devices — i.e. it
 can't currently distinguish per-slice load on Blackwell GB10. Not relevant to
 the Docker Compose setup today, but worth remembering if the
@@ -76,13 +80,12 @@ the Docker Compose setup today, but worth remembering if the
 **Metrics to collect:**
 
 - GPU utilization %
-- Memory used / available — via `gb10-node-exporter`'s UMA-correct calc, not raw
-  NVML
+- Memory used / available — via the agent's UMA-correct calc, not raw NVML
 - Memory pressure (PSI) state
 - Clock state (IDLE/PASS/LOCKED/THROTTLED)
 - Temperature (GPU + CPU, current and session peak)
-- Power draw (from NVML/baseline exporter — no `spark_hwmon` power-rail detail;
-  see out-of-scope note above)
+- Power draw (from NVML — no `spark_hwmon` power-rail detail; see
+  out-of-scope note above)
 - Per-process GPU memory attribution (for tying usage back to a specific
   llama.cpp/vLLM container)
 - Host-level: CPU load, system memory, disk usage, network throughput

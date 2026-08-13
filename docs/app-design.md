@@ -7,8 +7,8 @@ the live-update contract, repo layout, and the visual design rules for panels.
 
 | Layer | Choice | Why |
 |---|---|---|
-| Exporters | **Python 3.12** | `sparkview` (our reference implementation for all GB10 logic) is Python on `nvitop`/`psutil`. UMA memory calc and PSI parsing come nearly free; rewriting in Go would mean re-deriving them by hand against `/proc` and NVML. |
-| Backend | **Python 3.12 + FastAPI** | Same language as the exporters, so metric models/parsing are shared code rather than duplicated. Native async fan-out across nodes, native WebSockets. |
+| Agent (per node) | **Python 3.12** | `sparkview` (our reference implementation for all GB10 logic) is Python on `nvitop`/`psutil`. UMA memory calc and PSI parsing come nearly free; rewriting in Go would mean re-deriving them by hand against `/proc` and NVML. |
+| Backend | **Python 3.12 + FastAPI** | Same language as the agent, so metric models/parsing are shared code rather than duplicated. Native async fan-out across nodes, native WebSockets. |
 | Frontend | **Svelte 5 + Vite + TypeScript** | Runes (`$state`/`$derived`) map cleanly onto a WebSocket pushing a snapshot every 1-2s — no virtual-DOM diffing overhead on dense tables at that cadence, and far less boilerplate than React for a solo-maintained project. |
 | Charts | **uPlot** | ~40KB, purpose-built for fast time-series redraws. Recharts/Chart.js are heavier and slower under frequent updates. |
 | Styling | Plain CSS with custom properties | No component library. The look is dense and information-first (see [Visual design](#visual-design)); a Material/Bootstrap kit would fight that. |
@@ -17,26 +17,25 @@ Everything containerized per [deployment.md](deployment.md).
 
 ## Repo layout
 
-Monorepo, since the exporters and backend share code:
+Monorepo, since the agent and backend share code:
 
 ```
 spark-dash-homegrown/
 ├── docs/
 ├── common/                      # shared Python pkg: metric models, PromQL helpers,
 │   └── spark_dash_common/       #   exposition-format parsing, node inventory types
-├── exporters/
-│   ├── gb10_node_exporter/      # UMA memory, PSI, clock-throttle state
-│   └── llama_router_exporter/   # llama.cpp router-mode aggregation
+├── agent/                       # spark-dash-agent: one image, per-node
+│   └── collectors/              #   gpu / memory / psi / clock / llama_router
 ├── backend/
 │   └── app/                     # FastAPI: REST (history) + WebSocket (live)
 ├── frontend/                    # Svelte 5 + Vite
 └── deploy/
     ├── node/docker-compose.yml      # per-GX10 stack (identical on all 3)
-    └── central/docker-compose.yml   # Prometheus + backend + frontend
+    └── central/docker-compose.yml   # Prometheus + backend (Proxmox VM)
 ```
 
 `common/` is installed into each image as a local path dependency (Docker build
-context at repo root). Keeps the exporters and backend from drifting on metric
+context at repo root). Keeps the agent and backend from drifting on metric
 names/shapes.
 
 **Frontend is served by the backend container.** Vite builds to static assets
@@ -67,7 +66,7 @@ premature optimization here. (This supersedes the "pushes deltas" wording in
 Two behaviors that matter:
 
 - **One shared poller, not one per connection.** A single backend task polls
-  each node's exporters and fans the result out to all subscribers. Two browser
+  each node's agent and fans the result out to all subscribers. Two browser
   tabs open must not double the polling load on the inference nodes.
 - **Poll only while subscribed.** No connected clients → no tight polling loop.
   Prometheus keeps scraping on its own slower interval regardless, so history

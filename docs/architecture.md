@@ -38,44 +38,49 @@ GB10 power-rail telemetry (`spark_hwmon`) was deliberately left out since it
 requires a host kernel module.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│ Node 1 (GX10 #1)         Node 2 (GX10 #2)      Node 3 (GX10 #3) │
-│ ┌───────────────────┐    ┌──────────────┐      ┌──────────────┐ │
-│ │ llama.cpp router   │    │ llama.cpp    │      │ llama.cpp    │ │
-│ │ vLLM container(s)  │    │ vLLM         │      │ vLLM         │ │
-│ │ node_exporter      │    │ node_exporter│      │ node_exporter│ │
-│ │ dcgm-exporter /    │    │ (same)       │      │ (same)       │ │
-│ │  dgx-spark-prom.   │    │              │      │              │ │
-│ │ gb10-node-exporter │    │ (same)       │      │ (same)       │ │
-│ │  (custom — UMA mem,│    │              │      │              │ │
-│ │  PSI, clock state) │    │              │      │              │ │
-│ │ llama-router-      │    │ (same)       │      │ (same)       │ │
-│ │  exporter (custom) │    │              │      │              │ │
-│ └─────────┬──────────┘    └──────┬───────┘      └──────┬───────┘ │
-└───────────┼──────────────────────┼─────────────────────┼─────────┘
-            │            scraped over LAN (~15s, history) │
-            │            polled over LAN (~1-2s, live) ───┤
-            └──────────────────┬───────────────┬─────────┘
-                                ▼               │
-                        ┌───────────────┐       │
-                        │  Prometheus   │◄──────┘  (history / trends)
-                        │ (central)     │
-                        └───────┬───────┘
-                                │ PromQL
-                                ▼
-                        ┌────────────────────────┐
-                        │ homegrown backend API   │  (FastAPI, proposed)
-                        │  - REST: history/trends │
-                        │  - WebSocket: live poll  │◄── polls exporters
-                        │    fan-out (~1-2s)       │    directly, bypassing
-                        └───────┬─────────────────┘    Prometheus for freshness
-                                ▼
-                        ┌───────────────┐
-                        │ homegrown      │  (React/Vite, proposed)
-                        │ frontend       │
-                        └───────┬───────┘
-                                │
-                 LAN direct ────┴──── Cloudflare Tunnel + Google OAuth (remote)
+┌──────────────────────────────────────────────────────────────────┐
+│  GX10 nodes — byte-identical Compose stack (only NODE_ID differs) │
+│                                                                  │
+│  Node 1 (GX10 #1)       Node 2 (GX10 #2)     Node 3 (GX10 #3)    │
+│  ┌──────────────────┐   ┌───────────────┐    ┌───────────────┐   │
+│  │ llama.cpp router │   │ (same)        │    │ (same)        │   │
+│  │ vLLM container(s)│   │               │    │               │   │
+│  │ ─────────────────│   │               │    │               │   │
+│  │ node_exporter    │   │               │    │               │   │
+│  │ spark-dash-agent │   │               │    │               │   │
+│  │  collectors:     │   │               │    │               │   │
+│  │   gpu (NVML)     │   │               │    │               │   │
+│  │   memory (UMA)   │   │               │    │               │   │
+│  │   psi            │   │               │    │               │   │
+│  │   clock          │   │               │    │               │   │
+│  │   llama_router   │   │               │    │               │   │
+│  └────────┬─────────┘   └───────┬───────┘    └───────┬───────┘   │
+└───────────┼─────────────────────┼────────────────────┼───────────┘
+            │   scrape ~15s (history) + poll ~1-2s (live)          │
+            └─────────────────────┼────────────────────┘
+                                  ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  Central stack — dedicated Proxmox VM (NOT on any GX10)          │
+│                                                                  │
+│    ┌───────────────┐                                             │
+│    │  Prometheus   │  scrapes all nodes; TSDB = history/trends    │
+│    └───────┬───────┘                                             │
+│            │ PromQL                                              │
+│            ▼                                                     │
+│    ┌──────────────────────────┐                                  │
+│    │ spark-dash-backend       │  (FastAPI)                       │
+│    │  - REST: history/trends  │                                  │
+│    │  - WebSocket: live       │──── polls agents directly,       │
+│    │    (shared poller ~1-2s) │     bypassing Prometheus         │
+│    │  - serves Svelte assets  │     for freshness                │
+│    └───────────┬──────────────┘                                  │
+│                │                                                 │
+│    ┌───────────┴──────────┐                                      │
+│    │ cloudflared (exists) │                                      │
+│    └───────────┬──────────┘                                      │
+└────────────────┼─────────────────────────────────────────────────┘
+                 │
+  LAN direct ────┴──── Cloudflare Tunnel + Google OAuth (remote)
 ```
 
 ### Per-node (runs on all 3 GX10s)
@@ -84,46 +89,54 @@ requires a host kernel module.
   only adding scrape targets, not touching the inference stack itself.
 - **`node_exporter`** — standard host metrics (CPU/mem/disk/net). ARM64 build
   available, no GB10-specific concerns.
-- **`dcgm-exporter` or `dgx-spark-prometheus`** — baseline GPU metrics (standard
-  multi-GPU Prometheus plumbing). Evaluate `dgx-spark-prometheus` first since
-  it's purpose-built for this hardware; `dcgm-exporter` is the fallback,
-  optionally paired with `nvml-unified-shim` to correct its memory reporting.
-  See [metrics.md](metrics.md) for the specific caveats.
-- **`gb10-node-exporter` (new, ours to build)** — covers what the baseline
-  exporter doesn't: UMA-correct memory (`vm.total - vm.available`), PSI memory
-  pressure, and load-gated clock-throttle state. Fully containerized — only
-  needs `/proc`, `/sys`, and NVML/`nvidia-smi` access via the Container
-  Toolkit, no host install. Modeled directly on
+- **`spark-dash-agent` (new, ours to build)** — one container per node, with
+  internal collector modules. Fully containerized: only needs `/proc`, `/sys`,
+  and NVML/`nvidia-smi` access via the Container Toolkit, no host install.
+  Modeled directly on
   [`sparkview`](https://github.com/parallelArchitect/sparkview)'s
-  field-validated technique rather than re-derived from scratch. Deliberately
-  excludes GB10 power-rail/`PROCHOT` telemetry (`spark_hwmon`) — that requires
-  a real kernel module and was descoped to keep the base OS untouched; see
-  [deployment.md](deployment.md). Also serves as the data source for the
-  [live-view fast path](#live-view-fast-path) below, polled far more
+  field-validated technique rather than re-derived from scratch.
+  - `gpu` — NVML via `nvitop`: utilization, temperature, power, clocks,
+    per-process GPU memory
+  - `memory` — UMA-correct calc (`vm.total - vm.available`); raw NVML memory is
+    meaningless on GB10
+  - `psi` — `/proc/pressure/memory`
+  - `clock` — load-gated throttle state machine
+  - `llama_router` — talks to the local llama.cpp router's status endpoint to
+    find currently *loaded* models only, then fans out to
+    `/metrics?model=<name>` for just those. Deliberately does **not** poll
+    models that aren't already loaded, to avoid the known autoload/anti-sleep
+    side effect (see [metrics.md](metrics.md#3-llamacpp-router-mode-per-node)).
+    Reports nothing on a node not running llama.cpp, so the image is identical
+    everywhere.
+
+  Deliberately excludes GB10 power-rail/`PROCHOT` telemetry (`spark_hwmon`) —
+  that requires a real kernel module and was descoped to keep the base OS
+  untouched; see [deployment.md](deployment.md). Also serves as the data source
+  for the [live-view fast path](#live-view-fast-path) below, polled far more
   frequently than Prometheus scrapes it.
-- **`llama-router-exporter` (new, ours to build)** — a small sidecar that talks to
-  the local llama.cpp router's status endpoint to find currently *loaded* models
-  only, fans out to `/metrics?model=<name>` for just those, and republishes an
-  aggregated Prometheus endpoint. Deliberately does **not** poll models that
-  aren't already loaded, to avoid the known autoload/anti-sleep side effect
-  (see [metrics.md](metrics.md#3-llamacpp-router-mode-per-node)).
+- **Third-party GPU exporters (`dcgm-exporter` / `dgx-spark-prometheus`) are
+  deferred to Phase 4.** The agent reads NVML directly, and `dcgm-exporter`'s
+  headline advantage (GPU memory) is precisely what unified memory breaks on
+  GB10. Its remaining draw — SM/tensor-core activity, memory bandwidth — is
+  useful for inference tuning but not MVP-critical. See
+  [deployment.md](deployment.md#gpu-baseline-exporter--deferred-to-phase-4).
 - vLLM needs no sidecar — it already exposes `/metrics` natively; Prometheus
   scrapes it directly.
 
-### Central (one place — see "where does this run" below)
+### Central (dedicated Proxmox VM — see [deployment.md](deployment.md#central-stack--a-dedicated-proxmox-vm-settled))
 
 - **Prometheus** — scrapes all of the above across all 3 nodes via a static (or
   file-based service discovery) target list. Handles retention/history.
 - **Backend API** — has two distinct jobs, not one:
   - **History/trends (REST):** queries Prometheus over PromQL for anything
     chart-over-time — the normal dashboard-backend pattern.
-  - **Live view (WebSocket):** polls `gb10-node-exporter`/vLLM/
-    `llama-router-exporter` on each node directly, on a ~1-2s cadence, and
+  - **Live view (WebSocket):** polls each node's `spark-dash-agent` (and vLLM)
+    directly, on a ~1-2s cadence, and
     pushes updates to connected clients — deliberately bypassing Prometheus's
     coarser scrape interval for this path, because "live" is the whole point
     (see [Live-view fast path](#live-view-fast-path)).
   - **Python 3.12 + FastAPI** (settled). Shares a `common/` package with the
-    exporters so metric models don't drift. See
+    agent so metric models don't drift. See
     [app-design.md](app-design.md) for the full API surface.
 - **Frontend** — the actual dashboard UI. **Svelte 5 + Vite + TypeScript**,
   charts via uPlot (settled). Built to static assets and served by the backend
@@ -139,7 +152,7 @@ changes you notice instantly. A dashboard that only reflects Prometheus's
 replacement" goal. So the live view is architecturally separate from the
 history view:
 
-- Backend polls each node's exporters directly (not through Prometheus) on a
+- Backend polls each node's agent directly (not through Prometheus) on a
   ~1-2s interval and pushes a full snapshot over a WebSocket to connected
   clients (full snapshot, not deltas — a few KB at 1Hz makes both sides
   stateless; see [app-design.md](app-design.md#websocket--live-view)). One
@@ -159,16 +172,16 @@ history view:
   "what did GPU util look like an hour ago") — the live path never needs to
   answer "what happened before now."
 
-### Where does the central stack run?
+### Where does the central stack run? (settled)
 
-Open decision (tracked in [roadmap.md](roadmap.md#open-decisions)): running
-Prometheus + backend + frontend *on* one of the GX10 nodes is simplest to start
-(footprint is small relative to a GB10's capacity) but means monitoring goes
-down if that node reboots/is under heavy inference load, and it's monitoring
-infra competing — even lightly — with inferencing workload on hardware whose
-job is inferencing. If there's a spare always-on machine on the LAN (NAS, mini
-PC, Raspberry Pi), that's the cleaner home for the central stack. Default to
-running it on Node 1 for the MVP and revisit once the 3-node cluster is up.
+**A dedicated VM on the existing Proxmox cluster — never on a GX10.** The
+deciding argument is failure domains, not resources: "node down" is a primary
+alert, so hosting Prometheus on node 1 means a node-1 crash destroys both the
+node and the history explaining why. It also keeps all three GX10s
+interchangeable and keeps `cloudflared` (and therefore any externally-reachable
+surface) off the inference hardware entirely. Full reasoning, sizing, and the
+dead-man's-switch caveat are in
+[deployment.md](deployment.md#central-stack--a-dedicated-proxmox-vm-settled).
 
 ## Scaling from 1 → 3 nodes
 
@@ -181,9 +194,9 @@ change**:
 - Every panel/query in the backend is written in terms of a `node` label from the
   start (even with 1 node today), so nothing needs to change shape later —
   it just starts returning more rows.
-- Per-node exporters are identical containers/config across all 3 GX10s (same
-  Compose service definitions), so bringing up a new node is "copy the compose
-  file, adjust the node name."
+- Per-node containers/config are byte-identical across all 3 GX10s apart from
+  `NODE_ID`, so bringing up a new node is genuinely "copy the Compose file,
+  change one value."
 
 ## Auth / access
 
