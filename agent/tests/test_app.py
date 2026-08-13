@@ -18,12 +18,13 @@ from spark_dash_common.models import (
     GpuMetrics,
     HealthState,
     LlamaRouterMetrics,
-    LoadedModel,
     MemoryMetrics,
+    ModelState,
     NodeSnapshot,
     ProcessInfo,
     PsiMetrics,
     PsiState,
+    RouterModel,
     Runtimes,
     VllmMetrics,
 )
@@ -66,10 +67,20 @@ def make_snapshot(**overrides) -> NodeSnapshot:
                 LlamaRouterMetrics(
                     endpoint="http://router-a:8080",
                     name="router-a:8080",
-                    loaded_models=[
-                        LoadedModel(name="qwen3-32b", tokens_per_sec=41.2, kv_cache_pct=55.0)
+                    models=[
+                        RouterModel(
+                            name="qwen3-32b",
+                            state=ModelState.ACTIVE,
+                            raw_status="loaded",
+                            tokens_per_sec=41.2,
+                            kv_cache_pct=55.0,
+                        ),
+                        RouterModel(
+                            name="cydonia-24b", state=ModelState.SLEEPING, raw_status="sleeping"
+                        ),
                     ],
-                    known_model_count=4,
+                    max_instances=3,
+                    autoload=True,
                     tokens_per_sec=41.2,
                 )
             ],
@@ -175,8 +186,15 @@ def test_process_list_is_not_exported_to_prometheus():
     """PIDs churn; a pid label would grow series cardinality without bound for
     data nobody queries historically. It's live-view-only, served via JSON."""
     text = render(make_snapshot())
+    # Check for the data itself, not the word "process" — that legitimately
+    # appears in unrelated HELP text.
     assert "4412" not in text
-    assert "process" not in text.lower()
+    assert "llama-server" not in text
+    assert 'pid=' not in text
+    metric_names = {
+        line.split()[2] for line in text.splitlines() if line.startswith("# TYPE")
+    }
+    assert not any("process" in name for name in metric_names)
 
 
 def test_missing_sections_are_omitted_not_zeroed():
@@ -199,7 +217,33 @@ def test_runtime_metrics_are_labeled_by_model():
         '{model="qwen3-32b",node="gx10-1",router="router-a:8080"} 41.2'
     ) in text
     assert 'sparkdash_vllm_tokens_per_second{model="llama-3.3-70b",node="gx10-1"} 88.5' in text
-    assert 'sparkdash_llama_models_known{node="gx10-1",router="router-a:8080"} 4.0' in text
+    assert 'sparkdash_llama_models_known{node="gx10-1",router="router-a:8080"} 2.0' in text
+    assert 'sparkdash_llama_models_active{node="gx10-1",router="router-a:8080"} 1.0' in text
+    assert 'sparkdash_llama_models_sleeping{node="gx10-1",router="router-a:8080"} 1.0' in text
+    assert 'sparkdash_llama_router_max_instances{node="gx10-1",router="router-a:8080"} 3.0' in text
+
+
+def test_model_state_renders_one_series_per_state():
+    text = render(make_snapshot())
+    assert (
+        'sparkdash_llama_model_state'
+        '{model="qwen3-32b",node="gx10-1",router="router-a:8080",state="active"} 1.0'
+    ) in text
+    assert (
+        'sparkdash_llama_model_state'
+        '{model="cydonia-24b",node="gx10-1",router="router-a:8080",state="sleeping"} 1.0'
+    ) in text
+
+
+def test_sleeping_models_get_no_throughput_series():
+    """A sleeping model has no weights; emitting 0 throughput would be
+    indistinguishable from a loaded-but-idle model."""
+    text = render(make_snapshot())
+    assert 'sparkdash_llama_model_tokens_per_second{model="cydonia-24b"' not in text
+    assert (
+        'sparkdash_llama_model_tokens_per_second'
+        '{model="qwen3-32b",node="gx10-1",router="router-a:8080"} 41.2'
+    ) in text
 
 
 def test_router_label_distinguishes_multiple_routers():
@@ -211,14 +255,20 @@ def test_router_label_distinguishes_multiple_routers():
                 LlamaRouterMetrics(
                     endpoint="http://a:8080",
                     name="a:8080",
-                    loaded_models=[LoadedModel(name="shared", tokens_per_sec=10.0)],
-                    known_model_count=1,
+                    models=[
+                        RouterModel(
+                            name="shared", state=ModelState.ACTIVE, tokens_per_sec=10.0
+                        )
+                    ],
                 ),
                 LlamaRouterMetrics(
                     endpoint="http://b:8081",
                     name="b:8081",
-                    loaded_models=[LoadedModel(name="shared", tokens_per_sec=20.0)],
-                    known_model_count=1,
+                    models=[
+                        RouterModel(
+                            name="shared", state=ModelState.ACTIVE, tokens_per_sec=20.0
+                        )
+                    ],
                 ),
             ]
         )

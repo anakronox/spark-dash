@@ -16,7 +16,11 @@ from nvitop import NA, Device, libnvml
 from spark_dash_common.models import GpuMetrics, ProcessInfo
 
 from spark_dash_agent.collectors.base import Collector
-from spark_dash_agent.collectors.clock import ClockSignals, ClockTracker
+from spark_dash_agent.collectors.clock import (
+    ClockSignals,
+    ClockTracker,
+    throttle_threshold_mhz,
+)
 
 log = logging.getLogger(__name__)
 
@@ -130,13 +134,42 @@ def infer_runtime(name: str, command: str = "", cwd: str = "") -> str | None:
         return "ollama"
 
     # --- other GPU workloads sharing the same memory pool ---
-    if "comfy" in haystack:
+    if "comfy" in haystack or _looks_like_comfyui(haystack):
         return "comfyui"
     if "stable-diffusion" in haystack or "stable_diffusion" in haystack or "sd-webui" in haystack:
         return "stable-diffusion"
     if "jupyter" in haystack or "ipykernel" in haystack:
         return "jupyter"
     return None
+
+
+# ComfyUI launches as `python main.py` from a directory whose name we usually
+# can't read (/proc/<pid>/cwd needs ptrace access the agent doesn't have as
+# non-root), so the word "comfy" often appears nowhere. These flags are
+# ComfyUI-specific and do appear in argv.
+_COMFYUI_FLAGS = (
+    "--preview-method",
+    "--bf16-unet",
+    "--fp16-unet",
+    "--bf16-vae",
+    "--fp16-vae",
+    "--bf16-text-enc",
+    "--fp16-text-enc",
+    "--enable-manager",
+    "--disable-pinned-memory",
+    "--use-sage-attention",
+    "--disable-smart-memory",
+)
+
+
+def _looks_like_comfyui(haystack: str) -> bool:
+    """Identify ComfyUI by its distinctive CLI flags.
+
+    Two matches are required: several of these flags are shared with other
+    Stable Diffusion frontends, so any single one is weak evidence. Mislabeling
+    is worse than leaving a process unlabeled.
+    """
+    return sum(flag in haystack for flag in _COMFYUI_FLAGS) >= 2
 
 
 # Runtimes that serve LLM inference, as opposed to other GPU consumers. Lets
@@ -163,6 +196,17 @@ class GpuCollector(Collector[GpuMetrics]):
         if self._device is None:
             self._device = Device(self._device_index)
             self.memory_total_bytes = int(_num(self._device.memory_total()) or 0) or None
+
+            # Calibrate the throttle threshold against this GPU's own maximum
+            # rather than a value hardcoded for one board.
+            max_clock = _num(self._device.max_sm_clock())
+            threshold = throttle_threshold_mhz(max_clock)
+            self._tracker = ClockTracker(throttled_mhz=threshold)
+            log.info(
+                "clock throttle threshold %.0fMHz (max_sm_clock %s)",
+                threshold,
+                max_clock,
+            )
         return self._device
 
     def _throttle_signals(self, device: Device) -> tuple[bool | None, bool | None]:

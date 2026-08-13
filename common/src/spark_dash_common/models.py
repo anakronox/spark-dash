@@ -121,10 +121,46 @@ class ProcessInfo(BaseModel):
     model: str | None = None
 
 
-class LoadedModel(BaseModel):
-    """A model currently resident in a llama.cpp router."""
+class ModelState(StrEnum):
+    """Lifecycle of a model registered with a llama.cpp router.
+
+    `SLEEPING` is the state that matters most and the one a boolean
+    loaded/not-loaded would hide: the child process is alive but its weights
+    have been released after `--sleep-idle-seconds`. It holds only process
+    overhead (~200MB), responds instantly to `/v1/models`, and must never be
+    sent a `/metrics?model=` request — that reloads it.
+    """
+
+    ACTIVE = "active"
+    SLEEPING = "sleeping"
+    LOADING = "loading"
+    UNLOADED = "unloaded"
+    UNKNOWN = "unknown"
+
+
+# Only these states mean weights are resident and metrics are safe to fetch.
+# Everything else — including anything unrecognized — is left alone.
+SCRAPEABLE_STATES = frozenset({ModelState.ACTIVE})
+
+
+class RouterModel(BaseModel):
+    """One model registered with a router, in whatever state it's in.
+
+    Covers every registered model, not just resident ones: "4 registered, 1
+    active, 2 sleeping" is the operationally interesting picture, and a model
+    that's merely sleeping is a warm cache rather than a cold start.
+    """
 
     name: str
+    state: ModelState = ModelState.UNKNOWN
+    raw_status: str = Field(
+        default="",
+        description="Verbatim status from the router, kept so an unrecognized "
+        "value is diagnosable rather than silently collapsed to UNKNOWN.",
+    )
+
+    # Populated only for ACTIVE models — fetching these for any other state
+    # would wake the model.
     slots_used: int = 0
     slots_total: int = 0
     kv_cache_pct: float | None = None
@@ -150,9 +186,29 @@ class LlamaRouterMetrics(BaseModel):
         description="Friendly label for the UI; falls back to host:port of the endpoint.",
     )
     reachable: bool = True
-    loaded_models: list[LoadedModel] = Field(default_factory=list)
-    known_model_count: int = 0
+
+    models: list[RouterModel] = Field(
+        default_factory=list, description="Every registered model, whatever its state."
+    )
+
+    # From the router's /props. max_instances is `--models-max`: the ceiling on
+    # concurrently resident models, which makes "2 of 3 slots" expressible.
+    max_instances: int | None = None
+    autoload: bool | None = None
+
     tokens_per_sec: float = 0.0
+
+    @property
+    def active_models(self) -> list[RouterModel]:
+        return [m for m in self.models if m.state is ModelState.ACTIVE]
+
+    @property
+    def sleeping_models(self) -> list[RouterModel]:
+        return [m for m in self.models if m.state is ModelState.SLEEPING]
+
+    @property
+    def known_model_count(self) -> int:
+        return len(self.models)
 
 
 class VllmMetrics(BaseModel):

@@ -5,18 +5,20 @@ contract between them can't drift.
 """
 
 from spark_dash_common.models import (
+    SCRAPEABLE_STATES,
     ClockState,
     ClusterSnapshot,
     CpuMetrics,
     GpuMetrics,
     HealthState,
     LlamaRouterMetrics,
-    LoadedModel,
     MemoryMetrics,
+    ModelState,
     NodeSnapshot,
     ProcessInfo,
     PsiMetrics,
     PsiState,
+    RouterModel,
     Runtimes,
     VllmMetrics,
 )
@@ -27,13 +29,15 @@ __all__ = [
     "CpuMetrics",
     "GpuMetrics",
     "HealthState",
+    "SCRAPEABLE_STATES",
     "LlamaRouterMetrics",
-    "LoadedModel",
     "MemoryMetrics",
+    "ModelState",
     "NodeSnapshot",
     "ProcessInfo",
     "PsiMetrics",
     "PsiState",
+    "RouterModel",
     "Runtimes",
     "VllmMetrics",
 ]

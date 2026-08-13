@@ -198,31 +198,37 @@ hdr "Inference runtimes"
 ROUTERS=$(printf '%s' "$SNAP" | python3 -c "
 import json,sys
 for r in (json.load(sys.stdin).get('runtimes') or {}).get('llama_cpp') or []:
-    print(f\"{r['name'] or r['endpoint']}\t{r['reachable']}\t{r['known_model_count']}\t{len(r['loaded_models'] or [])}\")
+    models = r['models'] or []
+    counts = {}
+    for m in models:
+        counts[m['state']] = counts.get(m['state'], 0) + 1
+    summary = ', '.join(f'{v} {k}' for k, v in sorted(counts.items())) or 'none'
+    unknown = sum(1 for m in models if m['state'] == 'unknown')
+    raws = ';'.join(sorted({m['raw_status'] for m in models if m['state'] == 'unknown'}))
+    print(f\"{r['name'] or r['endpoint']}\t{r['reachable']}\t{len(models)}\t{r.get('max_instances') or '?'}\t{summary}\t{unknown}\t{raws}\")
 ")
 if [[ -z "$ROUTERS" ]]; then
   info "no llama.cpp routers configured (LLAMA_ROUTER_URLS unset) — skipping"
 else
-  UNRECOGNIZED=0
-  while IFS=$'\t' read -r rname reachable known loaded; do
+  while IFS=$'\t' read -r rname reachable total maxinst summary unknown raws; do
     if [[ "$reachable" != "True" ]]; then
       bad "router $rname unreachable"
       continue
     fi
-    ok "router $rname — $known known model(s), $loaded loaded"
-    [[ "$known" -gt 0 && "$loaded" -eq 0 ]] && UNRECOGNIZED=1
+    ok "router $rname — $total model(s), max_instances $maxinst"
+    info "states: $summary"
+    if [[ "$unknown" -gt 0 ]]; then
+      warn "$unknown model(s) in UNKNOWN state (raw: $raws)"
+      info "unrecognized status values are never scraped (fail-safe), but the"
+      info "mapping in collectors/llama_router.py should learn them"
+    fi
   done <<< "$ROUTERS"
 
-  if [[ "$UNRECOGNIZED" -eq 1 ]]; then
-    info "a router reports models but none loaded. Either nothing is loaded"
-    info "(fine), or the /v1/models shape wasn't recognized and we fell back"
-    info "to 'not loaded'. Confirm with the diagnose command below."
-  fi
   echo
-  echo "  ${c_warn}THE CRITICAL CHECK${c_off} — leave the agent running for ~10 minutes with"
-  echo "  models idle, then confirm no model loaded itself. If idle models wake up,"
-  echo "  stop the agent and set LLAMA_SCRAPE_LOADED_MODEL_METRICS=false."
-  echo "  (autoload bug: ggml-org/llama.cpp#23096)"
+  echo "  ${c_warn}THE CRITICAL CHECK${c_off} — leave the agent running ~10 minutes with"
+  echo "  models sleeping, then re-run. Sleeping models must STILL be sleeping."
+  echo "  If any flipped to active, stop the agent and set"
+  echo "  LLAMA_SCRAPE_LOADED_MODEL_METRICS=false (autoload bug #23096)."
 fi
 
 VLLM_COUNT=$(printf '%s' "$SNAP" | python3 -c "

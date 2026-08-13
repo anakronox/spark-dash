@@ -39,6 +39,28 @@ class ClockSignals:
     hw_throttled: bool | None = None
 
 
+def throttle_threshold_mhz(
+    max_clock_mhz: float | None,
+    *,
+    absolute_floor: float = CLOCK_THROTTLED_MHZ,
+    fraction_of_max: float = 0.5,
+) -> float:
+    """Pick the frequency below which a loaded GPU counts as throttled.
+
+    sparkview's 1400MHz was derived on GB10 specifically. Deriving it from the
+    hardware's own maximum instead makes it self-calibrating — the GX10 reports
+    max_sm_clock 3003MHz, which puts the threshold at ~1500MHz, close to the
+    field-validated value while also being correct on different hardware.
+
+    The absolute floor is kept as a lower bound so a GPU reporting an
+    implausibly low maximum can't produce a threshold near zero that would
+    never fire.
+    """
+    if not max_clock_mhz or max_clock_mhz <= 0:
+        return absolute_floor
+    return max(absolute_floor, max_clock_mhz * fraction_of_max)
+
+
 def classify_clock(
     signals: ClockSignals,
     *,
@@ -86,9 +108,11 @@ class ClockTracker:
         self,
         sustained_samples: int = 3,
         load_gate_pct: float = CLOCK_LOAD_GATE_UTIL_PCT,
+        throttled_mhz: float = CLOCK_THROTTLED_MHZ,
     ) -> None:
         self._sustained_samples = sustained_samples
         self._load_gate_pct = load_gate_pct
+        self._throttled_mhz = throttled_mhz
         self._consecutive_loaded = 0
 
     def update(self, signals: ClockSignals) -> ClockState:
@@ -98,4 +122,9 @@ class ClockTracker:
             self._consecutive_loaded = 0
 
         under_load = self._consecutive_loaded >= self._sustained_samples
-        return classify_clock(signals, under_load=under_load, load_gate_pct=self._load_gate_pct)
+        return classify_clock(
+            signals,
+            under_load=under_load,
+            load_gate_pct=self._load_gate_pct,
+            throttled_mhz=self._throttled_mhz,
+        )

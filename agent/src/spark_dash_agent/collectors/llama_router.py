@@ -2,17 +2,20 @@
 
 THE CONSTRAINT THAT SHAPES THIS WHOLE MODULE: in router mode,
 `GET /metrics?model=X` triggers autoload of X and resets its idle-sleep timer
-(ggml-org/llama.cpp#23096). A naive scrape loop would therefore load every
-registered model and hold them all resident forever — actively fighting the
-router's own LRU eviction and exhausting the shared memory pool. Monitoring
-would be the thing that breaks the box.
+(ggml-org/llama.cpp#23096). Both routers on the GX10 run with
+`--models-autoload`, so this is live, not theoretical. A naive scrape loop would
+load every registered model and hold them resident forever — fighting the
+router's own eviction and exhausting the shared memory pool. Monitoring would be
+the thing that breaks the box.
 
-So: discover which models are *already loaded* using an endpoint that takes no
-`model` parameter, and only then fetch per-model metrics for those. Never probe
-a model to find out whether it's loaded.
+So: read every model's state from `/v1/models` (which takes no `model`
+parameter and cannot autoload), and fetch per-model metrics ONLY for models
+already active. A sleeping model is deliberately left alone.
 
 There is also no aggregated all-models endpoint in router mode
 (ggml-org/llama.cpp#19197), which is why the fan-out lives here.
+
+Response shapes confirmed against llama.cpp b10380.
 """
 
 from __future__ import annotations
@@ -23,7 +26,12 @@ from urllib.parse import urlparse
 
 import httpx
 from prometheus_client.parser import text_string_to_metric_families
-from spark_dash_common.models import LlamaRouterMetrics, LoadedModel
+from spark_dash_common.models import (
+    SCRAPEABLE_STATES,
+    LlamaRouterMetrics,
+    ModelState,
+    RouterModel,
+)
 
 from spark_dash_agent.collectors.base import Collector
 
@@ -35,6 +43,24 @@ _M_PREDICTED_TOKENS = "llamacpp:tokens_predicted_total"
 _M_REQUESTS_PROCESSING = "llamacpp:requests_processing"
 _M_REQUESTS_DEFERRED = "llamacpp:requests_deferred"
 _M_KV_CACHE_RATIO = "llamacpp:kv_cache_usage_ratio"
+
+# Router `status.value` strings → our state enum. Observed on b10380:
+# "sleeping" (process alive, weights released) and "unloaded" (no process).
+# Anything unrecognized maps to UNKNOWN, which is NOT scrapeable — so a future
+# llama.cpp release inventing a new status can never trick us into waking a
+# model.
+_STATUS_MAP = {
+    "active": ModelState.ACTIVE,
+    "loaded": ModelState.ACTIVE,
+    "ready": ModelState.ACTIVE,
+    "running": ModelState.ACTIVE,
+    "sleeping": ModelState.SLEEPING,
+    "idle": ModelState.SLEEPING,
+    "loading": ModelState.LOADING,
+    "starting": ModelState.LOADING,
+    "unloaded": ModelState.UNLOADED,
+    "stopped": ModelState.UNLOADED,
+}
 
 
 class RateTracker:
@@ -62,9 +88,9 @@ class RateTracker:
         return (value - prev_value) / elapsed
 
     def forget(self, keep_keys: set[str]) -> None:
-        """Drop state for models that are no longer loaded.
+        """Drop state for models no longer active.
 
-        Without this, a model evicted and later reloaded would compute its first
+        Without this, a model that slept and later woke would compute its first
         rate against a stale sample from minutes ago.
         """
         for key in set(self._previous) - keep_keys:
@@ -78,6 +104,41 @@ def parse_model_metrics(text: str) -> dict[str, float]:
         for sample in family.samples:
             out[sample.name] = sample.value
     return out
+
+
+def parse_model_state(entry: dict) -> tuple[ModelState, str]:
+    """Read a model's state from a `/v1/models` entry.
+
+    The router nests this as `status.value` — `status` is an OBJECT, not a
+    string. Several shapes are accepted anyway because this decision determines
+    whether we're allowed to touch a model, and it must keep failing safe
+    across llama.cpp versions.
+
+    Returns the mapped state plus the verbatim string, so an unrecognized value
+    is diagnosable in the UI instead of vanishing into UNKNOWN.
+    """
+    raw = ""
+    for key in ("status", "state"):
+        field = entry.get(key)
+        if isinstance(field, dict):
+            raw = str(field.get("value") or "")
+        elif isinstance(field, str):
+            raw = field
+        if raw:
+            break
+
+    # Older/simpler builds may expose a plain boolean instead.
+    if not raw:
+        for key in ("loaded", "is_loaded", "resident"):
+            if key in entry:
+                loaded = bool(entry[key])
+                return (
+                    ModelState.ACTIVE if loaded else ModelState.UNLOADED,
+                    f"{key}={entry[key]}",
+                )
+        return ModelState.UNKNOWN, ""
+
+    return _STATUS_MAP.get(raw.strip().lower(), ModelState.UNKNOWN), raw
 
 
 class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
@@ -100,9 +161,9 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
     ) -> None:
         self._base_urls = [u.rstrip("/") for u in base_urls if u]
         self._timeout = timeout
-        # Escape hatch: if this router build turns out to autoload even on the
-        # discovery path, set this False to keep the loaded-model list without
-        # ever touching /metrics.
+        # Escape hatch: if a router build turns out to autoload from the
+        # discovery path too, set this False to keep model states without ever
+        # fetching /metrics.
         self._scrape_metrics = scrape_loaded_model_metrics
         # Test seam — lets the suite assert which URLs are actually requested,
         # which is how the "never wake a sleeping model" guarantee is verified.
@@ -122,12 +183,10 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
                 out.append(result)
                 live_rate_keys |= {
                     f"{base_url}:{m.name}:{suffix}"
-                    for m in result.loaded_models
+                    for m in result.active_models
                     for suffix in ("predicted", "prompt")
                 }
 
-        # Drop rate state for models no longer loaded anywhere, so a reloaded
-        # model doesn't compute its first rate against a stale sample.
         self._rates.forget(live_rate_keys)
         return out
 
@@ -135,99 +194,95 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         models = self._discover_models(client, base_url)
         if models is None:
             # One router being down must not hide the others.
-            return LlamaRouterMetrics(
-                endpoint=base_url, name=_label_for(base_url), reachable=False
-            )
+            return LlamaRouterMetrics(endpoint=base_url, name=_label_for(base_url), reachable=False)
 
-        loaded = [
-            self._collect_model(client, base_url, name) for name, is_loaded in models if is_loaded
-        ]
+        for model in models:
+            if model.state in SCRAPEABLE_STATES:
+                self._enrich_active_model(client, base_url, model)
+
+        props = self._fetch_props(client, base_url)
         return LlamaRouterMetrics(
             endpoint=base_url,
             name=_label_for(base_url),
             reachable=True,
-            loaded_models=loaded,
-            known_model_count=len(models),
-            tokens_per_sec=sum(m.tokens_per_sec or 0.0 for m in loaded),
+            models=models,
+            max_instances=props.get("max_instances"),
+            autoload=props.get("models_autoload"),
+            tokens_per_sec=sum(m.tokens_per_sec or 0.0 for m in models),
         )
 
-    def _discover_models(
-        self, client: httpx.Client, base_url: str
-    ) -> list[tuple[str, bool]] | None:
-        """List models and whether each is resident, without triggering a load.
+    def _fetch_props(self, client: httpx.Client, base_url: str) -> dict:
+        """Router-level properties: `max_instances` (`--models-max`) and whether
+        autoload is on.
 
-        Uses `/v1/models`, which takes no `model` parameter and so cannot
-        autoload. The response shape varies across llama.cpp builds, so the
-        loaded flag is read defensively from several plausible keys.
+        `max_instances` is what makes "2 of 3 slots used" expressible. Safe to
+        call — without a `model` parameter this describes the router itself and
+        cannot wake anything.
+        """
+        try:
+            resp = client.get(f"{base_url}/props")
+            resp.raise_for_status()
+            payload = resp.json()
+        except Exception:  # noqa: BLE001 — optional enrichment
+            log.debug("props fetch failed for %s", base_url, exc_info=True)
+            return {}
+        return payload if isinstance(payload, dict) else {}
 
-        Fail-safe: when residency can't be determined, models are reported as
-        NOT loaded. That costs us some metrics but guarantees we never probe a
-        sleeping model awake.
+    def _discover_models(self, client: httpx.Client, base_url: str) -> list[RouterModel] | None:
+        """List every registered model and its state, without triggering a load.
+
+        `/v1/models` takes no `model` parameter, so it cannot autoload.
         """
         try:
             resp = client.get(f"{base_url}/v1/models")
             resp.raise_for_status()
             payload = resp.json()
         except Exception:  # noqa: BLE001 — router absent or not in router mode
-            log.debug("llama router model discovery failed", exc_info=True)
+            log.debug("llama router model discovery failed for %s", base_url, exc_info=True)
             return None
 
         entries = payload.get("data", payload if isinstance(payload, list) else [])
-        models: list[tuple[str, bool]] = []
+        models: list[RouterModel] = []
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
             name = entry.get("id") or entry.get("name")
             if not name:
                 continue
-            models.append((str(name), _is_loaded(entry)))
+            state, raw = parse_model_state(entry)
+            models.append(RouterModel(name=str(name), state=state, raw_status=raw))
         return models
 
-    def _collect_model(self, client: httpx.Client, base_url: str, name: str) -> LoadedModel:
-        model = LoadedModel(name=name)
-        if not self._scrape_metrics:
-            return model
+    def _enrich_active_model(self, client: httpx.Client, base_url: str, model: RouterModel) -> None:
+        """Fetch metrics for an ACTIVE model.
 
-        # Safe *only* because `name` came from the loaded set above.
+        Only ever called for models already reported active — that precondition
+        is the entire safety property of this module.
+        """
+        if not self._scrape_metrics:
+            return
+
         try:
-            resp = client.get(f"{base_url}/metrics", params={"model": name})
+            resp = client.get(f"{base_url}/metrics", params={"model": model.name})
             resp.raise_for_status()
             metrics = parse_model_metrics(resp.text)
-        except Exception:  # noqa: BLE001 — model may have been evicted mid-scrape
-            log.debug("metrics fetch failed for model %s", name, exc_info=True)
-            return model
-
-        predicted = metrics.get(_M_PREDICTED_TOKENS, 0.0)
-        prompt = metrics.get(_M_PROMPT_TOKENS, 0.0)
+        except Exception:  # noqa: BLE001 — model may have slept mid-scrape
+            log.debug("metrics fetch failed for model %s", model.name, exc_info=True)
+            return
 
         model.requests_running = int(metrics.get(_M_REQUESTS_PROCESSING, 0))
         model.requests_waiting = int(metrics.get(_M_REQUESTS_DEFERRED, 0))
         kv = metrics.get(_M_KV_CACHE_RATIO)
         model.kv_cache_pct = kv * 100.0 if kv is not None else None
+
         # Rate keys are namespaced by router: the same model name can be
         # registered with more than one router on a node.
         model.tokens_per_sec = self._rates.rate(
-            f"{base_url}:{name}:predicted", predicted
-        ) + self._rates.rate(f"{base_url}:{name}:prompt", prompt)
-        return model
+            f"{base_url}:{model.name}:predicted", metrics.get(_M_PREDICTED_TOKENS, 0.0)
+        ) + self._rates.rate(f"{base_url}:{model.name}:prompt", metrics.get(_M_PROMPT_TOKENS, 0.0))
 
 
 def _label_for(base_url: str) -> str:
     """Short host:port label so the UI can tell routers apart."""
     parsed = urlparse(base_url)
     return parsed.netloc or base_url
-
-
-def _is_loaded(entry: dict) -> bool:
-    """Read residency from a `/v1/models` entry, defaulting to not-loaded.
-
-    Key names differ across llama.cpp builds and this is the decision that keeps
-    us from tripping the autoload bug, so an unrecognized shape must fail safe.
-    """
-    for key in ("loaded", "is_loaded", "resident"):
-        if key in entry:
-            return bool(entry[key])
-    state = entry.get("state") or entry.get("status")
-    if isinstance(state, str):
-        return state.lower() in ("loaded", "ready", "active", "running")
-    return False

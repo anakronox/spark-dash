@@ -11,7 +11,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from prometheus_client.core import GaugeMetricFamily
-from spark_dash_common.models import ClockState, HealthState, NodeSnapshot, PsiState
+from spark_dash_common.models import (
+    ClockState,
+    HealthState,
+    ModelState,
+    NodeSnapshot,
+    PsiState,
+)
 
 _NS = "sparkdash"
 
@@ -162,8 +168,13 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
 
         up = _g("llama_router_up", "1 when the router answered", rl)
         known = _g("llama_models_known", "Models registered with the router", rl)
-        loaded_count = _g("llama_models_loaded", "Models currently resident", rl)
-        loaded = _g("llama_model_loaded", "1 while a model is resident", rml)
+        active_count = _g("llama_models_active", "Models with weights resident", rl)
+        sleeping_count = _g("llama_models_sleeping", "Models slept (process alive)", rl)
+        capacity = _g("llama_router_max_instances", "--models-max ceiling", rl)
+
+        # One series per state, matching the pattern used for clock and health:
+        # alerting rules match on the label rather than decoding an enum.
+        state = _g("llama_model_state", "Model lifecycle state (1 for active)", [*rml, "state"])
         tps = _g("llama_model_tokens_per_second", "Token throughput", rml)
         kv = _g("llama_model_kv_cache_percent", "KV cache utilization", rml)
         running = _g("llama_model_requests_running", "In-flight requests", rml)
@@ -173,17 +184,29 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             label = router.name or router.endpoint
             up.add_metric([node, label], 1.0 if router.reachable else 0.0)
             known.add_metric([node, label], float(router.known_model_count))
-            loaded_count.add_metric([node, label], float(len(router.loaded_models)))
+            active_count.add_metric([node, label], float(len(router.active_models)))
+            sleeping_count.add_metric([node, label], float(len(router.sleeping_models)))
+            if router.max_instances is not None:
+                capacity.add_metric([node, label], float(router.max_instances))
 
-            for model in router.loaded_models:
-                loaded.add_metric([node, label, model.name], 1.0)
-                tps.add_metric([node, label, model.name], model.tokens_per_sec or 0.0)
-                if model.kv_cache_pct is not None:
-                    kv.add_metric([node, label, model.name], model.kv_cache_pct)
-                running.add_metric([node, label, model.name], float(model.requests_running))
-                waiting.add_metric([node, label, model.name], float(model.requests_waiting))
+            for model in router.models:
+                for value in ModelState:
+                    state.add_metric(
+                        [node, label, model.name, value.value],
+                        1.0 if model.state is value else 0.0,
+                    )
+                # Throughput/cache series exist only for active models — a
+                # sleeping model has no weights, and emitting 0 would be
+                # indistinguishable from an idle-but-loaded model.
+                if model.state is ModelState.ACTIVE:
+                    tps.add_metric([node, label, model.name], model.tokens_per_sec or 0.0)
+                    if model.kv_cache_pct is not None:
+                        kv.add_metric([node, label, model.name], model.kv_cache_pct)
+                    running.add_metric([node, label, model.name], float(model.requests_running))
+                    waiting.add_metric([node, label, model.name], float(model.requests_waiting))
 
-        yield from (up, known, loaded_count, loaded, tps, kv, running, waiting)
+        yield from (up, known, active_count, sleeping_count, capacity, state, tps, kv, running,
+                    waiting)
 
     if snap.runtimes.vllm:
         tps = _g("vllm_tokens_per_second", "Token throughput", ["node", "model"])
