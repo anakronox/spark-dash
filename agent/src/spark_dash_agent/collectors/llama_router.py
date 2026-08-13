@@ -46,31 +46,30 @@ _M_KV_CACHE_RATIO = "llamacpp:kv_cache_usage_ratio"
 
 # Router `status.value` strings → our state enum.
 #
-# CONFIRMED on b10380 (GX10): "sleeping" and "unloaded".
+# All three states below are CONFIRMED against llama.cpp b10380 on the GX10:
+# "loaded", "sleeping", "unloaded".
 #
-# The ACTIVE entries are INFERRED, not observed — no loaded model has been seen
-# in the wild yet. That asymmetry is dangerous, because mapping a status to
-# ACTIVE authorizes a `/metrics?model=` request, which on an autoload router
-# LOADS the model. So the ACTIVE set is kept deliberately narrow: only values
-# that unambiguously mean "weights resident and serving".
+# ACTIVE contains EXACTLY ONE value, and that asymmetry is deliberate. Mapping a
+# status to ACTIVE authorizes a `/metrics?model=` request, which on an autoload
+# router LOADS the model — potentially tens of GB into a shared pool. So only a
+# string observed to mean "weights resident and serving" earns that mapping.
 #
-# "ready" was deliberately REMOVED. It plausibly means "configured and ready to
-# be loaded" rather than "loaded" — and on a router hosting 70B models, acting
-# on that guess could pull tens of GB into a shared pool and OOM the node.
-# Anything unrecognized maps to UNKNOWN, which is never scraped.
+# Earlier drafts also mapped "active", "running" and "ready" to ACTIVE on
+# plausibility alone. They are removed: none was ever observed, and "ready" in
+# particular could just as easily mean "ready to BE loaded". If a future
+# llama.cpp uses one of them, this maps it to UNKNOWN — the model shows up as
+# unknown-state and is left untouched, which is wrong but safe, and the verbatim
+# string in `raw_status` makes it obvious what to add here.
 _STATUS_MAP = {
-    # --- inferred: weights resident ---
-    "active": ModelState.ACTIVE,
+    # --- confirmed: weights resident and serving ---
     "loaded": ModelState.ACTIVE,
-    "running": ModelState.ACTIVE,
-    # --- confirmed: process alive, weights released ---
+    # --- confirmed: process alive, weights released after --sleep-idle-seconds ---
     "sleeping": ModelState.SLEEPING,
-    "idle": ModelState.SLEEPING,
-    # --- transitional ---
+    # --- confirmed: no child process ---
+    "unloaded": ModelState.UNLOADED,
+    # --- inferred, but harmless: none of these are scrapeable states ---
     "loading": ModelState.LOADING,
     "starting": ModelState.LOADING,
-    # --- confirmed: no process ---
-    "unloaded": ModelState.UNLOADED,
     "stopped": ModelState.UNLOADED,
 }
 

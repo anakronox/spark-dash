@@ -191,18 +191,55 @@ class TestNeverWakeASleepingModel:
 
         assert router.metrics_requests == []
 
-    def test_ready_is_not_treated_as_active(self):
-        """"ready" plausibly means "ready to be loaded" rather than "loaded".
-        Acting on that guess against a 70B model could exhaust the shared pool,
-        so it maps to UNKNOWN and is never scraped."""
-        router = RecordingRouter([model_entry("big-70b", "ready")])
+    @pytest.mark.parametrize("plausible", ["ready", "active", "running"])
+    def test_unobserved_status_values_are_not_treated_as_active(self, plausible):
+        """Only "loaded" has been observed to mean weights-resident. These are
+        plausible synonyms, but acting on a guess against a 70B model could
+        exhaust the shared pool — so they map to UNKNOWN and are never
+        scraped."""
+        router = RecordingRouter([model_entry("big-70b", plausible)])
         results = LlamaRouterCollector(
             ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
         ).collect()
 
         assert router.metrics_requests == []
         assert results[0].models[0].state is ModelState.UNKNOWN
-        assert results[0].models[0].raw_status == "ready"
+        # Retained verbatim so an unrecognized value is obvious in the UI.
+        assert results[0].models[0].raw_status == plausible
+
+    def test_real_gx10_router_8001_mix(self):
+        """Verbatim from the GX10's 8001 router with one model loaded: only the
+        loaded model may be touched, and only when the router is opted in."""
+        router = RecordingRouter(
+            [
+                model_entry("cydonia-24b", "sleeping"),
+                model_entry("gemma4-26b", "sleeping"),
+                model_entry("qwen36-35b", "loaded"),
+            ]
+        )
+        result = LlamaRouterCollector(
+            ["http://192.168.50.61:8001"],
+            transport=router.transport(),
+            metrics_allowlist=["http://192.168.50.61:8001"],
+        ).collect()[0]
+
+        assert [m.name for m in result.active_models] == ["qwen36-35b"]
+        assert [m.name for m in result.sleeping_models] == ["cydonia-24b", "gemma4-26b"]
+        assert len(router.metrics_requests) == 1
+        assert "qwen36-35b" in router.metrics_requests[0]
+
+    def test_real_gx10_router_8001_mix_untouched_by_default(self):
+        """Same payload, no allowlist: the loaded model is still reported, but
+        nothing is requested."""
+        router = RecordingRouter(
+            [model_entry("qwen36-35b", "loaded"), model_entry("cydonia-24b", "sleeping")]
+        )
+        result = LlamaRouterCollector(
+            ["http://192.168.50.61:8001"], transport=router.transport()
+        ).collect()[0]
+
+        assert [m.name for m in result.active_models] == ["qwen36-35b"]
+        assert router.metrics_requests == []
 
 
 class TestParseModelState:
@@ -216,16 +253,17 @@ class TestParseModelState:
     @pytest.mark.parametrize(
         "value,expected",
         [
-            ("active", ModelState.ACTIVE),
+            # --- confirmed against llama.cpp b10380 on the GX10 ---
             ("loaded", ModelState.ACTIVE),
-            ("running", ModelState.ACTIVE),
-            # Deliberately NOT active — ambiguous, see the status map.
-            ("ready", ModelState.UNKNOWN),
             ("sleeping", ModelState.SLEEPING),
-            ("idle", ModelState.SLEEPING),
-            ("loading", ModelState.LOADING),
             ("unloaded", ModelState.UNLOADED),
+            # --- inferred, but all non-scrapeable so the risk is nil ---
+            ("loading", ModelState.LOADING),
             ("stopped", ModelState.UNLOADED),
+            # --- plausible but never observed: must NOT be ACTIVE ---
+            ("active", ModelState.UNKNOWN),
+            ("running", ModelState.UNKNOWN),
+            ("ready", ModelState.UNKNOWN),
             ("wat", ModelState.UNKNOWN),
         ],
     )
