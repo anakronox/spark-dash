@@ -51,29 +51,47 @@ def test_boundary_exactly_at_threshold_passes():
 
 def test_tracker_requires_sustained_load_before_judging():
     """Clocks lag utilization on ramp-up; judging immediately would false-alarm."""
-    tracker = ClockTracker(sustained_samples=3)
+    tracker = ClockTracker(sustained_seconds=5.0)
     low_clock_under_load = ClockSignals(util_pct=99.0, clock_mhz=600.0)
 
-    assert tracker.update(low_clock_under_load) is ClockState.IDLE
-    assert tracker.update(low_clock_under_load) is ClockState.IDLE
-    # Third consecutive loaded sample: now it counts.
-    assert tracker.update(low_clock_under_load) is ClockState.THROTTLED
+    assert tracker.update(low_clock_under_load, now=0.0) is ClockState.IDLE
+    assert tracker.update(low_clock_under_load, now=4.9) is ClockState.IDLE
+    # Load has now persisted long enough to judge.
+    assert tracker.update(low_clock_under_load, now=5.0) is ClockState.THROTTLED
+
+
+def test_tracker_is_independent_of_polling_rate():
+    """The bug this replaced: counting samples made "sustained" mean 3 seconds
+    at a 1s live-view cadence but 45 at a 15s Prometheus scrape — and never
+    conclude at all under sparse polling."""
+    loaded = ClockSignals(util_pct=99.0, clock_mhz=600.0)
+
+    sparse = ClockTracker(sustained_seconds=5.0)
+    sparse.update(loaded, now=0.0)
+    # Only a second sample, but 60s of wall clock have passed.
+    assert sparse.update(loaded, now=60.0) is ClockState.THROTTLED
+
+    rapid = ClockTracker(sustained_seconds=5.0)
+    for i in range(20):
+        state = rapid.update(loaded, now=i * 0.1)
+    # Twenty samples but only 1.9s elapsed — not yet sustained.
+    assert state is ClockState.IDLE
 
 
 def test_tracker_resets_when_load_drops():
-    tracker = ClockTracker(sustained_samples=2)
+    tracker = ClockTracker(sustained_seconds=5.0)
     loaded = ClockSignals(util_pct=99.0, clock_mhz=600.0)
     idle = ClockSignals(util_pct=1.0, clock_mhz=300.0)
 
-    tracker.update(loaded)
-    assert tracker.update(idle) is ClockState.IDLE
-    # Counter restarted, so one loaded sample isn't enough again.
-    assert tracker.update(loaded) is ClockState.IDLE
-    assert tracker.update(loaded) is ClockState.THROTTLED
+    tracker.update(loaded, now=0.0)
+    assert tracker.update(idle, now=4.0) is ClockState.IDLE
+    # Timer restarted, so the earlier busy period doesn't count toward the new one.
+    assert tracker.update(loaded, now=6.0) is ClockState.IDLE
+    assert tracker.update(loaded, now=11.0) is ClockState.THROTTLED
 
 
 def test_tracker_reports_pass_on_healthy_sustained_load():
-    tracker = ClockTracker(sustained_samples=2)
+    tracker = ClockTracker(sustained_seconds=5.0)
     healthy = ClockSignals(util_pct=99.0, clock_mhz=2400.0)
-    tracker.update(healthy)
-    assert tracker.update(healthy) is ClockState.PASS
+    tracker.update(healthy, now=0.0)
+    assert tracker.update(healthy, now=6.0) is ClockState.PASS

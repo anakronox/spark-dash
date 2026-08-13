@@ -16,6 +16,7 @@ Two signals feed this, in order of preference:
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 from spark_dash_common.models import ClockState
@@ -99,29 +100,44 @@ class ClockTracker:
     """Requires load to persist before judging the clock.
 
     Without this, every ramp-up would briefly look THROTTLED: utilization jumps
-    the instant work arrives, but clocks take a moment to boost. Demanding a few
-    consecutive loaded samples costs a second or two of detection latency and
-    removes that whole class of false positive.
+    the instant work arrives, but clocks take a moment to boost. A short
+    settling period removes that whole class of false positive.
+
+    Measured in SECONDS, not samples. Snapshots are built on demand, so the
+    sampling rate varies wildly — ~1-2s when the dashboard is open, 15s from a
+    Prometheus scrape, and arbitrarily sparse when only something like a manual
+    curl is polling. Counting samples would make "sustained" mean 3 seconds in
+    one case and 45 in another, and would never conclude at all under sparse
+    polling. Wall-clock duration means the same thing regardless of who's
+    asking.
     """
 
     def __init__(
         self,
-        sustained_samples: int = 3,
+        sustained_seconds: float = 5.0,
         load_gate_pct: float = CLOCK_LOAD_GATE_UTIL_PCT,
         throttled_mhz: float = CLOCK_THROTTLED_MHZ,
     ) -> None:
-        self._sustained_samples = sustained_samples
+        self._sustained_seconds = sustained_seconds
         self._load_gate_pct = load_gate_pct
         self._throttled_mhz = throttled_mhz
-        self._consecutive_loaded = 0
+        self._loaded_since: float | None = None
 
-    def update(self, signals: ClockSignals) -> ClockState:
+    def update(self, signals: ClockSignals, now: float | None = None) -> ClockState:
+        now = time.monotonic() if now is None else now
+
         if signals.util_pct >= self._load_gate_pct:
-            self._consecutive_loaded += 1
+            if self._loaded_since is None:
+                self._loaded_since = now
         else:
-            self._consecutive_loaded = 0
+            # Any dip below the gate restarts the clock — a brief idle moment
+            # means the GPU had a chance to settle, so the next busy period is
+            # a fresh ramp-up.
+            self._loaded_since = None
 
-        under_load = self._consecutive_loaded >= self._sustained_samples
+        under_load = (
+            self._loaded_since is not None and (now - self._loaded_since) >= self._sustained_seconds
+        )
         return classify_clock(
             signals,
             under_load=under_load,
