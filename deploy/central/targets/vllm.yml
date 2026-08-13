@@ -1,0 +1,12 @@
+# vLLM scrape targets — Prometheus file_sd format.
+#
+# vLLM exposes /metrics natively, so Prometheus scrapes it directly rather than
+# going through the agent. Empty until vLLM instances are running.
+#
+# Set `node` to the GX10 the instance runs on, so vLLM series can be joined
+# against that node's GPU and memory metrics.
+#
+# - targets: ['192.168.50.61:8000']
+#   labels:
+#     node: gx10-1
+[]

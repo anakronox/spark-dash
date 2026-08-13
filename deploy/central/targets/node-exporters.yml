@@ -1,0 +1,16 @@
+# node_exporter scrape targets — Prometheus file_sd format.
+#
+# Kept parallel to agents.yml: same nodes, different port. Adding a node means
+# an entry in both files.
+
+- targets: ['192.168.50.61:9100']
+  labels:
+    node: gx10-1
+
+# - targets: ['192.168.50.62:9100']
+#   labels:
+#     node: gx10-2
+
+# - targets: ['192.168.50.63:9100']
+#   labels:
+#     node: gx10-3

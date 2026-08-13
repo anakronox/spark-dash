@@ -1,0 +1,259 @@
+"""The backend's HTTP surface.
+
+Two distinct jobs, deliberately kept apart:
+
+  REST       history and trends, answered from Prometheus.
+  WebSocket  live state, polled straight from the agents at ~2s.
+
+The split exists because they have different truths. Prometheus is right about
+"what happened"; only a direct poll is fresh enough for "what's happening", and
+mixing them would make the live view as laggy as the scrape interval.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from spark_dash_common.models import ClusterSnapshot
+
+from spark_dash_backend.config import Settings
+from spark_dash_backend.inventory import Inventory
+from spark_dash_backend.poller import LivePoller
+from spark_dash_backend.prometheus import HISTORY_QUERIES, PrometheusClient, PrometheusError
+
+log = logging.getLogger(__name__)
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or Settings()
+    logging.basicConfig(level=settings.log_level.upper())
+
+    inventory = Inventory(settings.agent_targets_file, ttl_s=settings.inventory_ttl_s)
+    poller = LivePoller(
+        inventory,
+        interval_s=settings.live_poll_interval_s,
+        timeout_s=settings.agent_timeout_s,
+    )
+    prom = PrometheusClient(settings.prometheus_url, timeout_s=settings.prometheus_timeout_s)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        log.info("backend starting; %d node(s) in inventory", len(inventory.nodes()))
+        yield
+
+    app = FastAPI(title="spark-dash", summary="GB10 inference cluster dashboard", lifespan=lifespan)
+    app.state.poller = poller
+    app.state.inventory = inventory
+
+    # ---------------------------------------------------------------- live
+
+    @app.websocket("/ws/live")
+    async def ws_live(websocket: WebSocket) -> None:
+        """Push a full cluster snapshot every tick.
+
+        Full snapshots rather than deltas: a few KB at 0.5Hz is nothing on a
+        LAN, and it keeps both ends stateless — no resync after a reconnect,
+        no delta-application bugs.
+        """
+        await websocket.accept()
+        try:
+            async for snapshot in poller.subscribe():
+                await websocket.send_text(snapshot.model_dump_json())
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # noqa: BLE001 — a dead client must not kill the poller
+            log.debug("websocket closed unexpectedly", exc_info=True)
+
+    # ---------------------------------------------------------------- REST
+
+    @app.get("/api/nodes")
+    async def api_nodes() -> dict:
+        """Inventory plus current liveness."""
+        snapshot = poller.latest or await poller.poll_once()
+        by_id = {n.node_id: n for n in snapshot.nodes}
+        return {
+            "nodes": [
+                {
+                    "node_id": node.node_id,
+                    "address": node.address,
+                    "up": by_id[node.node_id].up if node.node_id in by_id else False,
+                    "health": (
+                        by_id[node.node_id].health.value if node.node_id in by_id else "critical"
+                    ),
+                }
+                for node in inventory.nodes()
+            ]
+        }
+
+    @app.get("/api/cluster/summary")
+    async def api_cluster_summary() -> dict:
+        """Headline numbers for the hero row."""
+        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+        nodes = snapshot.nodes
+
+        total_mem = sum(n.memory.total_bytes for n in nodes if n.memory)
+        used_mem = sum(n.memory.used_bytes for n in nodes if n.memory)
+        gpus = [n.gpu.util_pct for n in nodes if n.gpu]
+
+        return {
+            "ts": snapshot.ts,
+            "nodes_total": len(inventory.nodes()),
+            "nodes_up": snapshot.nodes_up,
+            "tokens_per_second": snapshot.total_tokens_per_sec,
+            "gpu_utilization_mean": (sum(gpus) / len(gpus)) if gpus else 0.0,
+            "memory_total_bytes": total_mem,
+            "memory_used_bytes": used_mem,
+            # Free capacity is the number that answers "can I load another
+            # model", which is the question this cluster exists to serve.
+            "memory_free_bytes": max(0, total_mem - used_mem),
+        }
+
+    @app.get("/api/models")
+    async def api_models() -> dict:
+        """What's running where: node x runtime x model x state."""
+        snapshot = poller.latest or await poller.poll_once()
+        rows = []
+
+        for node in snapshot.nodes:
+            for router in node.runtimes.llama_cpp:
+                for model in router.models:
+                    rows.append(
+                        {
+                            "node": node.node_id,
+                            "runtime": "llama.cpp",
+                            "router": router.name or router.endpoint,
+                            "model": model.name,
+                            "state": model.state.value,
+                            "raw_status": model.raw_status,
+                            "tokens_per_second": model.tokens_per_sec,
+                            "kv_cache_pct": model.kv_cache_pct,
+                            "requests_running": model.requests_running,
+                            "requests_waiting": model.requests_waiting,
+                        }
+                    )
+            for instance in node.runtimes.vllm:
+                rows.append(
+                    {
+                        "node": node.node_id,
+                        "runtime": "vllm",
+                        "router": None,
+                        "model": instance.model,
+                        "state": "active",
+                        "raw_status": "",
+                        "tokens_per_second": instance.tokens_per_sec,
+                        "kv_cache_pct": instance.kv_cache_pct,
+                        "requests_running": instance.requests_running,
+                        "requests_waiting": instance.requests_waiting,
+                    }
+                )
+
+        return {"models": rows}
+
+    @app.get("/api/history")
+    async def api_history(
+        metric: str = Query(..., description=f"One of: {', '.join(sorted(HISTORY_QUERIES))}"),
+        minutes: int = Query(60, ge=1, le=60 * 24 * 30),
+        step: str = Query("60s"),
+        node: str | None = None,
+    ) -> dict:
+        """Range query for the trend charts.
+
+        `metric` is a key into a fixed query map rather than raw PromQL —
+        callers pick from a menu instead of composing queries, so a
+        frontend bug can't turn into an arbitrary expensive Prometheus
+        query.
+        """
+        expr = HISTORY_QUERIES.get(metric)
+        if expr is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown metric {metric!r}; valid: {sorted(HISTORY_QUERIES)}",
+            )
+        if node:
+            expr = f'{expr}{{node="{_sanitize_label(node)}"}}'
+
+        end = time.time()
+        start = end - minutes * 60
+        try:
+            series = await prom.query_range(expr, start, end, step)
+        except PrometheusError as exc:
+            raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
+
+        return {
+            "metric": metric,
+            "series": [
+                {"node": s.node, "labels": s.labels, "points": s.points} for s in series
+            ],
+        }
+
+    # -------------------------------------------------------------- health
+
+    @app.get("/health")
+    async def health() -> dict:
+        """Liveness plus self-assessment, for UptimeKuma.
+
+        Reports `degraded` rather than a bare 200 when Prometheus is
+        unreachable or no node is answering — a backend that's running but
+        blind should not pass a naive uptime check.
+        """
+        nodes = inventory.nodes()
+        prom_ok = await prom.healthy()
+
+        snapshot = poller.latest
+        nodes_up = snapshot.nodes_up if snapshot else None
+
+        problems = []
+        if not prom_ok:
+            problems.append("prometheus unreachable")
+        if not nodes:
+            problems.append("inventory empty")
+        if nodes_up == 0 and nodes:
+            problems.append("no nodes reachable")
+
+        return {
+            "status": "degraded" if problems else "ok",
+            "problems": problems,
+            "prometheus": "ok" if prom_ok else "unreachable",
+            "nodes_configured": len(nodes),
+            "nodes_up": nodes_up,
+            "live_poller_running": poller.running,
+            "live_subscribers": poller.subscriber_count,
+        }
+
+    _mount_frontend(app, settings)
+    return app
+
+
+def _sanitize_label(value: str) -> str:
+    """Escape a label value for interpolation into PromQL.
+
+    Node ids come from our own inventory rather than user input, but the query
+    string reaches this endpoint from the browser — so it gets escaped anyway.
+    """
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _mount_frontend(app: FastAPI, settings: Settings) -> None:
+    """Serve the built Svelte assets, when present.
+
+    Same origin as the API, so there's no CORS config and the WebSocket needs
+    no separate host. Absent in development, where Vite serves them instead.
+    """
+    static_dir = settings.static_dir
+    if not static_dir.is_dir():
+        log.info("no static assets at %s; API-only mode", static_dir)
+        return
+
+    app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+
+    @app.get("/")
+    async def index() -> FileResponse:
+        return FileResponse(static_dir / "index.html")
+
+
+app = create_app()

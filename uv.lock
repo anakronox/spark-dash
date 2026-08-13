@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "spark-dash-agent",
+    "spark-dash-backend",
     "spark-dash-common",
 ]
 
@@ -509,6 +510,31 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "spark-dash-common", editable = "common" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "spark-dash-backend"
+version = "0.1.0"
+source = { editable = "backend" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "spark-dash-common" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "pydantic-settings", specifier = ">=2.6" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "spark-dash-common", editable = "common" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "websockets", specifier = ">=13.0" },
 ]
 
 [[package]]

@@ -1,0 +1,45 @@
+# Central Prometheus — runs on the monitoring VM, never on a GX10.
+#
+# Targets come from files rather than being listed here, so adding node 2 and 3
+# is an edit to targets/*.yml with no Prometheus config change and no restart:
+# file_sd is re-read automatically.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: spark-dash
+
+scrape_configs:
+  # Our per-node agent: GPU, unified memory, PSI, clock state, router models.
+  # The agent already labels every series with `node`, so nothing is relabeled
+  # here — see the note on honor_labels below.
+  - job_name: spark-dash-agent
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/agents.yml]
+        refresh_interval: 30s
+    # The agent is the authority on its own node identity (NODE_ID), so its
+    # labels win over anything derived from the target address. Prevents a
+    # renamed DNS entry from silently splitting a node's history in two.
+    honor_labels: true
+
+  # Stock host metrics. Separate job because it's a different port, and
+  # because its failure is independent — node_exporter being down shouldn't
+  # look like the agent being down.
+  - job_name: node-exporter
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/node-exporters.yml]
+        refresh_interval: 30s
+
+  # vLLM exposes Prometheus metrics natively, so it's scraped directly rather
+  # than through the agent. Left empty until vLLM instances are running.
+  - job_name: vllm
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/vllm.yml]
+        refresh_interval: 30s
+
+  # Prometheus scraping itself — cheap, and it's how you notice the monitoring
+  # host is struggling before it starts dropping samples.
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

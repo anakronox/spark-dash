@@ -1,0 +1,61 @@
+# Central monitoring stack — runs on a dedicated Proxmox VM, never on a GX10.
+#
+# The reasoning is failure domains, not resources: "node down" is a primary
+# alert, so hosting Prometheus on node 1 means a node-1 crash destroys both the
+# node and the history explaining why. See docs/deployment.md.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: sparkdash-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      # Generous for now — real retention gets set in Phase 3 from observed
+      # disk usage rather than guessed here.
+      - '--storage.tsdb.retention.time=${PROM_RETENTION:-30d}'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./targets:/etc/prometheus/targets:ro
+      - prom-data:/prometheus
+    ports:
+      # Bound to localhost by default: Prometheus has no auth of its own, and
+      # the dashboard is the intended way in. Drop the 127.0.0.1 prefix only if
+      # you want to reach the Prometheus UI directly from the LAN.
+      - "${PROM_BIND:-127.0.0.1}:9090:9090"
+    networks:
+      - sparkdash
+
+  backend:
+    image: ${BACKEND_IMAGE:-spark-dash-backend:latest}
+    container_name: sparkdash-backend
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      - PROMETHEUS_URL=http://prometheus:9090
+      # Same inventory Prometheus uses — one source of truth for which nodes
+      # exist, so the live view and the history can't disagree.
+      - AGENT_TARGETS_FILE=/etc/spark-dash/targets/agents.yml
+      - LIVE_POLL_INTERVAL_S=${LIVE_POLL_INTERVAL_S:-2.0}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./targets:/etc/spark-dash/targets:ro
+    ports:
+      # This is what cloudflared and the LAN both point at.
+      - "${BACKEND_BIND:-0.0.0.0}:8080:8080"
+    networks:
+      - sparkdash
+
+volumes:
+  prom-data:
+
+networks:
+  sparkdash:
+    driver: bridge
+
+# cloudflared is intentionally NOT defined here. It already runs on this host
+# for other services; adding a route for the dashboard is a tunnel config
+# change, not a second connector to maintain.
