@@ -69,9 +69,11 @@ Triggered by the 2 additional GX10 units arriving.
 - [ ] (Optional, defense-in-depth) Validate `Cf-Access-Jwt-Assertion` in the
   backend.
 - [ ] Set real Prometheus retention based on observed disk usage.
-- [ ] External dead-man's-switch so a monitoring-VM outage is itself detectable
-  (the one gap the stack can't close from inside — see
-  [deployment.md](deployment.md#monitoring-the-monitor)).
+- [ ] Add a meaningful `/health` endpoint to the backend (degraded when
+  Prometheus is unreachable or the live-poller has stalled) and point the
+  existing UptimeKuma instance at it — closes the "who monitors the monitor"
+  gap. Confirm UptimeKuma isn't on the same Proxmox host as the monitoring VM.
+  See [deployment.md](deployment.md#monitoring-the-monitor--existing-uptimekuma-instance).
 - [ ] Basic alerting for the things that actually matter at 2am: node down, GPU
   temp/power outlier, disk filling up on a node. Start from the
   [anomaly thresholds](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting)

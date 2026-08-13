@@ -138,12 +138,29 @@ migration come for free. The TSDB itself isn't precious — all *config* lives i
 this git repo, so a rebuilt VM plus `docker compose up` restores the stack;
 only history is lost.
 
-### Monitoring the monitor
+### Monitoring the monitor — existing UptimeKuma instance
 
-A dead-man's-switch is the one gap this design can't close from the inside: if
-the monitoring VM is down, it can't alert that it's down. Phase 3 should add an
-external heartbeat (a healthchecks.io-style ping from the backend, or a check
-from another Proxmox guest). Flagged rather than solved here.
+A monitoring stack can't alert that it's down. That gap is covered by the
+existing **UptimeKuma** instance rather than anything built here.
+
+**Primary check:** an HTTP monitor against the backend's `/health` endpoint
+(see [app-design.md](app-design.md#rest--history--inventory-prometheus-backed)).
+One check covers the whole chain — VM down, Docker down, backend crashed, or
+network partition all surface the same way. `/health` should be *meaningful*
+rather than a bare `200 OK`: it reports degraded when Prometheus is unreachable
+or the live-poller has stalled, so a wedged-but-running backend is caught too.
+
+**Placement caveat — the same failure-domain argument applies recursively.**
+UptimeKuma must not live on the monitoring VM (useless), and ideally not on the
+same Proxmox host (a host failure would take out both the monitor and its
+watcher). A different node in the cluster is fine; genuinely external is best.
+Worth confirming when this is wired up.
+
+**Optional bonus:** UptimeKuma can also check each GX10's agent endpoint
+directly. That's redundant with Prometheus in normal operation, but it means
+node-liveness still works when the monitoring VM itself is the thing that's
+broken. Keep it lightweight — the goal is a second opinion on "is the node
+reachable," not a second alerting system.
 
 ## `spark_hwmon` — evaluated, deliberately descoped
 

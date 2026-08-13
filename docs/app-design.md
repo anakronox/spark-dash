@@ -52,6 +52,13 @@ WebSocket is same-origin. Not worth a separate nginx service at this scale.
 | `GET /api/cluster/summary` | Aggregate GPU utilization, free capacity, total tokens/sec |
 | `GET /api/models` | "What's running where": node × runtime × model × status |
 | `GET /api/history?metric=&node=&from=&to=&step=` | Time-series for trend charts; thin PromQL wrapper |
+| `GET /health` | Liveness + self-assessment, for the external UptimeKuma check |
+
+`/health` is deliberately more than a bare `200 OK` — it reports **degraded**
+when Prometheus is unreachable or the live-poller loop has stalled, so a
+backend that's running but wedged is caught rather than passing a naive check.
+This is what [UptimeKuma watches](deployment.md#monitoring-the-monitor--existing-uptimekuma-instance)
+to close the "who monitors the monitor" gap.
 
 ### WebSocket — live view
 
