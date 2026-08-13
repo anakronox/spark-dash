@@ -1,8 +1,15 @@
 # Central Prometheus — runs on the monitoring VM, never on a GX10.
 #
-# Targets come from files rather than being listed here, so adding node 2 and 3
-# is an edit to targets/*.yml with no Prometheus config change and no restart:
-# file_sd is re-read automatically.
+# Targets come from files rather than being listed here, so adding a node needs
+# no Prometheus config change and no restart — file_sd is re-read automatically.
+#
+# Two target directories:
+#   generated/  rendered by the backend from SPARK_NODES (agents, node-exporters)
+#   static/     hand-maintained in this repo (vLLM, which doesn't map per-node)
+#
+# They're separate because the generated ones live in a volume shared with the
+# backend, and mounting that over a single targets/ directory would hide the
+# repo's own files.
 
 global:
   scrape_interval: 15s
@@ -16,7 +23,7 @@ scrape_configs:
   # here — see the note on honor_labels below.
   - job_name: spark-dash-agent
     file_sd_configs:
-      - files: [/etc/prometheus/targets/agents.yml]
+      - files: [/etc/prometheus/targets/generated/agents.yml]
         refresh_interval: 30s
     # The agent is the authority on its own node identity (NODE_ID), so its
     # labels win over anything derived from the target address. Prevents a
@@ -28,14 +35,14 @@ scrape_configs:
   # look like the agent being down.
   - job_name: node-exporter
     file_sd_configs:
-      - files: [/etc/prometheus/targets/node-exporters.yml]
+      - files: [/etc/prometheus/targets/generated/node-exporters.yml]
         refresh_interval: 30s
 
   # vLLM exposes Prometheus metrics natively, so it's scraped directly rather
   # than through the agent. Left empty until vLLM instances are running.
   - job_name: vllm
     file_sd_configs:
-      - files: [/etc/prometheus/targets/vllm.yml]
+      - files: [/etc/prometheus/targets/static/vllm.yml]
         refresh_interval: 30s
 
   # Prometheus scraping itself — cheap, and it's how you notice the monitoring

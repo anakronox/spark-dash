@@ -23,10 +23,19 @@ services:
       - '--storage.tsdb.retention.time=${PROM_RETENTION:-30d}'
       - '--web.enable-lifecycle'
     volumes:
+      # Config comes from git (this stack dir, synced by hawser). Data and
+      # generated files go under DATA_ROOT so they're visible and backup-able
+      # rather than buried in /var/lib/docker.
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      # Read-only: the backend owns these files, Prometheus only consumes them.
-      - prom-targets:/etc/prometheus/targets:ro
-      - prom-data:/prometheus
+      # Two target directories, deliberately separate. A single directory
+      # can't work: the generated mount would hide the stack dir's own files,
+      # so hand-maintained targets would silently never be scraped.
+      #
+      #   generated/  written by the backend from SPARK_NODES
+      #   static/     hand-maintained in git (vLLM instances)
+      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/targets:/etc/prometheus/targets/generated:ro
+      - ./targets:/etc/prometheus/targets/static:ro
+      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/prometheus:/prometheus
     ports:
       # Bound to localhost by default: Prometheus has no auth of its own, and
       # the dashboard is the intended way in. Drop the 127.0.0.1 prefix only if
@@ -49,24 +58,23 @@ services:
       - NODE_EXPORTER_PORT=${NODE_EXPORTER_PORT:-9100}
 
       - PROMETHEUS_URL=http://prometheus:9090
-      - PROMETHEUS_TARGETS_DIR=/etc/prometheus/targets
+      - PROMETHEUS_TARGETS_DIR=/etc/prometheus/targets/generated
       - LIVE_POLL_INTERVAL_S=${LIVE_POLL_INTERVAL_S:-2.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       # Writable here — this is the service that renders the target files.
-      - prom-targets:/etc/prometheus/targets
+      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/targets:/etc/prometheus/targets/generated
     ports:
       # This is what cloudflared and the LAN both point at.
       - "${BACKEND_BIND:-0.0.0.0}:8080:8080"
     networks:
       - sparkdash
 
-volumes:
-  prom-data:
-  # Shared so the backend can write scrape targets and Prometheus can read
-  # them. Ownership is seeded from the backend image so the non-root user can
-  # write to a freshly created volume.
-  prom-targets:
+# No named volumes: everything persistent is a bind mount under DATA_ROOT, so
+# it can be found, inspected and backed up without docker volume commands.
+# Run ./prepare-host.sh once before first start — bind-mounted host
+# directories need ownership set for the containers' non-root users, which
+# named volumes used to handle silently.
 
 networks:
   sparkdash:

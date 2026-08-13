@@ -44,6 +44,23 @@ $EDITOR .env
 | `VLLM_URLS` | Comma-separated vLLM `/metrics` endpoints. |
 | `INFERENCE_NETWORK` | Existing llama.cpp/vLLM Compose network (`docker network ls`). |
 
+## Where things land
+
+hawser syncs the stack from git into `/docker/hawser/spark-dash-stack-node/`.
+
+**There is no `/docker/spark-dash-stack-node/` to create.** This stack has no
+persistent data: the agent holds nothing across restarts, and its only mounts
+are read-only views of the host's `/proc` and `/sys`. Everything it reports is
+derived live from the machine, and history lives in Prometheus on the
+monitoring VM. So there's no `prepare-host.sh` here and nothing to back up.
+
+The main repo — needed for `publish-images.sh` and the validation scripts —
+follows the usual convention:
+
+```bash
+git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git /docker/spark-dash-homegrown
+```
+
 ## Verify
 
 ```bash

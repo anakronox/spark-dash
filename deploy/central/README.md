@@ -25,7 +25,15 @@ docker login forgejo.indielab.tech      # Forgejo token with package write
 ```bash
 cp .env.example .env
 $EDITOR .env          # set SPARK_NODES
+
+# Once, before first start: create the bind-mount directories with the
+# ownership the containers need.
+sudo ./prepare-host.sh
 ```
+
+Bind mounts don't get ownership seeded the way named volumes do, so a
+root-owned data directory would leave both containers crash-looping on
+permission errors that don't obviously point at the mount.
 
 ## Adding a node
 
@@ -48,6 +56,39 @@ picks the new targets up on its next `file_sd` refresh without restarting.
 are gitignored and should not be edited. `vllm.yml` is hand-maintained, because
 vLLM instances don't map one-per-node.
 
+## Where things land
+
+Two locations, with different lifecycles:
+
+| Path | What | Managed by |
+|---|---|---|
+| `/docker/hawser/spark-dash-stack-central/` | `compose.yaml`, `.env`, `prometheus.yml`, `targets/static/` | hawser, synced from git |
+| `/docker/spark-dash-stack-central/` | Prometheus TSDB, generated scrape targets | the containers, at runtime |
+
+Config comes from git; data does not. Keeping them apart means a stack re-sync
+can never touch your history, and the data path is somewhere you can actually
+find and back up — rather than a named volume under `/var/lib/docker`.
+
+`DATA_ROOT` in `.env` controls the second path.
+
+The main repo — needed for `publish-images.sh` and the validation scripts —
+follows the usual convention:
+
+```bash
+git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git /docker/spark-dash-homegrown
+```
+
+### Two target directories
+
+| Path in container | Source | Contents |
+|---|---|---|
+| `targets/generated/` | Docker volume, written by the backend | `agents.yml`, `node-exporters.yml` — from `SPARK_NODES` |
+| `targets/static/` | bind mount from the stack dir | `vllm.yml` — hand-maintained |
+
+They're separate on purpose. A single directory can't work: the volume holding
+the generated files would mount *over* the stack directory's own files, so
+`vllm.yml` would silently never be scraped.
+
 ## Verify
 
 ```bash
@@ -58,7 +99,7 @@ curl -s localhost:8080/health | jq
 curl -s localhost:8080/api/nodes | jq
 
 # Confirm the rendered scrape targets look right.
-docker compose exec backend cat /etc/prometheus/targets/agents.yml
+docker compose exec backend cat /etc/prometheus/targets/generated/agents.yml
 
 # Confirm Prometheus actually picked them up — every target should be "up".
 curl -s localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, node: .labels.node, health}'
