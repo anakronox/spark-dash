@@ -120,64 +120,74 @@ class TestNodeIdResolution:
     def test_explicit_node_id_wins(self):
         assert Settings(node_id="gx10-1").resolve_node_id() == "gx10-1"
 
-    def test_reads_host_hostname_from_mounted_proc(self, tmp_path):
-        """The host's hostname, not the container's — which is why this reads
-        the mounted procfs rather than calling gethostname()."""
+    def _hostname_file(self, tmp_path, value: str):
+        path = tmp_path / "hostname"
+        path.write_text(value)
+        return path
+
+    def test_reads_host_hostname_from_etc_hostname(self, tmp_path):
+        """Must be /etc/hostname, not /proc/sys/kernel/hostname.
+
+        Reading it via procfs looked correct in a unit test with a fake
+        directory but returned the CONTAINER's hostname on real Docker — the
+        procfs entry is UTS-namespace-aware, so a bind-mounted host /proc
+        doesn't help. On the GX10 that produced node_id "41fd7b9be4e6", the
+        container id.
+        """
+        path = self._hostname_file(tmp_path, "sparky\n")
+        assert Settings(node_id="", hostname_path=path).resolve_node_id() == "sparky"
+
+    def test_procfs_hostname_is_not_used(self, tmp_path):
+        """Guards the regression directly: a populated procfs must not be
+        consulted, because in a container it lies."""
         kernel = tmp_path / "sys" / "kernel"
         kernel.mkdir(parents=True)
-        (kernel / "hostname").write_text("gx10-2\n")
+        (kernel / "hostname").write_text("container-id-abc\n")
 
-        assert Settings(node_id="", proc_path=tmp_path).resolve_node_id() == "gx10-2"
+        resolved = Settings(
+            node_id="", proc_path=tmp_path, hostname_path=tmp_path / "absent"
+        ).resolve_node_id()
+        assert resolved != "container-id-abc"
 
     def test_hostname_whitespace_is_stripped(self, tmp_path):
-        kernel = tmp_path / "sys" / "kernel"
-        kernel.mkdir(parents=True)
-        (kernel / "hostname").write_text("  gx10-3  \n\n")
+        path = self._hostname_file(tmp_path, "  gx10-3  \n\n")
+        assert Settings(node_id="", hostname_path=path).resolve_node_id() == "gx10-3"
 
-        assert Settings(node_id="", proc_path=tmp_path).resolve_node_id() == "gx10-3"
+    def test_only_first_line_is_used(self, tmp_path):
+        path = self._hostname_file(tmp_path, "sparky\nstray junk\n")
+        assert Settings(node_id="", hostname_path=path).resolve_node_id() == "sparky"
 
     def test_explicit_id_beats_hostname(self, tmp_path):
         """An override must still work for a node whose hostname is a poor
         label."""
-        kernel = tmp_path / "sys" / "kernel"
-        kernel.mkdir(parents=True)
-        (kernel / "hostname").write_text("ubuntu\n")
-
-        settings = Settings(node_id="gx10-1", proc_path=tmp_path)
-        assert settings.resolve_node_id() == "gx10-1"
+        path = self._hostname_file(tmp_path, "ubuntu\n")
+        assert Settings(node_id="gx10-1", hostname_path=path).resolve_node_id() == "gx10-1"
 
     def test_literal_unknown_is_treated_as_unset(self, tmp_path):
         """'unknown' was the old default; it must not stick as a real id."""
-        kernel = tmp_path / "sys" / "kernel"
-        kernel.mkdir(parents=True)
-        (kernel / "hostname").write_text("gx10-1\n")
-
-        assert Settings(node_id="unknown", proc_path=tmp_path).resolve_node_id() == "gx10-1"
+        path = self._hostname_file(tmp_path, "gx10-1\n")
+        assert Settings(node_id="unknown", hostname_path=path).resolve_node_id() == "gx10-1"
 
     def test_blank_node_id_is_treated_as_unset(self, tmp_path):
-        kernel = tmp_path / "sys" / "kernel"
-        kernel.mkdir(parents=True)
-        (kernel / "hostname").write_text("gx10-1\n")
-
-        assert Settings(node_id="   ", proc_path=tmp_path).resolve_node_id() == "gx10-1"
+        path = self._hostname_file(tmp_path, "gx10-1\n")
+        assert Settings(node_id="   ", hostname_path=path).resolve_node_id() == "gx10-1"
 
     def test_falls_back_to_container_hostname(self, tmp_path):
-        """Unreadable host procfs shouldn't leave the node unlabeled, but the
-        agent logs a warning: a container hostname changes on recreate."""
-        resolved = Settings(node_id="", proc_path=tmp_path / "missing").resolve_node_id()
+        """Unreadable host hostname shouldn't leave the node unlabeled, but
+        this is the bad path — the container hostname changes on recreate, so
+        the agent logs an error rather than a shrug."""
+        resolved = Settings(node_id="", hostname_path=tmp_path / "missing").resolve_node_id()
         assert resolved
         assert resolved != "unknown"
 
     def test_builder_resolves_once(self, tmp_path):
-        kernel = tmp_path / "sys" / "kernel"
-        kernel.mkdir(parents=True)
-        (kernel / "hostname").write_text("gx10-1\n")
+        path = self._hostname_file(tmp_path, "gx10-1\n")
 
-        builder = SnapshotBuilder(Settings(node_id="", proc_path=tmp_path))
+        builder = SnapshotBuilder(Settings(node_id="", hostname_path=path))
         assert builder.node_id == "gx10-1"
         assert builder.build().node_id == "gx10-1"
 
         # Identity can't change while the process runs, so a later hostname
         # edit must not retroactively relabel the node's metrics.
-        (kernel / "hostname").write_text("something-else\n")
+        path.write_text("something-else\n")
         assert builder.build().node_id == "gx10-1"

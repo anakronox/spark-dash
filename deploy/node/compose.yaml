@@ -24,6 +24,11 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      # The host's hostname, used as the node id. Must be /etc/hostname, NOT
+      # /proc/sys/kernel/hostname — the procfs entry is UTS-namespace-aware and
+      # returns the CONTAINER's hostname even through a bind-mounted /proc,
+      # which is Docker's container id by default.
+      - /etc/hostname:/host/etc/hostname:ro
       - /:/rootfs:ro,rslave
     ports:
       - "9100:9100"
@@ -53,6 +58,11 @@ services:
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
+      # The host's hostname, used as the node id. Must be /etc/hostname, NOT
+      # /proc/sys/kernel/hostname — the procfs entry is UTS-namespace-aware and
+      # returns the CONTAINER's hostname even through a bind-mounted /proc,
+      # which is Docker's container id by default.
+      - /etc/hostname:/host/etc/hostname:ro
 
     environment:
       # Optional. Left unset, the agent uses the HOST's hostname, read from
@@ -65,6 +75,7 @@ services:
       # /proc/pressure/memory and MemAvailable describe the container.
       - PROC_PATH=/host/proc
       - SYS_PATH=/host/sys
+      - HOSTNAME_PATH=/host/etc/hostname
 
       # Comma-separated: a node commonly runs several router containers.
       # Leave blank on a node that serves only vLLM.

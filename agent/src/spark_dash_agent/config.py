@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     proc_path: Path = Path("/proc")
     sys_path: Path = Path("/sys")
 
+    # Where the HOST's /etc/hostname is mounted. A plain file, unlike
+    # /proc/sys/kernel/hostname — see `_read_host_hostname` for why that
+    # distinction is the whole point.
+    hostname_path: Path = Path("/host/etc/hostname")
+
     host: str = "0.0.0.0"  # noqa: S104 — container-internal; published per compose
     port: int = 9500
 
@@ -67,31 +72,30 @@ class Settings(BaseSettings):
     def resolve_node_id(self) -> str:
         """Work out this node's identity, preferring an explicit NODE_ID.
 
-        The fallback is the HOST's hostname, read from the mounted procfs.
-        `socket.gethostname()` inside a container returns the *container's*
-        hostname — a random hex id by default — which would make every restart
-        look like a brand new node.
-
-        Reading `{proc_path}/sys/kernel/hostname` needs no extra mount: the
-        agent already has the host's /proc for PSI and memory.
+        The fallback is the HOST's hostname, read from a bind-mounted
+        /etc/hostname.
         """
         explicit = self.node_id.strip()
         if explicit and explicit != UNKNOWN_NODE_ID:
             return explicit
 
-        host_name = _read_host_hostname(self.proc_path)
+        host_name = _read_host_hostname(self.hostname_path)
         if host_name:
             log.info("NODE_ID unset; using host hostname %r", host_name)
             return host_name
 
-        # Container hostname: wrong-ish, but a stable-looking label beats an
-        # empty one, and the log line says where it came from.
+        # Last resort. This is the CONTAINER's hostname — Docker's default is
+        # the container id, which changes on every recreate and would make each
+        # restart look like a brand new node, splitting its history. Loud on
+        # purpose.
         fallback = socket.gethostname().strip()
         if fallback:
-            log.warning(
-                "NODE_ID unset and host hostname unreadable; falling back to "
-                "container hostname %r. Set NODE_ID explicitly — a container "
-                "hostname changes on every recreate.",
+            log.error(
+                "NODE_ID unset and host hostname unreadable at %s — falling "
+                "back to the CONTAINER hostname %r, which changes on every "
+                "recreate and will fragment this node's metrics. Mount "
+                "/etc/hostname:/host/etc/hostname:ro, or set NODE_ID.",
+                self.hostname_path,
                 fallback,
             )
             return fallback
@@ -116,14 +120,21 @@ class Settings(BaseSettings):
         return _split(self.vllm_urls)
 
 
-def _read_host_hostname(proc_path: Path) -> str:
-    """Read the host's hostname from the mounted procfs.
+def _read_host_hostname(hostname_path: Path) -> str:
+    """Read the host's hostname from a bind-mounted /etc/hostname.
 
-    `/proc/sys/kernel/hostname` reflects the host even when read through a
-    bind-mounted /proc, which is why this needs no extra configuration.
+    It must be /etc/hostname specifically, NOT /proc/sys/kernel/hostname.
+    The procfs entry is UTS-namespace-aware: it reports the hostname of
+    whichever process reads it, so bind-mounting the host's /proc gives the
+    CONTAINER's hostname anyway — Docker's default being the container id.
+    That failure is nasty because it looks plausible: a stable-looking
+    identifier that silently changes on every container recreate.
+
+    /etc/hostname is an ordinary file, so a bind mount of it really is the
+    host's copy.
     """
     try:
-        return (proc_path / "sys" / "kernel" / "hostname").read_text().strip()
+        return hostname_path.read_text().strip().split("\n")[0].strip()
     except OSError:
         return ""
 

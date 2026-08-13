@@ -33,9 +33,18 @@ stack repo.
 ## Configure
 
 Nothing needs to differ per node. The agent reads the **host's** hostname from
-the mounted procfs (`/proc/sys/kernel/hostname`) and uses it as its node id, so
-this same stack deploys unchanged to all three GX10s — one stack repo, no
-per-node override to forget.
+a bind-mounted `/etc/hostname` and uses it as its node id, so this same stack
+deploys unchanged to all three GX10s — one stack repo, no per-node override to
+forget.
+
+> It has to be `/etc/hostname`, not `/proc/sys/kernel/hostname`. The procfs
+> entry is UTS-namespace-aware and returns the *container's* hostname even
+> through a bind-mounted host `/proc` — which is Docker's container id, and
+> changes on every recreate.
+
+Check `hostname` on the box first: that string becomes the `node` label on
+every metric, and it must match what `SPARK_NODES` uses on the central stack,
+or the agent's metrics won't join node-exporter's.
 
 ```bash
 cp .env.example .env
