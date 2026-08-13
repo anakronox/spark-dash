@@ -26,7 +26,10 @@ stack repo.
 
 ## Configure
 
-`NODE_ID` is the only value that must differ between the three GX10s.
+Nothing needs to differ per node. The agent reads the **host's** hostname from
+the mounted procfs (`/proc/sys/kernel/hostname`) and uses it as its node id, so
+this same stack deploys unchanged to all three GX10s — one stack repo, no
+per-node override to forget.
 
 ```bash
 cp .env.example .env
@@ -35,7 +38,7 @@ $EDITOR .env
 
 | Variable | Notes |
 |---|---|
-| `NODE_ID` | Becomes the `node` label on every metric. Keep it stable — renaming orphans that node's history. |
+| `NODE_ID` | **Optional.** Defaults to the host's hostname. Set it only if that hostname is a poor label. Becomes the `node` label on every metric — keep it stable, since renaming orphans that node's history. |
 | `LLAMA_ROUTER_URLS` | Comma-separated router base URLs. |
 | `LLAMA_METRICS_ROUTERS` | **Leave empty unless certain.** Opt-in allowlist for `/metrics?model=` requests, which LOAD the model on an autoload router. |
 | `VLLM_URLS` | Comma-separated vLLM `/metrics` endpoints. |

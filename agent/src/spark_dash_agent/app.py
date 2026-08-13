@@ -61,14 +61,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     logging.basicConfig(level=settings.log_level.upper())
 
-    cache = SnapshotCache(SnapshotBuilder(settings))
+    builder = SnapshotBuilder(settings)
+    cache = SnapshotCache(builder)
 
     registry = CollectorRegistry()
     registry.register(SnapshotMetricsCollector(cache.get))
 
     app = FastAPI(
         title="spark-dash-agent",
-        summary=f"Per-node metrics agent for {settings.node_id}",
+        summary=f"Per-node metrics agent for {builder.node_id}",
     )
 
     @app.get("/metrics")

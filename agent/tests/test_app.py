@@ -95,6 +95,7 @@ class FakeBuilder:
     def __init__(self, snapshot: NodeSnapshot | None = None):
         self.snapshot = snapshot or make_snapshot()
         self.build_count = 0
+        self.node_id = self.snapshot.node_id
 
     def build(self) -> NodeSnapshot:
         self.build_count += 1

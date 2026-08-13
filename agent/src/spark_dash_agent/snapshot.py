@@ -45,6 +45,10 @@ class SnapshotBuilder:
         self._settings = settings
         _point_psutil_at_host_proc(settings.proc_path)
 
+        # Resolved once: the node's identity can't change while it runs, and
+        # re-reading it per tick would be noise in the logs.
+        self._node_id = settings.resolve_node_id()
+
         self._gpu = GpuCollector(device_index=settings.gpu_device_index)
         self._psi = PsiCollector(path=settings.proc_path / "pressure" / "memory")
         self._cpu = CpuCollector()
@@ -57,6 +61,10 @@ class SnapshotBuilder:
         # Built lazily: UMA detection needs NVML's total, which isn't known
         # until the GPU collector has opened the device once.
         self._memory: MemoryCollector | None = None
+
+    @property
+    def node_id(self) -> str:
+        return self._node_id
 
     def _memory_collector(self) -> MemoryCollector:
         if self._memory is None:
@@ -95,7 +103,7 @@ class SnapshotBuilder:
         )
 
         return NodeSnapshot(
-            node_id=self._settings.node_id,
+            node_id=self._node_id,
             ts=datetime.now(UTC),
             up=True,
             health=health,

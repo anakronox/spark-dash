@@ -1,7 +1,8 @@
 # Per-node monitoring stack for a GX10. Deployed by Dockhand from git.
 #
-# Identical on all three nodes — only NODE_ID (in .env) differs. That's the
-# whole Phase 2 rollout story: point Dockhand at this stack, change one value.
+# Identical on all three nodes, with nothing to change per node: the agent
+# derives its id from the host's hostname. That's the whole Phase 2 rollout
+# story — point Dockhand at this stack on the new node and it just works.
 #
 # Host preconditions: Docker Engine and the NVIDIA Container Toolkit. Both are
 # already present for the existing GPU-enabled inference containers, so this
@@ -54,8 +55,11 @@ services:
       - /sys:/host/sys:ro
 
     environment:
-      # The one value that differs between nodes.
-      - NODE_ID=${NODE_ID:?set NODE_ID in .env}
+      # Optional. Left unset, the agent uses the HOST's hostname, read from
+      # the mounted procfs — so this file deploys unchanged to every GX10 and
+      # one stack repo serves the whole cluster. Set it only if a node's
+      # hostname is a poor label.
+      - NODE_ID=${NODE_ID:-}
 
       # Read the host's view, not the container's — a container's
       # /proc/pressure/memory and MemAvailable describe the container.

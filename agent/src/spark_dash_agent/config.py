@@ -1,21 +1,33 @@
 """Agent configuration, all via environment variables.
 
-`NODE_ID` is intended to be the only value that differs between the three
-GX10s — everything else stays byte-identical so adding a node is a file copy.
+Nothing here needs to differ between the three GX10s. `NODE_ID` defaults to the
+host's own hostname, so one stack config deploys unchanged to every node —
+which is what lets a single stack repo serve the whole cluster instead of one
+repo (or one overridden variable) per node.
 """
 
 from __future__ import annotations
 
+import logging
+import socket
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from spark_dash_common.thresholds import TEMP_CRITICAL_C, TEMP_WARNING_C, TempThresholds
 
+log = logging.getLogger(__name__)
+
+# Set explicitly rather than left blank, so an unresolvable id is obvious in the
+# UI instead of showing as an empty label.
+UNKNOWN_NODE_ID = "unknown"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
-    node_id: str = "unknown"
+    # Leave unset to use the host's hostname — see `resolve_node_id`. Set it
+    # explicitly only if the hostname isn't a good label.
+    node_id: str = ""
 
     # Where the HOST's /proc and /sys are mounted inside the container. This
     # matters: a container's own /proc/pressure/memory and MemAvailable
@@ -52,6 +64,41 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    def resolve_node_id(self) -> str:
+        """Work out this node's identity, preferring an explicit NODE_ID.
+
+        The fallback is the HOST's hostname, read from the mounted procfs.
+        `socket.gethostname()` inside a container returns the *container's*
+        hostname — a random hex id by default — which would make every restart
+        look like a brand new node.
+
+        Reading `{proc_path}/sys/kernel/hostname` needs no extra mount: the
+        agent already has the host's /proc for PSI and memory.
+        """
+        explicit = self.node_id.strip()
+        if explicit and explicit != UNKNOWN_NODE_ID:
+            return explicit
+
+        host_name = _read_host_hostname(self.proc_path)
+        if host_name:
+            log.info("NODE_ID unset; using host hostname %r", host_name)
+            return host_name
+
+        # Container hostname: wrong-ish, but a stable-looking label beats an
+        # empty one, and the log line says where it came from.
+        fallback = socket.gethostname().strip()
+        if fallback:
+            log.warning(
+                "NODE_ID unset and host hostname unreadable; falling back to "
+                "container hostname %r. Set NODE_ID explicitly — a container "
+                "hostname changes on every recreate.",
+                fallback,
+            )
+            return fallback
+
+        log.error("could not determine a node id; set NODE_ID explicitly")
+        return UNKNOWN_NODE_ID
+
     @property
     def llama_router_endpoints(self) -> list[str]:
         return _split(self.llama_router_urls)
@@ -67,6 +114,18 @@ class Settings(BaseSettings):
     @property
     def vllm_endpoints(self) -> list[str]:
         return _split(self.vllm_urls)
+
+
+def _read_host_hostname(proc_path: Path) -> str:
+    """Read the host's hostname from the mounted procfs.
+
+    `/proc/sys/kernel/hostname` reflects the host even when read through a
+    bind-mounted /proc, which is why this needs no extra configuration.
+    """
+    try:
+        return (proc_path / "sys" / "kernel" / "hostname").read_text().strip()
+    except OSError:
+        return ""
 
 
 def _split(raw: str) -> list[str]:

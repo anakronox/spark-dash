@@ -108,3 +108,76 @@ def test_vllm_endpoints_parsed_from_comma_separated_env():
 def test_empty_vllm_urls_yields_no_endpoints():
     assert Settings(vllm_urls="").vllm_endpoints == []
     assert Settings(vllm_urls="  ,  ").vllm_endpoints == []
+
+
+class TestNodeIdResolution:
+    """One stack repo serves all three GX10s because the node identifies
+    itself. A per-node override would mean either three repos or a variable
+    that's easy to forget — and forgetting it merges three nodes' metrics into
+    one series.
+    """
+
+    def test_explicit_node_id_wins(self):
+        assert Settings(node_id="gx10-1").resolve_node_id() == "gx10-1"
+
+    def test_reads_host_hostname_from_mounted_proc(self, tmp_path):
+        """The host's hostname, not the container's — which is why this reads
+        the mounted procfs rather than calling gethostname()."""
+        kernel = tmp_path / "sys" / "kernel"
+        kernel.mkdir(parents=True)
+        (kernel / "hostname").write_text("gx10-2\n")
+
+        assert Settings(node_id="", proc_path=tmp_path).resolve_node_id() == "gx10-2"
+
+    def test_hostname_whitespace_is_stripped(self, tmp_path):
+        kernel = tmp_path / "sys" / "kernel"
+        kernel.mkdir(parents=True)
+        (kernel / "hostname").write_text("  gx10-3  \n\n")
+
+        assert Settings(node_id="", proc_path=tmp_path).resolve_node_id() == "gx10-3"
+
+    def test_explicit_id_beats_hostname(self, tmp_path):
+        """An override must still work for a node whose hostname is a poor
+        label."""
+        kernel = tmp_path / "sys" / "kernel"
+        kernel.mkdir(parents=True)
+        (kernel / "hostname").write_text("ubuntu\n")
+
+        settings = Settings(node_id="gx10-1", proc_path=tmp_path)
+        assert settings.resolve_node_id() == "gx10-1"
+
+    def test_literal_unknown_is_treated_as_unset(self, tmp_path):
+        """'unknown' was the old default; it must not stick as a real id."""
+        kernel = tmp_path / "sys" / "kernel"
+        kernel.mkdir(parents=True)
+        (kernel / "hostname").write_text("gx10-1\n")
+
+        assert Settings(node_id="unknown", proc_path=tmp_path).resolve_node_id() == "gx10-1"
+
+    def test_blank_node_id_is_treated_as_unset(self, tmp_path):
+        kernel = tmp_path / "sys" / "kernel"
+        kernel.mkdir(parents=True)
+        (kernel / "hostname").write_text("gx10-1\n")
+
+        assert Settings(node_id="   ", proc_path=tmp_path).resolve_node_id() == "gx10-1"
+
+    def test_falls_back_to_container_hostname(self, tmp_path):
+        """Unreadable host procfs shouldn't leave the node unlabeled, but the
+        agent logs a warning: a container hostname changes on recreate."""
+        resolved = Settings(node_id="", proc_path=tmp_path / "missing").resolve_node_id()
+        assert resolved
+        assert resolved != "unknown"
+
+    def test_builder_resolves_once(self, tmp_path):
+        kernel = tmp_path / "sys" / "kernel"
+        kernel.mkdir(parents=True)
+        (kernel / "hostname").write_text("gx10-1\n")
+
+        builder = SnapshotBuilder(Settings(node_id="", proc_path=tmp_path))
+        assert builder.node_id == "gx10-1"
+        assert builder.build().node_id == "gx10-1"
+
+        # Identity can't change while the process runs, so a later hostname
+        # edit must not retroactively relabel the node's metrics.
+        (kernel / "hostname").write_text("something-else\n")
+        assert builder.build().node_id == "gx10-1"
