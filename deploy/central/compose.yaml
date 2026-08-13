@@ -1,4 +1,5 @@
 # Central monitoring stack — runs on a dedicated Proxmox VM, never on a GX10.
+# Deployed by Dockhand from git.
 #
 # The reasoning is failure domains, not resources: "node down" is a primary
 # alert, so hosting Prometheus on node 1 means a node-1 crash destroys both the
@@ -35,7 +36,7 @@ services:
       - sparkdash
 
   backend:
-    image: ${BACKEND_IMAGE:-spark-dash-backend:latest}
+    image: ${BACKEND_IMAGE:-forgejo.indielab.tech/brian/spark-dash-backend:latest}
     container_name: sparkdash-backend
     restart: unless-stopped
     depends_on:

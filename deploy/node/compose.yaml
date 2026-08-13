@@ -1,11 +1,14 @@
-# Per-node monitoring stack for a GX10.
+# Per-node monitoring stack for a GX10. Deployed by Dockhand from git.
 #
 # Identical on all three nodes — only NODE_ID (in .env) differs. That's the
-# whole Phase 2 rollout story: copy this directory, change one value.
+# whole Phase 2 rollout story: point Dockhand at this stack, change one value.
 #
 # Host preconditions: Docker Engine and the NVIDIA Container Toolkit. Both are
 # already present for the existing GPU-enabled inference containers, so this
 # adds nothing to the base OS.
+#
+# Images come from the Forgejo container registry rather than being built here
+# — Dockhand deploys stacks, it doesn't build them. See scripts/publish-images.sh.
 
 services:
   node-exporter:
@@ -27,7 +30,7 @@ services:
       - sparkdash
 
   spark-dash-agent:
-    image: ${AGENT_IMAGE:-spark-dash-agent:latest}
+    image: ${AGENT_IMAGE:-forgejo.indielab.tech/brian/spark-dash-agent:latest}
     container_name: sparkdash-agent
     restart: unless-stopped
 

@@ -4,21 +4,27 @@ Two containers — Prometheus and the backend — on a dedicated Proxmox VM.
 Deliberately **not** on a GX10: see
 [../../docs/deployment.md](../../docs/deployment.md#central-stack--a-dedicated-proxmox-vm-settled).
 
-## First run
+This directory is a **self-contained stack**: `compose.yaml` at its root, so it
+works either as a subpath of this repo or copied verbatim into a standalone
+stack repo.
 
-On the monitoring VM:
+## Prerequisites
+
+The image must be published first — Dockhand deploys stacks, it doesn't build
+them. Build on the monitoring VM so the architecture matches:
 
 ```bash
 git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git
 cd spark-dash-homegrown
+docker login forgejo.indielab.tech      # Forgejo token with package write
+./scripts/publish-images.sh backend
+```
 
-# Build context is the repo root — the image needs the local common/ package.
-docker build -f backend/Dockerfile -t spark-dash-backend:latest .
+## Configure
 
-cd deploy/central
+```bash
 cp .env.example .env
 $EDITOR .env          # set SPARK_NODES
-docker compose up -d
 ```
 
 ## Adding a node
