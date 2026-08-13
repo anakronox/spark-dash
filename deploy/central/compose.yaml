@@ -15,6 +15,11 @@ services:
     image: prom/prometheus:v3.1.0
     container_name: sparkdash-prometheus
     restart: unless-stopped
+    # Runs as `nobody` (65534) by default, which will not be able to write to a
+    # bind-mounted host directory owned by anyone else — Prometheus panics on
+    # startup with "Unable to create mmap-ed active query log". Set PUID/PGID
+    # to whatever owns DATA_ROOT rather than chowning host dirs to 65534.
+    user: "${PUID:-65534}:${PGID:-65534}"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -48,6 +53,10 @@ services:
     image: ${BACKEND_IMAGE:-forgejo.indielab.tech/brian/spark-dash-backend:latest}
     container_name: sparkdash-backend
     restart: unless-stopped
+    # Same reasoning as prometheus: it writes the generated scrape targets, so
+    # it needs write access to DATA_ROOT/targets. The image's own user is
+    # 10002; PUID overrides it to match the host.
+    user: "${PUID:-10002}:${PGID:-10002}"
     depends_on:
       - prometheus
     environment:
@@ -73,8 +82,10 @@ services:
 # No named volumes: everything persistent is a bind mount under DATA_ROOT, so
 # it can be found, inspected and backed up without docker volume commands.
 #
-# The containers run as non-root — Prometheus as 65534, the backend as 10002 —
-# so DATA_ROOT/prometheus and DATA_ROOT/targets must be writable by them.
+# The containers run as non-root. Set PUID/PGID in .env to the uid that owns
+# DATA_ROOT and both will be able to write there; otherwise they default to
+# their images' own users (65534 and 10002) and the host directories need to
+# be owned accordingly.
 
 networks:
   sparkdash:

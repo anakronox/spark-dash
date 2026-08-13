@@ -25,17 +25,30 @@ docker login forgejo.indielab.tech      # Forgejo token with package write
 ```bash
 cp .env.example .env
 $EDITOR .env          # set SPARK_NODES
+
+# Create the data directories with the ownership the containers need.
+# Docker auto-creates bind-mount sources as ROOT, which neither container can
+# write to — so this step is required, not optional.
+sudo mkdir -p /docker/spark-dash-stack-central/{prometheus,targets}
+sudo chown 65534:65534 /docker/spark-dash-stack-central/prometheus
+sudo chown 10002:10002 /docker/spark-dash-stack-central/targets
+
 docker compose up -d
 ```
 
-`DATA_ROOT` (default `/docker/spark-dash-stack-central`) is created on first
-start. Both containers run as non-root, so if you ever see a permission error
-on startup, these are the UIDs that need write access:
+Both containers run as non-root, and each needs write access to one directory:
 
-| Directory | UID | What |
-|---|---|---|
-| `$DATA_ROOT/prometheus` | `65534` | Prometheus TSDB (the one that grows) |
-| `$DATA_ROOT/targets` | `10002` | scrape targets rendered by the backend |
+| Directory | UID | What | Symptom if wrong |
+|---|---|---|---|
+| `$DATA_ROOT/prometheus` | `65534` | Prometheus TSDB (the one that grows) | Prometheus crash-loops: `panic: Unable to create mmap-ed active query log` |
+| `$DATA_ROOT/targets` | `10002` | scrape targets rendered by the backend | backend logs `could not write ... is the volume writable?`; Prometheus scrapes nothing |
+
+That first panic is worth recognising — it reads like a Prometheus bug, but it
+is always this.
+
+If you'd rather run both as some other uid, set `PUID`/`PGID` in `.env`
+instead of chowning. Leaving them unset keeps each container on its own
+non-root user, which is the better default.
 
 ## Adding a node
 
