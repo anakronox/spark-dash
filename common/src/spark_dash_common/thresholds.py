@@ -35,9 +35,32 @@ CLOCK_LOCKED_TOLERANCE_MHZ = 15.0
 # --- Temperature -----------------------------------------------------------
 
 # [FIELD] sparkview's anomaly trigger.
+#
+# CALIBRATION NOTE: the GX10 was observed at 84C during routine ComfyUI image
+# generation, at 96% utilization and WITHOUT throttling. So on this hardware 80C
+# is a normal working temperature, not an anomaly, and alerting on it would fire
+# constantly during ordinary work. These remain the defaults because they are
+# the field-validated values, but they are overridable per node — see
+# TEMP_WARNING_C / TEMP_CRITICAL_C in the agent settings.
 TEMP_CRITICAL_C = 80.0
 # [GUESS] A warning band below the field-validated critical line.
 TEMP_WARNING_C = 70.0
+
+
+@dataclass(frozen=True)
+class TempThresholds:
+    """Per-node temperature bands.
+
+    Configurable rather than constant because what counts as "hot" depends on
+    the workload mix: a node running sustained image generation legitimately
+    sits where a purely-inference node would be in trouble.
+    """
+
+    warning_c: float = TEMP_WARNING_C
+    critical_c: float = TEMP_CRITICAL_C
+
+
+DEFAULT_TEMP_THRESHOLDS = TempThresholds()
 
 # --- Memory ----------------------------------------------------------------
 

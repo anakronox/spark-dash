@@ -16,9 +16,9 @@ from spark_dash_common.models import (
     PsiState,
 )
 from spark_dash_common.thresholds import (
+    DEFAULT_TEMP_THRESHOLDS,
     MEM_HIGH_PCT,
-    TEMP_CRITICAL_C,
-    TEMP_WARNING_C,
+    TempThresholds,
 )
 
 _SEVERITY = {
@@ -49,6 +49,7 @@ def assess(
     memory: MemoryMetrics | None = None,
     psi: PsiMetrics | None = None,
     cpu_temp_c: float | None = None,
+    temps: TempThresholds = DEFAULT_TEMP_THRESHOLDS,
 ) -> tuple[HealthState, list[str]]:
     """Return the worst state across all signals, plus why.
 
@@ -67,10 +68,10 @@ def assess(
                 (_CLOCK_TO_HEALTH[gpu.clock_state], f"GPU clock {gpu.clock_state.value}{mhz}")
             )
         if gpu.temp_c is not None:
-            findings.extend(_temp_findings("GPU", gpu.temp_c))
+            findings.extend(_temp_findings("GPU", gpu.temp_c, temps))
 
     if cpu_temp_c is not None:
-        findings.extend(_temp_findings("CPU", cpu_temp_c))
+        findings.extend(_temp_findings("CPU", cpu_temp_c, temps))
 
     if memory is not None and memory.used_pct > MEM_HIGH_PCT:
         # sparkview keys on the *combination*: high usage alone is unremarkable
@@ -94,9 +95,11 @@ def assess(
     return worst, reasons
 
 
-def _temp_findings(label: str, temp_c: float) -> list[tuple[HealthState, str]]:
-    if temp_c > TEMP_CRITICAL_C:
+def _temp_findings(
+    label: str, temp_c: float, temps: TempThresholds
+) -> list[tuple[HealthState, str]]:
+    if temp_c > temps.critical_c:
         return [(HealthState.CRITICAL, f"{label} {temp_c:.0f}°C")]
-    if temp_c > TEMP_WARNING_C:
+    if temp_c > temps.warning_c:
         return [(HealthState.WARNING, f"{label} {temp_c:.0f}°C")]
     return []

@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from spark_dash_common.thresholds import TEMP_CRITICAL_C, TEMP_WARNING_C, TempThresholds
 
 
 class Settings(BaseSettings):
@@ -42,6 +43,13 @@ class Settings(BaseSettings):
     # Comma-separated vLLM /metrics endpoints on this node.
     vllm_urls: str = ""
 
+    # Temperature bands, overridable per node. The defaults are sparkview's
+    # field-validated values, but a node also running sustained image
+    # generation legitimately runs hotter — the GX10 sits at ~84C under
+    # ComfyUI load without throttling, which would otherwise alert constantly.
+    temp_warning_c: float = TEMP_WARNING_C
+    temp_critical_c: float = TEMP_CRITICAL_C
+
     log_level: str = "INFO"
 
     @property
@@ -51,6 +59,10 @@ class Settings(BaseSettings):
     @property
     def llama_metrics_allowlist(self) -> list[str]:
         return _split(self.llama_metrics_routers)
+
+    @property
+    def temp_thresholds(self) -> TempThresholds:
+        return TempThresholds(warning_c=self.temp_warning_c, critical_c=self.temp_critical_c)
 
     @property
     def vllm_endpoints(self) -> list[str]:

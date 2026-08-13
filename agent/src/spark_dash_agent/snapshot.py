@@ -91,6 +91,7 @@ class SnapshotBuilder:
             memory=memory,
             psi=psi,
             cpu_temp_c=cpu.temp_c if cpu else None,
+            temps=self._settings.temp_thresholds,
         )
 
         return NodeSnapshot(
