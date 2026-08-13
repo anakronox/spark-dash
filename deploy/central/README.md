@@ -25,15 +25,17 @@ docker login forgejo.indielab.tech      # Forgejo token with package write
 ```bash
 cp .env.example .env
 $EDITOR .env          # set SPARK_NODES
-
-# Once, before first start: create the bind-mount directories with the
-# ownership the containers need.
-sudo ./prepare-host.sh
+docker compose up -d
 ```
 
-Bind mounts don't get ownership seeded the way named volumes do, so a
-root-owned data directory would leave both containers crash-looping on
-permission errors that don't obviously point at the mount.
+`DATA_ROOT` (default `/docker/spark-dash-stack-central`) is created on first
+start. Both containers run as non-root, so if you ever see a permission error
+on startup, these are the UIDs that need write access:
+
+| Directory | UID | What |
+|---|---|---|
+| `$DATA_ROOT/prometheus` | `65534` | Prometheus TSDB (the one that grows) |
+| `$DATA_ROOT/targets` | `10002` | scrape targets rendered by the backend |
 
 ## Adding a node
 

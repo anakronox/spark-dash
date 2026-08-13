@@ -72,9 +72,9 @@ services:
 
 # No named volumes: everything persistent is a bind mount under DATA_ROOT, so
 # it can be found, inspected and backed up without docker volume commands.
-# Run ./prepare-host.sh once before first start — bind-mounted host
-# directories need ownership set for the containers' non-root users, which
-# named volumes used to handle silently.
+#
+# The containers run as non-root — Prometheus as 65534, the backend as 10002 —
+# so DATA_ROOT/prometheus and DATA_ROOT/targets must be writable by them.
 
 networks:
   sparkdash:
