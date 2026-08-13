@@ -84,17 +84,16 @@ services:
 
     networks:
       - sparkdash
-      - inference
 
 networks:
   sparkdash:
     driver: bridge
 
-  # The existing llama.cpp/vLLM Compose network. Joining it lets the agent
-  # reach those containers by service name instead of depending on published
-  # ports that may change. Set INFERENCE_NETWORK in .env to its actual name
-  # (`docker network ls`); if the runtimes aren't in a shared Compose network,
-  # drop this and point LLAMA_ROUTER_URL/VLLM_URLS at host ports instead.
-  inference:
-    external: true
-    name: ${INFERENCE_NETWORK:-inference-net}
+# Deliberately does NOT join the inference containers' network. The agent
+# reaches the routers and vLLM by host address (see LLAMA_ROUTER_URLS in .env),
+# which works from a plain bridge network and means this stack has no external
+# dependency to declare — one less thing that has to exist before it starts.
+#
+# If you'd rather address them by container name, add the runtimes' network as
+# `external: true` here and switch those URLs to service names. Note that
+# hard-couples this stack to that network existing first.

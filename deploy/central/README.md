@@ -14,8 +14,13 @@ The image must be published first — Dockhand deploys stacks, it doesn't build
 them. Build on the monitoring VM so the architecture matches:
 
 ```bash
-git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git
-cd spark-dash-homegrown
+# Clones if absent, updates if already there: `git clone` onto an existing
+# directory fails, and it's easy to miss that error and then build from a
+# stale checkout.
+REPO=/docker/spark-dash-homegrown
+git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" || git -C "$REPO" pull
+cd "$REPO"
+
 docker login forgejo.indielab.tech      # Forgejo token with package write
 ./scripts/publish-images.sh backend
 ```
@@ -90,7 +95,8 @@ The main repo — needed for `publish-images.sh` and the validation scripts —
 follows the usual convention:
 
 ```bash
-git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git /docker/spark-dash-homegrown
+REPO=/docker/spark-dash-homegrown
+git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" || git -C "$REPO" pull
 ```
 
 ### Two target directories

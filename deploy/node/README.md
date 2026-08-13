@@ -14,9 +14,15 @@ stack repo.
    doesn't build them:
 
    ```bash
-   # On a GX10 (arm64 — build native, no QEMU needed)
-   git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git
-   cd spark-dash-homegrown
+   # On a GX10 (arm64 — build native, no QEMU needed).
+   # Clones if absent, updates if already there: `git clone` onto an existing
+   # directory fails, and it's easy to miss that error and then build from a
+   # stale checkout.
+   REPO=/docker/spark-dash-homegrown
+   git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" \
+     || git -C "$REPO" pull
+   cd "$REPO"
+
    docker login forgejo.indielab.tech      # Forgejo token with package write
    ./scripts/publish-images.sh agent
    ```
@@ -42,7 +48,6 @@ $EDITOR .env
 | `LLAMA_ROUTER_URLS` | Comma-separated router base URLs. |
 | `LLAMA_METRICS_ROUTERS` | **Leave empty unless certain.** Opt-in allowlist for `/metrics?model=` requests, which LOAD the model on an autoload router. |
 | `VLLM_URLS` | Comma-separated vLLM `/metrics` endpoints. |
-| `INFERENCE_NETWORK` | Existing llama.cpp/vLLM Compose network (`docker network ls`). |
 
 ## Where things land
 
@@ -58,7 +63,8 @@ The main repo — needed for `publish-images.sh` and the validation scripts —
 follows the usual convention:
 
 ```bash
-git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git /docker/spark-dash-homegrown
+REPO=/docker/spark-dash-homegrown
+git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" || git -C "$REPO" pull
 ```
 
 ## Verify
@@ -103,6 +109,8 @@ To prove it on your hardware:
 - The agent runs as **non-root** and only ever reads. Process names resolve
   fine; `/proc/<pid>/cwd` may not, which is why runtime detection also matches
   on command-line flags.
-- **If your runtimes aren't on a shared Compose network**, remove the
-  `inference` network from `compose.yaml` and point `LLAMA_ROUTER_URLS` /
-  `VLLM_URLS` at host addresses instead (e.g. `http://192.168.50.61:8001`).
+- **This stack joins no external network.** The agent reaches the routers and
+  vLLM by host address, which works from a plain bridge network. That keeps the
+  stack free of any dependency that has to exist before it can start — an
+  external network that isn't there fails the whole stack with
+  `network ... declared as external, but could not be found`.
