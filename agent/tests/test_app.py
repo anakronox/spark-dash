@@ -62,13 +62,17 @@ def make_snapshot(**overrides) -> NodeSnapshot:
             )
         ],
         runtimes=Runtimes(
-            llama_cpp=LlamaRouterMetrics(
-                loaded_models=[
-                    LoadedModel(name="qwen3-32b", tokens_per_sec=41.2, kv_cache_pct=55.0)
-                ],
-                known_model_count=4,
-                tokens_per_sec=41.2,
-            ),
+            llama_cpp=[
+                LlamaRouterMetrics(
+                    endpoint="http://router-a:8080",
+                    name="router-a:8080",
+                    loaded_models=[
+                        LoadedModel(name="qwen3-32b", tokens_per_sec=41.2, kv_cache_pct=55.0)
+                    ],
+                    known_model_count=4,
+                    tokens_per_sec=41.2,
+                )
+            ],
             vllm=[VllmMetrics(model="llama-3.3-70b", tokens_per_sec=88.5, kv_cache_pct=63.0)],
         ),
     )
@@ -190,6 +194,52 @@ def test_collector_errors_are_exported():
 
 def test_runtime_metrics_are_labeled_by_model():
     text = render(make_snapshot())
-    assert 'sparkdash_llama_model_tokens_per_second{model="qwen3-32b",node="gx10-1"} 41.2' in text
+    assert (
+        'sparkdash_llama_model_tokens_per_second'
+        '{model="qwen3-32b",node="gx10-1",router="router-a:8080"} 41.2'
+    ) in text
     assert 'sparkdash_vllm_tokens_per_second{model="llama-3.3-70b",node="gx10-1"} 88.5' in text
-    assert 'sparkdash_llama_models_known{node="gx10-1"} 4.0' in text
+    assert 'sparkdash_llama_models_known{node="gx10-1",router="router-a:8080"} 4.0' in text
+
+
+def test_router_label_distinguishes_multiple_routers():
+    """A node runs several router containers, and the same model name can be
+    registered with more than one — the router label is what separates them."""
+    snap = make_snapshot(
+        runtimes=Runtimes(
+            llama_cpp=[
+                LlamaRouterMetrics(
+                    endpoint="http://a:8080",
+                    name="a:8080",
+                    loaded_models=[LoadedModel(name="shared", tokens_per_sec=10.0)],
+                    known_model_count=1,
+                ),
+                LlamaRouterMetrics(
+                    endpoint="http://b:8081",
+                    name="b:8081",
+                    loaded_models=[LoadedModel(name="shared", tokens_per_sec=20.0)],
+                    known_model_count=1,
+                ),
+            ]
+        )
+    )
+    text = render(snap)
+    assert 'router="a:8080"' in text
+    assert 'router="b:8081"' in text
+    assert (
+        'sparkdash_llama_model_tokens_per_second'
+        '{model="shared",node="gx10-1",router="a:8080"} 10.0'
+    ) in text
+
+
+def test_unreachable_router_is_reported_as_down():
+    """One router down must be visible, not silently absent."""
+    snap = make_snapshot(
+        runtimes=Runtimes(
+            llama_cpp=[
+                LlamaRouterMetrics(endpoint="http://dead:8080", name="dead:8080", reachable=False)
+            ]
+        )
+    )
+    text = render(snap)
+    assert 'sparkdash_llama_router_up{node="gx10-1",router="dead:8080"} 0.0' in text

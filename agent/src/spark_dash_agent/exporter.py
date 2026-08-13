@@ -153,31 +153,37 @@ def _cpu_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
 
 
 def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
-    llama = snap.runtimes.llama_cpp
-    if llama is not None:
-        known = _g("llama_models_known", "Models registered with the router", ["node"])
-        known.add_metric([node], float(llama.known_model_count))
-        yield known
+    if snap.runtimes.llama_cpp:
+        # Every series carries a `router` label: a node runs several router
+        # containers, and the same model name can be registered with more than
+        # one of them.
+        rl = ["node", "router"]
+        rml = ["node", "router", "model"]
 
-        loaded_count = _g("llama_models_loaded", "Models currently resident", ["node"])
-        loaded_count.add_metric([node], float(len(llama.loaded_models)))
-        yield loaded_count
+        up = _g("llama_router_up", "1 when the router answered", rl)
+        known = _g("llama_models_known", "Models registered with the router", rl)
+        loaded_count = _g("llama_models_loaded", "Models currently resident", rl)
+        loaded = _g("llama_model_loaded", "1 while a model is resident", rml)
+        tps = _g("llama_model_tokens_per_second", "Token throughput", rml)
+        kv = _g("llama_model_kv_cache_percent", "KV cache utilization", rml)
+        running = _g("llama_model_requests_running", "In-flight requests", rml)
+        waiting = _g("llama_model_requests_waiting", "Queued requests", rml)
 
-        loaded = _g("llama_model_loaded", "1 while a model is resident", ["node", "model"])
-        tps = _g("llama_model_tokens_per_second", "Token throughput", ["node", "model"])
-        kv = _g("llama_model_kv_cache_percent", "KV cache utilization", ["node", "model"])
-        running = _g("llama_model_requests_running", "In-flight requests", ["node", "model"])
-        waiting = _g("llama_model_requests_waiting", "Queued requests", ["node", "model"])
+        for router in snap.runtimes.llama_cpp:
+            label = router.name or router.endpoint
+            up.add_metric([node, label], 1.0 if router.reachable else 0.0)
+            known.add_metric([node, label], float(router.known_model_count))
+            loaded_count.add_metric([node, label], float(len(router.loaded_models)))
 
-        for model in llama.loaded_models:
-            loaded.add_metric([node, model.name], 1.0)
-            tps.add_metric([node, model.name], model.tokens_per_sec or 0.0)
-            if model.kv_cache_pct is not None:
-                kv.add_metric([node, model.name], model.kv_cache_pct)
-            running.add_metric([node, model.name], float(model.requests_running))
-            waiting.add_metric([node, model.name], float(model.requests_waiting))
+            for model in router.loaded_models:
+                loaded.add_metric([node, label, model.name], 1.0)
+                tps.add_metric([node, label, model.name], model.tokens_per_sec or 0.0)
+                if model.kv_cache_pct is not None:
+                    kv.add_metric([node, label, model.name], model.kv_cache_pct)
+                running.add_metric([node, label, model.name], float(model.requests_running))
+                waiting.add_metric([node, label, model.name], float(model.requests_waiting))
 
-        yield from (loaded, tps, kv, running, waiting)
+        yield from (up, known, loaded_count, loaded, tps, kv, running, waiting)
 
     if snap.runtimes.vllm:
         tps = _g("vllm_tokens_per_second", "Token throughput", ["node", "model"])

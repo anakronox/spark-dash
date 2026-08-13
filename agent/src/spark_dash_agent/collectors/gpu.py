@@ -55,19 +55,55 @@ def _mask(attr_names: tuple[str, ...]) -> int:
     return mask
 
 
+def _command_line(proc) -> str:
+    """Best-effort command line for a GPU process.
+
+    Matters because vLLM runs as bare `python` — without the command line
+    there's no way to tell it apart from any other Python process. `cmdline()`
+    is tried first (structured), then `command()` (shell-escaped string).
+
+    Returns "" when neither is readable: /proc/<pid>/cmdline can be denied when
+    the agent runs as non-root and the process belongs to another user, and a
+    process can exit mid-scan.
+    """
+    for attr in ("cmdline", "command"):
+        getter = getattr(proc, attr, None)
+        if getter is None:
+            continue
+        try:
+            value = getter()
+        except Exception:  # noqa: BLE001 — denied or exited; try the next form
+            continue
+        if not value or value is NA:
+            continue
+        return " ".join(value) if isinstance(value, list) else str(value)
+    return ""
+
+
 def infer_runtime(name: str, command: str = "") -> str | None:
     """Guess which inference runtime a GPU process belongs to.
 
-    Used to tie a process row back to a model in the UI. Best-effort by design —
-    an unrecognized process still shows up, just without a runtime label.
+    Matching on the process name alone is not enough: vLLM runs as plain
+    `python`, so its identity only appears in the command line (typically
+    `python -m vllm.entrypoints.openai.api_server`). Hence both are searched.
+
+    Best-effort by design — an unrecognized process still shows up in the
+    table, just without a runtime label.
     """
     haystack = f"{name} {command}".lower()
-    if "llama" in haystack:
-        return "llama.cpp"
+
+    # vLLM is checked first: a vLLM process serving a Llama model has "llama"
+    # in its command line, so testing llama.cpp first would misattribute it.
     if "vllm" in haystack:
         return "vllm"
-    if "python" in haystack and "vllm" in haystack:
-        return "vllm"
+    if "llama-server" in haystack or "llama.cpp" in haystack or "llama_cpp" in haystack:
+        return "llama.cpp"
+    if "sglang" in haystack:
+        return "sglang"
+    if "text-generation" in haystack or "text_generation" in haystack:
+        return "tgi"
+    if "ollama" in haystack:
+        return "ollama"
     return None
 
 
@@ -151,10 +187,7 @@ class GpuCollector(Collector[GpuMetrics]):
             try:
                 name = proc.name()
                 gpu_mem = _num(proc.gpu_memory()) or 0.0
-                try:
-                    command = proc.command()
-                except Exception:  # noqa: BLE001 — process may have exited
-                    command = ""
+                command = _command_line(proc)
                 out.append(
                     ProcessInfo(
                         pid=pid,

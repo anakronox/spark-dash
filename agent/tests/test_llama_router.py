@@ -64,10 +64,11 @@ def test_never_scrapes_metrics_for_unloaded_models():
             {"id": "another-sleeper", "loaded": False},
         ]
     )
-    collector = LlamaRouterCollector("http://router:8080", transport=router.transport())
-    result = collector.collect()
+    collector = LlamaRouterCollector(["http://router:8080"], transport=router.transport())
+    results = collector.collect()
 
-    assert result is not None
+    assert len(results) == 1
+    result = results[0]
     assert [m.name for m in result.loaded_models] == ["loaded-model"]
     assert len(router.metrics_requests) == 1
     assert "loaded-model" in router.metrics_requests[0]
@@ -83,10 +84,9 @@ def test_unknown_residency_shape_fails_safe():
     registered model.
     """
     router = RecordingRouter([{"id": "mystery-model", "some_unknown_field": 1}])
-    collector = LlamaRouterCollector("http://router:8080", transport=router.transport())
-    result = collector.collect()
+    collector = LlamaRouterCollector(["http://router:8080"], transport=router.transport())
+    result = collector.collect()[0]
 
-    assert result is not None
     assert result.loaded_models == []
     assert result.known_model_count == 1
     assert router.metrics_requests == []
@@ -96,8 +96,7 @@ def test_reports_all_known_models_even_when_none_loaded():
     router = RecordingRouter(
         [{"id": "a", "loaded": False}, {"id": "b", "loaded": False}]
     )
-    result = LlamaRouterCollector("http://r", transport=router.transport()).collect()
-    assert result is not None
+    result = LlamaRouterCollector(["http://r"], transport=router.transport()).collect()[0]
     assert result.known_model_count == 2
     assert result.loaded_models == []
 
@@ -119,8 +118,7 @@ def test_reports_all_known_models_even_when_none_loaded():
 def test_residency_key_variants(entry, expected_loaded):
     """Tolerate the shapes different llama.cpp builds emit."""
     router = RecordingRouter([entry])
-    result = LlamaRouterCollector("http://r", transport=router.transport()).collect()
-    assert result is not None
+    result = LlamaRouterCollector(["http://r"], transport=router.transport()).collect()[0]
     assert bool(result.loaded_models) is expected_loaded
 
 
@@ -128,35 +126,35 @@ def test_scrape_disabled_keeps_model_list_without_touching_metrics():
     """The escape hatch: still report what's loaded, fetch nothing."""
     router = RecordingRouter([{"id": "loaded-model", "loaded": True}])
     collector = LlamaRouterCollector(
-        "http://r", transport=router.transport(), scrape_loaded_model_metrics=False
+        ["http://r"], transport=router.transport(), scrape_loaded_model_metrics=False
     )
-    result = collector.collect()
+    result = collector.collect()[0]
 
-    assert result is not None
     assert [m.name for m in result.loaded_models] == ["loaded-model"]
     assert router.metrics_requests == []
 
 
 def test_returns_none_when_no_router_configured():
     """vLLM-only nodes run the same image with no router URL set."""
-    assert LlamaRouterCollector(None).collect() is None
+    assert LlamaRouterCollector([]).collect() == []
 
 
 def test_returns_none_when_router_unreachable():
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused")
 
-    collector = LlamaRouterCollector("http://r", transport=httpx.MockTransport(handler))
-    assert collector.collect() is None
+    collector = LlamaRouterCollector(["http://r"], transport=httpx.MockTransport(handler))
+    results = collector.collect()
+    assert len(results) == 1
+    assert results[0].reachable is False
+    assert results[0].loaded_models == []
 
 
 def test_parses_model_metrics():
     collector = LlamaRouterCollector(
-        "http://r", transport=RecordingRouter([{"id": "m", "loaded": True}]).transport()
+        ["http://r"], transport=RecordingRouter([{"id": "m", "loaded": True}]).transport()
     )
-    result = collector.collect()
-    assert result is not None
-    model = result.loaded_models[0]
+    model = collector.collect()[0].loaded_models[0]
     assert model.requests_running == 2
     assert model.requests_waiting == 1
     assert model.kv_cache_pct == pytest.approx(63.0)
@@ -198,3 +196,85 @@ class TestRateTracker:
 
         assert tracker.rate("gone", 500.0, now=1.0) == 0.0
         assert tracker.rate("kept", 200.0, now=1.0) == pytest.approx(100.0)
+
+
+class TestMultipleRouters:
+    """A node commonly runs several router containers — the reason this
+    collector returns a list rather than a single object."""
+
+    def test_polls_every_configured_router(self):
+        a = RecordingRouter([{"id": "model-a", "loaded": True}])
+        b = RecordingRouter([{"id": "model-b", "loaded": True}])
+
+        # One transport per router isn't possible on a single client, so route
+        # by host instead — closer to reality anyway.
+        def handler(request: httpx.Request) -> httpx.Response:
+            target = a if request.url.host == "router-a" else b
+            target.requested.append(str(request.url))
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"data": target.models})
+            if request.url.path == "/metrics":
+                return httpx.Response(200, text=METRICS_BODY)
+            return httpx.Response(404)
+
+        results = LlamaRouterCollector(
+            ["http://router-a:8080", "http://router-b:8081"],
+            transport=httpx.MockTransport(handler),
+        ).collect()
+
+        assert len(results) == 2
+        assert results[0].endpoint == "http://router-a:8080"
+        assert results[1].endpoint == "http://router-b:8081"
+        assert [m.name for m in results[0].loaded_models] == ["model-a"]
+        assert [m.name for m in results[1].loaded_models] == ["model-b"]
+
+    def test_one_router_down_does_not_hide_the_others(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host == "dead":
+                raise httpx.ConnectError("refused")
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"data": [{"id": "ok-model", "loaded": True}]})
+            return httpx.Response(200, text=METRICS_BODY)
+
+        results = LlamaRouterCollector(
+            ["http://dead:8080", "http://alive:8081"],
+            transport=httpx.MockTransport(handler),
+        ).collect()
+
+        assert len(results) == 2
+        assert results[0].reachable is False
+        assert results[1].reachable is True
+        assert [m.name for m in results[1].loaded_models] == ["ok-model"]
+
+    def test_endpoints_get_distinguishing_labels(self):
+        router = RecordingRouter([])
+        results = LlamaRouterCollector(
+            ["http://router-a:8080", "http://router-b:8081"], transport=router.transport()
+        ).collect()
+        assert [r.name for r in results] == ["router-a:8080", "router-b:8081"]
+
+    def test_same_model_name_on_two_routers_keeps_separate_rates(self):
+        """Rate keys are namespaced by router; otherwise the second router's
+        sample would overwrite the first's and produce garbage throughput."""
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"data": [{"id": "shared", "loaded": True}]})
+            return httpx.Response(200, text=METRICS_BODY)
+
+        collector = LlamaRouterCollector(
+            ["http://a:8080", "http://b:8081"], transport=httpx.MockTransport(handler)
+        )
+        collector.collect()
+        results = collector.collect()
+
+        # Both report the same model, independently tracked.
+        assert len(results) == 2
+        assert all(r.loaded_models[0].name == "shared" for r in results)
+
+    def test_trailing_slashes_are_normalized(self):
+        router = RecordingRouter([{"id": "m", "loaded": False}])
+        results = LlamaRouterCollector(
+            ["http://r:8080/"], transport=router.transport()
+        ).collect()
+        assert results[0].endpoint == "http://r:8080"
+        assert all("//v1/models" not in u for u in router.requested)

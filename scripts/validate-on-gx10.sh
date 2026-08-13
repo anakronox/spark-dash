@@ -176,20 +176,28 @@ fi
 
 # ------------------------------------------------------------------ runtimes
 hdr "Inference runtimes"
-KNOWN=$(q runtimes.llama_cpp.known_model_count)
-if [[ -z "$KNOWN" ]]; then
-  info "no llama.cpp router configured (LLAMA_ROUTER_URL unset) — skipping"
-else
-  LOADED=$(printf '%s' "$SNAP" | python3 -c "
+ROUTERS=$(printf '%s' "$SNAP" | python3 -c "
 import json,sys
-r=(json.load(sys.stdin).get('runtimes') or {}).get('llama_cpp') or {}
-print(len(r.get('loaded_models') or []))
+for r in (json.load(sys.stdin).get('runtimes') or {}).get('llama_cpp') or []:
+    print(f\"{r['name'] or r['endpoint']}\t{r['reachable']}\t{r['known_model_count']}\t{len(r['loaded_models'] or [])}\")
 ")
-  ok "router reachable — $KNOWN known model(s), $LOADED loaded"
-  if [[ "$KNOWN" -gt 0 && "$LOADED" -eq 0 ]]; then
-    info "residency reported as none. Either nothing is loaded (fine), or the"
-    info "/v1/models shape wasn't recognized and we fell back to 'not loaded'."
-    info "Confirm with:  curl -s \$LLAMA_ROUTER_URL/v1/models | jq"
+if [[ -z "$ROUTERS" ]]; then
+  info "no llama.cpp routers configured (LLAMA_ROUTER_URLS unset) — skipping"
+else
+  UNRECOGNIZED=0
+  while IFS=$'\t' read -r rname reachable known loaded; do
+    if [[ "$reachable" != "True" ]]; then
+      bad "router $rname unreachable"
+      continue
+    fi
+    ok "router $rname — $known known model(s), $loaded loaded"
+    [[ "$known" -gt 0 && "$loaded" -eq 0 ]] && UNRECOGNIZED=1
+  done <<< "$ROUTERS"
+
+  if [[ "$UNRECOGNIZED" -eq 1 ]]; then
+    info "a router reports models but none loaded. Either nothing is loaded"
+    info "(fine), or the /v1/models shape wasn't recognized and we fell back"
+    info "to 'not loaded'. Confirm with the diagnose command below."
   fi
   echo
   echo "  ${c_warn}THE CRITICAL CHECK${c_off} — leave the agent running for ~10 minutes with"

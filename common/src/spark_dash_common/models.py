@@ -134,13 +134,22 @@ class LoadedModel(BaseModel):
 
 
 class LlamaRouterMetrics(BaseModel):
-    """llama.cpp router-mode state.
+    """One llama.cpp router instance.
+
+    A node commonly runs several router containers, so these are reported as a
+    list keyed by `endpoint` rather than as a single object.
 
     Only currently-loaded models appear here. Unloaded models are deliberately
     never probed: GET /metrics?model=X triggers autoload and resets the idle
     sleep timer, so polling them would fight the router's own LRU eviction.
     """
 
+    endpoint: str = Field(description="Base URL, used to tell routers apart.")
+    name: str = Field(
+        default="",
+        description="Friendly label for the UI; falls back to host:port of the endpoint.",
+    )
+    reachable: bool = True
     loaded_models: list[LoadedModel] = Field(default_factory=list)
     known_model_count: int = 0
     tokens_per_sec: float = 0.0
@@ -159,7 +168,9 @@ class VllmMetrics(BaseModel):
 
 
 class Runtimes(BaseModel):
-    llama_cpp: LlamaRouterMetrics | None = None
+    # Lists, not single objects: a node typically runs several llama.cpp router
+    # containers alongside several vLLM instances.
+    llama_cpp: list[LlamaRouterMetrics] = Field(default_factory=list)
     vllm: list[VllmMetrics] = Field(default_factory=list)
 
 
@@ -190,10 +201,9 @@ class NodeSnapshot(BaseModel):
 
     @property
     def total_tokens_per_sec(self) -> float:
-        total = sum(v.tokens_per_sec for v in self.runtimes.vllm)
-        if self.runtimes.llama_cpp:
-            total += self.runtimes.llama_cpp.tokens_per_sec
-        return total
+        return sum(v.tokens_per_sec for v in self.runtimes.vllm) + sum(
+            r.tokens_per_sec for r in self.runtimes.llama_cpp
+        )
 
 
 class ClusterSnapshot(BaseModel):

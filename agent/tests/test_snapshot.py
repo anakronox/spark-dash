@@ -81,11 +81,17 @@ def test_failed_collectors_are_recorded_not_raised():
         assert "gpu" in snap.errors
 
 
-def test_no_router_configured_leaves_llama_none():
-    builder = SnapshotBuilder(Settings(node_id="n1", llama_router_url=None))
+def test_no_router_configured_yields_empty_runtime_lists():
+    """vLLM-only nodes run the same image with no router URLs set."""
+    builder = SnapshotBuilder(Settings(node_id="n1", llama_router_urls=""))
     snap = builder.build()
-    assert snap.runtimes.llama_cpp is None
+    assert snap.runtimes.llama_cpp == []
     assert snap.runtimes.vllm == []
+
+
+def test_router_endpoints_parsed_from_comma_separated_env():
+    settings = Settings(llama_router_urls="http://a:8080, http://b:8081 ")
+    assert settings.llama_router_endpoints == ["http://a:8080", "http://b:8081"]
 
 
 def test_health_is_assessed_from_collected_signals():

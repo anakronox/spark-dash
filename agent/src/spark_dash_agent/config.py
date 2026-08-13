@@ -27,8 +27,9 @@ class Settings(BaseSettings):
 
     gpu_device_index: int = 0
 
-    # Unset on a node that runs only vLLM; the collector then reports nothing.
-    llama_router_url: str | None = None
+    # Comma-separated. A node commonly runs several router containers; leave
+    # blank on a node that serves only vLLM.
+    llama_router_urls: str = ""
     llama_router_timeout_s: float = 2.0
     # Set False if a router build turns out to autoload from the discovery path
     # too — keeps the loaded-model list without ever fetching /metrics.
@@ -40,5 +41,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     @property
+    def llama_router_endpoints(self) -> list[str]:
+        return _split(self.llama_router_urls)
+
+    @property
     def vllm_endpoints(self) -> list[str]:
-        return [u.strip() for u in self.vllm_urls.split(",") if u.strip()]
+        return _split(self.vllm_urls)
+
+
+def _split(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]

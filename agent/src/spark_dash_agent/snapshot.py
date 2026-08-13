@@ -49,7 +49,7 @@ class SnapshotBuilder:
         self._psi = PsiCollector(path=settings.proc_path / "pressure" / "memory")
         self._cpu = CpuCollector()
         self._llama = LlamaRouterCollector(
-            settings.llama_router_url,
+            settings.llama_router_endpoints,
             timeout=settings.llama_router_timeout_s,
             scrape_loaded_model_metrics=settings.llama_scrape_loaded_model_metrics,
         )
@@ -83,7 +83,7 @@ class SnapshotBuilder:
         memory = self._memory_collector().safe_collect(errors)
         psi = self._psi.safe_collect(errors)
         cpu = self._cpu.safe_collect(errors)
-        llama = self._llama.safe_collect(errors)
+        llama = self._llama.safe_collect(errors) or []
         vllm = self._vllm.safe_collect(errors) or []
 
         health, reasons = assess(

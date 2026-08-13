@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import time
+from urllib.parse import urlparse
 
 import httpx
 from prometheus_client.parser import text_string_to_metric_families
@@ -79,24 +80,25 @@ def parse_model_metrics(text: str) -> dict[str, float]:
     return out
 
 
-class LlamaRouterCollector(Collector[LlamaRouterMetrics]):
-    """Polls a local llama.cpp router.
+class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
+    """Polls every configured llama.cpp router on this node.
 
-    Reports `None` when no router is configured or reachable, so the same agent
-    image runs unchanged on a node that only serves vLLM.
+    Plural by design: a node commonly runs several router containers. Returns an
+    empty list when none are configured, so the same agent image runs unchanged
+    on a node that only serves vLLM.
     """
 
     name = "llama_router"
 
     def __init__(
         self,
-        base_url: str | None,
+        base_urls: list[str],
         *,
         timeout: float = 2.0,
         scrape_loaded_model_metrics: bool = True,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        self._base_url = base_url.rstrip("/") if base_url else None
+        self._base_urls = [u.rstrip("/") for u in base_urls if u]
         self._timeout = timeout
         # Escape hatch: if this router build turns out to autoload even on the
         # discovery path, set this False to keep the loaded-model list without
@@ -107,28 +109,51 @@ class LlamaRouterCollector(Collector[LlamaRouterMetrics]):
         self._transport = transport
         self._rates = RateTracker()
 
-    def collect(self) -> LlamaRouterMetrics | None:
-        if not self._base_url:
-            return None
+    def collect(self) -> list[LlamaRouterMetrics]:
+        if not self._base_urls:
+            return []
+
+        out: list[LlamaRouterMetrics] = []
+        live_rate_keys: set[str] = set()
 
         with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
-            models = self._discover_models(client)
-            if models is None:
-                return None
+            for base_url in self._base_urls:
+                result = self._collect_router(client, base_url)
+                out.append(result)
+                live_rate_keys |= {
+                    f"{base_url}:{m.name}:{suffix}"
+                    for m in result.loaded_models
+                    for suffix in ("predicted", "prompt")
+                }
 
-            loaded_names = [name for name, loaded in models if loaded]
-            loaded: list[LoadedModel] = []
-            for name in loaded_names:
-                loaded.append(self._collect_model(client, name))
+        # Drop rate state for models no longer loaded anywhere, so a reloaded
+        # model doesn't compute its first rate against a stale sample.
+        self._rates.forget(live_rate_keys)
+        return out
 
-        self._rates.forget(set(loaded_names))
+    def _collect_router(self, client: httpx.Client, base_url: str) -> LlamaRouterMetrics:
+        models = self._discover_models(client, base_url)
+        if models is None:
+            # One router being down must not hide the others.
+            return LlamaRouterMetrics(
+                endpoint=base_url, name=_label_for(base_url), reachable=False
+            )
+
+        loaded = [
+            self._collect_model(client, base_url, name) for name, is_loaded in models if is_loaded
+        ]
         return LlamaRouterMetrics(
+            endpoint=base_url,
+            name=_label_for(base_url),
+            reachable=True,
             loaded_models=loaded,
             known_model_count=len(models),
             tokens_per_sec=sum(m.tokens_per_sec or 0.0 for m in loaded),
         )
 
-    def _discover_models(self, client: httpx.Client) -> list[tuple[str, bool]] | None:
+    def _discover_models(
+        self, client: httpx.Client, base_url: str
+    ) -> list[tuple[str, bool]] | None:
         """List models and whether each is resident, without triggering a load.
 
         Uses `/v1/models`, which takes no `model` parameter and so cannot
@@ -140,7 +165,7 @@ class LlamaRouterCollector(Collector[LlamaRouterMetrics]):
         sleeping model awake.
         """
         try:
-            resp = client.get(f"{self._base_url}/v1/models")
+            resp = client.get(f"{base_url}/v1/models")
             resp.raise_for_status()
             payload = resp.json()
         except Exception:  # noqa: BLE001 — router absent or not in router mode
@@ -158,14 +183,14 @@ class LlamaRouterCollector(Collector[LlamaRouterMetrics]):
             models.append((str(name), _is_loaded(entry)))
         return models
 
-    def _collect_model(self, client: httpx.Client, name: str) -> LoadedModel:
+    def _collect_model(self, client: httpx.Client, base_url: str, name: str) -> LoadedModel:
         model = LoadedModel(name=name)
         if not self._scrape_metrics:
             return model
 
         # Safe *only* because `name` came from the loaded set above.
         try:
-            resp = client.get(f"{self._base_url}/metrics", params={"model": name})
+            resp = client.get(f"{base_url}/metrics", params={"model": name})
             resp.raise_for_status()
             metrics = parse_model_metrics(resp.text)
         except Exception:  # noqa: BLE001 — model may have been evicted mid-scrape
@@ -179,10 +204,18 @@ class LlamaRouterCollector(Collector[LlamaRouterMetrics]):
         model.requests_waiting = int(metrics.get(_M_REQUESTS_DEFERRED, 0))
         kv = metrics.get(_M_KV_CACHE_RATIO)
         model.kv_cache_pct = kv * 100.0 if kv is not None else None
-        model.tokens_per_sec = self._rates.rate(f"{name}:predicted", predicted) + self._rates.rate(
-            f"{name}:prompt", prompt
-        )
+        # Rate keys are namespaced by router: the same model name can be
+        # registered with more than one router on a node.
+        model.tokens_per_sec = self._rates.rate(
+            f"{base_url}:{name}:predicted", predicted
+        ) + self._rates.rate(f"{base_url}:{name}:prompt", prompt)
         return model
+
+
+def _label_for(base_url: str) -> str:
+    """Short host:port label so the UI can tell routers apart."""
+    parsed = urlparse(base_url)
+    return parsed.netloc or base_url
 
 
 def _is_loaded(entry: dict) -> bool:
