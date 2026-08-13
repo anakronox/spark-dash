@@ -112,5 +112,7 @@ Tracked in [roadmap.md](roadmap.md#open-decisions) so they don't get lost.
 
 ## See also
 
-[Deployment](deployment.md) covers how the Docker-only requirement above
-translates into an actual per-node/central Compose layout.
+- [Deployment](deployment.md) — how the Docker-only requirement above
+  translates into an actual per-node/central Compose layout.
+- [App design](app-design.md) — how the live-view and read-only requirements
+  translate into an API surface and panel design.

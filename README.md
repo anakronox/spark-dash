@@ -18,6 +18,8 @@ Currently 1 node, growing to 3.
   caveats (unified memory, router autoload behavior).
 - [Roadmap](docs/roadmap.md) — phased plan from single-node MVP to the full
   3-node cluster, plus open decisions.
+- [App design](docs/app-design.md) — backend/frontend stack (FastAPI + Svelte 5),
+  API surface, live-update contract, and panel/visual design rules.
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
   stays untouched) and the per-node/central Compose service breakdown.
 

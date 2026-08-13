@@ -35,15 +35,20 @@ Goal: something real running on the existing GX10, informative for day-to-day us
 - [ ] Build `llama-router-exporter` sidecar (custom) for llama.cpp router-mode
   aggregation, being careful not to trigger autoload/anti-sleep side effects.
 - [ ] Stand up Prometheus, scraping all of the above on the one node.
-- [ ] Backend API (FastAPI, proposed): REST endpoints backed by Prometheus for
-  history, plus a WebSocket live-poll path (~1-2s) hitting `gb10-node-exporter`/
-  vLLM/`llama-router-exporter` directly for the near-real-time view. See
-  [architecture.md](architecture.md#live-view-fast-path).
-- [ ] Frontend MVP: single-node live view — GPU tiles (color-coded against the
-  [anomaly thresholds](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting)),
+- [ ] Scaffold the monorepo layout (`common/`, `exporters/`, `backend/`,
+  `frontend/`, `deploy/`) — see [app-design.md](app-design.md#repo-layout).
+- [ ] Backend API (Python 3.12 + FastAPI): REST endpoints backed by Prometheus
+  for history, plus a WebSocket live path (~1-2s, full snapshot, one shared
+  poller) hitting `gb10-node-exporter`/vLLM/`llama-router-exporter` directly.
+  See [app-design.md](app-design.md#api-surface).
+- [ ] Frontend MVP (Svelte 5 + Vite + TS, uPlot for charts): single-node live
+  view — GPU stat tiles color-coded against the
+  [anomaly thresholds](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting),
   per-process list sorted by GPU memory, loaded-models table, tokens/sec,
-  request queue depth. This is the "replaces SSH + nvtop/nvitop/sparkview"
-  milestone — worth actually using day-to-day before calling Phase 1 done.
+  request queue depth. Follow the form/color rules in
+  [app-design.md](app-design.md#visual-design). This is the "replaces SSH +
+  nvtop/nvitop/sparkview" milestone — worth actually using day-to-day before
+  calling Phase 1 done.
 
 ## Phase 2 — Multi-node cluster
 
@@ -85,9 +90,10 @@ Triggered by the 2 additional GX10 units arriving.
 These are flagged inline in the other docs too — collected here so they don't
 get lost:
 
-1. **Backend/frontend language & framework.** Proposed FastAPI + React/Vite in
-   [architecture.md](architecture.md); open to Go/Node or a lighter frontend
-   (Svelte/htmx) if preferred.
+1. ~~**Backend/frontend language & framework.**~~ **Settled:** Python 3.12 +
+   FastAPI (backend and exporters, sharing a `common/` package) and Svelte 5 +
+   Vite + TypeScript with uPlot for charts. See [app-design.md](app-design.md)
+   for the reasoning, API surface, and visual design rules.
 2. **Where the central Prometheus/backend/frontend stack runs** — on one of the
    3 GX10 nodes (simplest) vs. a separate always-on host (cleaner isolation).
    See [architecture.md](architecture.md#where-does-the-central-stack-run).

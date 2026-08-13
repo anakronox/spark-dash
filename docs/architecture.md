@@ -122,13 +122,13 @@ requires a host kernel module.
     pushes updates to connected clients — deliberately bypassing Prometheus's
     coarser scrape interval for this path, because "live" is the whole point
     (see [Live-view fast path](#live-view-fast-path)).
-  - Proposed: **Python + FastAPI** (good Prometheus client ecosystem,
-    async-friendly for fanning out polling requests across 3 nodes, native
-    WebSocket support, easy ARM64 support). Open to alternatives — flag if
-    you'd rather use Go or Node here.
-- **Frontend** — the actual dashboard UI. Proposed: **React + Vite**, or a
-  lighter alternative like Svelte/htmx if we want to minimize build tooling for
-  a homelab-scale project. Open decision — see [roadmap.md](roadmap.md).
+  - **Python 3.12 + FastAPI** (settled). Shares a `common/` package with the
+    exporters so metric models don't drift. See
+    [app-design.md](app-design.md) for the full API surface.
+- **Frontend** — the actual dashboard UI. **Svelte 5 + Vite + TypeScript**,
+  charts via uPlot (settled). Built to static assets and served by the backend
+  container — one less service, no CORS, same-origin WebSocket. See
+  [app-design.md](app-design.md).
 
 ### Live-view fast path
 
@@ -140,9 +140,12 @@ replacement" goal. So the live view is architecturally separate from the
 history view:
 
 - Backend polls each node's exporters directly (not through Prometheus) on a
-  ~1-2s interval and pushes deltas over a WebSocket to connected clients.
-  Only runs this tight loop for nodes/panels actually being viewed — no point
-  polling at 1s when no one has the dashboard open.
+  ~1-2s interval and pushes a full snapshot over a WebSocket to connected
+  clients (full snapshot, not deltas — a few KB at 1Hz makes both sides
+  stateless; see [app-design.md](app-design.md#websocket--live-view)). One
+  shared poller feeds all subscribers, and the loop idles entirely when no
+  clients are connected — no point polling at 1s when no one has the
+  dashboard open.
 - Required panel: **per-node process list**, sorted by GPU memory usage
   (mirrors `nvitop`/`sparkview`'s process view) — process name, PID, GPU
   memory, which runtime/model it belongs to. Display-only, no kill/control
