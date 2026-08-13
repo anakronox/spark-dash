@@ -51,7 +51,7 @@ class SnapshotBuilder:
         self._llama = LlamaRouterCollector(
             settings.llama_router_endpoints,
             timeout=settings.llama_router_timeout_s,
-            scrape_loaded_model_metrics=settings.llama_scrape_loaded_model_metrics,
+            metrics_allowlist=settings.llama_metrics_allowlist,
         )
         self._vllm = VllmCollector(settings.vllm_endpoints)
         # Built lazily: UMA detection needs NVML's total, which isn't known

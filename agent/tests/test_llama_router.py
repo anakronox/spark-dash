@@ -126,7 +126,9 @@ class TestNeverWakeASleepingModel:
                 model_entry("cold", "unloaded"),
             ]
         )
-        LlamaRouterCollector(["http://r"], transport=router.transport()).collect()
+        LlamaRouterCollector(
+            ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
+        ).collect()
 
         assert len(router.metrics_requests) == 1
         assert "active-one" in router.metrics_requests[0]
@@ -143,15 +145,64 @@ class TestNeverWakeASleepingModel:
         # The verbatim value is retained so this is diagnosable, not silent.
         assert results[0].models[0].raw_status == "some-future-state"
 
-    def test_scrape_disabled_touches_nothing(self):
+    def test_scraping_is_off_by_default(self):
+        """The default must be safe: an ACTIVE model on a router that wasn't
+        explicitly opted in is still never requested."""
         router = RecordingRouter([model_entry("active-one", "loaded")])
-        collector = LlamaRouterCollector(
-            ["http://r"], transport=router.transport(), scrape_loaded_model_metrics=False
-        )
-        results = collector.collect()
+        results = LlamaRouterCollector(["http://r"], transport=router.transport()).collect()
 
         assert router.metrics_requests == []
+        # State is still fully visible — only the per-model detail is withheld.
         assert results[0].models[0].state is ModelState.ACTIVE
+
+    def test_allowlist_is_per_router(self):
+        """The 8108 scenario: opting a small-model router in must not opt in
+        the one hosting 70B models."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requested.append(str(request.url))
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"data": [model_entry("m", "loaded")]})
+            if request.url.path == "/props":
+                return httpx.Response(200, json=PROPS_BODY)
+            return httpx.Response(200, text=METRICS_BODY)
+
+        requested: list[str] = []
+        LlamaRouterCollector(
+            ["http://small:8001", "http://huge:8108"],
+            transport=httpx.MockTransport(handler),
+            metrics_allowlist=["http://small:8001"],
+        ).collect()
+
+        metrics_urls = [u for u in requested if "/metrics" in u]
+        assert len(metrics_urls) == 1
+        assert "small:8001" in metrics_urls[0]
+        assert not any("huge:8108" in u for u in metrics_urls)
+
+    def test_allowlisted_router_still_skips_non_active_models(self):
+        """Both conditions are required — opting a router in does not authorize
+        touching its sleeping models."""
+        router = RecordingRouter(
+            [model_entry("sleeper", "sleeping"), model_entry("cold", "unloaded")]
+        )
+        LlamaRouterCollector(
+            ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
+        ).collect()
+
+        assert router.metrics_requests == []
+
+    def test_ready_is_not_treated_as_active(self):
+        """"ready" plausibly means "ready to be loaded" rather than "loaded".
+        Acting on that guess against a 70B model could exhaust the shared pool,
+        so it maps to UNKNOWN and is never scraped."""
+        router = RecordingRouter([model_entry("big-70b", "ready")])
+        results = LlamaRouterCollector(
+            ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
+        ).collect()
+
+        assert router.metrics_requests == []
+        assert results[0].models[0].state is ModelState.UNKNOWN
+        assert results[0].models[0].raw_status == "ready"
 
 
 class TestParseModelState:
@@ -167,8 +218,9 @@ class TestParseModelState:
         [
             ("active", ModelState.ACTIVE),
             ("loaded", ModelState.ACTIVE),
-            ("ready", ModelState.ACTIVE),
             ("running", ModelState.ACTIVE),
+            # Deliberately NOT active — ambiguous, see the status map.
+            ("ready", ModelState.UNKNOWN),
             ("sleeping", ModelState.SLEEPING),
             ("idle", ModelState.SLEEPING),
             ("loading", ModelState.LOADING),
@@ -242,7 +294,9 @@ class TestRouterProperties:
 class TestActiveModelMetrics:
     def test_parses_metrics_for_active_model(self):
         router = RecordingRouter([model_entry("m", "loaded")])
-        result = LlamaRouterCollector(["http://r"], transport=router.transport()).collect()[0]
+        result = LlamaRouterCollector(
+            ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
+        ).collect()[0]
         model = result.models[0]
 
         assert model.requests_running == 2
@@ -335,3 +389,12 @@ class TestRateTracker:
 
         assert tracker.rate("gone", 500.0, now=1.0) == 0.0
         assert tracker.rate("kept", 200.0, now=1.0) == pytest.approx(100.0)
+
+
+def test_scrapeable_states_contains_only_active():
+    """A guard on the safety invariant itself: if someone widens this set, the
+    blast radius is loading a multi-billion-parameter model into a shared pool.
+    """
+    from spark_dash_common.models import SCRAPEABLE_STATES
+
+    assert frozenset({ModelState.ACTIVE}) == SCRAPEABLE_STATES

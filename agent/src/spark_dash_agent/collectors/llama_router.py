@@ -44,20 +44,32 @@ _M_REQUESTS_PROCESSING = "llamacpp:requests_processing"
 _M_REQUESTS_DEFERRED = "llamacpp:requests_deferred"
 _M_KV_CACHE_RATIO = "llamacpp:kv_cache_usage_ratio"
 
-# Router `status.value` strings → our state enum. Observed on b10380:
-# "sleeping" (process alive, weights released) and "unloaded" (no process).
-# Anything unrecognized maps to UNKNOWN, which is NOT scrapeable — so a future
-# llama.cpp release inventing a new status can never trick us into waking a
-# model.
+# Router `status.value` strings → our state enum.
+#
+# CONFIRMED on b10380 (GX10): "sleeping" and "unloaded".
+#
+# The ACTIVE entries are INFERRED, not observed — no loaded model has been seen
+# in the wild yet. That asymmetry is dangerous, because mapping a status to
+# ACTIVE authorizes a `/metrics?model=` request, which on an autoload router
+# LOADS the model. So the ACTIVE set is kept deliberately narrow: only values
+# that unambiguously mean "weights resident and serving".
+#
+# "ready" was deliberately REMOVED. It plausibly means "configured and ready to
+# be loaded" rather than "loaded" — and on a router hosting 70B models, acting
+# on that guess could pull tens of GB into a shared pool and OOM the node.
+# Anything unrecognized maps to UNKNOWN, which is never scraped.
 _STATUS_MAP = {
+    # --- inferred: weights resident ---
     "active": ModelState.ACTIVE,
     "loaded": ModelState.ACTIVE,
-    "ready": ModelState.ACTIVE,
     "running": ModelState.ACTIVE,
+    # --- confirmed: process alive, weights released ---
     "sleeping": ModelState.SLEEPING,
     "idle": ModelState.SLEEPING,
+    # --- transitional ---
     "loading": ModelState.LOADING,
     "starting": ModelState.LOADING,
+    # --- confirmed: no process ---
     "unloaded": ModelState.UNLOADED,
     "stopped": ModelState.UNLOADED,
 }
@@ -156,15 +168,29 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         base_urls: list[str],
         *,
         timeout: float = 2.0,
-        scrape_loaded_model_metrics: bool = True,
+        metrics_allowlist: list[str] | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._base_urls = [u.rstrip("/") for u in base_urls if u]
         self._timeout = timeout
-        # Escape hatch: if a router build turns out to autoload from the
-        # discovery path too, set this False to keep model states without ever
-        # fetching /metrics.
-        self._scrape_metrics = scrape_loaded_model_metrics
+
+        # Per-router opt-in for `/metrics?model=` requests, EMPTY BY DEFAULT.
+        #
+        # This is the safety boundary. A router not on this list is only ever
+        # read via /v1/models and /props, neither of which takes a model
+        # parameter and neither of which can cause a load. Opting in is a
+        # per-router decision because the blast radius differs: waking a 12B
+        # model is a nuisance, waking a 70B one on a shared 128GB pool can
+        # exhaust the node and take down everything else running on the GPU.
+        self._metrics_allowlist = {u.rstrip("/") for u in (metrics_allowlist or []) if u}
+        for url in self._metrics_allowlist:
+            log.warning(
+                "per-model metrics scraping ENABLED for %s — this issues "
+                "/metrics?model= requests, which load the model if the router "
+                "reports a state we treat as active",
+                url,
+            )
+
         # Test seam — lets the suite assert which URLs are actually requested,
         # which is how the "never wake a sleeping model" guarantee is verified.
         self._transport = transport
@@ -254,12 +280,15 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         return models
 
     def _enrich_active_model(self, client: httpx.Client, base_url: str, model: RouterModel) -> None:
-        """Fetch metrics for an ACTIVE model.
+        """Fetch metrics for an ACTIVE model on an allowlisted router.
 
-        Only ever called for models already reported active — that precondition
-        is the entire safety property of this module.
+        TWO independent conditions must both hold before this issues a request:
+        the router is explicitly opted in, and the model is already ACTIVE.
+        Either one alone would be enough in theory; requiring both means a
+        mistake in the status mapping cannot by itself load a model on a router
+        the operator never opted in.
         """
-        if not self._scrape_metrics:
+        if base_url not in self._metrics_allowlist:
             return
 
         try:

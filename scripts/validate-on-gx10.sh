@@ -46,6 +46,20 @@ print('' if d is None else d)
 
 echo "spark-dash-agent validation — $(q node_id) @ $AGENT_URL"
 
+hdr "Node health"
+HEALTH=$(q health)
+REASONS=$(printf '%s' "$SNAP" | python3 -c "
+import json,sys
+print('; '.join(json.load(sys.stdin).get('health_reasons') or []))
+")
+case "$HEALTH" in
+  good)     ok "health: good" ;;
+  warning)  warn "health: warning — $REASONS" ;;
+  serious)  warn "health: serious — $REASONS" ;;
+  critical) bad "health: critical — $REASONS" ;;
+  *)        warn "health: $HEALTH" ;;
+esac
+
 # ---------------------------------------------------------------- collectors
 hdr "Collectors"
 ERRORS=$(printf '%s' "$SNAP" | python3 -c "
@@ -121,6 +135,19 @@ if [[ -n "$GPU_UTIL" ]]; then
     else
       bad "power draw implausible (${POWER}W) — check the mW→W conversion"
     fi
+  fi
+
+  # Sustained load is measured in wall-clock seconds, so a single poll can
+  # never report anything but IDLE. Poll for a few seconds before judging.
+  if python3 -c "import sys; sys.exit(0 if $GPU_UTIL >= 30 else 1)"; then
+    info "GPU is loaded — sampling for 8s to let sustained-load detection settle"
+    for _ in 1 2 3 4 5 6 7 8; do
+      sleep 1
+      SNAP2=$(curl -sf --max-time 5 "$AGENT_URL/snapshot" 2>/dev/null)
+      [[ -n "$SNAP2" ]] && SNAP="$SNAP2"
+    done
+    GPU_UTIL=$(q gpu.util_pct); CLOCK=$(q gpu.clock_mhz); CLOCK_STATE=$(q gpu.clock_state)
+    info "after settling: util ${GPU_UTIL}%  clock ${CLOCK}MHz [${CLOCK_STATE}]"
   fi
 
   # Load-gating: at idle the state must be IDLE, never THROTTLED.
@@ -225,10 +252,16 @@ else
   done <<< "$ROUTERS"
 
   echo
-  echo "  ${c_warn}THE CRITICAL CHECK${c_off} — leave the agent running ~10 minutes with"
-  echo "  models sleeping, then re-run. Sleeping models must STILL be sleeping."
-  echo "  If any flipped to active, stop the agent and set"
-  echo "  LLAMA_SCRAPE_LOADED_MODEL_METRICS=false (autoload bug #23096)."
+  SCRAPE_ON=$(printf '%s' "$SNAP" | python3 -c "
+import json,sys
+print('yes' if any(m.get('tokens_per_sec') for r in ((json.load(sys.stdin).get('runtimes') or {}).get('llama_cpp') or []) for m in (r['models'] or [])) else 'no')
+" 2>/dev/null || echo "no")
+  info "per-model metrics scraping is opt-in per router via LLAMA_METRICS_ROUTERS"
+  info "(unset = no /metrics?model= request is ever issued to any router)"
+  echo
+  echo "  ${c_warn}PROVE IT${c_off} — run the soak test, which polls continuously and"
+  echo "  reports any model that wakes:"
+  echo "    ./scripts/soak-test-autoload.sh 10"
 fi
 
 VLLM_COUNT=$(printf '%s' "$SNAP" | python3 -c "

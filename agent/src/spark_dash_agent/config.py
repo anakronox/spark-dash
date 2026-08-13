@@ -31,9 +31,13 @@ class Settings(BaseSettings):
     # blank on a node that serves only vLLM.
     llama_router_urls: str = ""
     llama_router_timeout_s: float = 2.0
-    # Set False if a router build turns out to autoload from the discovery path
-    # too — keeps the loaded-model list without ever fetching /metrics.
-    llama_scrape_loaded_model_metrics: bool = True
+    # Routers where per-model `/metrics?model=` requests are permitted.
+    # EMPTY BY DEFAULT — that request loads the model on an autoload router, so
+    # it is opt-in per router rather than a global switch. Waking a 12B model
+    # is a nuisance; waking a 70B one on a shared 128GB pool can exhaust the
+    # node. Routers not listed here are still fully visible via /v1/models and
+    # /props; only per-model throughput/KV-cache detail is withheld.
+    llama_metrics_routers: str = ""
 
     # Comma-separated vLLM /metrics endpoints on this node.
     vllm_urls: str = ""
@@ -43,6 +47,10 @@ class Settings(BaseSettings):
     @property
     def llama_router_endpoints(self) -> list[str]:
         return _split(self.llama_router_urls)
+
+    @property
+    def llama_metrics_allowlist(self) -> list[str]:
+        return _split(self.llama_metrics_routers)
 
     @property
     def vllm_endpoints(self) -> list[str]:

@@ -63,6 +63,10 @@ services:
       # Leave blank on a node that serves only vLLM.
       - LLAMA_ROUTER_URLS=${LLAMA_ROUTER_URLS:-}
 
+      # Opt-in allowlist for /metrics?model= requests, which LOAD the model on
+      # an autoload router. Empty means no such request is ever issued.
+      - LLAMA_METRICS_ROUTERS=${LLAMA_METRICS_ROUTERS:-}
+
       # Comma-separated vLLM /metrics endpoints on this node.
       - VLLM_URLS=${VLLM_URLS:-}
 
