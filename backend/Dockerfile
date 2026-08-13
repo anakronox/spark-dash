@@ -42,6 +42,12 @@ COPY --from=builder /build/.venv /app/.venv
 # COPY --from=frontend-builder /build/dist /app/static
 
 RUN useradd --system --uid 10002 --no-create-home sparkdash
+
+# Seed the targets directory with the right ownership. Docker copies an image
+# directory's ownership onto a freshly created named volume, which is what lets
+# the non-root user render scrape targets into it.
+RUN mkdir -p /etc/prometheus/targets && chown -R 10002:10002 /etc/prometheus/targets
+
 USER 10002
 
 EXPOSE 8080

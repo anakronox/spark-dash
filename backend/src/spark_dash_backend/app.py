@@ -33,7 +33,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     logging.basicConfig(level=settings.log_level.upper())
 
-    inventory = Inventory(settings.agent_targets_file, ttl_s=settings.inventory_ttl_s)
+    inventory = Inventory(
+        nodes_env=settings.spark_nodes,
+        targets_file=settings.agent_targets_file,
+        prometheus_targets_dir=settings.prometheus_targets_dir,
+        agent_port=settings.agent_port,
+        node_exporter_port=settings.node_exporter_port,
+        ttl_s=settings.inventory_ttl_s,
+    )
     poller = LivePoller(
         inventory,
         interval_s=settings.live_poll_interval_s,
@@ -43,7 +50,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        log.info("backend starting; %d node(s) in inventory", len(inventory.nodes()))
+        nodes = inventory.nodes()
+        log.info(
+            "backend starting; %d node(s) from %s: %s",
+            len(nodes),
+            inventory.source,
+            ", ".join(n.node_id for n in nodes) or "(none)",
+        )
+        # Render Prometheus's targets from the same list we poll, so the two
+        # views of the cluster cannot disagree.
+        inventory.sync_prometheus_targets()
         yield
 
     app = FastAPI(title="spark-dash", summary="GB10 inference cluster dashboard", lifespan=lifespan)
@@ -81,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {
                     "node_id": node.node_id,
                     "address": node.address,
+                    "host": node.host,
                     "up": by_id[node.node_id].up if node.node_id in by_id else False,
                     "health": (
                         by_id[node.node_id].health.value if node.node_id in by_id else "critical"

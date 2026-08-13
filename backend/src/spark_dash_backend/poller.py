@@ -23,7 +23,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
 import httpx
-from spark_dash_common.models import ClusterSnapshot, NodeSnapshot
+from spark_dash_common.models import ClusterSnapshot, HealthState, NodeSnapshot
 
 from spark_dash_backend.inventory import Inventory, Node
 
@@ -47,6 +47,11 @@ async def fetch_node(client: httpx.AsyncClient, node: Node) -> NodeSnapshot:
             node_id=node.node_id,
             ts=datetime.now(UTC),
             up=False,
+            # Health must be set explicitly here. It defaults to GOOD, and an
+            # unreachable node reporting "good" is worse than useless — it's
+            # the single most misleading thing this dashboard could show.
+            health=HealthState.CRITICAL,
+            health_reasons=["unreachable"],
             errors={"agent": f"{type(exc).__name__}: {exc}"},
         )
 

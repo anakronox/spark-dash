@@ -1,5 +1,10 @@
 # vLLM scrape targets — Prometheus file_sd format.
 #
+# HAND-MANAGED, unlike agents.yml and node-exporters.yml which the backend
+# renders from SPARK_NODES. vLLM instances don't map one-per-node — a node can
+# run several on arbitrary ports — so there's nothing to derive from the node
+# list.
+#
 # vLLM exposes /metrics natively, so Prometheus scrapes it directly rather than
 # going through the agent. Empty until vLLM instances are running.
 #

@@ -78,9 +78,6 @@ def node(node_id: str, *, up: bool = True, util: float = 50.0) -> NodeSnapshot:
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    targets = tmp_path / "agents.yml"
-    targets.write_text(INVENTORY)
-
     async def fake_poll_once(self):
         snap = ClusterSnapshot(
             ts=datetime.now(UTC), nodes=[node("gx10-1"), node("gx10-2", up=False)]
@@ -94,7 +91,14 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr("spark_dash_backend.poller.LivePoller.poll_once", fake_poll_once)
     monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.healthy", fake_healthy)
 
-    app = create_app(Settings(agent_targets_file=targets, static_dir=tmp_path / "nostatic"))
+    # Env-driven inventory: the path production actually uses.
+    app = create_app(
+        Settings(
+            spark_nodes="gx10-1=192.168.50.61,gx10-2=192.168.50.62",
+            prometheus_targets_dir=tmp_path,
+            static_dir=tmp_path / "nostatic",
+        )
+    )
     with TestClient(app) as c:
         yield c
 
@@ -163,8 +167,6 @@ def test_health_ok_when_everything_reachable(client):
 
 def test_health_degraded_when_prometheus_unreachable(tmp_path, monkeypatch):
     """Running but blind must not pass a naive uptime check."""
-    targets = tmp_path / "agents.yml"
-    targets.write_text(INVENTORY)
 
     async def unhealthy(self):
         return False
@@ -177,7 +179,13 @@ def test_health_degraded_when_prometheus_unreachable(tmp_path, monkeypatch):
     monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.healthy", unhealthy)
     monkeypatch.setattr("spark_dash_backend.poller.LivePoller.poll_once", fake_poll_once)
 
-    app = create_app(Settings(agent_targets_file=targets, static_dir=tmp_path / "nostatic"))
+    app = create_app(
+        Settings(
+            spark_nodes="gx10-1=192.168.50.61",
+            prometheus_targets_dir=tmp_path,
+            static_dir=tmp_path / "nostatic",
+        )
+    )
     with TestClient(app) as c:
         body = c.get("/health").json()
 
@@ -186,15 +194,22 @@ def test_health_degraded_when_prometheus_unreachable(tmp_path, monkeypatch):
 
 
 def test_health_degraded_when_inventory_empty(tmp_path, monkeypatch):
-    empty = tmp_path / "agents.yml"
-    empty.write_text("[]")
+    """No SPARK_NODES and no target file: the dashboard has nothing to show,
+    and should say so rather than looking healthy-but-empty."""
 
     async def healthy(self):
         return True
 
     monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.healthy", healthy)
 
-    app = create_app(Settings(agent_targets_file=empty, static_dir=tmp_path / "nostatic"))
+    app = create_app(
+        Settings(
+            spark_nodes="",
+            agent_targets_file=tmp_path / "missing.yml",
+            prometheus_targets_dir=tmp_path,
+            static_dir=tmp_path / "nostatic",
+        )
+    )
     with TestClient(app) as c:
         body = c.get("/health").json()
 
@@ -209,3 +224,31 @@ def test_websocket_streams_snapshots(client):
         payload = ws.receive_json()
     assert "nodes" in payload
     assert "ts" in payload
+
+
+def test_startup_renders_prometheus_targets(tmp_path, monkeypatch):
+    """The point of SPARK_NODES: Prometheus's scrape targets are derived from
+    the same list the live view polls, so the two can't disagree."""
+
+    async def healthy(self):
+        return True
+
+    monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.healthy", healthy)
+
+    app = create_app(
+        Settings(
+            spark_nodes="gx10-1=192.168.50.61,gx10-2=192.168.50.62",
+            prometheus_targets_dir=tmp_path,
+            static_dir=tmp_path / "nostatic",
+        )
+    )
+    with TestClient(app):
+        pass
+
+    agents = (tmp_path / "agents.yml").read_text()
+    exporters = (tmp_path / "node-exporters.yml").read_text()
+
+    assert "192.168.50.61:9500" in agents
+    assert "192.168.50.62:9500" in agents
+    assert "192.168.50.61:9100" in exporters
+    assert "node: gx10-2" in agents

@@ -12,7 +12,7 @@ import httpx
 import pytest
 from spark_dash_backend.inventory import Node
 from spark_dash_backend.poller import LivePoller, fetch_node, gather_cluster
-from spark_dash_common.models import GpuMetrics, NodeSnapshot
+from spark_dash_common.models import GpuMetrics, HealthState, NodeSnapshot
 
 
 def snapshot_json(node_id: str = "gx10-1", util: float = 42.0) -> dict:
@@ -53,7 +53,7 @@ class CountingAgent:
 async def test_fetch_node_returns_snapshot():
     transport = httpx.MockTransport(lambda r: httpx.Response(200, json=snapshot_json()))
     async with httpx.AsyncClient(transport=transport) as client:
-        snap = await fetch_node(client, Node("gx10-1", "host:9500"))
+        snap = await fetch_node(client, Node("gx10-1", "host"))
     assert snap.up is True
     assert snap.gpu.util_pct == 42.0
 
@@ -66,18 +66,23 @@ async def test_unreachable_node_becomes_a_down_marker_not_an_omission():
         raise httpx.ConnectError("refused")
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        snap = await fetch_node(client, Node("gx10-2", "dead:9500"))
+        snap = await fetch_node(client, Node("gx10-2", "dead"))
 
     assert snap.node_id == "gx10-2"
     assert snap.up is False
     assert "agent" in snap.errors
+    # A down node must NOT report good health — health defaults to GOOD, so
+    # forgetting to set it here would make an unreachable node look fine.
+    assert snap.health is HealthState.CRITICAL
+    assert snap.health_reasons == ["unreachable"]
 
 
 async def test_bad_payload_becomes_a_down_marker():
     transport = httpx.MockTransport(lambda r: httpx.Response(200, json={"garbage": True}))
     async with httpx.AsyncClient(transport=transport) as client:
-        snap = await fetch_node(client, Node("gx10-1", "host:9500"))
+        snap = await fetch_node(client, Node("gx10-1", "host"))
     assert snap.up is False
+    assert snap.health is HealthState.CRITICAL
 
 
 async def test_gather_polls_nodes_concurrently():
@@ -91,7 +96,7 @@ async def test_gather_polls_nodes_concurrently():
         return httpx.Response(200, json=snapshot_json())
 
     transport = httpx.MockTransport(slow_handler)
-    nodes = [Node("slow", "slow:9500"), Node("fast", "fast:9500")]
+    nodes = [Node("slow", "slow"), Node("fast", "fast")]
 
     async with httpx.AsyncClient(transport=transport) as client:
         result = await gather_cluster(client, nodes)
@@ -111,7 +116,7 @@ class TestSharedPolling:
     async def test_no_polling_without_subscribers(self):
         """The dashboard being closed means the GX10s hear nothing from us."""
         agent = CountingAgent()
-        inv = FakeInventory([Node("gx10-1", "host:9500")])
+        inv = FakeInventory([Node("gx10-1", "host")])
         poller = LivePoller(inv, interval_s=0.01)
 
         await asyncio.sleep(0.05)
@@ -127,7 +132,7 @@ class TestSharedPolling:
 
         monkeypatch.setattr("spark_dash_backend.poller.gather_cluster", gather)
 
-        inv = FakeInventory([Node("gx10-1", "host:9500")])
+        inv = FakeInventory([Node("gx10-1", "host")])
         poller = LivePoller(inv, interval_s=0.01)
 
         # Events rather than sleeps: the consumer holds the subscription open
@@ -168,7 +173,7 @@ class TestSharedPolling:
 
         monkeypatch.setattr("spark_dash_backend.poller.gather_cluster", counting_gather)
 
-        inv = FakeInventory([Node("gx10-1", "host:9500")])
+        inv = FakeInventory([Node("gx10-1", "host")])
         poller = LivePoller(inv, interval_s=0.02)
 
         async def consume():
@@ -193,7 +198,7 @@ class TestSharedPolling:
 
         monkeypatch.setattr("spark_dash_backend.poller.gather_cluster", gather)
 
-        inv = FakeInventory([Node("gx10-1", "host:9500")])
+        inv = FakeInventory([Node("gx10-1", "host")])
         poller = LivePoller(inv, interval_s=10.0)  # long, so only the cached one arrives
 
         async def first():
@@ -268,7 +273,7 @@ class TestSharedPolling:
 async def test_poll_once_works_without_the_loop():
     """REST endpoints need a snapshot even with no WebSocket client connected."""
     transport = httpx.MockTransport(lambda r: httpx.Response(200, json=snapshot_json()))
-    inv = FakeInventory([Node("gx10-1", "host:9500")])
+    inv = FakeInventory([Node("gx10-1", "host")])
     poller = LivePoller(inv)
 
     # Patch the client the poller builds internally.

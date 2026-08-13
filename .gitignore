@@ -17,3 +17,7 @@ frontend/dist/
 
 .env
 .DS_Store
+
+# Rendered by the backend from SPARK_NODES; not source
+deploy/central/targets/agents.yml
+deploy/central/targets/node-exporters.yml

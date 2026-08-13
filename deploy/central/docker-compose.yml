@@ -3,6 +3,11 @@
 # The reasoning is failure domains, not resources: "node down" is a primary
 # alert, so hosting Prometheus on node 1 means a node-1 crash destroys both the
 # node and the history explaining why. See docs/deployment.md.
+#
+# ADDING A NODE: edit SPARK_NODES in .env, then `docker compose up -d backend`.
+# That is the only place the cluster is defined. The backend renders
+# Prometheus's scrape targets from it, and Prometheus picks them up on its next
+# file_sd refresh without restarting.
 
 services:
   prometheus:
@@ -18,7 +23,8 @@ services:
       - '--web.enable-lifecycle'
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./targets:/etc/prometheus/targets:ro
+      # Read-only: the backend owns these files, Prometheus only consumes them.
+      - prom-targets:/etc/prometheus/targets:ro
       - prom-data:/prometheus
     ports:
       # Bound to localhost by default: Prometheus has no auth of its own, and
@@ -35,14 +41,19 @@ services:
     depends_on:
       - prometheus
     environment:
+      # ---- the only place nodes are defined ----
+      #   SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62
+      - SPARK_NODES=${SPARK_NODES:?set SPARK_NODES in .env}
+      - AGENT_PORT=${AGENT_PORT:-9500}
+      - NODE_EXPORTER_PORT=${NODE_EXPORTER_PORT:-9100}
+
       - PROMETHEUS_URL=http://prometheus:9090
-      # Same inventory Prometheus uses — one source of truth for which nodes
-      # exist, so the live view and the history can't disagree.
-      - AGENT_TARGETS_FILE=/etc/spark-dash/targets/agents.yml
+      - PROMETHEUS_TARGETS_DIR=/etc/prometheus/targets
       - LIVE_POLL_INTERVAL_S=${LIVE_POLL_INTERVAL_S:-2.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
-      - ./targets:/etc/spark-dash/targets:ro
+      # Writable here — this is the service that renders the target files.
+      - prom-targets:/etc/prometheus/targets
     ports:
       # This is what cloudflared and the LAN both point at.
       - "${BACKEND_BIND:-0.0.0.0}:8080:8080"
@@ -51,6 +62,10 @@ services:
 
 volumes:
   prom-data:
+  # Shared so the backend can write scrape targets and Prometheus can read
+  # them. Ownership is seeded from the backend image so the non-root user can
+  # write to a freshly created volume.
+  prom-targets:
 
 networks:
   sparkdash:
