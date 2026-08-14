@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -27,6 +28,15 @@ from spark_dash_backend.poller import LivePoller
 from spark_dash_backend.prometheus import HISTORY_QUERIES, PrometheusClient, PrometheusError
 
 log = logging.getLogger(__name__)
+
+# How stale the cached cluster view may be before /health polls afresh. Short
+# enough that a health check reflects reality, long enough that a monitoring
+# system hitting it every few seconds doesn't drive the poll rate.
+HEALTH_SNAPSHOT_MAX_AGE_S = 30.0
+
+
+def _age_seconds(ts: datetime) -> float:
+    return (datetime.now(UTC) - ts).total_seconds()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -221,7 +231,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         nodes = inventory.nodes()
         prom_ok = await prom.healthy()
 
+        # Poll if we have no reasonably fresh view of the cluster. The live
+        # poller only runs while a dashboard is open, so without this the
+        # check would report "ok" having never contacted a node — exactly the
+        # blind-but-green state this endpoint exists to catch.
         snapshot = poller.latest
+        if snapshot is None or _age_seconds(snapshot.ts) > HEALTH_SNAPSHOT_MAX_AGE_S:
+            try:
+                snapshot = await poller.poll_once()
+            except Exception:  # noqa: BLE001 — report the failure, don't raise
+                log.exception("health check poll failed")
+                snapshot = None
+
         nodes_up = snapshot.nodes_up if snapshot else None
 
         problems = []
@@ -231,6 +252,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             problems.append("inventory empty")
         if nodes_up == 0 and nodes:
             problems.append("no nodes reachable")
+        elif nodes_up is not None and nodes and nodes_up < len(nodes):
+            # Partial outage is degraded, not ok: on a 3-node cluster losing
+            # one node is exactly what this should surface.
+            problems.append(f"{len(nodes) - nodes_up} of {len(nodes)} node(s) unreachable")
+        elif nodes_up is None:
+            problems.append("could not reach any node to check")
 
         return {
             "status": "degraded" if problems else "ok",

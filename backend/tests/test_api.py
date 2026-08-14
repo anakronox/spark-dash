@@ -158,11 +158,16 @@ def test_history_rejects_absurd_window(client):
                                               "minutes": 999999}).status_code == 422
 
 
-def test_health_ok_when_everything_reachable(client):
+def test_health_flags_the_down_node(client):
+    """The fixture has gx10-2 down, so 1-of-2 reachable must read as degraded.
+    Rounding a partial outage up to "ok" is how a dead node goes unnoticed."""
     body = client.get("/health").json()
-    assert body["status"] == "ok"
+    assert body["status"] == "degraded"
     assert body["nodes_configured"] == 2
-    assert body["problems"] == []
+    assert body["nodes_up"] == 1
+    assert any("1 of 2" in p for p in body["problems"])
+    # Prometheus is fine here; only the node count is the problem.
+    assert body["prometheus"] == "ok"
 
 
 def test_health_degraded_when_prometheus_unreachable(tmp_path, monkeypatch):
@@ -252,3 +257,94 @@ def test_startup_renders_prometheus_targets(tmp_path, monkeypatch):
     assert "192.168.50.62:9500" in agents
     assert "192.168.50.61:9100" in exporters
     assert "node: gx10-2" in agents
+
+
+class TestHealthActuallyChecksNodes:
+    """Regression: /health reported "ok" with nodes_up null, having never
+    contacted a node. The live poller only runs while a dashboard is open, so
+    a monitoring system would have been watching a green light that meant
+    nothing — the exact blind-but-green state this endpoint exists to catch.
+    """
+
+    def _app(self, tmp_path, monkeypatch, *, nodes_up: int, configured: str):
+        async def healthy(self):
+            return True
+
+        polled = {"count": 0}
+
+        async def fake_poll_once(self):
+            polled["count"] += 1
+            snap = ClusterSnapshot(
+                ts=datetime.now(UTC),
+                nodes=[node(f"n{i}", up=i < nodes_up) for i in range(len(configured.split(",")))],
+            )
+            self._latest = snap
+            return snap
+
+        monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.healthy", healthy)
+        monkeypatch.setattr("spark_dash_backend.poller.LivePoller.poll_once", fake_poll_once)
+
+        app = create_app(
+            Settings(
+                spark_nodes=configured,
+                prometheus_targets_dir=tmp_path,
+                static_dir=tmp_path / "nostatic",
+            )
+        )
+        return app, polled
+
+    def test_polls_when_it_has_no_snapshot(self, tmp_path, monkeypatch):
+        app, polled = self._app(
+            tmp_path, monkeypatch, nodes_up=1, configured="n0=10.0.0.1"
+        )
+        with TestClient(app) as c:
+            body = c.get("/health").json()
+
+        assert polled["count"] >= 1, "health must contact nodes, not trust an empty cache"
+        assert body["nodes_up"] == 1
+        assert body["status"] == "ok"
+
+    def test_all_nodes_down_is_degraded(self, tmp_path, monkeypatch):
+        app, _ = self._app(tmp_path, monkeypatch, nodes_up=0, configured="n0=10.0.0.1")
+        with TestClient(app) as c:
+            body = c.get("/health").json()
+
+        assert body["status"] == "degraded"
+        assert "no nodes reachable" in body["problems"]
+
+    def test_partial_outage_is_degraded(self, tmp_path, monkeypatch):
+        """On a 3-node cluster, losing one node is exactly what this should
+        surface — not round up to healthy."""
+        app, _ = self._app(
+            tmp_path, monkeypatch, nodes_up=2, configured="n0=10.0.0.1,n1=10.0.0.2,n2=10.0.0.3"
+        )
+        with TestClient(app) as c:
+            body = c.get("/health").json()
+
+        assert body["status"] == "degraded"
+        assert any("1 of 3" in p for p in body["problems"])
+
+    def test_poll_failure_is_reported_not_raised(self, tmp_path, monkeypatch):
+        async def healthy(self):
+            return True
+
+        async def boom(self):
+            raise RuntimeError("network gone")
+
+        monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.healthy", healthy)
+        monkeypatch.setattr("spark_dash_backend.poller.LivePoller.poll_once", boom)
+
+        app = create_app(
+            Settings(
+                spark_nodes="n0=10.0.0.1",
+                prometheus_targets_dir=tmp_path,
+                static_dir=tmp_path / "nostatic",
+            )
+        )
+        with TestClient(app) as c:
+            resp = c.get("/health")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "degraded"
+        assert "could not reach any node to check" in body["problems"]
