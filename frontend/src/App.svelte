@@ -4,6 +4,7 @@
   import ModelsTable from './components/ModelsTable.svelte';
   import NodeCard from './components/NodeCard.svelte';
   import ProcessTable from './components/ProcessTable.svelte';
+  import Trends from './components/Trends.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { gib, num } from './lib/format';
   import type { NodeSnapshot } from './lib/types';
@@ -77,10 +78,19 @@
 
   // Theme is a deliberate choice, not an automatic inversion: both modes were
   // stepped separately. Dark leads because this sits beside a terminal.
+  //
+  // The DOM attribute is set SYNCHRONOUSLY rather than in an $effect. Charts
+  // draw to a canvas, so they resolve CSS custom properties to literal colours
+  // at build time — and effect ordering isn't guaranteed, so a chart rebuilding
+  // before the attribute landed would read the outgoing theme's values. That
+  // showed up as near-black gridlines on the light background.
+  function applyTheme(next: 'dark' | 'light') {
+    document.documentElement.dataset.theme = next;
+    theme = next;
+  }
+
   let theme = $state<'dark' | 'light'>('dark');
-  $effect(() => {
-    document.documentElement.dataset.theme = theme;
-  });
+  applyTheme('dark');
 </script>
 
 <div class="shell" class:stale={feed.stale}>
@@ -98,7 +108,7 @@
       />
       <button
         class="theme"
-        onclick={() => (theme = theme === 'dark' ? 'light' : 'dark')}
+        onclick={() => applyTheme(theme === 'dark' ? 'light' : 'dark')}
         aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
       >
         {theme === 'dark' ? 'light' : 'dark'}
@@ -177,6 +187,9 @@
 
     <ModelsTable {nodes} />
     <ProcessTable {nodes} />
+    <!-- History last: the live state is what you came for; this is what you
+         scroll to when the live state raises a question. -->
+    <Trends nodeIds={nodes.map((n) => n.node_id)} {theme} />
   {:else if feed.state !== 'offline'}
     <p class="notice">Waiting for the first frame…</p>
   {/if}
