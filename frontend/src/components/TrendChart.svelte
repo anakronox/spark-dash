@@ -26,8 +26,9 @@
     slots: Map<string, number>;
     unit: string;
     percent?: boolean;
-    /** Recreates the chart; canvas colours can't follow CSS variables. */
-    theme: 'dark' | 'light';
+    /** Recreates the chart when it changes; canvas colours are resolved at
+     *  build time and can't follow CSS variables afterwards. */
+    theme: string;
     height?: number;
   }
 

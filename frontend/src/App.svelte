@@ -9,12 +9,14 @@
   import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
   import { Layout } from './lib/layout.svelte';
+  import { THEMES, Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { gib, num } from './lib/format';
   import type { NodeSnapshot } from './lib/types';
 
   const feed = new LiveFeed();
   const layout = new Layout();
+  const theme = new Theme();
 
   onMount(() => {
     feed.connect();
@@ -81,21 +83,6 @@
     return { tokensPerSec, largestFreeBytes, largestFreeWhere, up, total: nodes.length };
   });
 
-  // Theme is a deliberate choice, not an automatic inversion: both modes were
-  // stepped separately. Dark leads because this sits beside a terminal.
-  //
-  // The DOM attribute is set SYNCHRONOUSLY rather than in an $effect. Charts
-  // draw to a canvas, so they resolve CSS custom properties to literal colours
-  // at build time — and effect ordering isn't guaranteed, so a chart rebuilding
-  // before the attribute landed would read the outgoing theme's values. That
-  // showed up as near-black gridlines on the light background.
-  function applyTheme(next: 'dark' | 'light') {
-    document.documentElement.dataset.theme = next;
-    theme = next;
-  }
-
-  let theme = $state<'dark' | 'light'>('dark');
-  applyTheme('dark');
 </script>
 
 <div class="shell" class:stale={feed.stale}>
@@ -111,13 +98,17 @@
         tick={feed.tick}
         secondsSinceFrame={feed.secondsSinceFrame}
       />
-      <button
+      <label class="sr-only" for="theme">Theme</label>
+      <select
+        id="theme"
         class="theme"
-        onclick={() => applyTheme(theme === 'dark' ? 'light' : 'dark')}
-        aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+        value={theme.current}
+        onchange={(e) => theme.set(e.currentTarget.value as never)}
       >
-        {theme === 'dark' ? 'light' : 'dark'}
-      </button>
+        {#each THEMES as t (t.id)}
+          <option value={t.id}>{t.label}</option>
+        {/each}
+      </select>
     </div>
   </header>
 
@@ -207,7 +198,7 @@
           {:else if id === 'activity'}
             <SwapTimeline />
           {:else if id === 'history'}
-            <Trends nodeIds={nodes.map((n) => n.node_id)} {theme} />
+            <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.current} />
           {/if}
         </Draggable>
       {/each}
@@ -275,16 +266,28 @@
   }
 
   .theme {
+    font: inherit;
     font-size: 10px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--ink-muted);
-    padding: 3px 6px;
+    background: transparent;
+    border: 1px solid var(--rule);
+    padding: 2px 4px;
     border-radius: var(--radius);
   }
 
   .theme:hover {
     color: var(--ink);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .summary {

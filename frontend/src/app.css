@@ -45,6 +45,44 @@
   --radius: 3px;
 }
 
+/* CYBERPUNK ---------------------------------------------------------------
+ *
+ * Violet-black with neon cyan, magenta and violet. The trap with this look is
+ * that real neon is too *light* to carry data — pure #00f0ff sits well outside
+ * the usable lightness band, so a chart drawn in it glows and stops being
+ * readable. These are stepped down until they pass the same gates as every
+ * other theme, which keeps the glow while leaving the numbers legible.
+ *
+ * The node hues sit at CVD ΔE 8.0 — right on the target boundary, so they're
+ * only safe because every series is also directly labelled: node cards carry
+ * the node name and the chart legend names each line. Colour is never the sole
+ * distinction here.
+ */
+:root[data-theme='cyberpunk'] {
+  color-scheme: dark;
+  --page: #08060f;
+  --panel: #110d1c;
+  --panel-raised: #1a1330;
+  --rule: #2b2047;
+  --track: #1a1330;
+
+  --ink: #f0e9ff;
+  --ink-2: #b9a8e0;
+  --ink-muted: #7a68a8;
+
+  --series-1: #1795b8; /* cyan    */
+  --series-2: #e0348f; /* magenta */
+  --series-3: #9b6cff; /* violet  */
+
+  /* Status keeps its meaning and its ordering; only the hue is pushed toward
+     the theme. Safe because every status ships with a glyph and a word, so
+     colour never carries the meaning alone. */
+  --good: #00d97e;
+  --warning: #ffc233;
+  --serious: #ff8a4c;
+  --critical: #ff2d6f;
+}
+
 :root[data-theme='light'] {
   color-scheme: light;
   --page: #f9f9f7;

@@ -12,9 +12,11 @@
   interface Props {
     /** Ordered node ids, so chart colours match the cards. */
     nodeIds: string[];
-    theme: 'dark' | 'light';
+    /** Changes whenever the theme does, so charts rebuild with the new
+     *  canvas colours. */
+    themeKey: string;
   }
-  const { nodeIds, theme }: Props = $props();
+  const { nodeIds, themeKey }: Props = $props();
 
   let metricKey = $state(METRICS[0].key);
   let rangeKey = $state(RANGES[0].key);
@@ -130,7 +132,7 @@
         {slots}
         unit={metric.unit}
         percent={metric.percent}
-        {theme}
+        theme={themeKey}
       />
     </div>
   {/if}
