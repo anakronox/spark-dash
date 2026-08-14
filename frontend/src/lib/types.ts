@@ -90,6 +90,10 @@ export interface NodeSnapshot {
   node_id: string;
   ts: string;
   up: boolean;
+  /** Cluster this node belongs to, or null when it stands alone.
+   *  Grouped nodes pool memory for distributed inference, so their capacity
+   *  sums; ungrouped ones don't, so it must not. */
+  group: string | null;
   health: HealthState;
   health_reasons: string[];
   gpu: GpuMetrics | null;

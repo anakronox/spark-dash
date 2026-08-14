@@ -39,6 +39,24 @@ class Node:
     agent_port: int = DEFAULT_AGENT_PORT
     node_exporter_port: int = DEFAULT_NODE_EXPORTER_PORT
 
+    # Nodes clustered together pool their memory for distributed inference, so
+    # a model can span the group. `None` means the node stands alone.
+    #
+    # This is what makes capacity arithmetic correct. Summing free memory
+    # within a group is real; summing across groups describes capacity that
+    # doesn't exist, because a model can't span machines that aren't clustered.
+    group: str | None = None
+
+    @property
+    def group_key(self) -> str:
+        """Grouping key. A standalone node is a group of one, so callers can
+        aggregate uniformly instead of special-casing."""
+        return self.group or self.node_id
+
+    @property
+    def standalone(self) -> bool:
+        return self.group is None
+
     @property
     def address(self) -> str:
         return f"{self.host}:{self.agent_port}"
@@ -66,10 +84,15 @@ def parse_nodes_env(
 
     Accepted forms, comma-separated:
 
-        gx10-1=192.168.50.61          explicit id (preferred)
+        gx10-1=192.168.50.61          standalone node, explicit id (preferred)
         gx10-1@192.168.50.61          same, alternative separator
         gx10-1=192.168.50.61:9500     explicit port
         192.168.50.61                 id derived from the host
+        pair/gx10-2=192.168.50.62     node in the group "pair"
+
+    A `group/` prefix marks nodes that are clustered together and pool memory
+    for distributed inference. Nodes without one stand alone. Not every node is
+    part of a cluster, and treating them as one would misreport capacity.
 
     Explicit ids are preferred because the id becomes the `node` label on every
     metric — deriving it from an IP means changing that IP silently splits the
@@ -83,13 +106,25 @@ def parse_nodes_env(
         if not entry:
             continue
 
-        node_id = ""
+        label = ""
         target = entry
         for sep in ("=", "@"):
             if sep in entry:
-                node_id, _, target = entry.partition(sep)
-                node_id, target = node_id.strip(), target.strip()
+                label, _, target = entry.partition(sep)
+                label, target = label.strip(), target.strip()
                 break
+
+        # A "group/" prefix may appear on either side of the separator, since
+        # `pair/192.168.50.62` (no explicit id) is a reasonable thing to write.
+        group: str | None = None
+        if "/" in label:
+            group, _, label = label.partition("/")
+            group, label = group.strip() or None, label.strip()
+        elif "/" in target:
+            group, _, target = target.partition("/")
+            group, target = group.strip() or None, target.strip()
+
+        node_id = label
 
         if not target:
             log.warning("skipping node entry with no host: %r", entry)
@@ -112,6 +147,7 @@ def parse_nodes_env(
                 host=host,
                 agent_port=port,
                 node_exporter_port=node_exporter_port,
+                group=group,
             )
         )
 
@@ -187,10 +223,16 @@ def render_file_sd(nodes: list[Node], *, port_of, header: str) -> str:
     The `node` label is written explicitly so a target that is DOWN still has
     an identity — otherwise a node that never came up would be invisible in
     Prometheus rather than visibly missing.
+
+    `group` is written too, so history can be aggregated the same way the live
+    view does: `sum by (group)` is meaningful, `sum` across everything is not.
     """
-    entries = [
-        {"targets": [port_of(node)], "labels": {"node": node.node_id}} for node in nodes
-    ]
+    entries = []
+    for node in nodes:
+        labels = {"node": node.node_id}
+        if node.group:
+            labels["group"] = node.group
+        entries.append({"targets": [port_of(node)], "labels": labels})
     body = yaml.safe_dump(entries, default_flow_style=False, sort_keys=False)
     return f"{header}\n{body}"
 

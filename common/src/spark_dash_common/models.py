@@ -236,6 +236,15 @@ class NodeSnapshot(BaseModel):
     node_id: str
     ts: datetime
     up: bool = True
+
+    # Which group this node belongs to, or None when it stands alone.
+    #
+    # Set by the backend from its inventory, not by the agent — a node has no
+    # way to know what it's been grouped with. Grouping is what makes capacity
+    # arithmetic correct: memory sums WITHIN a group (a model can span the
+    # members' pooled memory) and never across groups (it can't span machines
+    # that aren't clustered).
+    group: str | None = None
     health: HealthState = HealthState.GOOD
     health_reasons: list[str] = Field(
         default_factory=list,

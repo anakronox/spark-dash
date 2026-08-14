@@ -108,6 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "node_id": node.node_id,
                     "address": node.address,
                     "host": node.host,
+                    "group": node.group,
                     "up": by_id[node.node_id].up if node.node_id in by_id else False,
                     "health": (
                         by_id[node.node_id].health.value if node.node_id in by_id else "critical"
@@ -119,25 +120,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/cluster/summary")
     async def api_cluster_summary() -> dict:
-        """Headline numbers for the hero row."""
-        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
-        nodes = snapshot.nodes
+        """Headline numbers, aggregated per group.
 
-        total_mem = sum(n.memory.total_bytes for n in nodes if n.memory)
-        used_mem = sum(n.memory.used_bytes for n in nodes if n.memory)
-        gpus = [n.gpu.util_pct for n in nodes if n.gpu]
+        Memory sums WITHIN a group and never across groups. Clustered nodes
+        pool their memory, so a model can span them and their combined free
+        space is real capacity. Unclustered nodes can't do that, so a
+        cluster-wide total would describe capacity that doesn't exist and
+        answer "can I load this?" with a confident yes when the answer is no.
+        """
+        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+        by_id = {n.node_id: n for n in snapshot.nodes}
+
+        groups: dict[str, dict] = {}
+        for node in inventory.nodes():
+            g = groups.setdefault(
+                node.group_key,
+                {
+                    "group": node.group,
+                    "standalone": node.standalone,
+                    "nodes": [],
+                    "nodes_up": 0,
+                    "memory_total_bytes": 0,
+                    "memory_used_bytes": 0,
+                    "tokens_per_second": 0.0,
+                },
+            )
+            g["nodes"].append(node.node_id)
+
+            snap = by_id.get(node.node_id)
+            if snap is None:
+                continue
+            if snap.up:
+                g["nodes_up"] += 1
+            if snap.memory:
+                g["memory_total_bytes"] += snap.memory.total_bytes
+                g["memory_used_bytes"] += snap.memory.used_bytes
+            g["tokens_per_second"] += snap.total_tokens_per_sec
+
+        for g in groups.values():
+            g["memory_free_bytes"] = max(0, g["memory_total_bytes"] - g["memory_used_bytes"])
+
+        # The largest block a single model could actually occupy: the best any
+        # one group can offer, not the sum of all of them.
+        largest = max(
+            (g for g in groups.values() if g["nodes_up"]),
+            key=lambda g: g["memory_free_bytes"],
+            default=None,
+        )
 
         return {
             "ts": snapshot.ts,
             "nodes_total": len(inventory.nodes()),
             "nodes_up": snapshot.nodes_up,
             "tokens_per_second": snapshot.total_tokens_per_sec,
-            "gpu_utilization_mean": (sum(gpus) / len(gpus)) if gpus else 0.0,
-            "memory_total_bytes": total_mem,
-            "memory_used_bytes": used_mem,
-            # Free capacity is the number that answers "can I load another
-            # model", which is the question this cluster exists to serve.
-            "memory_free_bytes": max(0, total_mem - used_mem),
+            "groups": [
+                {"key": key, **value} for key, value in sorted(groups.items())
+            ],
+            "largest_free_block_bytes": largest["memory_free_bytes"] if largest else 0,
+            "largest_free_block_group": (
+                (largest["group"] or largest["nodes"][0]) if largest else None
+            ),
         }
 
     @app.get("/api/models")

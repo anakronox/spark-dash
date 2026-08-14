@@ -77,6 +77,27 @@ Two reasons to pin rather than `docker compose up -d --pull always`:
   pinned third-party ones, so a transient Docker Hub outage fails a deploy that
   only needed to change our own container.
 
+## Clusters and standalone nodes
+
+Not every node is part of a cluster. Prefix grouped nodes with `group/`:
+
+```bash
+SPARK_NODES=sparky=192.168.50.61,pair/spark2=192.168.50.62,pair/spark3=192.168.50.63
+```
+
+Here `sparky` stands alone and `spark2`/`spark3` are clustered.
+
+This affects capacity arithmetic, not just presentation. Clustered nodes pool
+memory for distributed inference, so a model can span the group and their
+combined free space is genuine capacity. Ungrouped nodes can't, so free memory
+is summed **within** a group and never across groups — a cluster-wide total
+would report capacity that doesn't exist.
+
+The dashboard draws grouped nodes in a labelled frame with their pooled free
+space; standalone nodes get no frame, because there's nothing to combine. The
+`group` label is also written to Prometheus targets, so `sum by (group)` in
+PromQL aggregates history the same way.
+
 ## Adding a node
 
 One line, one place:

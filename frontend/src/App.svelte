@@ -6,6 +6,7 @@
   import ProcessTable from './components/ProcessTable.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { gib, num } from './lib/format';
+  import type { NodeSnapshot } from './lib/types';
 
   const feed = new LiveFeed();
 
@@ -16,29 +17,62 @@
 
   const nodes = $derived(feed.snapshot?.nodes ?? []);
 
+  interface Group {
+    key: string;
+    /** null for a standalone node — used to decide whether to draw a frame. */
+    name: string | null;
+    nodes: NodeSnapshot[];
+    freeBytes: number;
+    totalBytes: number;
+    up: number;
+  }
+
+  /* Nodes grouped as they're actually deployed. Not every node is part of a
+     cluster: a standalone node is a group of one, which lets everything below
+     aggregate uniformly instead of special-casing. */
+  const groups = $derived.by<Group[]>(() => {
+    const byKey = new Map<string, Group>();
+    for (const node of nodes) {
+      const key = node.group ?? node.node_id;
+      let g = byKey.get(key);
+      if (!g) {
+        g = { key, name: node.group, nodes: [], freeBytes: 0, totalBytes: 0, up: 0 };
+        byKey.set(key, g);
+      }
+      g.nodes.push(node);
+      if (node.up) g.up += 1;
+      if (node.up && node.memory) {
+        g.totalBytes += node.memory.total_bytes;
+        g.freeBytes += Math.max(0, node.memory.total_bytes - node.memory.used_bytes);
+      }
+    }
+    return [...byKey.values()];
+  });
+
   const cluster = $derived.by(() => {
     let tokensPerSec = 0;
     let up = 0;
-    // The LARGEST single-node free block, not the sum. Summing free memory
-    // across nodes implies fungible capacity that doesn't exist — a 70B model
-    // has to fit on one machine, so a cluster-wide total would confidently
-    // answer "yes" to a question whose real answer is "no".
-    let largestFreeBytes = 0;
-    let largestFreeNode = '';
-
     for (const node of nodes) {
       if (node.up) up += 1;
-      if (node.up && node.memory) {
-        const free = Math.max(0, node.memory.total_bytes - node.memory.used_bytes);
-        if (free > largestFreeBytes) {
-          largestFreeBytes = free;
-          largestFreeNode = node.node_id;
-        }
-      }
       for (const r of node.runtimes.llama_cpp) tokensPerSec += r.tokens_per_sec;
       for (const v of node.runtimes.vllm) tokensPerSec += v.tokens_per_sec;
     }
-    return { tokensPerSec, largestFreeBytes, largestFreeNode, up, total: nodes.length };
+
+    /* The largest block one model could actually occupy: the best any single
+       GROUP offers. Clustered nodes pool memory, so summing within a group is
+       real capacity; summing across groups would describe capacity that
+       doesn't exist, since a model can't span machines that aren't
+       clustered. */
+    let largestFreeBytes = 0;
+    let largestFreeWhere = '';
+    for (const g of groups) {
+      if (g.up && g.freeBytes > largestFreeBytes) {
+        largestFreeBytes = g.freeBytes;
+        largestFreeWhere = g.name ?? g.nodes[0].node_id;
+      }
+    }
+
+    return { tokensPerSec, largestFreeBytes, largestFreeWhere, up, total: nodes.length };
   });
 
   // Theme is a deliberate choice, not an automatic inversion: both modes were
@@ -53,7 +87,7 @@
   <header class="top">
     <div class="brand">
       <h1>spark<span class="dim">-dash</span></h1>
-      <span class="dim tag">GB10 cluster</span>
+      <span class="dim tag">GB10 nodes</span>
     </div>
 
     <div class="right">
@@ -98,8 +132,8 @@
           <dt>largest free block</dt>
           <dd>
             <span class="num">{gib(cluster.largestFreeBytes)}</span> GiB
-            {#if cluster.largestFreeNode}
-              <span class="dim">on {cluster.largestFreeNode}</span>
+            {#if cluster.largestFreeWhere}
+              <span class="dim">on {cluster.largestFreeWhere}</span>
             {/if}
           </dd>
         </div>
@@ -112,11 +146,34 @@
       </dl>
     </section>
 
-    <section class="nodes">
-      {#each nodes as node, i (node.node_id)}
-        <NodeCard {node} slot={i} />
-      {/each}
-    </section>
+    {#each groups as group, gi (group.key)}
+      {#if group.name}
+        <!-- A frame only where grouping is real. Clustered nodes pool memory,
+             so their combined free space is a capacity number in its own
+             right; standalone nodes get no frame because there's nothing to
+             combine. -->
+        <section class="group">
+          <header class="group-head">
+            <h2>{group.name}</h2>
+            <span class="dim">
+              {group.nodes.length} nodes pooled · <span class="num">{gib(group.freeBytes)}</span>
+              GiB free of {gib(group.totalBytes)}
+            </span>
+          </header>
+          <div class="nodes">
+            {#each group.nodes as node, i (node.node_id)}
+              <NodeCard {node} slot={gi + i} />
+            {/each}
+          </div>
+        </section>
+      {:else}
+        <div class="nodes">
+          {#each group.nodes as node (node.node_id)}
+            <NodeCard {node} slot={gi} />
+          {/each}
+        </div>
+      {/if}
+    {/each}
 
     <ModelsTable {nodes} />
     <ProcessTable {nodes} />
@@ -247,6 +304,31 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--ink-muted);
+  }
+
+  .group {
+    display: grid;
+    gap: 8px;
+    padding: 12px 12px 14px;
+    border: 1px dashed var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 14px;
+    font-size: 11px;
+  }
+
+  .group-head h2 {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-2);
   }
 
   .nodes {

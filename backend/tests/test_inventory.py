@@ -203,3 +203,51 @@ class TestParseFileSd:
 
     def test_missing_node_label_falls_back_to_host(self):
         assert parse_file_sd("- targets: ['192.168.50.61:9500']\n")[0].node_id == "192.168.50.61"
+
+
+class TestGroups:
+    """Not every node is part of a cluster. Grouping is what keeps capacity
+    arithmetic honest: memory pools WITHIN a group (clustered nodes do
+    distributed inference, so a model can span them) and never across groups.
+    """
+
+    def test_group_prefix(self):
+        nodes = parse_nodes_env("solo=10.0.0.1,pair/a=10.0.0.2,pair/b=10.0.0.3")
+        assert [n.group for n in nodes] == [None, "pair", "pair"]
+        assert [n.node_id for n in nodes] == ["solo", "a", "b"]
+
+    def test_ungrouped_node_is_standalone(self):
+        node = parse_nodes_env("solo=10.0.0.1")[0]
+        assert node.standalone is True
+        # A standalone node is a group of one, so callers aggregate uniformly.
+        assert node.group_key == "solo"
+
+    def test_grouped_nodes_share_a_key(self):
+        nodes = parse_nodes_env("pair/a=10.0.0.2,pair/b=10.0.0.3")
+        assert {n.group_key for n in nodes} == {"pair"}
+        assert all(not n.standalone for n in nodes)
+
+    def test_group_prefix_on_a_bare_host(self):
+        node = parse_nodes_env("pair/10.0.0.2")[0]
+        assert node.group == "pair"
+        assert node.node_id == "10.0.0.2"
+
+    def test_group_with_explicit_port(self):
+        node = parse_nodes_env("pair/a=10.0.0.2:9600")[0]
+        assert node.group == "pair"
+        assert node.address == "10.0.0.2:9600"
+
+    def test_empty_group_prefix_is_treated_as_ungrouped(self):
+        assert parse_nodes_env("/a=10.0.0.2")[0].group is None
+
+    def test_group_label_is_written_to_prometheus_targets(self, tmp_path):
+        """So history aggregates the same way the live view does: sum by
+        (group) is meaningful, a bare sum is not."""
+        nodes = parse_nodes_env("solo=10.0.0.1,pair/a=10.0.0.2")
+        write_prometheus_targets(nodes, tmp_path)
+        agents = (tmp_path / "agents.yml").read_text()
+
+        assert "group: pair" in agents
+        # The standalone node gets no group label rather than a placeholder,
+        # so `group=""` never becomes a meaningless bucket in PromQL.
+        assert agents.count("group:") == 1

@@ -40,13 +40,18 @@ async def fetch_node(client: httpx.AsyncClient, node: Node) -> NodeSnapshot:
     try:
         resp = await client.get(node.snapshot_url)
         resp.raise_for_status()
-        return NodeSnapshot.model_validate(resp.json())
+        snapshot = NodeSnapshot.model_validate(resp.json())
+        # The agent can't know what it's been grouped with — grouping lives in
+        # the backend's inventory, so it's stamped on here.
+        snapshot.group = node.group
+        return snapshot
     except Exception as exc:  # noqa: BLE001 — any failure means "can't see it"
         log.debug("snapshot fetch failed for %s", node.node_id, exc_info=True)
         return NodeSnapshot(
             node_id=node.node_id,
             ts=datetime.now(UTC),
             up=False,
+            group=node.group,
             # Health must be set explicitly here. It defaults to GOOD, and an
             # unreachable node reporting "good" is worse than useless — it's
             # the single most misleading thing this dashboard could show.
