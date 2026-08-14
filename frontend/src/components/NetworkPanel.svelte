@@ -60,6 +60,27 @@
     ),
   );
 
+  /* Collector failures, surfaced verbatim.
+   *
+   * The previous empty state asserted a cause — "mount /proc and /sys" — that
+   * it had no way of knowing. When the mounts were already right that sent the
+   * reader after the wrong thing entirely. The agent records why each
+   * collector failed; showing that is strictly better than a guess. */
+  const failures = $derived.by<string[]>(() => {
+    const out: string[] = [];
+    for (const n of nodes) {
+      for (const key of ['network', 'rdma']) {
+        const message = n.errors?.[key];
+        if (message) out.push(`${n.node_id}: ${key} — ${message}`);
+      }
+    }
+    return out;
+  });
+
+  /** True when at least one node reported the field at all. An older agent
+   *  omits it entirely, which is a different problem from finding nothing. */
+  const reported = $derived(nodes.some((n) => Array.isArray(n.network)));
+
   const rdma = $derived.by<RdmaRow[]>(() =>
     nodes.flatMap((n) =>
       (n.rdma ?? []).map((p) => ({
@@ -179,10 +200,25 @@
         </tbody>
       </table>
     </div>
+  {:else if failures.length}
+    <div class="empty">
+      <p>The network collector failed:</p>
+      <ul>
+        {#each failures as f (f)}
+          <li>{f}</li>
+        {/each}
+      </ul>
+    </div>
+  {:else if !reported}
+    <p class="empty">
+      This agent doesn't report network data — it predates the collector.
+      Rebuild and redeploy the agent image.
+    </p>
   {:else}
     <p class="empty">
-      No physical interfaces reported. The agent needs the host's <code>/proc</code>
-      and <code>/sys</code> mounted.
+      No physical interfaces found. The agent ran but saw nothing with a
+      <code>device</code> entry under <code>/sys/class/net</code>, which is how
+      a real NIC is told from a virtual one.
     </p>
   {/if}
 </section>
@@ -281,6 +317,19 @@
     padding: 0 16px 14px;
     font-size: 12px;
     color: var(--ink-2);
+  }
+
+  .empty p {
+    margin: 0;
+  }
+
+  .empty ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+  }
+
+  .empty li {
+    color: var(--warning);
   }
 
   code {
