@@ -97,6 +97,20 @@ visibility for process attribution.
 
 ## Updating
 
+**Check for new settings after every pull.** `.env` is untracked, so a pull
+can't clobber your configuration — but it can't update it either. A variable
+added upstream won't appear in your `.env`, and a stale value there silently
+overrides any new default in `compose.yaml`:
+
+```bash
+diff <(grep -oE '^[A-Z_]+' .env.example | sort) \
+     <(grep -oE '^[A-Z_]+' .env | sort)
+```
+
+Anything listed only on the left is new — copy it across from `.env.example`.
+
+### Rolling out a new image
+
 Pin the tag the publish script printed, rather than chasing `:latest`:
 
 ```bash
