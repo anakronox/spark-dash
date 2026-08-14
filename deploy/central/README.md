@@ -28,6 +28,7 @@ docker login forgejo.indielab.tech      # Forgejo token with package write
 ## Configure
 
 ```bash
+# Required: .env is not tracked, so a fresh clone has no config.
 cp .env.example .env
 $EDITOR .env          # set SPARK_NODES
 

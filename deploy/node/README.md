@@ -47,6 +47,7 @@ every metric, and it must match what `SPARK_NODES` uses on the central stack,
 or the agent's metrics won't join node-exporter's.
 
 ```bash
+# Required: .env is not tracked, so a fresh clone has no config.
 cp .env.example .env
 $EDITOR .env
 ```

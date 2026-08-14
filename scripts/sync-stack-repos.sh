@@ -8,9 +8,10 @@
 # The stack repos are copies, so they can drift from the code they deploy.
 # This makes the source repo authoritative and the sync mechanical.
 #
-# `.env` is DELIBERATELY NOT SYNCED. It holds each deployment's real values
-# (node ids, router URLs) and is maintained in the stack repo. Overwriting it
-# from .env.example would wipe a live deployment's config.
+# `.env` is DELIBERATELY NOT SYNCED, and is gitignored in the stack repos. It
+# holds each deployment's real values (node ids, router URLs) and lives only on
+# the host. Tracking it made every pull a conflict against the running config,
+# since the same file was editable from both a shell and the Forgejo web UI.
 
 set -euo pipefail
 
