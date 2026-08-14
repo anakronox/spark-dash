@@ -1,0 +1,148 @@
+/* Design tokens.
+ *
+ * Direction: instrument panel, not dashboard. One monospace family throughout,
+ * with hierarchy carried by scale and weight rather than by mixing families.
+ * That's the vernacular of the tools this replaces (nvtop, nvitop, sparkview),
+ * executed with typographic care rather than as terminal pastiche.
+ *
+ * Dark is the default because this lives on a second monitor next to a
+ * terminal. Both modes are deliberately stepped, not an automatic inversion.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces. Warm-neutral rather than pure black — pure black plus one acid
+     accent is the reflexive "technical dashboard" look, and it makes every
+     status colour scream. */
+  --page: #0d0d0d;
+  --panel: #1a1a19;
+  --panel-raised: #232321;
+  --rule: #2c2c2a;
+  --track: #232321;
+
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --ink-muted: #898781;
+
+  /* Categorical slots, validated for CVD separation in both modes. Used for
+     node identity and for the memory band's workload classes. */
+  --series-1: #3987e5; /* blue   — LLM runtimes */
+  --series-2: #d95926; /* orange — other GPU workloads */
+  --series-3: #199e70; /* aqua   — third node */
+
+  /* Status palette. Reserved: never reused as a series colour, and never the
+     sole carrier of meaning — every status ships with an icon and a word. */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "IBM Plex Mono",
+    Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+  --step: 4px;
+  --radius: 3px;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --panel: #fcfcfb;
+  --panel-raised: #f2f1ec;
+  --rule: #e1e0d9;
+  --track: #eceae3;
+
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #898781;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  /* Monospace runs wide; a slightly tighter tracking keeps dense rows from
+     feeling gappy without hurting legibility. */
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every number in this interface is compared against another number, either
+   across a column or across a tick. Tabular figures stop values from jittering
+   horizontally as they update. */
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3,
+p,
+figure {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* Shared primitives ------------------------------------------------------ */
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.dim {
+  color: var(--ink-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

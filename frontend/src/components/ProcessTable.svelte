@@ -1,0 +1,218 @@
+<script lang="ts">
+  /* GPU processes, sorted by memory — the nvitop view.
+   *
+   * Not every GPU consumer is an inference runtime. On GB10 image generation
+   * draws on the same pool as model weights, so labelling the runtime is the
+   * difference between "12GiB used, unexplained" and "12GiB used by ComfyUI".
+   * Unrecognised processes still appear, just unlabelled: honest beats a
+   * confident wrong guess.
+   *
+   * Display only. Nothing here is clickable — this dashboard never kills a
+   * process, which is a deliberate non-goal, not an oversight.
+   */
+  import { gib, ratioPct } from '../lib/format';
+  import { LLM_RUNTIMES } from '../lib/types';
+  import type { NodeSnapshot } from '../lib/types';
+
+  interface Props {
+    nodes: NodeSnapshot[];
+  }
+  const { nodes }: Props = $props();
+
+  interface Row {
+    key: string;
+    node: string;
+    pid: number;
+    name: string;
+    runtime: string | null;
+    bytes: number;
+    sharePct: number;
+  }
+
+  const rows = $derived.by<Row[]>(() => {
+    const out: Row[] = [];
+    for (const node of nodes) {
+      const total = node.memory?.total_bytes ?? 0;
+      for (const p of node.processes) {
+        out.push({
+          key: `${node.node_id}/${p.pid}`,
+          node: node.node_id,
+          pid: p.pid,
+          name: p.name,
+          runtime: p.runtime,
+          bytes: p.gpu_mem_bytes,
+          sharePct: ratioPct(p.gpu_mem_bytes, total),
+        });
+      }
+    }
+    return out.sort((a, b) => b.bytes - a.bytes);
+  });
+
+  const totals = $derived.by(() => {
+    let llm = 0;
+    let other = 0;
+    for (const r of rows) {
+      if (r.runtime && LLM_RUNTIMES.has(r.runtime)) llm += r.bytes;
+      else other += r.bytes;
+    }
+    return { llm, other };
+  });
+</script>
+
+<section class="panel">
+  <header>
+    <h2 class="eyebrow">GPU processes</h2>
+    <span class="dim count">
+      {gib(totals.llm)} GiB models · {gib(totals.other)} GiB other
+    </span>
+  </header>
+
+  {#if rows.length}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">process</th>
+            <th scope="col">runtime</th>
+            <th scope="col">node</th>
+            <th scope="col" class="r">pid</th>
+            <th scope="col" class="r">gpu mem</th>
+            <th scope="col" class="share">share of pool</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each rows as row (row.key)}
+            <tr>
+              <td class="name">{row.name}</td>
+              <td>
+                {#if row.runtime}
+                  <span
+                    class="runtime"
+                    data-kind={LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}
+                  >
+                    {row.runtime}
+                  </span>
+                {:else}
+                  <span class="dim">unlabelled</span>
+                {/if}
+              </td>
+              <td class="dim">{row.node}</td>
+              <td class="r num dim">{row.pid}</td>
+              <td class="r num">{gib(row.bytes)}</td>
+              <td class="share">
+                <!-- An inline bar rather than a separate chart: the number and
+                     its magnitude belong in the same glance. -->
+                <span class="bar-track">
+                  <span
+                    class="bar"
+                    style:width={`${Math.max(row.sharePct, 0.4)}%`}
+                    data-kind={row.runtime && LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}
+                  ></span>
+                </span>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {:else}
+    <p class="empty">No processes are holding GPU memory.</p>
+  {/if}
+</section>
+
+<style>
+  section {
+    padding: 14px 0 4px;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 16px 10px;
+  }
+
+  .count {
+    font-size: 11px;
+  }
+
+  .scroll {
+    overflow-x: auto;
+  }
+
+  table {
+    font-size: 12px;
+    min-width: 620px;
+  }
+
+  th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 0 12px 6px;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 5px 12px;
+    border-bottom: 1px solid color-mix(in srgb, var(--rule) 45%, transparent);
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .name {
+    font-weight: 500;
+  }
+
+  .r {
+    text-align: right;
+  }
+
+  .share {
+    width: 34%;
+    min-width: 120px;
+  }
+
+  .runtime[data-kind='llm'] {
+    color: var(--series-1);
+  }
+  .runtime[data-kind='other'] {
+    color: var(--series-2);
+  }
+
+  .bar-track {
+    display: block;
+    height: 6px;
+    background: var(--track);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .bar {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .bar[data-kind='llm'] {
+    background: var(--series-1);
+  }
+  .bar[data-kind='other'] {
+    background: var(--series-2);
+  }
+
+  .empty {
+    padding: 0 16px 14px;
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+</style>
