@@ -3,11 +3,19 @@
 # Grouped by node so a node going down produces one notification rather than
 # one per metric that stopped arriving.
 #
-# RECEIVERS ARE NOT CONFIGURED YET. The default receiver deliberately does
-# nothing: Alertmanager requires at least one, and silently dropping alerts is
-# better than failing to start. Alerts are still visible in the dashboard and
-# in Alertmanager's own UI — they just won't reach you until you fill this in.
-# Examples for common setups are at the bottom.
+# Notifications go to ntfy, via Alertmanager's generic webhook. ntfy has a
+# built-in `alertmanager` template that turns the webhook JSON into a readable
+# notification, so no bridge container is needed — the topic URL just needs
+# `?template=alertmanager` on it.
+#
+# THE URL IS READ FROM A FILE, NOT FROM THIS CONFIG. An ntfy topic URL is a
+# capability: anyone holding it can publish to your topic and subscribe to your
+# alerts. This repo is public, so the URL lives on the host instead:
+#
+#   $DATA_ROOT/secrets/ntfy-url
+#
+# Alertmanager has no environment-variable expansion, so `url_file` is the
+# mechanism for this rather than a ${VAR} placeholder.
 
 global:
   resolve_timeout: 5m
@@ -26,14 +34,15 @@ route:
   # notifications get muted.
   repeat_interval: 12h
 
-  receiver: default
+  receiver: ntfy
 
   routes:
-    # Critical alerts skip most of the batching — a throttled GPU or a node
-    # down is worth knowing about promptly.
+    # Critical alerts use the same receiver but different timing: delivered
+    # almost immediately and repeated more often. A throttled GPU or a node
+    # down shouldn't wait out the 45s batching window.
     - matchers:
         - severity = "critical"
-      receiver: default
+      receiver: ntfy
       group_wait: 10s
       repeat_interval: 4h
 
@@ -55,38 +64,25 @@ inhibit_rules:
     equal: ['alertname', 'node']
 
 receivers:
-  - name: default
-    # Intentionally empty — see the note at the top of this file.
+  - name: ntfy
+    webhook_configs:
+      # Contains the topic URL, including ?template=alertmanager. See the note
+      # at the top — this is deliberately not inlined.
+      - url_file: /etc/alertmanager/secrets/ntfy-url
+        # Notify on recovery too. Knowing a node came back matters as much as
+        # knowing it went away, and without this a resolved alert just goes
+        # quiet — indistinguishable from you having missed it.
+        send_resolved: true
 
 # ---------------------------------------------------------------------------
-# Filling this in. Replace the `default` receiver above with one of these.
+# A NOTE ON SECRETS
 #
-# ntfy (simplest — self-hosted or ntfy.sh, no account needed):
+# This file is in git and the repo is public, so it must never contain a
+# credential OR a capability URL. An ntfy topic is both readable and writable by
+# anyone who knows it, which is why it's read from $DATA_ROOT/secrets/ntfy-url
+# rather than written here.
 #
-#   - name: default
-#     webhook_configs:
-#       - url: 'https://ntfy.example.com/spark-dash'
-#         send_resolved: true
-#
-# Generic webhook (n8n, Home Assistant, a small script):
-#
-#   - name: default
-#     webhook_configs:
-#       - url: 'http://your-host:5678/webhook/spark-dash'
-#         send_resolved: true
-#
-# Email:
-#
-#   - name: default
-#     email_configs:
-#       - to: 'you@example.com'
-#         from: 'alertmanager@indielab.tech'
-#         smarthost: 'smtp.example.com:587'
-#         auth_username: 'user'
-#         auth_password: 'pass'
-#
-# NOTE ON SECRETS: this file is in git. Anything with a password belongs in an
-# environment variable read via `*_file` directives, or in a receiver that
-# needs no credentials (ntfy with a topic URL, or a webhook to something on the
-# LAN). Don't commit an SMTP password here.
+# The same applies to anything added later: SMTP and similar support
+# `auth_password_file`, and webhooks support `url_file`. Use those rather than
+# inlining a value.
 # ---------------------------------------------------------------------------

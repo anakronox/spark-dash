@@ -65,6 +65,8 @@ services:
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/alertmanager:/alertmanager
+      # The ntfy topic URL, kept off git — see alertmanager.yml.
+      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/secrets:/etc/alertmanager/secrets:ro
     ports:
       # LAN-reachable, same reasoning as Prometheus. Mainly used for silencing
       # an alert while you work on it; firing alerts show in the dashboard.

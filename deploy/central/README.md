@@ -121,14 +121,49 @@ Prometheus evaluates `alerts.yml` and hands firing alerts to Alertmanager,
 which groups and routes them. The dashboard shows what's firing; Alertmanager
 decides what reaches you.
 
-**Notifications are not configured yet.** The default receiver in
-`alertmanager.yml` deliberately does nothing — Alertmanager requires at least
-one receiver, and dropping alerts silently beats refusing to start. Alerts are
-still visible in the dashboard and in Alertmanager's own UI. Examples for ntfy,
-a generic webhook, and email are at the bottom of that file.
+### Notifications (ntfy)
 
-Don't commit credentials there: it's in git. Prefer a receiver that needs none
-(ntfy topic URL, or a webhook to something on the LAN).
+Alerts are delivered by webhook to ntfy, which has a built-in `alertmanager`
+template that renders the payload as a readable notification — no bridge
+container involved.
+
+The topic URL is **not** in git. An ntfy topic is a capability: anyone holding
+the URL can both publish to it and subscribe to your alerts, and this repo is
+public. So it's read from a file on the host:
+
+```bash
+sudo mkdir -p /docker/spark-dash-stack-central/secrets
+
+# Pick an unguessable topic name — the URL is the only access control there is.
+echo -n 'https://ntfy.sh/spark-dash-<something-random>?template=alertmanager' \
+  | sudo tee /docker/spark-dash-stack-central/secrets/ntfy-url
+
+sudo chown -R 65534:65534 /docker/spark-dash-stack-central/secrets
+sudo chmod 600 /docker/spark-dash-stack-central/secrets/ntfy-url
+
+docker compose up -d alertmanager
+```
+
+`echo -n` matters: a trailing newline becomes part of the URL and the POST
+fails.
+
+`?template=alertmanager` is what makes the notification readable — without it
+you get the raw webhook JSON on your lock screen.
+
+Then subscribe to the same topic in the ntfy app, and test it end to end:
+
+```bash
+# Should arrive on your phone within a few seconds.
+curl -d "spark-dash test" "$(sudo cat /docker/spark-dash-stack-central/secrets/ntfy-url)"
+
+# Confirm Alertmanager loaded the receiver.
+curl -s localhost:9093/api/v2/status | jq '.config.original' | grep -c url_file
+```
+
+Critical alerts use the same topic but are delivered faster (10s rather than
+45s batching) and repeat every 4h rather than 12h.
+
+If you'd rather self-host ntfy, only the hostname in that file changes.
 
 ### What fires
 
