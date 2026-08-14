@@ -1,0 +1,92 @@
+# Alertmanager routing.
+#
+# Grouped by node so a node going down produces one notification rather than
+# one per metric that stopped arriving.
+#
+# RECEIVERS ARE NOT CONFIGURED YET. The default receiver deliberately does
+# nothing: Alertmanager requires at least one, and silently dropping alerts is
+# better than failing to start. Alerts are still visible in the dashboard and
+# in Alertmanager's own UI — they just won't reach you until you fill this in.
+# Examples for common setups are at the bottom.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  # One notification per (alert, node) rather than per firing series.
+  group_by: ['alertname', 'node']
+
+  # Wait briefly before sending, so a node going down batches its alerts
+  # together instead of arriving as a burst.
+  group_wait: 45s
+  group_interval: 5m
+
+  # How often an unresolved alert repeats. Long, on purpose: this is a homelab
+  # and a nightly reminder of something you already know about is how
+  # notifications get muted.
+  repeat_interval: 12h
+
+  receiver: default
+
+  routes:
+    # Critical alerts skip most of the batching — a throttled GPU or a node
+    # down is worth knowing about promptly.
+    - matchers:
+        - severity = "critical"
+      receiver: default
+      group_wait: 10s
+      repeat_interval: 4h
+
+inhibit_rules:
+  # A node that's down will also stop reporting temperature, clocks and
+  # pressure. Without this you'd get one useful alert and a pile of noise
+  # describing the same outage.
+  - source_matchers:
+      - alertname = "NodeAgentDown"
+    target_matchers:
+      - severity =~ "warning|critical"
+    equal: ['node']
+
+  # Critical supersedes warning for the same condition on the same node.
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'node']
+
+receivers:
+  - name: default
+    # Intentionally empty — see the note at the top of this file.
+
+# ---------------------------------------------------------------------------
+# Filling this in. Replace the `default` receiver above with one of these.
+#
+# ntfy (simplest — self-hosted or ntfy.sh, no account needed):
+#
+#   - name: default
+#     webhook_configs:
+#       - url: 'https://ntfy.example.com/spark-dash'
+#         send_resolved: true
+#
+# Generic webhook (n8n, Home Assistant, a small script):
+#
+#   - name: default
+#     webhook_configs:
+#       - url: 'http://your-host:5678/webhook/spark-dash'
+#         send_resolved: true
+#
+# Email:
+#
+#   - name: default
+#     email_configs:
+#       - to: 'you@example.com'
+#         from: 'alertmanager@indielab.tech'
+#         smarthost: 'smtp.example.com:587'
+#         auth_username: 'user'
+#         auth_password: 'pass'
+#
+# NOTE ON SECRETS: this file is in git. Anything with a password belongs in an
+# environment variable read via `*_file` directives, or in a receiver that
+# needs no credentials (ntfy with a topic URL, or a webhook to something on the
+# LAN). Don't commit an SMTP password here.
+# ---------------------------------------------------------------------------

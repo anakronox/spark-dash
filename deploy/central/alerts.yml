@@ -1,0 +1,199 @@
+# Alert rules.
+#
+# Two principles throughout:
+#
+# 1. Every alert has a `for:` duration. A GPU touching 90C for ten seconds is
+#    weather; ten minutes is a fault. Alerting on instantaneous values is how
+#    you train yourself to ignore alerts.
+#
+# 2. Thresholds live here rather than being inherited from the agent's health
+#    rollup, so tuning them is a config change on the monitoring VM instead of
+#    a redeploy of every node.
+#
+# Several values are still uncalibrated for this hardware — see issue #30. They
+# are marked [CALIBRATE] and chosen conservatively, on the reasoning that an
+# alert which never fires is a smaller problem than one that fires constantly
+# and teaches you to dismiss it.
+
+groups:
+  # ---------------------------------------------------------------- liveness
+  - name: liveness
+    rules:
+      - alert: NodeAgentDown
+        expr: up{job="spark-dash-agent"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent on {{ $labels.node }} is not responding"
+          description: >-
+            No metrics from {{ $labels.node }} for 2 minutes. The node may be
+            down, or just its agent container. Check `docker ps` on the node —
+            if node-exporter is still up, it's the agent.
+
+      - alert: NodeExporterDown
+        expr: up{job="node-exporter"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "node-exporter on {{ $labels.node }} is not responding"
+          description: >-
+            Host metrics are missing for {{ $labels.node }}. GPU and model data
+            may still be arriving via the agent.
+
+      - alert: RouterUnreachable
+        expr: sparkdash_llama_router_up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "llama.cpp router {{ $labels.router }} unreachable from {{ $labels.node }}"
+          description: >-
+            The agent can't reach this router. Models it hosts are invisible to
+            the dashboard, though they may still be serving traffic fine.
+
+      - alert: CollectorFailing
+        expr: sparkdash_collector_errors == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.collector }} collector failing on {{ $labels.node }}"
+          description: >-
+            This collector has been erroring for 15 minutes, so that section of
+            the dashboard is blank rather than wrong. Check the agent logs.
+
+  # ------------------------------------------------------------------- thermal
+  - name: thermal
+    rules:
+      # [CALIBRATE] The GX10 sits at ~84C during routine ComfyUI generation, at
+      # 96% utilization and WITHOUT throttling — so 80C, sparkview's anomaly
+      # trigger, is a normal working temperature here and would fire constantly.
+      # 88C sustained is well clear of observed-normal while still leaving
+      # headroom below thermal limits.
+      - alert: GpuTemperatureHigh
+        expr: sparkdash_gpu_temperature_celsius > 88
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
+          description: >-
+            Sustained above 88C for 10 minutes. Normal under load here is
+            around 84C. Check airflow and whether an unusual workload mix is
+            running.
+
+      - alert: GpuTemperatureCritical
+        expr: sparkdash_gpu_temperature_celsius > 94
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
+          description: >-
+            Close to thermal limits. Expect the hardware to start throttling
+            itself if it hasn't already.
+
+  # -------------------------------------------------------------------- clocks
+  - name: clocks
+    rules:
+      # Load-gated at the source: the agent only reports THROTTLED when the GPU
+      # is actually working, so this can't fire on an idle node dropping clocks
+      # for power management.
+      - alert: GpuThrottled
+        expr: sparkdash_gpu_clock_state{state="THROTTLED"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU on {{ $labels.node }} throttled under sustained load"
+          description: >-
+            Clock has stayed below the throttle threshold while the GPU is
+            busy. On GB10 this usually means power delivery rather than heat —
+            check the PSU and the power cable before assuming thermal.
+
+      - alert: GpuClockLocked
+        expr: sparkdash_gpu_clock_state{state="LOCKED"} == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU on {{ $labels.node }} has an externally applied clock cap"
+          description: >-
+            Someone ran `nvidia-smi -lgc`, or a previous session left a cap in
+            place. Deliberate, but easy to forget about — reset with
+            `nvidia-smi -rgc`.
+
+  # -------------------------------------------------------------------- memory
+  - name: memory
+    rules:
+      # [CALIBRATE] The PSI bands are uncalibrated guesses (see #30). PSI is
+      # the signal that catches contention before swap thrashing, so it's worth
+      # having even approximate.
+      - alert: MemoryPressureHigh
+        expr: sparkdash_psi_memory_state{state="HIGH"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory pressure HIGH on {{ $labels.node }}"
+          description: >-
+            Tasks are stalling on memory. On GB10 the pool is shared with image
+            generation, so check what else is running before blaming the models.
+
+      - alert: MemoryPressureCritical
+        expr: sparkdash_psi_memory_state{state="CRITICAL"} == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory pressure CRITICAL on {{ $labels.node }}"
+          description: >-
+            Sustained stalling. The node is likely close to OOM — this is the
+            state that precedes a freeze rather than following one.
+
+      # The combination is what matters. 85% alone is unremarkable on a box
+      # deliberately full of model weights; 85% with swap actually in use means
+      # the kernel has run out of better options.
+      - alert: MemoryHighWithSwap
+        expr: >-
+          (100 * sparkdash_memory_used_bytes / sparkdash_memory_total_bytes > 85)
+          and (sparkdash_memory_swap_used_bytes > 0)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.node }} above 85% memory with swap in use"
+          description: >-
+            Free capacity is nearly gone and the kernel has started swapping.
+            Loading another model will likely fail or thrash.
+
+  # ------------------------------------------------------------- monitoring VM
+  - name: monitoring
+    rules:
+      # Prometheus watching its own disk. If this fills, history stops and the
+      # first you'd know is a gap in the charts.
+      - alert: PrometheusStorageFillingUp
+        expr: >-
+          predict_linear(prometheus_tsdb_storage_blocks_bytes[6h], 7 * 24 * 3600) >
+          on() (node_filesystem_size_bytes{mountpoint="/"} * 0.85)
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus storage on track to fill within a week"
+          description: >-
+            Reduce PROM_RETENTION or grow the disk. Predicted from the last 6
+            hours of growth, so a one-off spike won't trigger it.
+
+      - alert: PrometheusTargetScrapeFailing
+        expr: up == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus can't scrape {{ $labels.job }} on {{ $labels.instance }}"
+          description: >-
+            Persistent scrape failure. Distinct from the node being down —
+            check the target is listening and reachable from the monitoring VM.

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Alerts from './components/Alerts.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
   import NodeCard from './components/NodeCard.svelte';
@@ -127,6 +128,10 @@
       Showing the last frame received {feed.secondsSinceFrame}s ago. These numbers are not current.
     </p>
   {/if}
+
+  <!-- Above everything: an alert is what you want to see before you start
+       reading numbers. Renders nothing when all is quiet. -->
+  <Alerts />
 
   {#if feed.snapshot}
     <section class="summary">

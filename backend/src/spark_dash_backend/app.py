@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from spark_dash_common.models import ClusterSnapshot
 
+from spark_dash_backend.alerts import AlertmanagerClient
 from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory
 from spark_dash_backend.poller import LivePoller
@@ -57,6 +58,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         timeout_s=settings.agent_timeout_s,
     )
     prom = PrometheusClient(settings.prometheus_url, timeout_s=settings.prometheus_timeout_s)
+    alertmanager = AlertmanagerClient(
+        settings.alertmanager_url, timeout_s=settings.alertmanager_timeout_s
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -260,6 +264,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ],
         }
 
+    @app.get("/api/alerts")
+    async def api_alerts() -> dict:
+        """Firing alerts, for the dashboard banner.
+
+        `available` is reported separately from an empty list: "nothing is
+        wrong" and "we can't tell whether anything is wrong" must not look
+        identical, since only one of them is reassuring.
+        """
+        reachable = await alertmanager.reachable()
+        alerts = await alertmanager.firing() if reachable else []
+        return {
+            "available": reachable,
+            "alerts": [a.as_dict() for a in alerts],
+            "critical": sum(1 for a in alerts if a.severity == "critical"),
+            "warning": sum(1 for a in alerts if a.severity == "warning"),
+        }
+
     # -------------------------------------------------------------- health
 
     @app.get("/health")
@@ -271,7 +292,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         blind should not pass a naive uptime check.
         """
         nodes = inventory.nodes()
+        # Queried once each: calling reachable() per use could report
+        # differently within a single response.
         prom_ok = await prom.healthy()
+        alerts_ok = await alertmanager.reachable()
 
         # Poll if we have no reasonably fresh view of the cluster. The live
         # poller only runs while a dashboard is open, so without this the
@@ -290,6 +314,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         problems = []
         if not prom_ok:
             problems.append("prometheus unreachable")
+        if not alerts_ok:
+            # Worth flagging: with Alertmanager down, nothing would notify you
+            # of anything, including that Alertmanager is down.
+            problems.append("alertmanager unreachable")
         if not nodes:
             problems.append("inventory empty")
         if nodes_up == 0 and nodes:
@@ -305,6 +333,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "degraded" if problems else "ok",
             "problems": problems,
             "prometheus": "ok" if prom_ok else "unreachable",
+            "alertmanager": "ok" if alerts_ok else "unreachable",
             "nodes_configured": len(nodes),
             "nodes_up": nodes_up,
             "live_poller_running": poller.running,

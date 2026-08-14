@@ -78,6 +78,50 @@ Two reasons to pin rather than `docker compose up -d --pull always`:
   pinned third-party ones, so a transient Docker Hub outage fails a deploy that
   only needed to change our own container.
 
+## Alerting
+
+Prometheus evaluates `alerts.yml` and hands firing alerts to Alertmanager,
+which groups and routes them. The dashboard shows what's firing; Alertmanager
+decides what reaches you.
+
+**Notifications are not configured yet.** The default receiver in
+`alertmanager.yml` deliberately does nothing — Alertmanager requires at least
+one receiver, and dropping alerts silently beats refusing to start. Alerts are
+still visible in the dashboard and in Alertmanager's own UI. Examples for ntfy,
+a generic webhook, and email are at the bottom of that file.
+
+Don't commit credentials there: it's in git. Prefer a receiver that needs none
+(ntfy topic URL, or a webhook to something on the LAN).
+
+### What fires
+
+| Alert | Fires when | Severity |
+|---|---|---|
+| `NodeAgentDown` | no metrics from a node for 2m | critical |
+| `GpuThrottled` | clock below threshold under sustained load, 5m | critical |
+| `GpuTemperatureCritical` | GPU above 94°C for 2m | critical |
+| `MemoryPressureCritical` | PSI CRITICAL for 2m | critical |
+| `GpuTemperatureHigh` | GPU above 88°C for 10m | warning |
+| `MemoryHighWithSwap` | above 85% memory *and* swap in use, 10m | warning |
+| `RouterUnreachable` | a llama.cpp router unreachable for 5m | warning |
+| `GpuClockLocked` | an external clock cap in place for 30m | warning |
+| `PrometheusStorageFillingUp` | disk predicted full within a week | warning |
+
+Every rule has a `for:` duration — a GPU touching 90°C for ten seconds is
+weather, ten minutes is a fault. Alerting on instantaneous values is how you
+train yourself to ignore alerts.
+
+Two inhibit rules keep a single failure from producing a pile: a node being
+down suppresses its other alerts, and critical suppresses warning for the same
+condition on the same node.
+
+### Thresholds worth revisiting
+
+The temperature and PSI numbers are marked `[CALIBRATE]` in `alerts.yml`. The
+GX10 runs at ~84°C during routine ComfyUI work without throttling, so the
+generic 80°C line would fire constantly — 88/94 was chosen from that
+observation. The PSI bands are still guesses. See issue #30.
+
 ## Clusters and standalone nodes
 
 Not every node is part of a cluster. Prefix grouped nodes with `group/`:

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     prometheus_url: str = "http://prometheus:9090"
     prometheus_timeout_s: float = 10.0
 
+    alertmanager_url: str = "http://alertmanager:9093"
+    alertmanager_timeout_s: float = 5.0
+
     # THE place the cluster is defined. Comma-separated, e.g.
     #   SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62
     # The backend renders Prometheus's target files from this, so a node is

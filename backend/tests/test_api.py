@@ -357,7 +357,12 @@ class TestHealthActuallyChecksNodes:
 
         assert polled["count"] >= 1, "health must contact nodes, not trust an empty cache"
         assert body["nodes_up"] == 1
-        assert body["status"] == "ok"
+        # Every node is reachable, so nodes aren't the problem here. Status is
+        # degraded only because Alertmanager isn't stubbed in this fixture —
+        # which is itself correct: an unreachable Alertmanager means nothing
+        # would notify you of anything.
+        assert "no nodes reachable" not in body["problems"]
+        assert body["problems"] == ["alertmanager unreachable"]
 
     def test_all_nodes_down_is_degraded(self, tmp_path, monkeypatch):
         app, _ = self._app(tmp_path, monkeypatch, nodes_up=0, configured="n0=10.0.0.1")

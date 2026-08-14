@@ -32,6 +32,7 @@ services:
       # generated files go under DATA_ROOT so they're visible and backup-able
       # rather than buried in /var/lib/docker.
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
       # Two target directories, deliberately separate. A single directory
       # can't work: the generated mount would hide the stack dir's own files,
       # so hand-maintained targets would silently never be scraped.
@@ -49,6 +50,27 @@ services:
     networks:
       - sparkdash
 
+  alertmanager:
+    image: prom/alertmanager:v0.28.0
+    container_name: sparkdash-alertmanager
+    restart: unless-stopped
+    user: "${PUID:-65534}:${PGID:-65534}"
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      # Needed for links in notifications to be clickable rather than pointing
+      # at a container-internal hostname.
+      - '--web.external-url=${ALERTMANAGER_EXTERNAL_URL:-http://localhost:9093}'
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/alertmanager:/alertmanager
+    ports:
+      # Localhost by default, like Prometheus: no auth of its own, and the
+      # dashboard surfaces firing alerts anyway.
+      - "${ALERTMANAGER_BIND:-127.0.0.1}:9093:9093"
+    networks:
+      - sparkdash
+
   backend:
     image: ${BACKEND_IMAGE:-forgejo.indielab.tech/brian/spark-dash-backend:latest}
     container_name: sparkdash-backend
@@ -59,6 +81,7 @@ services:
     user: "${PUID:-10002}:${PGID:-10002}"
     depends_on:
       - prometheus
+      - alertmanager
     environment:
       # ---- the only place nodes are defined ----
       #   SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62
@@ -67,6 +90,7 @@ services:
       - NODE_EXPORTER_PORT=${NODE_EXPORTER_PORT:-9100}
 
       - PROMETHEUS_URL=http://prometheus:9090
+      - ALERTMANAGER_URL=http://alertmanager:9093
       - PROMETHEUS_TARGETS_DIR=/etc/prometheus/targets/generated
       - LIVE_POLL_INTERVAL_S=${LIVE_POLL_INTERVAL_S:-2.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -83,9 +107,9 @@ services:
 # it can be found, inspected and backed up without docker volume commands.
 #
 # The containers run as non-root. Set PUID/PGID in .env to the uid that owns
-# DATA_ROOT and both will be able to write there; otherwise they default to
-# their images' own users (65534 and 10002) and the host directories need to
-# be owned accordingly.
+# DATA_ROOT and they will all be able to write there; otherwise they default to
+# their images' own users (65534 for Prometheus and Alertmanager, 10002 for the
+# backend) and the host directories need to be owned accordingly.
 
 networks:
   sparkdash:
