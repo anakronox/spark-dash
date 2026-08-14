@@ -19,8 +19,7 @@ import threading
 import time
 
 from fastapi import FastAPI, Response
-from prometheus_client import CollectorRegistry, generate_latest
-from prometheus_client.openmetrics.exposition import CONTENT_TYPE_LATEST
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
 from spark_dash_common.models import NodeSnapshot
 
 from spark_dash_agent.config import Settings
@@ -74,6 +73,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/metrics")
     def metrics() -> Response:
+        # The content type MUST match the generator. `generate_latest` emits
+        # the plain-text exposition format; advertising OpenMetrics instead
+        # makes Prometheus parse strictly and reject the response for a
+        # missing trailing "# EOF" marker, which plain text doesn't emit.
+        # The symptom is nasty: the agent logs 200 OK for every scrape while
+        # Prometheus stores nothing and reports the target down.
         return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
     @app.get("/snapshot", response_model=NodeSnapshot)

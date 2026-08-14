@@ -294,3 +294,31 @@ def test_unreachable_router_is_reported_as_down():
     )
     text = render(snap)
     assert 'sparkdash_llama_router_up{node="gx10-1",router="dead:8080"} 0.0' in text
+
+
+def test_metrics_content_type_matches_the_generator(client):
+    """Regression: the endpoint advertised OpenMetrics while serving the
+    plain-text format. Prometheus honours the header, parses strictly, and
+    rejects the body for a missing trailing "# EOF" — so every scrape returned
+    200 OK while Prometheus stored nothing and marked the target down.
+    """
+    resp = client.get("/metrics")
+    content_type = resp.headers["content-type"]
+    body = resp.text
+
+    assert content_type.startswith("text/plain")
+    assert "openmetrics" not in content_type
+
+    # Plain-text format has no EOF marker; OpenMetrics requires one. Their
+    # presence/absence is what makes the two mutually exclusive.
+    assert not body.rstrip().endswith("# EOF")
+
+
+def test_metrics_body_parses_as_prometheus_text(client):
+    """Parse the served bytes with the same parser Prometheus uses, so a
+    malformed exposition can't pass unnoticed."""
+    from prometheus_client.parser import text_string_to_metric_families
+
+    families = list(text_string_to_metric_families(client.get("/metrics").text))
+    names = {f.name for f in families}
+    assert "sparkdash_gpu_utilization_percent" in names
