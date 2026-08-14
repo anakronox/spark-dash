@@ -55,6 +55,28 @@ If you'd rather run both as some other uid, set `PUID`/`PGID` in `.env`
 instead of chowning. Leaving them unset keeps each container on its own
 non-root user, which is the better default.
 
+## Updating
+
+Pin the tag the publish script printed, rather than chasing `:latest`:
+
+```bash
+# In .env
+BACKEND_IMAGE=forgejo.indielab.tech/brian/spark-dash-backend:9c2b41f
+```
+
+```bash
+docker compose up -d
+```
+
+Two reasons to pin rather than `docker compose up -d --pull always`:
+
+- **Traceability.** `:latest` moves; a sha tag says exactly which commit is
+  running, and Dockhand redeploys on the git change to `.env` rather than on an
+  image that silently drifted underneath it.
+- **Fewer moving parts.** `--pull always` re-pulls every image including the
+  pinned third-party ones, so a transient Docker Hub outage fails a deploy that
+  only needed to change our own container.
+
 ## Adding a node
 
 One line, one place:
