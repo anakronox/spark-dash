@@ -1,0 +1,8 @@
+# The live config is deliberately NOT tracked.
+#
+# It differs per deployment and gets edited on the host, so tracking it makes
+# every `git pull` a merge conflict against your running configuration — and
+# the same file editable from both a web UI and a shell is a guaranteed drift.
+#
+# `.env.example` is the template; copy it and edit the copy.
+.env
