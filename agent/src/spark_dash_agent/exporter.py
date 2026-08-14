@@ -36,6 +36,7 @@ class SnapshotMetricsCollector:
         yield from _memory_metrics(snap, node)
         yield from _psi_metrics(snap, node)
         yield from _cpu_metrics(snap, node)
+        yield from _network_metrics(snap, node)
         yield from _runtime_metrics(snap, node)
 
 
@@ -156,6 +157,60 @@ def _cpu_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
         load = _g("cpu_load1", "1-minute load average", ["node"])
         load.add_metric([node], cpu.load_avg_1m)
         yield load
+
+
+def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
+    if snap.network:
+        nl = ["node", "interface"]
+        up = _g("network_up", "1 when the interface is up", nl)
+        speed = _g("network_speed_mbps", "Negotiated link speed", nl)
+        rx = _g("network_receive_bytes_total", "Bytes received", nl)
+        tx = _g("network_transmit_bytes_total", "Bytes transmitted", nl)
+        rx_err = _g("network_receive_errors_total", "Receive errors", nl)
+        tx_err = _g("network_transmit_errors_total", "Transmit errors", nl)
+        rx_drop = _g("network_receive_dropped_total", "Receive drops", nl)
+        tx_drop = _g("network_transmit_dropped_total", "Transmit drops", nl)
+
+        for iface in snap.network:
+            labels = [node, iface.name]
+            up.add_metric(labels, 1.0 if iface.up else 0.0)
+            if iface.speed_mbps is not None:
+                speed.add_metric(labels, float(iface.speed_mbps))
+            rx.add_metric(labels, float(iface.rx_bytes_total))
+            tx.add_metric(labels, float(iface.tx_bytes_total))
+            rx_err.add_metric(labels, float(iface.rx_errors))
+            tx_err.add_metric(labels, float(iface.tx_errors))
+            rx_drop.add_metric(labels, float(iface.rx_dropped))
+            tx_drop.add_metric(labels, float(iface.tx_dropped))
+
+        yield from (up, speed, rx, tx, rx_err, tx_err, rx_drop, tx_drop)
+
+    if snap.rdma:
+        # Byte totals are exported, not the rates the live view computes:
+        # Prometheus derives its own rate() and a pre-computed one would be
+        # wrong at any step other than the one it was sampled at.
+        rl = ["node", "device", "port"]
+        active = _g("rdma_port_active", "1 when the RDMA port is ACTIVE", rl)
+        rx = _g("rdma_receive_bytes_total", "Bytes received", rl)
+        tx = _g("rdma_transmit_bytes_total", "Bytes transmitted", rl)
+        errs = _g("rdma_errors_total", "Receive errors, discards and link downs", rl)
+        info = _g(
+            "rdma_port_info",
+            "Always 1; carries link layer and negotiated rate as labels",
+            [*rl, "link_layer", "rate"],
+        )
+
+        for port in snap.rdma:
+            labels = [node, port.device, str(port.port)]
+            active.add_metric(labels, 1.0 if port.active else 0.0)
+            rx.add_metric(labels, float(port.rx_bytes_total))
+            tx.add_metric(labels, float(port.tx_bytes_total))
+            errs.add_metric(labels, float(port.errors))
+            # An info-style metric: the rate string is what reveals a link that
+            # negotiated below its rated speed, and it can't be a gauge value.
+            info.add_metric([*labels, port.link_layer, port.rate], 1.0)
+
+        yield from (active, rx, tx, errs, info)
 
 
 def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:

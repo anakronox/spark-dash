@@ -122,6 +122,70 @@ def dump_routers(urls: list[str]) -> None:
                 print(f"  {path} -> {type(exc).__name__}")
 
 
+def dump_network() -> None:
+    """Raw network and RDMA sysfs, for confirming what this hardware exposes.
+
+    The RDMA half especially: the GX10s cluster over ConnectX-7 running RoCEv2
+    rather than native InfiniBand, so devices appear under /sys/class/infiniband
+    with link_layer "Ethernet". Worth seeing the real tree rather than trusting
+    that assumption.
+    """
+    import os
+    from pathlib import Path
+
+    _section("NETWORK INTERFACES")
+    sys_path = Path(os.environ.get("SYS_PATH", "/sys"))
+    net_root = sys_path / "class" / "net"
+    if not net_root.is_dir():
+        print(f"  no {net_root}")
+    else:
+        for iface in sorted(net_root.iterdir()):
+            physical = (iface / "device").exists()
+            state = _slurp(iface / "operstate")
+            speed = _slurp(iface / "speed")
+            mark = "physical" if physical else "virtual "
+            print(f"  {mark}  {iface.name:20} state={state:8} speed={speed or '-'}")
+
+    _section("RDMA / INFINIBAND")
+    ib_root = sys_path / "class" / "infiniband"
+    if not ib_root.is_dir():
+        print(f"  no {ib_root} — no RDMA hardware, or the module isn't loaded")
+        return
+
+    for device in sorted(ib_root.iterdir()):
+        print(f"\n--- {device.name} ---")
+        for attr in ("node_type", "node_desc", "fw_ver", "hca_type"):
+            value = _slurp(device / attr)
+            if value:
+                print(f"  {attr:12}: {value}")
+
+        ports = device / "ports"
+        if not ports.is_dir():
+            continue
+        for port in sorted(ports.iterdir()):
+            print(f"  port {port.name}:")
+            for attr in ("state", "phys_state", "link_layer", "rate"):
+                print(f"    {attr:12}: {_slurp(port / attr)}")
+
+            counters = port / "counters"
+            if counters.is_dir():
+                names = sorted(p.name for p in counters.iterdir())
+                print(f"    counters    : {len(names)} available")
+                for want in ("port_rcv_data", "port_xmit_data", "port_rcv_errors"):
+                    print(f"      {want:18}= {_slurp(counters / want)}")
+            # RoCE exposes extra counters here that native IB does not.
+            hw = port / "hw_counters"
+            if hw.is_dir():
+                print(f"    hw_counters : {len(list(hw.iterdir()))} available (RoCE)")
+
+
+def _slurp(path) -> str:
+    try:
+        return path.read_text().strip()
+    except OSError:
+        return ""
+
+
 def dump_device() -> None:
     _section("GPU DEVICE")
     try:
@@ -142,6 +206,7 @@ def dump_device() -> None:
 def main() -> int:
     urls = [u.strip() for u in os.environ.get("LLAMA_ROUTER_URLS", "").split(",") if u.strip()]
     dump_device()
+    dump_network()
     dump_processes()
     dump_routers(urls)
     print("\nPaste this output back to continue tuning detection.\n")

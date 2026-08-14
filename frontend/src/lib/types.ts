@@ -49,6 +49,38 @@ export interface ProcessInfo {
   model: string | null;
 }
 
+export interface NetworkInterface {
+  name: string;
+  up: boolean;
+  /** Negotiated link speed. Null when the driver doesn't report one. */
+  speed_mbps: number | null;
+  rx_bytes_per_sec: number;
+  tx_bytes_per_sec: number;
+  rx_bytes_total: number;
+  tx_bytes_total: number;
+  rx_errors: number;
+  tx_errors: number;
+  rx_dropped: number;
+  tx_dropped: number;
+}
+
+export interface RdmaPort {
+  device: string;
+  port: number;
+  state: string;
+  physical_state: string;
+  /** "Ethernet" for RoCE, "InfiniBand" for native IB. The GX10s run RoCEv2. */
+  link_layer: string;
+  /** Verbatim from the driver, e.g. "200 Gb/sec (2X NDR)". A link that
+   *  negotiated below its rated speed is otherwise invisible. */
+  rate: string;
+  rx_bytes_per_sec: number;
+  tx_bytes_per_sec: number;
+  rx_bytes_total: number;
+  tx_bytes_total: number;
+  errors: number;
+}
+
 export interface RouterModel {
   name: string;
   state: ModelState;
@@ -101,6 +133,8 @@ export interface NodeSnapshot {
   psi: PsiMetrics | null;
   cpu: CpuMetrics | null;
   processes: ProcessInfo[];
+  network: NetworkInterface[];
+  rdma: RdmaPort[];
   runtimes: Runtimes;
   errors: Record<string, string>;
 }

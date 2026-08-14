@@ -109,6 +109,71 @@ class CpuMetrics(BaseModel):
     active_cores: int | None = None
 
 
+class NetworkInterface(BaseModel):
+    """One physical network interface.
+
+    Only physical NICs are reported. A node running Docker has dozens of veth
+    and bridge interfaces whose counters mean nothing to an operator.
+    """
+
+    name: str
+    up: bool = True
+    speed_mbps: int | None = Field(
+        default=None,
+        description="Negotiated link speed. None when the driver doesn't report "
+        "one, which is normal for virtual and some wireless interfaces.",
+    )
+
+    rx_bytes_per_sec: float = 0.0
+    tx_bytes_per_sec: float = 0.0
+    rx_bytes_total: int = 0
+    tx_bytes_total: int = 0
+
+    # Errors and drops are cumulative rather than rates: what matters is
+    # whether the count is moving at all, not how fast.
+    rx_errors: int = 0
+    tx_errors: int = 0
+    rx_dropped: int = 0
+    tx_dropped: int = 0
+
+    @property
+    def healthy(self) -> bool:
+        return self.up and (self.rx_errors + self.tx_errors) == 0
+
+
+class RdmaPort(BaseModel):
+    """One RDMA port, from /sys/class/infiniband.
+
+    On the GX10s this is a ConnectX-7 running RoCEv2 — RDMA over Ethernet
+    rather than native InfiniBand — so `link_layer` reads "Ethernet". The
+    device still registers here either way, which is why this reads the
+    InfiniBand sysfs tree rather than anything RoCE-specific.
+    """
+
+    device: str
+    port: int
+    state: str = "UNKNOWN"
+    physical_state: str = ""
+    link_layer: str = ""
+    rate: str = Field(
+        default="",
+        description="Negotiated rate as the driver reports it, e.g. "
+        "'200 Gb/sec (2X NDR)'. Worth surfacing: a ConnectX-7 link that "
+        "negotiates far below its rated speed is a known and otherwise "
+        "invisible failure.",
+    )
+
+    rx_bytes_per_sec: float = 0.0
+    tx_bytes_per_sec: float = 0.0
+    rx_bytes_total: int = 0
+    tx_bytes_total: int = 0
+    errors: int = 0
+
+    @property
+    def active(self) -> bool:
+        return self.state.upper().endswith("ACTIVE")
+
+
 class ProcessInfo(BaseModel):
     """A process holding GPU memory — the nvitop-style process view."""
 
@@ -257,6 +322,8 @@ class NodeSnapshot(BaseModel):
     psi: PsiMetrics | None = None
     cpu: CpuMetrics | None = None
     processes: list[ProcessInfo] = Field(default_factory=list)
+    network: list[NetworkInterface] = Field(default_factory=list)
+    rdma: list[RdmaPort] = Field(default_factory=list)
     runtimes: Runtimes = Field(default_factory=Runtimes)
 
     errors: dict[str, str] = Field(

@@ -19,6 +19,7 @@ from spark_dash_agent.collectors.cpu import CpuCollector
 from spark_dash_agent.collectors.gpu import GpuCollector
 from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.collectors.memory import MemoryCollector, detect_unified_memory
+from spark_dash_agent.collectors.network import NetworkCollector, RdmaCollector
 from spark_dash_agent.collectors.psi import PsiCollector
 from spark_dash_agent.collectors.vllm import VllmCollector
 from spark_dash_agent.config import Settings
@@ -58,6 +59,8 @@ class SnapshotBuilder:
             metrics_allowlist=settings.llama_metrics_allowlist,
         )
         self._vllm = VllmCollector(settings.vllm_endpoints)
+        self._network = NetworkCollector(settings.proc_path, settings.sys_path)
+        self._rdma = RdmaCollector(settings.sys_path)
         # Built lazily: UMA detection needs NVML's total, which isn't known
         # until the GPU collector has opened the device once.
         self._memory: MemoryCollector | None = None
@@ -91,6 +94,8 @@ class SnapshotBuilder:
         memory = self._memory_collector().safe_collect(errors)
         psi = self._psi.safe_collect(errors)
         cpu = self._cpu.safe_collect(errors)
+        network = self._network.safe_collect(errors) or []
+        rdma = self._rdma.safe_collect(errors) or []
         llama = self._llama.safe_collect(errors) or []
         vllm = self._vllm.safe_collect(errors) or []
 
@@ -113,6 +118,8 @@ class SnapshotBuilder:
             psi=psi,
             cpu=cpu,
             processes=processes,
+            network=network,
+            rdma=rdma,
             runtimes=Runtimes(llama_cpp=llama, vllm=vllm),
             errors=errors,
         )

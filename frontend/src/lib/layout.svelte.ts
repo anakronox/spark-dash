@@ -18,6 +18,7 @@ export interface SectionDef {
 export const SECTIONS: SectionDef[] = [
   { id: 'models', label: 'Models' },
   { id: 'processes', label: 'GPU processes' },
+  { id: 'network', label: 'Network' },
   { id: 'activity', label: 'Model activity' },
   { id: 'history', label: 'History' },
 ];
