@@ -5,6 +5,7 @@
   import ModelsTable from './components/ModelsTable.svelte';
   import NodeCard from './components/NodeCard.svelte';
   import ProcessTable from './components/ProcessTable.svelte';
+  import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { gib, num } from './lib/format';
@@ -192,8 +193,9 @@
 
     <ModelsTable {nodes} />
     <ProcessTable {nodes} />
-    <!-- History last: the live state is what you came for; this is what you
+    <!-- History last: the live state is what you came for; these are what you
          scroll to when the live state raises a question. -->
+    <SwapTimeline />
     <Trends nodeIds={nodes.map((n) => n.node_id)} {theme} />
   {:else if feed.state !== 'offline'}
     <p class="notice">Waiting for the first frame…</p>

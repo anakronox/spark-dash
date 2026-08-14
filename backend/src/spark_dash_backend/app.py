@@ -27,6 +27,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory
 from spark_dash_backend.poller import LivePoller
 from spark_dash_backend.prometheus import HISTORY_QUERIES, PrometheusClient, PrometheusError
+from spark_dash_backend.timeline import fetch_events
 
 log = logging.getLogger(__name__)
 
@@ -262,6 +263,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "series": [
                 {"node": s.node, "labels": s.labels, "points": s.points} for s in series
             ],
+        }
+
+    @app.get("/api/models/timeline")
+    async def api_model_timeline(
+        minutes: int = Query(360, ge=5, le=60 * 24 * 7),
+        step: str = Query("60s"),
+    ) -> dict:
+        """When models loaded, slept and unloaded.
+
+        Reconstructed from Prometheus rather than stored: the agent's one-hot
+        state metric already records every transition, so history reaches back
+        as far as retention does instead of starting when this shipped.
+        """
+        end = time.time()
+        start = end - minutes * 60
+        try:
+            events = await fetch_events(prom, start=start, end=end, step=step)
+        except PrometheusError as exc:
+            raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
+
+        return {
+            "window_minutes": minutes,
+            "events": [e.as_dict() for e in events],
+            # Transitions that cost a user latency — the number worth watching
+            # if requests feel slow.
+            "cold_starts": sum(1 for e in events if e.cold),
         }
 
     @app.get("/api/alerts")
