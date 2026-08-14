@@ -123,47 +123,123 @@ decides what reaches you.
 
 ### Notifications (ntfy)
 
-Alerts are delivered by webhook to ntfy, which has a built-in `alertmanager`
-template that renders the payload as a readable notification — no bridge
-container involved.
+**You don't need to run anything.** [ntfy.sh](https://ntfy.sh) is a free public
+push service with no account, no signup and no API key. You invent a topic
+name, subscribe to it in an app, and anything POSTed to that topic arrives as a
+push notification.
 
-The topic URL is **not** in git. An ntfy topic is a capability: anyone holding
-the URL can both publish to it and subscribe to your alerts, and this repo is
-public. So it's read from a file on the host:
+Self-hosting is possible and covered at the end, but read the tradeoff first —
+it's not obviously the better choice here.
+
+#### How the security model works
+
+**The topic name is the only access control.** There are no credentials on
+ntfy.sh: anyone who knows or guesses your topic can read every alert you
+receive and send you notifications of their own.
+
+Your alerts name your nodes, IP addresses and models, so treat the topic like a
+password:
+
+- `spark-dash` — guessable in seconds. Don't.
+- `spark-dash-alerts` — still guessable.
+- `spark-dash-k7mq2vx9wp4n` — fine.
+
+Generate one rather than inventing it:
 
 ```bash
-sudo mkdir -p /docker/spark-dash-stack-central/secrets
+echo "spark-dash-$(head -c 9 /dev/urandom | base32 | tr '[:upper:]' '[:lower:]' | tr -d '=')"
+```
 
-# Pick an unguessable topic name — the URL is the only access control there is.
-echo -n 'https://ntfy.sh/spark-dash-<something-random>?template=alertmanager' \
-  | sudo tee /docker/spark-dash-stack-central/secrets/ntfy-url
+This is also why the URL is kept out of git — the repo is public, and the
+topic URL is the whole secret.
+
+#### Setup
+
+**1. Pick a topic and write it to the secrets file.**
+
+```bash
+TOPIC="spark-dash-$(head -c 9 /dev/urandom | base32 | tr '[:upper:]' '[:lower:]' | tr -d '=')"
+echo "Your topic: $TOPIC"          # note this down — you need it in the app
+
+sudo mkdir -p /docker/spark-dash-stack-central/secrets
+echo -n "https://ntfy.sh/$TOPIC?template=alertmanager" \
+  | sudo tee /docker/spark-dash-stack-central/secrets/ntfy-url > /dev/null
 
 sudo chown -R 65534:65534 /docker/spark-dash-stack-central/secrets
 sudo chmod 600 /docker/spark-dash-stack-central/secrets/ntfy-url
-
-docker compose up -d alertmanager
 ```
 
-`echo -n` matters: a trailing newline becomes part of the URL and the POST
-fails.
+Two details that will bite otherwise:
 
-`?template=alertmanager` is what makes the notification readable — without it
-you get the raw webhook JSON on your lock screen.
+- **`echo -n`** — a trailing newline becomes part of the URL and every POST
+  fails with a confusing error.
+- **`?template=alertmanager`** — ntfy's built-in template that renders the
+  webhook into a readable alert. Without it you get a wall of raw JSON on your
+  lock screen.
 
-Then subscribe to the same topic in the ntfy app, and test it end to end:
+**2. Subscribe on whatever you'll actually look at.**
+
+| | |
+|---|---|
+| iOS | [ntfy on the App Store](https://apps.apple.com/us/app/ntfy/id1625396347) → **+** → enter the topic name |
+| Android | [Play Store](https://play.google.com/store/apps/details?id=io.heckel.ntfy) or [F-Droid](https://f-droid.org/en/packages/io.heckel.ntfy/) → **+** → enter the topic name |
+| Desktop / browser | Open `https://ntfy.sh/<your-topic>` and allow notifications |
+| Terminal | `ntfy subscribe <your-topic>` |
+
+Enter only the **topic name** in the app, not the full URL.
+
+**3. Start Alertmanager and test.**
 
 ```bash
-# Should arrive on your phone within a few seconds.
-curl -d "spark-dash test" "$(sudo cat /docker/spark-dash-stack-central/secrets/ntfy-url)"
+docker compose up -d
 
-# Confirm Alertmanager loaded the receiver.
-curl -s localhost:9093/api/v2/status | jq '.config.original' | grep -c url_file
+# Should arrive on your phone within a couple of seconds.
+curl -d "spark-dash test" "$(sudo cat /docker/spark-dash-stack-central/secrets/ntfy-url)"
 ```
 
-Critical alerts use the same topic but are delivered faster (10s rather than
-45s batching) and repeat every 4h rather than 12h.
+If nothing arrives, `docker logs sparkdash-alertmanager` will name the reason —
+usually a stray newline in the URL file, or the topic in the app not matching.
 
-If you'd rather self-host ntfy, only the hostname in that file changes.
+#### What arrives
+
+A firing alert looks roughly like:
+
+```
+[FIRING:1] GpuThrottled sparky
+GPU on sparky throttled under sustained load
+Clock has stayed below the throttle threshold while the GPU is busy.
+On GB10 this usually means power delivery rather than heat — check the
+PSU and the power cable before assuming thermal.
+```
+
+Recoveries arrive too (`send_resolved: true`). Without them a resolved alert
+just goes quiet, which is indistinguishable from you having missed it.
+
+Critical alerts are delivered faster (10s rather than 45s batching) and repeat
+every 4h instead of 12h.
+
+#### Self-hosting instead
+
+One container, and only the hostname in the secrets file changes:
+
+```yaml
+services:
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    command: serve
+    ports: ["8090:80"]
+    volumes:
+      - /docker/ntfy/cache:/var/cache/ntfy
+```
+
+**The tradeoff is real, though.** A LAN-only ntfy means no notifications when
+you're away from home — which is exactly when an unattended node going down
+matters most. To fix that you'd publish it through the Cloudflare tunnel, which
+means a second externally-reachable service to secure, on top of the dashboard.
+
+ntfy.sh with a random topic avoids that entirely. The tradeoff you accept
+instead is that a third party sees your alert text — node names, IPs, model
+names. Neither is wrong; pick the one whose downside you mind less.
 
 ### What fires
 

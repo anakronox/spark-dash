@@ -8,9 +8,13 @@
 # notification, so no bridge container is needed — the topic URL just needs
 # `?template=alertmanager` on it.
 #
-# THE URL IS READ FROM A FILE, NOT FROM THIS CONFIG. An ntfy topic URL is a
-# capability: anyone holding it can publish to your topic and subscribe to your
-# alerts. This repo is public, so the URL lives on the host instead:
+# ntfy.sh is a free public service — no account, no API key. You invent a topic
+# name and subscribe to it in an app. See README.md for setup.
+#
+# THE URL IS READ FROM A FILE, NOT FROM THIS CONFIG. On ntfy.sh the topic name
+# is the ONLY access control: anyone who knows or guesses it can read your
+# alerts and send you their own. Your alerts name nodes, IPs and models, and
+# this repo is public — so the URL lives on the host instead:
 #
 #   $DATA_ROOT/secrets/ntfy-url
 #
