@@ -1,17 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Alerts from './components/Alerts.svelte';
+  import Draggable from './components/Draggable.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
   import NodeCard from './components/NodeCard.svelte';
   import ProcessTable from './components/ProcessTable.svelte';
   import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
+  import { Layout } from './lib/layout.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { gib, num } from './lib/format';
   import type { NodeSnapshot } from './lib/types';
 
   const feed = new LiveFeed();
+  const layout = new Layout();
 
   onMount(() => {
     feed.connect();
@@ -191,18 +194,33 @@
       {/if}
     {/each}
 
-    <ModelsTable {nodes} />
-    <ProcessTable {nodes} />
-    <!-- History last: the live state is what you came for; these are what you
-         scroll to when the live state raises a question. -->
-    <SwapTimeline />
-    <Trends nodeIds={nodes.map((n) => n.node_id)} {theme} />
+    <!-- Sections are reorderable; the order lives in localStorage. Node cards
+         and the summary stay put — grouping already orders the nodes
+         meaningfully, and the headline belongs at the top. -->
+    <div class="sections">
+      {#each layout.order as id, i (id)}
+        <Draggable {layout} index={i} {id}>
+          {#if id === 'models'}
+            <ModelsTable {nodes} />
+          {:else if id === 'processes'}
+            <ProcessTable {nodes} />
+          {:else if id === 'activity'}
+            <SwapTimeline />
+          {:else if id === 'history'}
+            <Trends nodeIds={nodes.map((n) => n.node_id)} {theme} />
+          {/if}
+        </Draggable>
+      {/each}
+    </div>
   {:else if feed.state !== 'offline'}
     <p class="notice">Waiting for the first frame…</p>
   {/if}
 
   <footer>
     <span class="dim">read-only · never loads or unloads a model</span>
+    {#if !layout.isDefault}
+      <button class="reset" onclick={() => layout.reset()}>reset layout</button>
+    {/if}
   </footer>
 </div>
 
@@ -386,10 +404,34 @@
   }
 
   footer {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
     font-size: 10px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     padding-top: 4px;
     border-top: 1px solid var(--rule);
+  }
+
+  /* Only shown once the order has actually been changed — an always-present
+     reset for a layout you never touched is clutter. */
+  .reset {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 2px 5px;
+    border-radius: var(--radius);
+  }
+
+  .reset:hover {
+    color: var(--ink);
+  }
+
+  .sections {
+    display: grid;
+    gap: 16px;
   }
 </style>
