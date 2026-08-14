@@ -59,7 +59,7 @@ class SnapshotBuilder:
             metrics_allowlist=settings.llama_metrics_allowlist,
         )
         self._vllm = VllmCollector(settings.vllm_endpoints)
-        self._network = NetworkCollector(settings.proc_path, settings.sys_path)
+        self._network = NetworkCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
         # Built lazily: UMA detection needs NVML's total, which isn't known
         # until the GPU collector has opened the device once.

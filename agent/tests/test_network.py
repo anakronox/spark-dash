@@ -8,92 +8,75 @@ with link_layer Ethernet rather than InfiniBand.
 from spark_dash_agent.collectors.network import (
     NetworkCollector,
     RdmaCollector,
-    _read_proc_net_dev,
     _strip_enum,
 )
 
-# Two header lines then one row per interface, verbatim as the kernel writes
-# it — deliberately not reflowed, since the point is to parse the real format.
-# ruff: noqa: E501
-PROC_NET_DEV = """Inter-|   Receive                                                |  Transmit
- face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
-    lo: 1000000    5000    0    0    0     0          0         0  1000000    5000    0    0    0     0       0          0
-enP2p1s0f0np0: 9876543210 1234567    0    2    0     0          0         0  1234567890  654321    1    0    0     0       0          0
-docker0:  500000    1200    0    0    0     0          0         0   400000    1000    0    0    0     0       0          0
-vethbeef01:   12345      50    0    0    0     0          0         0     6789      30    0    0    0     0       0          0
-"""
+# The GX10's real set: two ConnectX-7 ports, the onboard NIC, and the pile of
+# bridges and veths a Docker host accumulates. Counters live in statistics/,
+# which is where both collectors read them from.
+GX10_INTERFACES = {
+    "enP2p1s0f0np0": {
+        "speed": 100000,
+        "rx_bytes": 9876543210,
+        "tx_bytes": 1234567890,
+        "rx_dropped": 2,
+        "tx_errors": 1,
+    },
+    "enP7s7": {"speed": 10000},
+    # Wireless: physical, but reading `speed` raises EINVAL rather than
+    # returning a number. Real — this is the GX10's wlP9s9.
+    "wlP9s9": {"speed_unreadable": True},
+    "docker0": {"physical": False, "speed": 10000},
+    "br-05dc61118f7c": {"physical": False, "speed": 10000},
+    "vethbeef01": {"physical": False, "speed": 10000},
+}
 
 
 def build_sysfs(tmp_path, interfaces):
     """Minimal /sys/class/net tree. `device` presence is what marks a NIC
-    physical, which is how virtual interfaces are filtered out."""
+    physical, which is how virtual interfaces are filtered out — note that
+    docker0 and the veths report a speed just like a real NIC does, so speed
+    is no help here.
+    """
     for name, spec in interfaces.items():
         d = tmp_path / "class" / "net" / name
-        d.mkdir(parents=True)
+        (d / "statistics").mkdir(parents=True)
         (d / "operstate").write_text(spec.get("operstate", "up") + "\n")
         if "speed" in spec:
             (d / "speed").write_text(f"{spec['speed']}\n")
+        elif spec.get("speed_unreadable"):
+            # A directory stands in for the kernel's EINVAL: both surface as
+            # OSError on read, which is the only thing the collector can see.
+            (d / "speed").mkdir()
         if spec.get("physical", True):
             (d / "device").mkdir()
+        for counter in (
+            "rx_bytes",
+            "tx_bytes",
+            "rx_errors",
+            "tx_errors",
+            "rx_dropped",
+            "tx_dropped",
+        ):
+            (d / "statistics" / counter).write_text(f"{spec.get(counter, 0)}\n")
     return tmp_path
 
 
-class TestProcNetDev:
-    def test_parses_counters(self):
-        stats = _read_proc_net_dev_from(PROC_NET_DEV)
-        eth = stats["enP2p1s0f0np0"]
-        assert eth["rx_bytes"] == 9876543210
-        assert eth["tx_bytes"] == 1234567890
-        assert eth["rx_drop"] == 2
-        assert eth["tx_errs"] == 1
-
-    def test_skips_headers(self):
-        assert "Inter-|   Receive" not in _read_proc_net_dev_from(PROC_NET_DEV)
-
-    def test_malformed_rows_are_skipped(self):
-        stats = _read_proc_net_dev_from(PROC_NET_DEV + "broken: not numbers here\n")
-        assert "broken" not in stats
-
-    def test_empty_input(self):
-        assert _read_proc_net_dev_from("") == {}
-
-
-def _read_proc_net_dev_from(text):
-    import tempfile
-    from pathlib import Path
-
-    with tempfile.NamedTemporaryFile("w", suffix=".dev", delete=False) as f:
-        f.write(text)
-        path = Path(f.name)
-    return _read_proc_net_dev(path)
-
-
 class TestNetworkCollector:
-    def _collect(self, tmp_path, text=PROC_NET_DEV, interfaces=None):
-        proc = tmp_path / "proc"
-        (proc / "net").mkdir(parents=True)
-        (proc / "net" / "dev").write_text(text)
-        sysfs = build_sysfs(
-            tmp_path / "sys",
-            interfaces
-            or {
-                "enP2p1s0f0np0": {"speed": 200000},
-                "docker0": {"physical": False},
-                "vethbeef01": {"physical": False},
-            },
-        )
-        return NetworkCollector(proc, sysfs).collect()
+    def _collect(self, tmp_path, interfaces=None):
+        sysfs = build_sysfs(tmp_path / "sys", interfaces or GX10_INTERFACES)
+        return NetworkCollector(sysfs).collect()
 
     def test_reports_only_physical_interfaces(self, tmp_path):
-        """A node running Docker has dozens of veth interfaces whose counters
-        mean nothing — they'd bury the NICs that matter."""
+        """A node running Docker has dozens of veth and bridge interfaces whose
+        counters mean nothing — they'd bury the NICs that matter."""
         names = [i.name for i in self._collect(tmp_path)]
-        assert names == ["enP2p1s0f0np0"]
+        assert names == ["enP2p1s0f0np0", "enP7s7", "wlP9s9"]
 
     def test_reads_link_speed(self, tmp_path):
         iface = self._collect(tmp_path)[0]
-        # 200GbE ConnectX-7 reports 200000 Mb/s.
-        assert iface.speed_mbps == 200000
+        # 100GbE ConnectX-7 reports 100000 Mb/s.
+        assert iface.speed_mbps == 100000
 
     def test_first_sample_has_no_rate(self, tmp_path):
         """Nothing to compare against yet — must not invent throughput."""
@@ -103,15 +86,14 @@ class TestNetworkCollector:
     def test_totals_and_errors_are_reported(self, tmp_path):
         iface = self._collect(tmp_path)[0]
         assert iface.rx_bytes_total == 9876543210
+        assert iface.tx_bytes_total == 1234567890
         assert iface.tx_errors == 1
         assert iface.rx_dropped == 2
         # Any error at all means not healthy — the count moving is the signal.
         assert iface.healthy is False
 
     def test_down_interface_reported_not_hidden(self, tmp_path):
-        ifaces = self._collect(
-            tmp_path, interfaces={"enP2p1s0f0np0": {"operstate": "down"}}
-        )
+        ifaces = self._collect(tmp_path, interfaces={"enP2p1s0f0np0": {"operstate": "down"}})
         assert ifaces[0].up is False
 
     def test_missing_speed_is_none_not_zero(self, tmp_path):
@@ -119,8 +101,54 @@ class TestNetworkCollector:
         ifaces = self._collect(tmp_path, interfaces={"enP2p1s0f0np0": {}})
         assert ifaces[0].speed_mbps is None
 
-    def test_no_procfs_yields_nothing(self, tmp_path):
-        assert NetworkCollector(tmp_path / "nope", tmp_path / "sys").collect() == []
+    def test_unreadable_speed_is_none_not_a_failure(self, tmp_path):
+        """The kernel returns EINVAL for `speed` on a wireless interface — the
+        GX10's wlP9s9 does exactly this. It must report no speed rather than
+        take down the whole collector, which is what enumerating every
+        interface in sysfs newly exposes us to."""
+        iface = next(i for i in self._collect(tmp_path) if i.name == "wlP9s9")
+        assert iface.speed_mbps is None
+        assert iface.up is True
+
+    def test_down_port_speed_is_none_not_negative(self, tmp_path):
+        """A down ConnectX-7 port reports -1, which must not reach the UI as a
+        negotiated speed."""
+        ifaces = self._collect(
+            tmp_path, interfaces={"enP2p1s0f1np1": {"operstate": "down", "speed": -1}}
+        )
+        assert ifaces[0].speed_mbps is None
+
+    def test_missing_counters_do_not_raise(self, tmp_path):
+        sysfs = tmp_path / "sys"
+        d = sysfs / "class" / "net" / "enP2p1s0f0np0"
+        (d / "device").mkdir(parents=True)
+        ifaces = NetworkCollector(sysfs).collect()
+        assert len(ifaces) == 1
+        assert ifaces[0].rx_bytes_total == 0
+
+    def test_no_sysfs_yields_nothing(self, tmp_path):
+        assert NetworkCollector(tmp_path / "nope").collect() == []
+
+    def test_container_netns_does_not_hide_host_nics(self, tmp_path):
+        """The regression this replaced. The agent enumerated /proc/net/dev,
+        but /proc/net is a symlink to self/net and resolves through the READING
+        process's network namespace — so even with the host's /proc mounted, a
+        container saw only `lo` and its own `eth0`. Every host NIC vanished and
+        the collector returned [] while reporting no error, which read as "this
+        node has no network interfaces" rather than as a bug.
+
+        A bind-mounted /sys carries the host's sysfs instance, tagged to the
+        host's namespace, so the NICs are there no matter who reads it.
+        """
+        sysfs = build_sysfs(
+            tmp_path / "sys",
+            # The container's own eth0 is a veth: it is NOT in the host's
+            # sysfs at all, so enumerating from there can't pick it up.
+            GX10_INTERFACES,
+        )
+        names = [i.name for i in NetworkCollector(sysfs).collect()]
+        assert names == ["enP2p1s0f0np0", "enP7s7", "wlP9s9"]
+        assert "eth0" not in names
 
 
 class TestRdmaCollector:

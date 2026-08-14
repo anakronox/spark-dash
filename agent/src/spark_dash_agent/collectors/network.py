@@ -1,6 +1,6 @@
 """Network interfaces and RDMA ports.
 
-Two collectors that read sysfs and procfs directly rather than going through
+Two collectors that read sysfs directly rather than going through
 `node_exporter`. That duplication is deliberate: node_exporter is scraped at
 15s and feeds history, but the live view needs sub-2s throughput to be worth
 looking at.
@@ -29,27 +29,44 @@ _VIRTUAL_PREFIXES = ("lo", "veth", "docker", "br-", "virbr", "tap", "tun", "cni"
 
 
 class NetworkCollector(Collector[list[NetworkInterface]]):
-    """Physical interfaces, with throughput derived between samples."""
+    """Physical interfaces, with throughput derived between samples.
+
+    ENUMERATED FROM SYSFS, NOT /proc/net/dev. Verified on the GX10: the agent
+    container has its own network namespace, and /proc/net is a symlink to
+    self/net, which resolves through the *reading* process's namespace. So even
+    with the host's /proc bind-mounted, /host/proc/net/dev listed only `lo` and
+    the container's own `eth0` — every host NIC was invisible and the collector
+    returned an empty list while reporting no error at all.
+
+    A bind-mounted /sys carries the host's sysfs instance, which is tagged to
+    the host's network namespace, so /host/sys/class/net lists the real NICs
+    regardless of where it's read from. That's why the RDMA collector — reading
+    the same statistics/ files — worked throughout.
+    """
 
     name = "network"
 
-    def __init__(self, proc_path: Path, sys_path: Path) -> None:
-        self._proc_path = proc_path
+    def __init__(self, sys_path: Path) -> None:
         self._sys_path = sys_path
+        self._net_root = sys_path / "class" / "net"
         self._rates = RateTracker()
 
     def collect(self) -> list[NetworkInterface]:
-        stats = _read_proc_net_dev(self._proc_path / "net" / "dev")
-        if not stats:
+        try:
+            names = sorted(p.name for p in self._net_root.iterdir())
+        except OSError:
             return []
 
         interfaces: list[NetworkInterface] = []
         live_keys: set[str] = set()
 
-        for name, counters in sorted(stats.items()):
+        for name in names:
             if not self._is_physical(name):
                 continue
 
+            stats = self._net_root / name / "statistics"
+            rx_bytes = _read_int(stats / "rx_bytes")
+            tx_bytes = _read_int(stats / "tx_bytes")
             rx_key, tx_key = f"{name}:rx", f"{name}:tx"
             live_keys |= {rx_key, tx_key}
 
@@ -58,14 +75,14 @@ class NetworkCollector(Collector[list[NetworkInterface]]):
                     name=name,
                     up=self._is_up(name),
                     speed_mbps=self._speed(name),
-                    rx_bytes_per_sec=self._rates.rate(rx_key, counters["rx_bytes"]),
-                    tx_bytes_per_sec=self._rates.rate(tx_key, counters["tx_bytes"]),
-                    rx_bytes_total=int(counters["rx_bytes"]),
-                    tx_bytes_total=int(counters["tx_bytes"]),
-                    rx_errors=int(counters["rx_errs"]),
-                    tx_errors=int(counters["tx_errs"]),
-                    rx_dropped=int(counters["rx_drop"]),
-                    tx_dropped=int(counters["tx_drop"]),
+                    rx_bytes_per_sec=self._rates.rate(rx_key, rx_bytes),
+                    tx_bytes_per_sec=self._rates.rate(tx_key, tx_bytes),
+                    rx_bytes_total=rx_bytes,
+                    tx_bytes_total=tx_bytes,
+                    rx_errors=_read_int(stats / "rx_errors"),
+                    tx_errors=_read_int(stats / "tx_errors"),
+                    rx_dropped=_read_int(stats / "rx_dropped"),
+                    tx_dropped=_read_int(stats / "tx_dropped"),
                 )
             )
 
@@ -216,42 +233,3 @@ def _read_int(path: Path) -> int:
 def _strip_enum(value: str) -> str:
     """sysfs reports these as "4: ACTIVE" — keep the name, drop the ordinal."""
     return value.split(":", 1)[-1].strip() if ":" in value else value
-
-
-def _read_proc_net_dev(path: Path) -> dict[str, dict[str, int]]:
-    """Parse /proc/net/dev.
-
-    Format is two header lines then one row per interface:
-
-        eth0: 12345 100 0 0 0 0 0 0  67890 200 0 0 0 0 0 0
-
-    Columns are receive then transmit, each: bytes packets errs drop fifo
-    frame compressed multicast.
-    """
-    try:
-        lines = path.read_text().splitlines()
-    except OSError:
-        return {}
-
-    out: dict[str, dict[str, int]] = {}
-    for line in lines[2:]:
-        name, _, rest = line.partition(":")
-        fields = rest.split()
-        if not name.strip() or len(fields) < 16:
-            continue
-        try:
-            values = [int(f) for f in fields[:16]]
-        except ValueError:
-            continue
-
-        out[name.strip()] = {
-            "rx_bytes": values[0],
-            "rx_packets": values[1],
-            "rx_errs": values[2],
-            "rx_drop": values[3],
-            "tx_bytes": values[8],
-            "tx_packets": values[9],
-            "tx_errs": values[10],
-            "tx_drop": values[11],
-        }
-    return out
