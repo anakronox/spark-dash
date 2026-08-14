@@ -201,6 +201,9 @@ change**:
 ## Auth / access
 
 - **LAN:** no auth requirement — reachable directly, matches current usage.
+  Prometheus (`:9090`) and Alertmanager (`:9093`) are LAN-only and rely on that
+  boundary; neither has authentication of its own. Only the dashboard
+  (`:8080`) is published externally.
 - **Remote (Cloudflare Tunnel + Google OAuth):** Cloudflare Access sits in front
   of the tunnel and handles the Google OAuth challenge before traffic ever
   reaches the dashboard — the backend doesn't need to implement login. For

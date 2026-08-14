@@ -43,10 +43,11 @@ services:
       - ./targets:/etc/prometheus/targets/static:ro
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/prometheus:/prometheus
     ports:
-      # Bound to localhost by default: Prometheus has no auth of its own, and
-      # the dashboard is the intended way in. Drop the 127.0.0.1 prefix only if
-      # you want to reach the Prometheus UI directly from the LAN.
-      - "${PROM_BIND:-127.0.0.1}:9090:9090"
+      # LAN-reachable. Prometheus has no auth of its own, so this relies on the
+      # LAN being the trust boundary — which it is here: only the dashboard on
+      # :8080 is published through the Cloudflare tunnel, and this port never
+      # leaves the network. Set PROM_BIND=127.0.0.1 to restrict it further.
+      - "${PROM_BIND:-0.0.0.0}:9090:9090"
     networks:
       - sparkdash
 
@@ -65,9 +66,9 @@ services:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/alertmanager:/alertmanager
     ports:
-      # Localhost by default, like Prometheus: no auth of its own, and the
-      # dashboard surfaces firing alerts anyway.
-      - "${ALERTMANAGER_BIND:-127.0.0.1}:9093:9093"
+      # LAN-reachable, same reasoning as Prometheus. Mainly used for silencing
+      # an alert while you work on it; firing alerts show in the dashboard.
+      - "${ALERTMANAGER_BIND:-0.0.0.0}:9093:9093"
     networks:
       - sparkdash
 
@@ -98,7 +99,9 @@ services:
       # Writable here — this is the service that renders the target files.
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/targets:/etc/prometheus/targets/generated
     ports:
-      # This is what cloudflared and the LAN both point at.
+      # The dashboard. THE ONLY PORT PUBLISHED THROUGH THE CLOUDFLARE TUNNEL —
+      # Prometheus and Alertmanager stay LAN-only, so Google OAuth at the
+      # tunnel edge guards the whole externally-reachable surface.
       - "${BACKEND_BIND:-0.0.0.0}:8080:8080"
     networks:
       - sparkdash

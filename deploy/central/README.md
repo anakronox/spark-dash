@@ -78,6 +78,29 @@ Two reasons to pin rather than `docker compose up -d --pull always`:
   pinned third-party ones, so a transient Docker Hub outage fails a deploy that
   only needed to change our own container.
 
+## Access model
+
+| Port | Service | Reachable from |
+|---|---|---|
+| `8080` | dashboard | LAN **and** the Cloudflare tunnel, behind Google OAuth |
+| `9090` | Prometheus | LAN only |
+| `9093` | Alertmanager | LAN only |
+
+Only the dashboard is published externally. Prometheus and Alertmanager have no
+authentication of their own, and they don't need it while the LAN is the trust
+boundary — nothing routes them off the network.
+
+That's also why the dashboard is read-only: it's the one service with an
+external path, so it deliberately can't load, unload or kill anything even if
+someone reached it.
+
+To lock the internal services down further, set `PROM_BIND=127.0.0.1` and
+`ALERTMANAGER_BIND=127.0.0.1` and reach them over SSH:
+
+```bash
+ssh -L 9090:localhost:9090 -L 9093:localhost:9093 brian@192.168.50.156
+```
+
 ## Alerting
 
 Prometheus evaluates `alerts.yml` and hands firing alerts to Alertmanager,
@@ -200,9 +223,18 @@ the generated files would mount *over* the stack directory's own files, so
 
 ## Verify
 
+These run on the VM. It's headless, so use `curl` over SSH rather than a
+browser — or open the same URLs from a LAN machine using the VM's address.
+
 ```bash
 # Backend liveness and self-assessment (this is what UptimeKuma watches).
 curl -s localhost:8080/health | jq
+
+# Alert rules: all should be "inactive" (loaded, not firing) on a healthy day.
+curl -s localhost:9090/api/v1/rules | jq -r '.data.groups[].rules[] | "\(.state)\t\(.name)"'
+
+# Anything currently firing.
+curl -s localhost:8080/api/alerts | jq
 
 # What the backend thinks the cluster is.
 curl -s localhost:8080/api/nodes | jq
