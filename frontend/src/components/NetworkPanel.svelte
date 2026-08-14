@@ -38,6 +38,7 @@
     state: string;
     linkLayer: string;
     rate: string;
+    iface: string;
     rx: number;
     tx: number;
     errors: number;
@@ -91,6 +92,7 @@
         state: p.state,
         linkLayer: p.link_layer,
         rate: p.rate,
+        iface: p.interface,
         rx: p.rx_bytes_per_sec,
         tx: p.tx_bytes_per_sec,
         errors: p.errors,
@@ -136,6 +138,7 @@
             <th scope="col">state</th>
             <th scope="col">link</th>
             <th scope="col">negotiated</th>
+            <th scope="col">interface</th>
             <th scope="col">node</th>
             <th scope="col" class="r">rx</th>
             <th scope="col" class="r">tx</th>
@@ -154,7 +157,10 @@
               </td>
               <!-- RoCE vs InfiniBand: same sysfs tree, different fabric. -->
               <td class="dim">{p.linkLayer || '—'}</td>
+              <!-- Blank while down: the driver reports a placeholder rate
+                   there, and showing it would read as a negotiation fault. -->
               <td class="rate">{p.rate || '—'}</td>
+              <td class="dim">{p.iface || '—'}</td>
               <td class="dim">{p.node}</td>
               <td class="r num">{bits(p.rx)}</td>
               <td class="r num">{bits(p.tx)}</td>

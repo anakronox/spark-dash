@@ -74,6 +74,9 @@ export interface RdmaPort {
   /** Verbatim from the driver, e.g. "200 Gb/sec (2X NDR)". A link that
    *  negotiated below its rated speed is otherwise invisible. */
   rate: string;
+  /** Ethernet interface this RoCE device is paired with; byte counters come
+   *  from there, since mlx5 leaves the IB-style counters at zero. */
+  interface: string;
   rx_bytes_per_sec: number;
   tx_bytes_per_sec: number;
   rx_bytes_total: number;

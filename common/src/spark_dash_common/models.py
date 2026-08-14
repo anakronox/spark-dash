@@ -163,6 +163,13 @@ class RdmaPort(BaseModel):
         "invisible failure.",
     )
 
+    interface: str = Field(
+        default="",
+        description="Ethernet interface this RoCE device is paired with. "
+        "Byte counters come from there: mlx5 leaves the InfiniBand-style "
+        "counters at zero for an Ethernet link layer.",
+    )
+
     rx_bytes_per_sec: float = 0.0
     tx_bytes_per_sec: float = 0.0
     rx_bytes_total: int = 0

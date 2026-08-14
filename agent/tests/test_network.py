@@ -124,24 +124,42 @@ class TestNetworkCollector:
 
 
 class TestRdmaCollector:
+    """Fixtures mirror the GX10's real tree: devices named roceP2p1s0f0 rather
+    than mlx5_0, link_layer Ethernet, and — critically — the InfiniBand-style
+    byte counters sitting at zero on an ACTIVE link, because mlx5 doesn't
+    populate them for RoCE."""
+
     def _build(
         self,
         tmp_path,
         *,
+        device="roceP2p1s0f0",
+        netdev="enP2p1s0f0np0",
         link_layer="Ethernet",
         state="4: ACTIVE",
-        rate="200 Gb/sec (2X NDR)",
+        rate="100 Gb/sec (4X EDR)",
+        netdev_rx=5_000_000,
+        netdev_tx=3_000_000,
     ):
-        port = tmp_path / "class" / "infiniband" / "mlx5_0" / "ports" / "1"
+        dev = tmp_path / "class" / "infiniband" / device
+        port = dev / "ports" / "1"
         (port / "counters").mkdir(parents=True)
         (port / "state").write_text(state + "\n")
         (port / "phys_state").write_text("5: LinkUp\n")
         (port / "link_layer").write_text(link_layer + "\n")
         (port / "rate").write_text(rate + "\n")
-        # Counters are in 4-byte words.
-        (port / "counters" / "port_rcv_data").write_text("1000000\n")
-        (port / "counters" / "port_xmit_data").write_text("2000000\n")
+        # Zero, exactly as the GX10 reports on a live RoCE link.
+        (port / "counters" / "port_rcv_data").write_text("0\n")
+        (port / "counters" / "port_xmit_data").write_text("0\n")
         (port / "counters" / "port_rcv_errors").write_text("3\n")
+
+        if netdev:
+            # The RDMA device and its Ethernet interface share a PCI function.
+            (dev / "device" / "net" / netdev).mkdir(parents=True)
+            stats = tmp_path / "class" / "net" / netdev / "statistics"
+            stats.mkdir(parents=True)
+            (stats / "rx_bytes").write_text(f"{netdev_rx}\n")
+            (stats / "tx_bytes").write_text(f"{netdev_tx}\n")
         return tmp_path
 
     def test_roce_is_detected(self, tmp_path):
@@ -150,14 +168,22 @@ class TestRdmaCollector:
         ports = RdmaCollector(self._build(tmp_path)).collect()
         assert len(ports) == 1
         assert ports[0].link_layer == "Ethernet"
-        assert ports[0].device == "mlx5_0"
+        assert ports[0].device == "roceP2p1s0f0"
 
-    def test_counters_are_converted_from_words_to_bytes(self, tmp_path):
-        """port_rcv_data is in 4-byte words. Missing that under-reports
-        throughput by exactly 4x, which looks plausible rather than broken."""
+    def test_traffic_comes_from_the_paired_netdev(self, tmp_path):
+        """The regression this replaced: reading counters/port_rcv_data gave 0
+        on a live RoCE link, so throughput would have shown 0 b/s forever —
+        indistinguishable from an idle fabric rather than looking like a bug."""
         ports = RdmaCollector(self._build(tmp_path)).collect()
-        assert ports[0].rx_bytes_total == 4_000_000
-        assert ports[0].tx_bytes_total == 8_000_000
+        assert ports[0].interface == "enP2p1s0f0np0"
+        assert ports[0].rx_bytes_total == 5_000_000
+        assert ports[0].tx_bytes_total == 3_000_000
+
+    def test_no_paired_netdev_is_not_fatal(self, tmp_path):
+        """Native InfiniBand has no Ethernet interface behind it."""
+        ports = RdmaCollector(self._build(tmp_path, netdev=None)).collect()
+        assert ports[0].interface == ""
+        assert ports[0].rx_bytes_total == 0
 
     def test_state_ordinal_is_stripped(self, tmp_path):
         ports = RdmaCollector(self._build(tmp_path)).collect()
@@ -169,11 +195,21 @@ class TestRdmaCollector:
         assert ports[0].state == "DOWN"
         assert ports[0].active is False
 
-    def test_rate_is_surfaced(self, tmp_path):
+    def test_rate_is_surfaced_while_active(self, tmp_path):
         """A ConnectX-7 negotiating far below its rated speed is a known and
         otherwise invisible failure, so the raw string is kept."""
         ports = RdmaCollector(self._build(tmp_path, rate="10 Gb/sec (1X SDR)")).collect()
         assert ports[0].rate == "10 Gb/sec (1X SDR)"
+
+    def test_rate_is_suppressed_while_down(self, tmp_path):
+        """The driver reports a placeholder on a down port — the GX10 shows
+        '40 Gb/sec (4X QDR)' on hardware rated far higher. Displaying it would
+        look like a negotiation fault rather than an unused port."""
+        ports = RdmaCollector(
+            self._build(tmp_path, state="1: DOWN", rate="40 Gb/sec (4X QDR)")
+        ).collect()
+        assert ports[0].active is False
+        assert ports[0].rate == ""
 
     def test_errors_are_summed(self, tmp_path):
         assert RdmaCollector(self._build(tmp_path)).collect()[0].errors == 3
@@ -183,7 +219,7 @@ class TestRdmaCollector:
         assert RdmaCollector(tmp_path / "sys").collect() == []
 
     def test_missing_counters_do_not_raise(self, tmp_path):
-        port = tmp_path / "class" / "infiniband" / "mlx5_0" / "ports" / "1"
+        port = tmp_path / "class" / "infiniband" / "roceP2p1s0f0" / "ports" / "1"
         port.mkdir(parents=True)
         ports = RdmaCollector(tmp_path).collect()
         assert len(ports) == 1

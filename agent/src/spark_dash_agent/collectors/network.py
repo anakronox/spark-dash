@@ -103,11 +103,22 @@ class RdmaCollector(Collector[list[RdmaPort]]):
     Covers both native InfiniBand and RoCE, since mlx5 registers RoCE devices
     in the same tree. Returns an empty list when the directory doesn't exist,
     which is the normal case on a node with no RDMA hardware.
+
+    TRAFFIC COMES FROM THE NETDEV, NOT FROM counters/. Verified on the GX10:
+    port_rcv_data and port_xmit_data read 0 on ports that are ACTIVE with
+    LinkUp, because mlx5 doesn't populate the InfiniBand-style byte counters
+    for an Ethernet link layer. Reading them would have reported 0 b/s forever
+    on a working link — wrong, and wrong in a way that looks like an idle
+    fabric rather than a bug.
+
+    Each RoCE device is paired with its Ethernet interface through the shared
+    PCI device (../device/net/), and the byte counters are read from there.
     """
 
     name = "rdma"
 
     def __init__(self, sys_path: Path) -> None:
+        self._sys_path = sys_path
         self._root = sys_path / "class" / "infiniband"
         self._rates = RateTracker()
 
@@ -123,32 +134,35 @@ class RdmaCollector(Collector[list[RdmaPort]]):
             if not ports_dir.is_dir():
                 continue
 
+            netdev = self._netdev_for(device_dir)
+
             for port_dir in sorted(ports_dir.iterdir()):
                 try:
                     port_num = int(port_dir.name)
                 except ValueError:
                     continue
 
-                counters = port_dir / "counters"
-                rx_words = _read_int(counters / "port_rcv_data")
-                tx_words = _read_int(counters / "port_xmit_data")
+                state = _strip_enum(_read_text(port_dir / "state"))
+                active = state.upper().endswith("ACTIVE")
 
-                # These counters are in 4-BYTE WORDS, not bytes — a detail
-                # that silently under-reports throughput by 4x if missed.
-                rx_bytes = rx_words * 4
-                tx_bytes = tx_words * 4
-
+                rx_bytes, tx_bytes = self._netdev_bytes(netdev)
                 key = f"{device_dir.name}:{port_num}"
                 live_keys |= {f"{key}:rx", f"{key}:tx"}
 
+                counters = port_dir / "counters"
                 ports.append(
                     RdmaPort(
                         device=device_dir.name,
                         port=port_num,
-                        state=_strip_enum(_read_text(port_dir / "state")),
+                        state=state,
                         physical_state=_strip_enum(_read_text(port_dir / "phys_state")),
                         link_layer=_read_text(port_dir / "link_layer"),
-                        rate=_read_text(port_dir / "rate"),
+                        # The driver reports a placeholder rate on a down port
+                        # ("40 Gb/sec (4X QDR)" on hardware rated far higher),
+                        # so it's only meaningful while the link is up. Showing
+                        # it regardless would look like a negotiation fault.
+                        rate=_read_text(port_dir / "rate") if active else "",
+                        interface=netdev or "",
                         rx_bytes_per_sec=self._rates.rate(f"{key}:rx", rx_bytes),
                         tx_bytes_per_sec=self._rates.rate(f"{key}:tx", tx_bytes),
                         rx_bytes_total=rx_bytes,
@@ -163,6 +177,26 @@ class RdmaCollector(Collector[list[RdmaPort]]):
 
         self._rates.forget(live_keys)
         return ports
+
+    def _netdev_for(self, device_dir: Path) -> str | None:
+        """The Ethernet interface backing a RoCE device.
+
+        Both hang off the same PCI function, so the RDMA device's `device`
+        symlink has a `net/` directory naming the interface — that's the link
+        between roceP2p1s0f0 and enP2p1s0f0np0.
+        """
+        net_dir = device_dir / "device" / "net"
+        try:
+            names = sorted(p.name for p in net_dir.iterdir())
+        except OSError:
+            return None
+        return names[0] if names else None
+
+    def _netdev_bytes(self, netdev: str | None) -> tuple[int, int]:
+        if not netdev:
+            return 0, 0
+        stats = self._sys_path / "class" / "net" / netdev / "statistics"
+        return _read_int(stats / "rx_bytes"), _read_int(stats / "tx_bytes")
 
 
 def _read_text(path: Path) -> str:
