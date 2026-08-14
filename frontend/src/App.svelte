@@ -58,6 +58,24 @@
     return [...byKey.values()];
   });
 
+  /* Agent builds across the cluster.
+   *
+   * Silent when uniform, visible when they diverge. A node left on an older
+   * agent shows up as a missing feature rather than as a stale node — it has
+   * cost real debugging time twice — and with three nodes "did that one
+   * actually update?" becomes a routine question. */
+  const agentVersions = $derived.by(() => {
+    const seen = new Map<string, string[]>();
+    for (const n of nodes) {
+      if (!n.up) continue;
+      const v = n.agent_version || 'unknown';
+      seen.set(v, [...(seen.get(v) ?? []), n.node_id]);
+    }
+    return [...seen.entries()].sort((a, b) => b[1].length - a[1].length);
+  });
+
+  const versionsDiverge = $derived(agentVersions.length > 1);
+
   const cluster = $derived.by(() => {
     let tokensPerSec = 0;
     let up = 0;
@@ -128,6 +146,16 @@
   <!-- Above everything: an alert is what you want to see before you start
        reading numbers. Renders nothing when all is quiet. -->
   <Alerts />
+
+  {#if versionsDiverge}
+    <p class="notice" data-tone="warning">
+      Nodes are running different agent builds:
+      {#each agentVersions as [version, ids], i (version)}
+        {i > 0 ? ' · ' : ''}<span class="num">{version}</span>
+        <span class="dim">({ids.join(', ')})</span>
+      {/each}
+    </p>
+  {/if}
 
   {#if feed.snapshot}
     <section class="summary">

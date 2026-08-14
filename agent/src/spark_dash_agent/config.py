@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     temp_warning_c: float = TEMP_WARNING_C
     temp_critical_c: float = TEMP_CRITICAL_C
 
+    # Baked into the image at build time from the git sha. "unknown" when
+    # running from source, which is correct — there's no commit to name.
+    agent_version: str = "unknown"
+
     log_level: str = "INFO"
 
     def resolve_node_id(self) -> str:

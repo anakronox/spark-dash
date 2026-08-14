@@ -302,6 +302,13 @@ class NodeSnapshot(BaseModel):
     ts: datetime
     up: bool = True
 
+    agent_version: str = Field(
+        default="unknown",
+        description="Commit the agent image was built from. A stale agent "
+        "presents as a missing feature rather than as a stale agent, so the "
+        "build it's running has to be legible from the dashboard.",
+    )
+
     # Which group this node belongs to, or None when it stands alone.
     #
     # Set by the backend from its inventory, not by the agent — a node has no

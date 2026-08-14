@@ -42,7 +42,9 @@ build_and_push() {
 
   # Build context is the repo ROOT, not the component directory — both images
   # depend on the local common/ package.
-  docker build -f "$dockerfile" -t "${base}:${GIT_SHA}" -t "${base}:latest" .
+  docker build -f "$dockerfile" \
+    --build-arg "BUILD_VERSION=${GIT_SHA}" \
+    -t "${base}:${GIT_SHA}" -t "${base}:latest" .
 
   docker push "${base}:${GIT_SHA}"
   docker push "${base}:latest"

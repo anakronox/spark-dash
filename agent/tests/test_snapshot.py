@@ -191,3 +191,17 @@ class TestNodeIdResolution:
         # edit must not retroactively relabel the node's metrics.
         path.write_text("something-else\n")
         assert builder.build().node_id == "gx10-1"
+
+
+def test_agent_version_is_reported(tmp_path):
+    """Baked into the image at build time. A stale agent otherwise presents as
+    a missing feature rather than as a stale agent — which has cost real
+    debugging time."""
+    builder = SnapshotBuilder(Settings(node_id="n1", agent_version="abc1234"))
+    assert builder.build().agent_version == "abc1234"
+
+
+def test_agent_version_defaults_to_unknown():
+    """Running from source, there's no commit to name — and saying 'unknown' is
+    honest where inventing a version would not be."""
+    assert SnapshotBuilder(Settings(node_id="n1")).build().agent_version == "unknown"

@@ -111,6 +111,7 @@ class SnapshotBuilder:
             node_id=self._node_id,
             ts=datetime.now(UTC),
             up=True,
+            agent_version=self._settings.agent_version,
             health=health,
             health_reasons=reasons,
             gpu=gpu,

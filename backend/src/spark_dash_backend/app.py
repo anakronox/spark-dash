@@ -363,6 +363,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "alertmanager": "ok" if alerts_ok else "unreachable",
             "nodes_configured": len(nodes),
             "nodes_up": nodes_up,
+            # Distinct builds across the cluster, so a node left behind on an
+            # older agent is visible from a plain curl rather than only in the
+            # UI. Uniform is the boring case and shows one entry.
+            "agent_versions": sorted(
+                {n.agent_version for n in (snapshot.nodes if snapshot else []) if n.up}
+            ),
             "live_poller_running": poller.running,
             "live_subscribers": poller.subscriber_count,
         }

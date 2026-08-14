@@ -122,6 +122,8 @@ export interface NodeSnapshot {
   node_id: string;
   ts: string;
   up: boolean;
+  /** Commit the agent image was built from. */
+  agent_version: string;
   /** Cluster this node belongs to, or null when it stands alone.
    *  Grouped nodes pool memory for distributed inference, so their capacity
    *  sums; ungrouped ones don't, so it must not. */

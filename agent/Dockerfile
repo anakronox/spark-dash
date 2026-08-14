@@ -35,10 +35,16 @@ RUN uv sync --frozen --no-dev --no-editable --package spark-dash-agent
 
 FROM python:3.12-slim
 
-# Where the HOST's /proc and /sys are mounted. A container's own
-# /proc/pressure/memory and MemAvailable describe the container, not the
-# machine being monitored.
-ENV PROC_PATH=/host/proc \
+# Set by publish-images.sh from the git sha, so a running container can name
+# the commit it was built from. A stale agent otherwise presents as a missing
+# feature rather than as a stale agent.
+ARG BUILD_VERSION=unknown
+
+# PROC_PATH / SYS_PATH point at where the HOST's /proc and /sys are mounted. A
+# container's own /proc/pressure/memory and MemAvailable describe the
+# container, not the machine being monitored.
+ENV AGENT_VERSION=${BUILD_VERSION} \
+    PROC_PATH=/host/proc \
     SYS_PATH=/host/sys \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
