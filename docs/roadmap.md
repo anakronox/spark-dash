@@ -270,6 +270,31 @@ get lost:
    the git change it just saw"), so a push to a stack repo changes nothing on
    any host until someone pulls. Worth closing before the 3-node rollout, when
    doing it by hand stops being cheap.
+
+   **Planned shape — two phases, decided 2026-08-15:**
+
+   1. Clone the source repo into `/docker/` and pull it freely. Nothing in it is
+      ever hand-edited, so a pull can never conflict.
+   2. A separate Dockhand orchestration repo holding **only** what Dockhand
+      needs to deploy plus what gets hand-modified on the host — `compose.yaml`,
+      `.env`, and anything else that a pull would clobber or that would block a
+      pull with a conflict.
+
+   The principle worth keeping: *a file that is hand-edited on the host must
+   live in exactly one repo — the one nobody pulls over it.* Today's failure was
+   precisely this. `.env` lived in a repo designed to be overwritten, so pinning
+   `AGENT_IMAGE` on `sparky` turned the next `git pull` into "local changes would
+   be overwritten by merge". `sync-stack-repos.sh` already carries a
+   copy-aside-and-restore dance for `.env` that exists *only* because of this
+   duplication, and it would go away.
+
+   **Open sub-question:** who owns `compose.yaml`? Dockhand needs it in the
+   orchestration repo, but it's currently derived from `deploy/*/compose.yaml`
+   in this repo. Either it stays derived (and still needs syncing, so
+   `sync-stack-repos.sh` shrinks rather than disappears), or the orchestration
+   repo becomes authoritative and the templates here become reference-only,
+   accepting that they can drift from what's deployed. That choice decides
+   whether the sync script survives.
 7. **Should there be a database?** **Leaning no for metrics, yes eventually for
    events — but only after A7 and B.**
 
