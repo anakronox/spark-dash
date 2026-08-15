@@ -46,7 +46,11 @@ export interface ProcessInfo {
   name: string;
   gpu_mem_bytes: number;
   runtime: string | null;
+  /* From `--alias` in the process's argv — the same name the router reports,
+   * so a row here lines up with a row in the models table. Null for a router
+   * parent (which serves every model and holds none) and for non-LLM work. */
   model: string | null;
+  router: string | null;
 }
 
 export interface NetworkInterface {

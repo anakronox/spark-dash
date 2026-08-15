@@ -11,8 +11,56 @@ from spark_dash_agent.collectors.gpu import (
     _command_line,
     _cwd,
     _num,
+    infer_model,
     infer_runtime,
 )
+
+# Verbatim from the GX10 on 2026-08-15, trimmed only in length. The child that
+# holds the weights (26.4 GiB) carries --alias; the router parent that spawned
+# it carries --models-preset and holds ~0.17 GiB of its own.
+GX10_MODEL_CHILD = (
+    "/app/llama-server --cache-prompt --cache-reuse 2048 --host 127.0.0.1 "
+    "--metrics --port 52447 --sleep-idle-seconds 1200 --slots --spec-draft-n-max 3 "
+    "--spec-type draft-mtp --alias qwen36-35b --batch-size 4096 --ctx-size 131072 "
+    "--cont-batching --cache-type-k q8_0 --flash-attn on --load-mode none "
+    "--model /models/Qwen3.6-Heretic-NVFP4-MTP/Qwen3.6-35B-A3B-uncen"
+)
+GX10_ROUTER_PARENT = (
+    "/app/llama-server --host 0.0.0.0 --port 8000 --models-preset /config/models.ini "
+    "--models-max 3 --models-autoload --metrics"
+)
+
+
+class TestInferModel:
+    def test_alias_from_a_real_child_command(self):
+        assert infer_model(GX10_MODEL_CHILD) == "qwen36-35b"
+
+    def test_router_parent_has_no_model(self):
+        """The parent serves every model and holds none of their weights.
+        Attributing its memory to a model would be a lie."""
+        assert infer_model(GX10_ROUTER_PARENT) is None
+
+    def test_equals_form(self):
+        assert infer_model("llama-server --alias=qwen36-35b --port 1") == "qwen36-35b"
+
+    def test_model_path_is_not_mistaken_for_the_alias(self):
+        """--model names a file; --alias names the thing the router reports.
+        Only the latter joins to the router metrics."""
+        assert infer_model("llama-server --model /models/Qwen3.6-35B.gguf") is None
+
+    def test_trailing_alias_with_no_value(self):
+        """Malformed rather than meaningful — must not swallow the next flag."""
+        assert infer_model("llama-server --port 8000 --alias") is None
+        assert infer_model("llama-server --alias --metrics") is None
+
+    def test_empty_equals_form(self):
+        assert infer_model("llama-server --alias=") is None
+
+    def test_no_command_line(self):
+        assert infer_model("") is None
+
+    def test_non_llm_process(self):
+        assert infer_model("python main.py --listen 0.0.0.0 --port 8188") is None
 
 
 class TestInferRuntime:

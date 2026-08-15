@@ -183,19 +183,45 @@ def test_states_render_one_series_per_state():
     assert 'sparkdash_node_health{node="gx10-1",state="good"} 1.0' in text
 
 
-def test_process_list_is_not_exported_to_prometheus():
-    """PIDs churn; a pid label would grow series cardinality without bound for
-    data nobody queries historically. It's live-view-only, served via JSON."""
+def test_processes_are_exported_aggregated_never_per_pid():
+    """PIDs churn on every model swap, so a pid label would grow cardinality
+    without bound and never reuse a series. Aggregating by workload identity
+    keeps it bounded by configuration instead — but the pid itself, and the raw
+    process name, must never reach Prometheus."""
     text = render(make_snapshot())
-    # Check for the data itself, not the word "process" — that legitimately
-    # appears in unrelated HELP text.
     assert "4412" not in text
-    assert "llama-server" not in text
-    assert 'pid=' not in text
-    metric_names = {
-        line.split()[2] for line in text.splitlines() if line.startswith("# TYPE")
-    }
-    assert not any("process" in name for name in metric_names)
+    assert "pid=" not in text
+    # The process *name* is per-process detail; the model is the stable identity.
+    assert 'name="llama-server"' not in text
+    assert (
+        'sparkdash_gpu_process_memory_bytes{model="qwen3-32b",node="gx10-1",'
+        'router="",runtime="llama.cpp"} 4.2e+10' in text
+    )
+
+
+def test_process_memory_sums_within_a_workload():
+    """Two children of the same model must add up rather than overwrite."""
+    text = render(
+        make_snapshot(
+            processes=[
+                ProcessInfo(pid=1, name="llama-server", gpu_mem_bytes=1_000, runtime="llama.cpp"),
+                ProcessInfo(pid=2, name="llama-server", gpu_mem_bytes=2_500, runtime="llama.cpp"),
+            ]
+        )
+    )
+    labels = 'model="",node="gx10-1",router="",runtime="llama.cpp"'
+    assert f"sparkdash_gpu_process_memory_bytes{{{labels}}} 3500.0" in text
+    assert f"sparkdash_gpu_process_count{{{labels}}} 2.0" in text
+
+
+def test_unlabeled_process_still_reports_its_memory():
+    """An unrecognized process eating the unified pool is exactly what you want
+    to see — it must not be dropped for lacking a runtime."""
+    text = render(
+        make_snapshot(processes=[ProcessInfo(pid=9, name="mystery", gpu_mem_bytes=5_000)])
+    )
+    labels = 'model="",node="gx10-1",router="",runtime=""'
+    assert f"sparkdash_gpu_process_memory_bytes{{{labels}}} 5000.0" in text
 
 
 def test_missing_sections_are_omitted_not_zeroed():
@@ -214,7 +240,7 @@ def test_collector_errors_are_exported():
 def test_runtime_metrics_are_labeled_by_model():
     text = render(make_snapshot())
     assert (
-        'sparkdash_llama_model_tokens_per_second'
+        "sparkdash_llama_model_tokens_per_second"
         '{model="qwen3-32b",node="gx10-1",router="router-a:8080"} 41.2'
     ) in text
     assert 'sparkdash_vllm_tokens_per_second{model="llama-3.3-70b",node="gx10-1"} 88.5' in text
@@ -227,11 +253,11 @@ def test_runtime_metrics_are_labeled_by_model():
 def test_model_state_renders_one_series_per_state():
     text = render(make_snapshot())
     assert (
-        'sparkdash_llama_model_state'
+        "sparkdash_llama_model_state"
         '{model="qwen3-32b",node="gx10-1",router="router-a:8080",state="active"} 1.0'
     ) in text
     assert (
-        'sparkdash_llama_model_state'
+        "sparkdash_llama_model_state"
         '{model="cydonia-24b",node="gx10-1",router="router-a:8080",state="sleeping"} 1.0'
     ) in text
 
@@ -242,7 +268,7 @@ def test_sleeping_models_get_no_throughput_series():
     text = render(make_snapshot())
     assert 'sparkdash_llama_model_tokens_per_second{model="cydonia-24b"' not in text
     assert (
-        'sparkdash_llama_model_tokens_per_second'
+        "sparkdash_llama_model_tokens_per_second"
         '{model="qwen3-32b",node="gx10-1",router="router-a:8080"} 41.2'
     ) in text
 
@@ -257,18 +283,14 @@ def test_router_label_distinguishes_multiple_routers():
                     endpoint="http://a:8080",
                     name="a:8080",
                     models=[
-                        RouterModel(
-                            name="shared", state=ModelState.ACTIVE, tokens_per_sec=10.0
-                        )
+                        RouterModel(name="shared", state=ModelState.ACTIVE, tokens_per_sec=10.0)
                     ],
                 ),
                 LlamaRouterMetrics(
                     endpoint="http://b:8081",
                     name="b:8081",
                     models=[
-                        RouterModel(
-                            name="shared", state=ModelState.ACTIVE, tokens_per_sec=20.0
-                        )
+                        RouterModel(name="shared", state=ModelState.ACTIVE, tokens_per_sec=20.0)
                     ],
                 ),
             ]
@@ -278,8 +300,7 @@ def test_router_label_distinguishes_multiple_routers():
     assert 'router="a:8080"' in text
     assert 'router="b:8081"' in text
     assert (
-        'sparkdash_llama_model_tokens_per_second'
-        '{model="shared",node="gx10-1",router="a:8080"} 10.0'
+        'sparkdash_llama_model_tokens_per_second{model="shared",node="gx10-1",router="a:8080"} 10.0'
     ) in text
 
 

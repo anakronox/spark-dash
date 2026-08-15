@@ -162,6 +162,37 @@ _COMFYUI_FLAGS = (
 )
 
 
+def infer_model(command: str) -> str | None:
+    """The model a process is serving, from `--alias` in its argv.
+
+    llama.cpp's router spawns one child per resident model, and the child is
+    where the weights actually live — the router parent holds only its own
+    overhead. The child carries `--alias <name>`, and that name is exactly what
+    the router reports from `/v1/models`, so it joins to the per-model metrics
+    without any fuzzy matching. Verified on the GX10: the 26.4 GiB process
+    carried `--alias qwen36-35b`, a model id reported by one router only.
+
+    Returns None for a router parent (`--models-preset`, serving no single
+    model) and for anything else without an alias. That's deliberate — an
+    unattributed process still shows its memory, it just isn't blamed on a
+    model it may not be running.
+
+    vLLM names models differently (`--served-model-name`); adding it here is a
+    separate change, not a special case of this one.
+    """
+    tokens = command.split()
+    for i, token in enumerate(tokens):
+        if token == "--alias":
+            # A trailing `--alias` with no value is malformed; treat as absent
+            # rather than reading whatever flag follows it.
+            if i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                return tokens[i + 1]
+            return None
+        if token.startswith("--alias="):
+            return token.partition("=")[2] or None
+    return None
+
+
 def _looks_like_comfyui(haystack: str) -> bool:
     """Identify ComfyUI by its distinctive CLI flags.
 
@@ -268,12 +299,16 @@ class GpuCollector(Collector[GpuMetrics]):
             try:
                 name = proc.name()
                 gpu_mem = _num(proc.gpu_memory()) or 0.0
+                # Read once: it's a /proc access per process, and both the
+                # runtime and the model are derived from it.
+                command = _command_line(proc)
                 out.append(
                     ProcessInfo(
                         pid=pid,
                         name=str(name) if name is not NA else f"pid-{pid}",
                         gpu_mem_bytes=int(gpu_mem),
-                        runtime=infer_runtime(str(name), _command_line(proc), _cwd(proc)),
+                        runtime=infer_runtime(str(name), command, _cwd(proc)),
+                        model=infer_model(command),
                     )
                 )
             except Exception:  # noqa: BLE001 — a process exiting mid-scan is normal

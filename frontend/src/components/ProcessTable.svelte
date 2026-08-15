@@ -25,6 +25,7 @@
     pid: number;
     name: string;
     runtime: string | null;
+    model: string | null;
     bytes: number;
     sharePct: number;
   }
@@ -40,6 +41,7 @@
           pid: p.pid,
           name: p.name,
           runtime: p.runtime,
+          model: p.model,
           bytes: p.gpu_mem_bytes,
           sharePct: ratioPct(p.gpu_mem_bytes, total),
         });
@@ -74,6 +76,7 @@
           <tr>
             <th scope="col">process</th>
             <th scope="col">runtime</th>
+            <th scope="col">model</th>
             <th scope="col">node</th>
             <th scope="col" class="r">pid</th>
             <th scope="col" class="r">gpu mem</th>
@@ -94,6 +97,16 @@
                   </span>
                 {:else}
                   <span class="dim">unlabelled</span>
+                {/if}
+              </td>
+              <td>
+                <!-- A router parent legitimately has no model: it serves all of
+                     them and holds only its own overhead. An em dash says that
+                     plainly rather than implying missing data. -->
+                {#if row.model}
+                  <span class="model">{row.model}</span>
+                {:else}
+                  <span class="dim">—</span>
                 {/if}
               </td>
               <td class="dim">{row.node}</td>
@@ -186,6 +199,13 @@
   }
   .runtime[data-kind='other'] {
     color: var(--series-2);
+  }
+
+  /* Monospace because it's an identifier the operator will match by eye
+     against the models table and against router logs. */
+  .model {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
   }
 
   .bar-track {

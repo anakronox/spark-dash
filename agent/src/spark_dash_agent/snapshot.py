@@ -13,7 +13,13 @@ from pathlib import Path
 
 import psutil
 from spark_dash_common.health import assess
-from spark_dash_common.models import NodeSnapshot, Runtimes
+from spark_dash_common.models import (
+    LlamaRouterMetrics,
+    ModelState,
+    NodeSnapshot,
+    ProcessInfo,
+    Runtimes,
+)
 
 from spark_dash_agent.collectors.cpu import CpuCollector
 from spark_dash_agent.collectors.gpu import GpuCollector
@@ -25,6 +31,62 @@ from spark_dash_agent.collectors.vllm import VllmCollector
 from spark_dash_agent.config import Settings
 
 log = logging.getLogger(__name__)
+
+
+def resolve_process_routers(
+    processes: list[ProcessInfo], routers: list[LlamaRouterMetrics]
+) -> list[ProcessInfo]:
+    """Attach the owning router to each process that names a model.
+
+    The join is by model name, because a llama.cpp child's `--alias` is the
+    same string its router reports. The label used matches the exporter's
+    `router` label exactly (`name or endpoint`), which is what lets process
+    memory be correlated with the per-model router series in one query.
+
+    Ambiguity is left unresolved rather than guessed at. A node runs several
+    routers and the same model name can be registered with more than one, so:
+
+      - exactly one router knows the model  -> attribute it
+      - several know it, one has it ACTIVE  -> that's the one holding weights
+      - several, none or many ACTIVE        -> leave it unset
+
+    The parent's PID is not used to break ties. A child's parent is a router
+    process listening on a container-internal port, and mapping that back to
+    the host-side endpoint would need cross-namespace socket inspection for a
+    case that resolves on ACTIVE state anyway.
+    """
+    if not routers:
+        return processes
+
+    by_model: dict[str, list[LlamaRouterMetrics]] = {}
+    for router in routers:
+        for model in router.models:
+            by_model.setdefault(model.name, []).append(router)
+
+    def _label(router: LlamaRouterMetrics) -> str:
+        return router.name or router.endpoint
+
+    def _has_active(router: LlamaRouterMetrics, model_name: str) -> bool:
+        return any(m.name == model_name and m.state is ModelState.ACTIVE for m in router.models)
+
+    for proc in processes:
+        if not proc.model:
+            continue
+        candidates = by_model.get(proc.model, [])
+        if len(candidates) == 1:
+            proc.router = _label(candidates[0])
+            continue
+        active = [r for r in candidates if _has_active(r, proc.model)]
+        if len(active) == 1:
+            proc.router = _label(active[0])
+        elif candidates:
+            log.debug(
+                "model %r is ambiguous across %d routers; leaving router unset",
+                proc.model,
+                len(candidates),
+            )
+
+    return processes
 
 
 def _point_psutil_at_host_proc(proc_path: Path) -> None:
@@ -98,6 +160,10 @@ class SnapshotBuilder:
         rdma = self._rdma.safe_collect(errors) or []
         llama = self._llama.safe_collect(errors) or []
         vllm = self._vllm.safe_collect(errors) or []
+
+        # Needs both collectors' output, so it happens here rather than inside
+        # either one.
+        processes = resolve_process_routers(processes, llama)
 
         health, reasons = assess(
             gpu=gpu,

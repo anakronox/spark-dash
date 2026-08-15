@@ -164,9 +164,13 @@ on `sparky` 2026-08-15:
   already the `model` label on `sparkdash_llama_model_*`. So the new metric joins
   directly against the existing per-model series: "while this model was active,
   how much of the pool did it hold?" becomes one query.
-- Where an alias is ambiguous across routers, the child's `PPid` is its router's
-  process and disambiguates. Verified: child 2581341 → PPid 2447163, the `:8001`
-  router that reports `qwen36-35b`.
+- Where an alias is ambiguous across routers, the router reporting that model as
+  `ACTIVE` is the one holding its weights, which resolves it from data already
+  collected. ~~The child's `PPid` disambiguates.~~ **Corrected during
+  implementation:** `PPid` does identify the parent (child 2581341 → 2447163),
+  but that parent listens on a container-internal port, so mapping it back to
+  the host-side endpoint would need cross-namespace socket inspection. The
+  ACTIVE-state signal costs nothing and covers the realistic case.
 
 `ProcessInfo.model` already exists in the schema and is simply never populated —
 `infer_runtime` returns the runtime only, and no argv parsing sets the model.
@@ -174,15 +178,18 @@ Nothing new needs reading: `infer_runtime` is already passed the command line, s
 the alias is available at the point the runtime is decided. No extra permissions
 are involved — `/proc/<pid>/cmdline` is world-readable, unlike `cwd`.
 
-- [ ] **B1.** Parse `--alias` from argv and populate `ProcessInfo.model` for
-  llama.cpp children. Resolve `router` by matching the alias against the model
-  lists the `llama_router` collector already holds, falling back to `PPid` on
-  collision.
-- [ ] **B2.** Export the gauge, grouped by `{node, runtime, model, router}`.
+- [x] **B1.** Parse `--alias` from argv and populate `ProcessInfo.model` for
+  llama.cpp children. `router` is resolved in `snapshot.py`
+  (`resolve_process_routers`) by matching the alias against the model lists the
+  `llama_router` collector already holds, preferring the router that has it
+  ACTIVE and leaving it unset when genuinely ambiguous.
+- [x] **B2.** Export the gauge, grouped by `{node, runtime, model, router}`.
   Non-LLM workloads carry an empty `model`/`router` and aggregate by `runtime`
   alone. Cardinality on `sparky` today: 9 configured models plus a handful of
   runtimes.
-- [ ] **B3.** Optional companion `sparkdash_gpu_process_count{node, runtime}`.
+- [x] **B3.** Companion `sparkdash_gpu_process_count{node, runtime, model, router}`.
+- [x] The live process table shows the model alongside the runtime, since the
+  field is populated now rather than always null.
 
 **Known limits, worth stating so they aren't rediscovered:**
 

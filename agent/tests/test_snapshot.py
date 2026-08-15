@@ -10,8 +10,95 @@ from pathlib import Path
 import psutil
 import pytest
 from spark_dash_agent.config import Settings
-from spark_dash_agent.snapshot import SnapshotBuilder, _point_psutil_at_host_proc
-from spark_dash_common.models import HealthState
+from spark_dash_agent.snapshot import (
+    SnapshotBuilder,
+    _point_psutil_at_host_proc,
+    resolve_process_routers,
+)
+from spark_dash_common.models import (
+    HealthState,
+    LlamaRouterMetrics,
+    ModelState,
+    ProcessInfo,
+    RouterModel,
+)
+
+
+def _router(endpoint, name="", **models):
+    return LlamaRouterMetrics(
+        endpoint=endpoint,
+        name=name,
+        models=[RouterModel(name=n, state=s) for n, s in models.items()],
+    )
+
+
+def _proc(model=None, pid=1):
+    return ProcessInfo(
+        pid=pid, name="llama-server", gpu_mem_bytes=1, runtime="llama.cpp", model=model
+    )
+
+
+class TestResolveProcessRouters:
+    """Joins a process's --alias to the router that reports that model, so
+    process memory can be correlated with the per-model router series."""
+
+    def test_single_router_claiming_the_model(self):
+        procs = resolve_process_routers(
+            [_proc("qwen36-35b")],
+            [_router("http://a:8000", "a:8001", **{"qwen36-35b": ModelState.ACTIVE})],
+        )
+        assert procs[0].router == "a:8001"
+
+    def test_label_matches_the_exporter_falling_back_to_endpoint(self):
+        """The exporter labels routers `name or endpoint`; these must agree or
+        the two metric families won't join."""
+        procs = resolve_process_routers(
+            [_proc("qwen36-35b")],
+            [_router("http://a:8000", "", **{"qwen36-35b": ModelState.ACTIVE})],
+        )
+        assert procs[0].router == "http://a:8000"
+
+    def test_router_parent_without_a_model_is_left_alone(self):
+        procs = resolve_process_routers(
+            [_proc(None)],
+            [_router("http://a:8000", "a", **{"qwen36-35b": ModelState.ACTIVE})],
+        )
+        assert procs[0].router is None
+
+    def test_model_no_router_knows(self):
+        procs = resolve_process_routers(
+            [_proc("orphan")],
+            [_router("http://a:8000", "a", **{"qwen36-35b": ModelState.ACTIVE})],
+        )
+        assert procs[0].router is None
+
+    def test_ambiguous_model_resolved_by_which_router_has_it_active(self):
+        """The same alias can be registered with several routers; the one
+        actually holding weights is the one serving it."""
+        procs = resolve_process_routers(
+            [_proc("shared")],
+            [
+                _router("http://a:8000", "a", **{"shared": ModelState.UNLOADED}),
+                _router("http://b:8000", "b", **{"shared": ModelState.ACTIVE}),
+            ],
+        )
+        assert procs[0].router == "b"
+
+    def test_ambiguous_and_unresolvable_is_left_unset(self):
+        """Two routers both serving it — guessing would attribute the memory to
+        the wrong one, which is worse than declining to say."""
+        procs = resolve_process_routers(
+            [_proc("shared")],
+            [
+                _router("http://a:8000", "a", **{"shared": ModelState.ACTIVE}),
+                _router("http://b:8000", "b", **{"shared": ModelState.ACTIVE}),
+            ],
+        )
+        assert procs[0].router is None
+
+    def test_no_routers_at_all(self):
+        procs = resolve_process_routers([_proc("qwen36-35b")], [])
+        assert procs[0].router is None
 
 
 @pytest.fixture(autouse=True)

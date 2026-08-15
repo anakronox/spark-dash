@@ -1,9 +1,16 @@
 """Renders a `NodeSnapshot` as Prometheus metrics.
 
-Deliberately omits the per-process list. PIDs churn constantly, and a `pid`
-label would grow Prometheus's series cardinality without bound for data nobody
-queries historically. The process view is a live-view concern and is served as
-JSON from `/snapshot` instead.
+The per-process list is exported **aggregated by workload identity, never by
+pid**. A `pid` label would grow cardinality without bound — pids churn on every
+model swap and the old series would never be reused — so the raw process list
+stays a live-view concern, served as JSON from `/snapshot`.
+
+Grouping by `(runtime, model, router)` keeps cardinality bounded by
+configuration rather than by uptime, and makes the interesting question
+answerable historically: on GB10 every GPU workload competes for one unified
+pool, so "what was holding the pool at 3am" is a capacity question, not a
+curiosity. The `model` label is the same string the router reports, so these
+series join directly to `sparkdash_llama_model_*`.
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ class SnapshotMetricsCollector:
         yield from _psi_metrics(snap, node)
         yield from _cpu_metrics(snap, node)
         yield from _network_metrics(snap, node)
+        yield from _process_metrics(snap, node)
         yield from _runtime_metrics(snap, node)
 
 
@@ -213,6 +221,32 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         yield from (active, rx, tx, errs, info)
 
 
+def _process_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
+    if not snap.processes:
+        return
+
+    # Unlabeled is a real category, not missing data: an unrecognized process
+    # eating the pool is exactly what you want to see. Empty string rather than
+    # a placeholder word keeps it queryable as `runtime=""`.
+    labels = ["node", "runtime", "model", "router"]
+    memory = _g("gpu_process_memory_bytes", "GPU memory held, by workload", labels)
+    count = _g("gpu_process_count", "Processes holding GPU memory, by workload", labels)
+
+    totals: dict[tuple[str, str, str], int] = {}
+    counts: dict[tuple[str, str, str], int] = {}
+    for proc in snap.processes:
+        key = (proc.runtime or "", proc.model or "", proc.router or "")
+        totals[key] = totals.get(key, 0) + proc.gpu_mem_bytes
+        counts[key] = counts.get(key, 0) + 1
+
+    for (runtime, model, router), total in sorted(totals.items()):
+        memory.add_metric([node, runtime, model, router], float(total))
+        count.add_metric([node, runtime, model, router], float(counts[(runtime, model, router)]))
+
+    yield memory
+    yield count
+
+
 def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
     if snap.runtimes.llama_cpp:
         # Every series carries a `router` label: a node runs several router
@@ -260,8 +294,18 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
                     running.add_metric([node, label, model.name], float(model.requests_running))
                     waiting.add_metric([node, label, model.name], float(model.requests_waiting))
 
-        yield from (up, known, active_count, sleeping_count, capacity, state, tps, kv, running,
-                    waiting)
+        yield from (
+            up,
+            known,
+            active_count,
+            sleeping_count,
+            capacity,
+            state,
+            tps,
+            kv,
+            running,
+            waiting,
+        )
 
     if snap.runtimes.vllm:
         tps = _g("vllm_tokens_per_second", "Token throughput", ["node", "model"])

@@ -190,7 +190,19 @@ class ProcessInfo(BaseModel):
     runtime: str | None = Field(
         default=None, description="Inferred runtime, e.g. 'llama.cpp' or 'vllm'."
     )
-    model: str | None = None
+    model: str | None = Field(
+        default=None,
+        description="Model this process is serving, from `--alias` in its argv. "
+        "The same string the router reports, so process memory joins to the "
+        "per-model router metrics. None for a router parent (which serves no "
+        "single model) and for non-LLM workloads.",
+    )
+    router: str | None = Field(
+        default=None,
+        description="Router serving this model, matched by name. None when no "
+        "router claims the model, or when several do and none is ACTIVE — "
+        "guessing between them would attribute memory to the wrong router.",
+    )
 
 
 class ModelState(StrEnum):
