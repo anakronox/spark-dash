@@ -61,13 +61,16 @@ $EDITOR .env
 
 ## Where things land
 
-hawser syncs the stack from git into `/docker/hawser/spark-dash-stack-node/`.
+Dockhand deploys the stack from its git repo into
+`/docker/spark-dash-stack-node/` — a clone of `spark-dash-stack-node`, with the
+untracked `.env` alongside it.
 
-**There is no `/docker/spark-dash-stack-node/` to create.** This stack has no
-persistent data: the agent holds nothing across restarts, and its only mounts
-are read-only views of the host's `/proc` and `/sys`. Everything it reports is
-derived live from the machine, and history lives in Prometheus on the
-monitoring VM. So there's no `prepare-host.sh` here and nothing to back up.
+**There is no second directory to create.** The central stack splits config in
+git from a Prometheus TSDB on disk; this one has no persistent data at all. The
+agent holds nothing across restarts, and its only mounts are read-only views of
+the host's `/proc` and `/sys`. Everything it reports is derived live from the
+machine, and history lives in Prometheus on the monitoring VM. So there's no
+`prepare-host.sh` here and nothing to back up.
 
 The main repo — needed for `publish-images.sh` and the validation scripts —
 follows the usual convention:
