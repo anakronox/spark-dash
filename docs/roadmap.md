@@ -142,13 +142,19 @@ Against those, both sets of thresholds were wrong in opposite directions:
   typed into `alerts.yml`, so there is one source of truth and the rules
   self-calibrate to whatever silicon is present. `TemperatureBandsNotDerived`
   flags a node running on fallback guesses.
-- [ ] **A4.** Link-down and RDMA alerts. `sparkdash_network_up`,
-  `sparkdash_rdma_port_active` and the `*_errors_total` counters all exist and
-  nothing watches them — and for a pair doing distributed inference over RoCE, a
-  link dropping is precisely the 2am failure this was built for.
-  **Design constraint:** `network_up == 0` is *normal* for the unused f1 ports
-  and for wifi, so the rule must key on interfaces that were previously up
-  rather than on any down interface.
+- [x] **A4.** Link-down and RDMA alerts: `NetworkLinkDown`, `RdmaPortDown`,
+  `NetworkErrorsRising`, `RdmaErrorsRising`.
+
+  The design constraint is solved with `max_over_time(...[7d]) == 1` — "has been
+  up at some point" — which separates a link that *failed* from one that was
+  never in service, with no allowlist to maintain and no manual step when a new
+  port is cabled. Verified against live data: the three never-used interfaces
+  (both ConnectX-7 f1 ports and wifi) are excluded automatically, and the three
+  working links are exactly the set being watched.
+
+  Known behaviour: a link down longer than the window stops alerting, since it
+  is no longer "recently up". 7d is long enough that this only happens for a
+  deliberate decommission, which is what silencing is for.
 - [x] **A5 (part 1).** Classify PSI on `avg60` rather than `avg10`.
 
   **The original note here was wrong and is worth recording as such.** It said
@@ -178,8 +184,7 @@ Against those, both sets of thresholds were wrong in opposite directions:
   (24h maxima: 52% on `avg10` vs 28% on `avg60`). `some_critical` at 50 is
   essentially unreachable; CRITICAL is now reached via `full_critical`.
 
-- [ ] **A5 (part 2).** Fix the memory rule itself, now that its premise is
-  understood.
+- [x] **A5 (part 2).** Fixed the memory rule now that its premise is understood.
   - Drop the `swap_used > 0` conjunct from `MemoryHighWithSwap`. Stale swap
     makes it ~always true, so it's a no-op that makes the rule look more
     specific than it is.
@@ -190,9 +195,19 @@ Against those, both sets of thresholds were wrong in opposite directions:
     sustained. The counters exist and work (24h peak: 18.6 pages/s swap-in). On
     a unified-memory box, sustained swap-out means model weights heading to
     disk — a distinct condition PSI describes only indirectly.
-- [ ] **A6.** Node disk-space alert from node-exporter. Named in the original
-  Phase 3 list and never built; `PrometheusStorageFillingUp` covers only the
-  monitoring VM.
+- [x] **A6.** Node disk alerts: `NodeDiskFillingUp` (predict_linear, a week
+  ahead) and `NodeDiskLow` (a 5% floor, for fills too slow to project). Scoped
+  to `fstype=~"ext4|xfs|btrfs"`, which excludes the GX10's two ~19TB NFS mounts
+  and `/boot/efi` — the latter is small by design and would read as nearly full
+  forever on a percentage rule.
+
+  **This uncovered a worse problem than the missing rule.**
+  `PrometheusStorageFillingUp` was supposed to cover the monitoring VM and did
+  not: node-exporter ran only on the GX10, so its bare `on()` join compared the
+  TSDB against 85% of the *GX10's* 3.6 TB root filesystem — about 3.1 TB, on a
+  50 GB disk. It could never have fired. Fixed by running node-exporter on the
+  monitoring VM under its own job name (`node-exporter-central`) and pinning the
+  rule to it. The VM had no host metrics of any kind before this.
 - [ ] **A8.** Check what the clock-throttle threshold is calibrated against.
   `throttle_threshold_mhz` derives from `max_sm_clock`, which NVML reports as
   **3003 MHz** — but the GB10 runs 2411 MHz at 96% utilization and 74 °C, with
@@ -200,10 +215,16 @@ Against those, both sets of thresholds were wrong in opposite directions:
   part never reaches, the derived threshold is measured against a speed that
   isn't real, and THROTTLED may be over- or under-reported. Noticed while
   measuring the thermal limits; not yet investigated.
-- [ ] **A7.** Raise retention. Measured on 2026-08-15: 227 samples/sec,
-  ~25 MB/day/node, 35 MB on disk for the first ~33 hours. Three nodes ≈
-  75 MB/day → 30d ≈ 2 GB, a full year ≈ 25 GB. The current 30d setting is
-  roughly 50× more conservative than the disk justifies.
+- [x] **A7.** Raised retention 30d → **180d**. Confirmed against a second
+  measurement on 2026-08-16: 60 MB of TSDB after ~2.5 days ≈ 24 MB/day with one
+  node scraped. Most of that is per-node, so three GX10s land near 65 MB/day →
+  180d ≈ 12 GB, 365d ≈ 24 GB.
+
+  180d rather than a year because the VM's disk is 50 GB with ~43 GB free and
+  Docker images share it, so 24 GB would be over half the remaining space.
+  Erring long is still the right instinct — raising retention later does not
+  recover deleted data, so being too short costs permanently while being too
+  long costs a disk alert — and both disk rules now watch this host properly.
 
 ### B — Per-workload GPU memory history
 

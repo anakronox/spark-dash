@@ -108,6 +108,33 @@ services:
     networks:
       - sparkdash
 
+  # The monitoring VM was monitoring everything except itself. Without this it
+  # reported no disk, CPU or memory metrics at all — and PrometheusStorageFillingUp,
+  # the rule meant to catch the TSDB filling the disk, was silently comparing
+  # against the GX10's 3.6TB root filesystem (the only one reporting) rather
+  # than this host's 50GB. It could never have fired.
+  #
+  # Same image and flags as the per-node stack, so there is one thing to reason
+  # about rather than two.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: sparkdash-central-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+    # Not published: only Prometheus on this host scrapes it, over the compose
+    # network. The per-node exporters publish 9100 because they're scraped
+    # across the LAN; this one has no reason to be reachable off-box.
+    networks:
+      - sparkdash
+
 # No named volumes: everything persistent is a bind mount under DATA_ROOT, so
 # it can be found, inspected and backed up without docker volume commands.
 #

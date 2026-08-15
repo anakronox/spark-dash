@@ -233,31 +233,182 @@ groups:
             Sustained stalling. The node is likely close to OOM — this is the
             state that precedes a freeze rather than following one.
 
-      # The combination is what matters. 85% alone is unremarkable on a box
-      # deliberately full of model weights; 85% with swap actually in use means
-      # the kernel has run out of better options.
-      - alert: MemoryHighWithSwap
-        expr: >-
-          (100 * sparkdash_memory_used_bytes / sparkdash_memory_total_bytes > 85)
-          and (sparkdash_memory_swap_used_bytes > 0)
+      # CAPACITY, not pressure. Renamed from MemoryHighWithSwap, which paired
+      # this with `swap_used > 0` on the theory that the combination meant the
+      # kernel had run out of better options.
+      #
+      # Measurement killed that theory. swap_used is a LEVEL, not a flow: pages
+      # evicted during some past squeeze sit in swap indefinitely because Linux
+      # never faults them back proactively. On the GX10 it sat unchanged at
+      # 6.13-6.40 GiB across 24h while memory never passed 42%, so the conjunct
+      # was ~always true — a no-op that made the rule look more specific than it
+      # was.
+      #
+      # Pressure is PSI's job (above). This is the different, useful question of
+      # whether there is room to load another model.
+      - alert: MemoryNearlyFull
+        expr: 100 * sparkdash_memory_used_bytes / sparkdash_memory_total_bytes > 85
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.node }} above 85% memory with swap in use"
+          summary: "{{ $labels.node }} above 85% memory"
           description: >-
-            Free capacity is nearly gone and the kernel has started swapping.
-            Loading another model will likely fail or thrash.
+            Little headroom left in the unified pool. Loading another model will
+            likely fail or evict something. Not necessarily a problem — a node
+            deliberately full of weights looks like this — but it is the ceiling.
+
+      # Swap I/O is the flow that swap_used isn't. On a unified-memory box
+      # sustained swap-out means model weights heading to disk, which turns
+      # inference latency into disk latency.
+      #
+      # Rate rather than level, and both directions: swap-IN matters as much
+      # here, since faulting weights back from disk is the stall you feel. The
+      # GX10's 24h peaks were 18.6 pages/s in and 5.1 out, so this threshold
+      # sits above ordinary background activity.
+      - alert: SwapThrashing
+        expr: >-
+          rate(node_vmstat_pswpin[5m]) + rate(node_vmstat_pswpout[5m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sustained swap I/O on {{ $labels.instance }}"
+          description: >-
+            Pages have been moving between RAM and disk for 10 minutes. PSI will
+            usually catch this too; this rule names the mechanism, which is what
+            tells you it's memory rather than something else stalling.
+
+  # ------------------------------------------------------------------- fabric
+  - name: fabric
+    rules:
+      # A GX10 has interfaces that are down as their NORMAL state — the unused
+      # ConnectX-7 f1 ports and wifi have never been up — so `up == 0` alone
+      # would alert forever on three of six interfaces.
+      #
+      # `max_over_time(...) == 1` means "this link has been up at some point in
+      # the window", which distinguishes a link that FAILED from one that was
+      # never in service. No allowlist to maintain, and a newly cabled port
+      # starts being watched the moment it first comes up.
+      #
+      # Consequence worth knowing: if a link stays down longer than the window,
+      # the alert resolves itself even though the link is still down. 7d is long
+      # enough that this only happens for a deliberate decommission, which is
+      # what silencing is for.
+      - alert: NetworkLinkDown
+        expr: >-
+          sparkdash_network_up == 0
+          and max_over_time(sparkdash_network_up[7d]) == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.interface }} down on {{ $labels.node }}"
+          description: >-
+            An interface that was previously up has been down for 5 minutes.
+            Check the cable, the switch port, and whether the driver reset.
+
+      # The clustered pair does distributed inference over RoCE, so a fabric
+      # port dropping is the difference between a working cluster and a node
+      # that has silently left it.
+      - alert: RdmaPortDown
+        expr: >-
+          sparkdash_rdma_port_active == 0
+          and max_over_time(sparkdash_rdma_port_active[7d]) == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RDMA port {{ $labels.device }} down on {{ $labels.node }}"
+          description: >-
+            A RoCE port that was previously ACTIVE has dropped. Distributed
+            inference across the pair will fail or fall back to TCP — check
+            `ibstat` and the switch.
+
+      # Counters, so a rate: what matters is whether errors are still
+      # accumulating, not the total since boot. A link can be up and still be
+      # corrupting frames, which shows up as retransmits rather than an outage.
+      - alert: NetworkErrorsRising
+        expr: >-
+          rate(sparkdash_network_receive_errors_total[15m])
+          + rate(sparkdash_network_transmit_errors_total[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Errors accumulating on {{ $labels.interface }} ({{ $labels.node }})"
+          description: >-
+            The link is up but the error counters are still moving. Usually a
+            marginal cable or transceiver — visible as throughput well below the
+            negotiated rate long before it becomes an outage.
+
+      - alert: RdmaErrorsRising
+        expr: rate(sparkdash_rdma_errors_total[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RDMA errors accumulating on {{ $labels.device }} ({{ $labels.node }})"
+          description: >-
+            Receive errors, discards or link-downs are still climbing on a RoCE
+            port. Check the fabric before it degrades distributed inference.
+
+  # --------------------------------------------------------------------- disk
+  - name: disk
+    rules:
+      # Local filesystems only. The GX10 mounts two NFS shares with ~19TB free
+      # whose capacity isn't this node's problem, and /boot/efi is small by
+      # design and would read as nearly-full forever on a percentage rule.
+      - alert: NodeDiskFillingUp
+        expr: >-
+          predict_linear(
+            node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}[6h], 7 * 24 * 3600
+          ) < 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} filling within a week"
+          description: >-
+            Projected from the last 6 hours of growth, so a one-off write won't
+            trigger it. Model weights and ComfyUI outputs are the usual cause.
+
+      # A floor as well as a trend: a disk that fills slowly enough to evade
+      # predict_linear still eventually fills.
+      - alert: NodeDiskLow
+        expr: >-
+          node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}
+          / node_filesystem_size_bytes < 0.05
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} below 5% free"
+          description: >-
+            Little room left. Writes will start failing, and on the monitoring
+            VM that means losing history rather than just space.
 
   # ------------------------------------------------------------- monitoring VM
   - name: monitoring
     rules:
       # Prometheus watching its own disk. If this fills, history stops and the
       # first you'd know is a gap in the charts.
+      # PINNED TO THIS HOST via job="node-exporter-central". The previous version
+      # joined with a bare `on()` against node_filesystem_size_bytes{mountpoint="/"},
+      # and since only the GX10 ran node-exporter it compared the TSDB against
+      # 85% of a 3.6TB filesystem — about 3.1TB, on a 50GB disk. It could never
+      # have fired, which is worse than having no rule, because it looked like
+      # coverage.
+      #
+      # NodeDiskFillingUp now watches this host's disk generally. This rule is
+      # narrower on purpose: it attributes the growth to the TSDB and names the
+      # lever (retention), which a generic disk alert can't.
       - alert: PrometheusStorageFillingUp
         expr: >-
           predict_linear(prometheus_tsdb_storage_blocks_bytes[6h], 7 * 24 * 3600) >
-          on() (node_filesystem_size_bytes{mountpoint="/"} * 0.85)
+          on() (
+            node_filesystem_size_bytes{job="node-exporter-central", mountpoint="/"} * 0.85
+          )
         for: 1h
         labels:
           severity: warning
