@@ -142,9 +142,9 @@ exactly the predicted false alarm.
 
 ### B — Per-workload GPU memory history
 
-Export `sparkdash_gpu_process_memory_bytes{node, runtime}` — process GPU memory
-**summed by runtime**, never per-pid (pid churn would make cardinality
-unbounded; by runtime it is ~7 series per node).
+Export `sparkdash_gpu_process_memory_bytes{node, runtime, model, router}` —
+GPU memory grouped by **workload identity**, never by pid. Pid churn would make
+cardinality unbounded; the labels below are all bounded by configuration.
 
 This is what makes the unified-pool problem answerable after the fact. The split
 is visible live and then lost — on 2026-08-15 that was 26.4 GiB of llama.cpp
@@ -153,11 +153,48 @@ later. Given that non-LLM GPU workloads are real capacity pressure on GB10 and
 cannot be isolated the way separate VRAM would be, this is closer to core
 telemetry than to a nice-to-have.
 
-- [ ] **B1.** Aggregate `processes` by `runtime` and export as a gauge.
-- [ ] **B2.** Optional companion `sparkdash_gpu_process_count{node, runtime}`.
-- [ ] **B3.** Check whether the `model` field on processes is ever populated
-  before considering it as a label — it is empty for all processes on `sparky`
-  today, so it is not usable as one yet.
+**Per-model attribution is reachable, and the join key is exact.** Investigated
+on `sparky` 2026-08-15:
+
+- A llama.cpp **router** runs as `llama-server --models-preset ... --models-max N`
+  and holds only ~0.17 GiB of overhead. It serves no single model.
+- Each loaded model is a **child** process carrying `--alias <name>` in its argv
+  — that's where the real memory sits (26.4 GiB for `qwen36-35b`).
+- That alias **is** the model id the router reports from `/v1/models`, which is
+  already the `model` label on `sparkdash_llama_model_*`. So the new metric joins
+  directly against the existing per-model series: "while this model was active,
+  how much of the pool did it hold?" becomes one query.
+- Where an alias is ambiguous across routers, the child's `PPid` is its router's
+  process and disambiguates. Verified: child 2581341 → PPid 2447163, the `:8001`
+  router that reports `qwen36-35b`.
+
+`ProcessInfo.model` already exists in the schema and is simply never populated —
+`infer_runtime` returns the runtime only, and no argv parsing sets the model.
+Nothing new needs reading: `infer_runtime` is already passed the command line, so
+the alias is available at the point the runtime is decided. No extra permissions
+are involved — `/proc/<pid>/cmdline` is world-readable, unlike `cwd`.
+
+- [ ] **B1.** Parse `--alias` from argv and populate `ProcessInfo.model` for
+  llama.cpp children. Resolve `router` by matching the alias against the model
+  lists the `llama_router` collector already holds, falling back to `PPid` on
+  collision.
+- [ ] **B2.** Export the gauge, grouped by `{node, runtime, model, router}`.
+  Non-LLM workloads carry an empty `model`/`router` and aggregate by `runtime`
+  alone. Cardinality on `sparky` today: 9 configured models plus a handful of
+  runtimes.
+- [ ] **B3.** Optional companion `sparkdash_gpu_process_count{node, runtime}`.
+
+**Known limits, worth stating so they aren't rediscovered:**
+
+- The two ComfyUI instances are **byte-identical in argv** (`python main.py
+  --listen 0.0.0.0 --port 8188 ...`), so they cannot be told apart from the
+  command line. They aggregate as `comfyui`, which is the honest outcome.
+  Separating them would need `cwd`, which needs ptrace access the agent
+  deliberately does not have as non-root.
+- Router parents appear with `runtime=llama.cpp` and no model. That is correct —
+  it is genuine router overhead, and labelling it as a model would be a lie.
+- `--alias` is llama.cpp-specific. vLLM would need its own extraction
+  (`--served-model-name`), which is not blocking and can follow.
 
 ### C — Multi-node readiness
 
