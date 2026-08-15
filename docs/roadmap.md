@@ -224,3 +224,58 @@ get lost:
    the git change it just saw"), so a push to a stack repo changes nothing on
    any host until someone pulls. Worth closing before the 3-node rollout, when
    doing it by hand stops being cheap.
+7. **Should there be a database?** **Leaning no for metrics, yes eventually for
+   events — but only after A7 and B.**
+
+   The question comes up naturally ("wouldn't a database help with trends and
+   fault analysis?") and deserves a written answer, because the instinct is
+   reasonable and the answer is non-obvious.
+
+   **There already is one.** Prometheus is a time-series database, and trends
+   plus fault analysis are exactly its job. A general-purpose database alongside
+   it would duplicate a purpose-built store with a worse one: no PromQL, no
+   rate/aggregation primitives, no retention management, and downsampling done
+   by hand. For the "track trends over a longer window" motivation specifically,
+   **A7 is the cheap answer** — one line, ~25 GB for a year.
+
+   **Three things Prometheus genuinely handles badly**, though:
+
+   - *High-cardinality detail.* Per-pid series would blow up cardinality, which
+     is why B aggregates by runtime. The aggregate trend gets recorded; the
+     per-process detail is still lost.
+   - *Discrete events with context.* "At 03:14 the agent restarted on build X,
+     model Y was evicted, the router returned this error." The timeline endpoint
+     already reconstructs transitions from `sparkdash_llama_model_state`, but
+     that is a lossy reconstruction of something that was really a record.
+   - *Anything meant to outlive retention.* Alert history is the clear case —
+     Alertmanager keeps no long history, so "how often did this fire last
+     quarter?" is unanswerable today.
+
+   **If we build anything, build event-triggered snapshot capture** — not
+   continuous storage. On a transition into `critical`, write the *full*
+   snapshot as one row: every process with pids and GPU memory, complete router
+   state, PSI, temperatures. A few KB per event, a handful of events a week,
+   keeps forever because the volume is trivial. That captures the forensic
+   detail Prometheus cannot hold, at the only moment anyone wants it.
+
+   This gap is real and was observed directly: when `sparky` went `critical` on
+   2026-08-15, the 26.4 GiB llama.cpp / 4.7 GiB ComfyUI split was visible only
+   because someone was watching live. An hour later it was unrecoverable.
+
+   SQLite is the right size — one file under `DATA_ROOT`, no new container, no
+   new service to monitor. Postgres or Timescale is operational overhead beyond
+   what a 3-node homelab earns back. Prometheus remote-write to
+   VictoriaMetrics/Thanos solves long retention properly but is aimed at a scale
+   where 25 GB/year isn't already trivial.
+
+   **The cost is real and should not be waved away:** it makes the backend
+   stateful, which it currently is not. Today that container can be destroyed
+   and recreated freely, and [../deploy/node/README.md](../deploy/node/README.md)
+   leans on exactly that property. A database means a schema, migrations,
+   corruption modes, and a second thing in the backup set — softened only by the
+   monitoring VM already carrying the TSDB, so backup discipline isn't starting
+   from zero.
+
+   **Sequence: A7, then B, then reassess.** B may satisfy enough of the
+   fault-analysis need that the snapshot log stops feeling necessary — and that
+   is the outcome to hope for, since it costs nothing to maintain.
