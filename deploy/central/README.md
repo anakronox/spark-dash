@@ -70,6 +70,37 @@ diff <(grep -oE '^[A-Z_]+' .env.example | sort) \
 
 Anything listed only on the left is new — copy it across from `.env.example`.
 
+### Changing prometheus.yml, alerts.yml or alertmanager.yml
+
+**A `git pull` is not enough, and neither is a reload.** These three are
+bind-mounted as *single files*, and a file bind-mount follows the **inode**, not
+the path. `git pull` replaces a file rather than editing it in place, so the new
+content lands on a new inode and the container keeps reading the old one. A
+SIGHUP or `POST /-/reload` then faithfully re-reads the stale file and reports
+success.
+
+That failure is silent: the host shows your new alert rule, Prometheus says the
+config reloaded fine, and the rule simply isn't there. Observed 2026-08-15 —
+host inode 427369, container still on 420933.
+
+Recreate the container so the mount re-resolves:
+
+```bash
+docker compose up -d --force-recreate prometheus     # or alertmanager
+```
+
+`--force-recreate` is required: a plain `up -d` sees an unchanged compose config
+and does nothing.
+
+```bash
+# Confirm it actually took, rather than trusting the reload:
+docker exec sparkdash-prometheus grep -c AgentBuildSkew /etc/prometheus/alerts.yml
+```
+
+> This applies to anything that delivers config by replacing files — including
+> a future Dockhand pull. If Dockhand pulls the orchestration repo and runs a
+> plain `docker compose up -d`, a config-only change will **not** take effect.
+
 ### Rolling out a new image
 
 Pin the tag the publish script printed, rather than chasing `:latest`:

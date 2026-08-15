@@ -371,6 +371,16 @@ get lost:
      overnight, pin the last-good sha in that node's `.env` and commit —
      Dockhand redeploys immediately, no rebuild needed — then unpin once fixed.
 
+   **Config-only changes need a container recreate, not a reload.**
+   `prometheus.yml`, `alerts.yml` and `alertmanager.yml` are bind-mounted as
+   single files, and a file mount follows the inode. A `git pull` replaces the
+   file, so the container keeps reading the old inode and a reload silently
+   re-reads stale content — observed 2026-08-15 while deploying C2. If Dockhand
+   pulls the orchestration repo and runs a plain `docker compose up -d`, a
+   config-only change will **not** take effect, because the compose config
+   itself is unchanged. Either Dockhand must `--force-recreate`, or these files
+   need to move to a directory mount. Worth settling as part of the migration.
+
    **Guard against drift instead of syncing.** Three hand-maintained
    `compose.yaml` files can diverge once the orchestration repos are
    authoritative. The replacement for `sync-stack-repos.sh` should be a *drift
