@@ -38,9 +38,11 @@ Goal: something real running on the existing GX10, informative for day-to-day us
   detected, total agrees with `/proc/meminfo` within 2%, power conversion
   plausible, clock load-gating correct, host PID namespace visible.
 - [ ] Confirm vLLM containers expose `/metrics` and add them as Prometheus
-  scrape targets. **Not done.** The `vllm` job exists in `prometheus.yml` but
-  `targets/static/vllm.yml` is absent and `VLLM_URLS` is unset, so no vLLM
-  instance is scraped anywhere.
+  scrape targets. **Not done**, but the scaffolding is in place: the `vllm` job
+  exists in `prometheus.yml` and `deploy/central/targets/vllm.yml` is tracked,
+  documented, and deliberately empty (`[]`) pending real instances. `VLLM_URLS`
+  is also unset, so nothing vLLM-shaped is scraped anywhere yet. All that's
+  missing is target entries.
 - [x] Stand up Prometheus on the monitoring VM, scraping the GX10 over the LAN.
 - [x] Backend API (Python 3.12 + FastAPI): `/api/nodes`, `/api/history`,
   `/api/models`, `/api/models/timeline`, `/api/cluster/summary`, `/api/alerts`,

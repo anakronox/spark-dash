@@ -314,18 +314,39 @@ vLLM instances don't map one-per-node.
 
 ## Where things land
 
-Two locations, with different lifecycles:
+Everything lives under `/docker/spark-dash-stack-central/` — a Dockhand clone of
+the stack repo, with `DATA_ROOT` in `.env` pointing at that same directory. Two
+lifecycles share one path:
 
-| Path | What | Managed by |
+| What | Managed by | Tracked in git? |
 |---|---|---|
-| `/docker/hawser/spark-dash-stack-central/` | `compose.yaml`, `.env`, `prometheus.yml`, `targets/static/` | hawser, synced from git |
-| `/docker/spark-dash-stack-central/` | Prometheus TSDB, generated scrape targets | the containers, at runtime |
+| `compose.yaml`, `prometheus.yml`, `alerts.yml`, `alertmanager.yml` | the stack repo | yes |
+| `targets/vllm.yml` | hand-maintained | yes |
+| `.env` | edited on the host | no — gitignored |
+| `prometheus/` (TSDB), `alertmanager/`, `secrets/` | the containers, at runtime | no — untracked |
+| `targets/agents.yml`, `targets/node-exporters.yml` | the backend, from `SPARK_NODES` | no — untracked |
 
-Config comes from git; data does not. Keeping them apart means a stack re-sync
-can never touch your history, and the data path is somewhere you can actually
-find and back up — rather than a named volume under `/var/lib/docker`.
+Config comes from git; data does not. Keeping data in a findable place rather
+than a named volume under `/var/lib/docker` is the point of `DATA_ROOT`, and it
+can be pointed elsewhere if you'd rather separate the two physically.
 
-`DATA_ROOT` in `.env` controls the second path.
+> **Only `.env` is gitignored.** The runtime directories are merely *untracked*,
+> so `git add -A` in this directory would happily stage the Prometheus TSDB.
+> Use targeted `git add`, or add them to `.gitignore`.
+
+> **`DATA_ROOT` defaults to this same directory,** which makes `./targets` and
+> `${DATA_ROOT}/targets` the same host path — so the container sees one
+> directory mounted at both `/etc/prometheus/targets/static` and
+> `.../generated`. Harmless, because each scrape job names the file it wants,
+> but it does mean the separation described in `prometheus.yml` is notional
+> unless `DATA_ROOT` is pointed somewhere else.
+
+> Earlier revisions of this file claimed the config lived under
+> `/docker/hawser/spark-dash-stack-central/`. It does not — that path doesn't
+> exist on the monitoring VM. hawser's own convention places stacks under
+> `/docker/hawser/<stack>/`, but the spark-dash stacks are deployed by Dockhand
+> and sit top-level, the same as the node stack. Verified on `sparkmon`
+> 2026-08-15.
 
 The main repo — needed for `publish-images.sh` and the validation scripts —
 follows the usual convention:
