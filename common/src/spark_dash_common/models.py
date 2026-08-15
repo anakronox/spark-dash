@@ -60,6 +60,14 @@ class GpuMetrics(BaseModel):
     power_w: float | None = None
     clock_mhz: float | None = None
     clock_state: ClockState = ClockState.IDLE
+    target_clock_mhz: float | None = Field(
+        default=None,
+        description="The SM clock this GPU targets for compute work "
+        "(NVML applications clock). Reported so `clock_mhz` can be read as a "
+        "fraction of what it should be, rather than as a bare number. NOT the "
+        "boost ceiling: on GB10 the ceiling is 3003MHz and never approached, "
+        "while the target is 2418MHz and the observed clock brackets it.",
+    )
 
 
 class MemoryMetrics(BaseModel):

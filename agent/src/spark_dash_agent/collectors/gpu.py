@@ -162,6 +162,30 @@ _COMFYUI_FLAGS = (
 )
 
 
+def _read_applications_clock(device: Device) -> float | None:
+    """The SM clock this GPU targets for compute work.
+
+    Distinct from `max_sm_clock`, which is a boost ceiling: on GB10 the ceiling
+    reads 3003MHz while the applications clock reads 2418MHz, and three days of
+    measurement put the actual clock between 2359 and 2483MHz. The applications
+    clock is the number reality tracks.
+
+    It also follows `nvidia-smi -ac`, so an operator who deliberately sets an
+    application clock moves the reference with it rather than against it.
+    """
+    getter = getattr(libnvml, "nvmlDeviceGetApplicationsClock", None)
+    if getter is None:
+        return None
+    # NVML_CLOCK_SM == 1. Named rather than hardcoded where the build exposes it.
+    clock_sm = getattr(libnvml, "NVML_CLOCK_SM", 1)
+    try:
+        value = getter(device.handle, clock_sm)
+    except Exception:  # noqa: BLE001 — not supported on every part
+        log.debug("applications clock unavailable", exc_info=True)
+        return None
+    return float(value) if value else None
+
+
 def infer_model(command: str) -> str | None:
     """The model a process is serving, from `--alias` in its argv.
 
@@ -226,20 +250,27 @@ class GpuCollector(Collector[GpuMetrics]):
         # `_read_temp_thresholds`.
         self.slowdown_temp_c: float | None = None
         self.shutdown_temp_c: float | None = None
+        # The clock the GPU targets for compute work — the reference the
+        # throttle threshold is derived from. See `_read_applications_clock`.
+        self.target_clock_mhz: float | None = None
 
     def _get_device(self) -> Device:
         if self._device is None:
             self._device = Device(self._device_index)
             self.memory_total_bytes = int(_num(self._device.memory_total()) or 0) or None
 
-            # Calibrate the throttle threshold against this GPU's own maximum
-            # rather than a value hardcoded for one board.
+            # Calibrate against the clock this GPU actually TARGETS, not its
+            # boost ceiling — see `throttle_threshold_mhz`. On GB10 the ceiling
+            # (3003MHz) is never approached; the applications clock (2418MHz) is
+            # what the observed range brackets.
+            self.target_clock_mhz = _read_applications_clock(self._device)
             max_clock = _num(self._device.max_sm_clock())
-            threshold = throttle_threshold_mhz(max_clock)
+            threshold = throttle_threshold_mhz(self.target_clock_mhz)
             self._tracker = ClockTracker(throttled_mhz=threshold)
             log.info(
-                "clock throttle threshold %.0fMHz (max_sm_clock %s)",
+                "clock throttle threshold %.0fMHz (applications clock %s, max_sm_clock %s)",
                 threshold,
+                self.target_clock_mhz,
                 max_clock,
             )
             self._read_temp_thresholds(self._device)
@@ -322,6 +353,7 @@ class GpuCollector(Collector[GpuMetrics]):
             power_w=power_mw / 1000.0 if power_mw is not None else None,
             clock_mhz=clock_mhz,
             clock_state=clock_state,
+            target_clock_mhz=self.target_clock_mhz,
         )
 
     def collect_processes(self) -> list[ProcessInfo]:

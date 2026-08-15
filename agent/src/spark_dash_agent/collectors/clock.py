@@ -41,25 +41,34 @@ class ClockSignals:
 
 
 def throttle_threshold_mhz(
-    max_clock_mhz: float | None,
+    target_clock_mhz: float | None,
     *,
     absolute_floor: float = CLOCK_THROTTLED_MHZ,
-    fraction_of_max: float = 0.5,
+    fraction_of_target: float = 0.5,
 ) -> float:
     """Pick the frequency below which a loaded GPU counts as throttled.
 
-    sparkview's 1400MHz was derived on GB10 specifically. Deriving it from the
-    hardware's own maximum instead makes it self-calibrating — the GX10 reports
-    max_sm_clock 3003MHz, which puts the threshold at ~1500MHz, close to the
-    field-validated value while also being correct on different hardware.
+    DERIVED FROM THE APPLICATIONS CLOCK, NOT max_sm_clock. The GX10 reports
+    max_sm_clock 3003MHz, but measured over three days it never went near it:
+    the clock sat between 2359 and 2483MHz, averaging 2406, and did not drop at
+    idle either. `nvmlDeviceGetApplicationsClock` reports 2418MHz, which is what
+    the GPU actually targets for compute and which the observed range brackets
+    almost exactly.
+
+    So max_sm_clock is a boost ceiling this part never reaches, and deriving a
+    threshold from it measured against a speed that doesn't exist. That it
+    landed near the field-validated 1400MHz was luck, not calibration — on a
+    part whose boost ceiling sits further from its applications clock, the same
+    arithmetic would have produced a threshold well off.
 
     The absolute floor is kept as a lower bound so a GPU reporting an
-    implausibly low maximum can't produce a threshold near zero that would
-    never fire.
+    implausibly low target can't produce a threshold near zero that would never
+    fire. On GB10 the floor is what applies: 2418 * 0.5 = 1209, below the
+    field-validated 1400.
     """
-    if not max_clock_mhz or max_clock_mhz <= 0:
+    if not target_clock_mhz or target_clock_mhz <= 0:
         return absolute_floor
-    return max(absolute_floor, max_clock_mhz * fraction_of_max)
+    return max(absolute_floor, target_clock_mhz * fraction_of_target)
 
 
 def classify_clock(

@@ -205,6 +205,34 @@ groups:
             place. Deliberate, but easy to forget about — reset with
             `nvidia-smi -rgc`.
 
+      # Covers the gap THROTTLED is too coarse to see.
+      #
+      # THROTTLED fires below ~1400MHz, which on a GPU targeting 2418 means a
+      # 42% loss before anything is said. Measured across three days the clock
+      # never left 2359-2483MHz (97.6%-102.7% of target), so a sustained drop to
+      # 85% is well outside anything this node does normally, while still being
+      # far above the catastrophic range where THROTTLED lives.
+      #
+      # WARNING, not critical, and deliberately so: the band between "normal"
+      # and "known-degraded" has never been observed here, so this reports
+      # something unusual rather than asserting a fault. That uncertainty is the
+      # whole reason it exists — degradation in this range is currently invisible.
+      - alert: GpuClockBelowTarget
+        expr: >-
+          (
+            sparkdash_gpu_clock_mhz < on(node) (sparkdash_gpu_clock_target_mhz * 0.85)
+          ) and on(node) (sparkdash_gpu_utilization_percent > 30)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "GPU on {{ $labels.node }} running below its target clock"
+          description: >-
+            Sustained below 85% of the clock this GPU targets for compute, while
+            busy. Not the catastrophic range GpuThrottled watches for — this is
+            the quieter degradation that costs throughput without looking like a
+            fault. Check power delivery and thermals.
+
   # -------------------------------------------------------------------- memory
   - name: memory
     rules:

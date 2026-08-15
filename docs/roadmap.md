@@ -208,13 +208,34 @@ Against those, both sets of thresholds were wrong in opposite directions:
   50 GB disk. It could never have fired. Fixed by running node-exporter on the
   monitoring VM under its own job name (`node-exporter-central`) and pinning the
   rule to it. The VM had no host metrics of any kind before this.
-- [ ] **A8.** Check what the clock-throttle threshold is calibrated against.
-  `throttle_threshold_mhz` derives from `max_sm_clock`, which NVML reports as
-  **3003 MHz** — but the GB10 runs 2411 MHz at 96% utilization and 74 °C, with
-  clock state `PASS` and no thermal throttling. If 3003 is a boost ceiling this
-  part never reaches, the derived threshold is measured against a speed that
-  isn't real, and THROTTLED may be over- or under-reported. Noticed while
-  measuring the thermal limits; not yet investigated.
+- [x] **A8.** The threshold was calibrated against the wrong reference.
+  `throttle_threshold_mhz` derived from `max_sm_clock` (**3003 MHz**), which
+  three days of measurement show the GB10 never approaches — the clock stayed
+  between **2359 and 2483 MHz**, averaging 2406, and doesn't drop at idle
+  either.
+
+  NVML has the right number: `nvmlDeviceGetApplicationsClock` reports
+  **2418 MHz**, the clock the GPU targets for compute, which the observed range
+  brackets almost exactly. The reference is now that.
+
+  | NVML value | GB10 | what it is |
+  |---|---|---|
+  | `max_sm_clock` | 3003 MHz | boost ceiling, never approached |
+  | `ApplicationsClock(SM)` | **2418 MHz** | what it targets — matches reality |
+  | observed range (3d) | 2359–2483 MHz | 97.6%–102.7% of target |
+
+  The old derivation gave 1502 MHz and the new one gives 1400 (the field floor,
+  since 2418 × 0.5 = 1209 falls below it). Nearly the same number — **it landed
+  close by luck, not calibration.** On a part whose boost ceiling sits further
+  from its applications clock, the same arithmetic would have been well off.
+
+  Also adds `GpuClockBelowTarget` for the gap `THROTTLED` is too coarse to see.
+  Firing below ~1400 MHz means a 42% loss before anything is said; the new rule
+  warns at a sustained 85% of target under load. Deliberately **warning**, not
+  critical: the band between normal and known-degraded has never been observed
+  here, so it reports something unusual rather than asserting a fault.
+  `sparkdash_gpu_clock_target_mhz` is exported so the rule compares against the
+  node's own target, the same pattern as the temperature bands.
 - [x] **A7.** Raised retention 30d → **180d**. Confirmed against a second
   measurement on 2026-08-16: 60 MB of TSDB after ~2.5 days ≈ 24 MB/day with one
   node scraped. Most of that is per-node, so three GX10s land near 65 MB/day →

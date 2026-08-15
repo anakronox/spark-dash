@@ -2,8 +2,53 @@
 so the load-gating and ramp-up behavior are covered explicitly.
 """
 
-from spark_dash_agent.collectors.clock import ClockSignals, ClockTracker, classify_clock
+from spark_dash_agent.collectors.clock import (
+    ClockSignals,
+    ClockTracker,
+    classify_clock,
+    throttle_threshold_mhz,
+)
 from spark_dash_common.models import ClockState
+
+# Measured on the GX10, 2026-08-16. The gap between these two is the whole
+# point: the boost ceiling is never approached, the applications clock is what
+# the observed 2359-2483MHz range brackets.
+GB10_MAX_SM_CLOCK = 3003.0
+GB10_APPLICATIONS_CLOCK = 2418.0
+
+
+class TestThrottleThreshold:
+    def test_derived_from_the_applications_clock(self):
+        """2418 * 0.5 = 1209, so the field-validated floor applies. The point
+        isn't the number — it's that the reference is a clock the GPU actually
+        targets rather than a ceiling it never reaches."""
+        assert throttle_threshold_mhz(GB10_APPLICATIONS_CLOCK) == 1400.0
+
+    def test_the_boost_ceiling_would_have_given_a_different_answer(self):
+        """Deriving from max_sm_clock produced 1502MHz. It landed near the
+        field-validated 1400 by luck, not calibration: the arithmetic was
+        measuring against a speed this part never reaches."""
+        assert throttle_threshold_mhz(GB10_MAX_SM_CLOCK) == 1501.5
+
+    def test_floor_applies_when_the_target_is_implausibly_low(self):
+        """A GPU reporting a tiny target must not yield a threshold near zero
+        that could never fire."""
+        assert throttle_threshold_mhz(100.0) == 1400.0
+
+    def test_unreadable_target_falls_back_to_the_field_value(self):
+        assert throttle_threshold_mhz(None) == 1400.0
+        assert throttle_threshold_mhz(0) == 1400.0
+
+    def test_a_high_target_scales_above_the_floor(self):
+        """On hardware whose target is genuinely high, the fraction should win
+        over the floor — that's what makes this self-calibrating rather than a
+        constant with extra steps."""
+        assert throttle_threshold_mhz(4000.0) == 2000.0
+
+    def test_healthy_gb10_clock_is_far_above_the_threshold(self):
+        """The observed floor across three days was 2359MHz, including at idle.
+        Whatever the threshold is, normal operation must not approach it."""
+        assert throttle_threshold_mhz(GB10_APPLICATIONS_CLOCK) * 1.5 < 2359.0
 
 
 def test_idle_when_not_under_load():

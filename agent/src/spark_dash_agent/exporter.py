@@ -121,6 +121,18 @@ def _gpu_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
         clock.add_metric([node], gpu.clock_mhz)
         yield clock
 
+    # Exported so clock health can be expressed as a fraction of what this GPU
+    # actually targets, rather than compared to a number written in a rule.
+    # Same reasoning as the temperature bands: the hardware knows, so ask it.
+    if gpu.target_clock_mhz is not None:
+        target = _g(
+            "gpu_clock_target_mhz",
+            "SM clock this GPU targets for compute (NVML applications clock)",
+            ["node"],
+        )
+        target.add_metric([node], gpu.target_clock_mhz)
+        yield target
+
     state = _g(
         "gpu_clock_state",
         "GPU clock state, load-gated (1 for the active state)",
