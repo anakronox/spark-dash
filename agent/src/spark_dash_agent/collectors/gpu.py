@@ -222,6 +222,10 @@ class GpuCollector(Collector[GpuMetrics]):
         # Cached so the memory collector can decide UMA-ness without opening
         # its own NVML handle.
         self.memory_total_bytes: int | None = None
+        # The silicon's own thermal limits, read once at open. See
+        # `_read_temp_thresholds`.
+        self.slowdown_temp_c: float | None = None
+        self.shutdown_temp_c: float | None = None
 
     def _get_device(self) -> Device:
         if self._device is None:
@@ -238,7 +242,42 @@ class GpuCollector(Collector[GpuMetrics]):
                 threshold,
                 max_clock,
             )
+            self._read_temp_thresholds(self._device)
         return self._device
+
+    def _read_temp_thresholds(self, device: Device) -> None:
+        """Read the GPU's own thermal limits from NVML.
+
+        Worth doing rather than hardcoding: on GB10 these are 86C (slowdown)
+        and 90C (shutdown), which bracket a range that hardcoded guesses got
+        wrong from both directions — an 80C "critical" fired during ordinary
+        work, while a 94C alert sat above the temperature at which the hardware
+        powers itself off and so could never fire at all.
+
+        `nvidia-smi` prints these as N/A on this hardware; they are only
+        reachable through NVML. Unsupported on some parts, in which case the
+        fallback bands in thresholds.py apply.
+        """
+        for attr, name in (
+            ("slowdown_temp_c", "NVML_TEMPERATURE_THRESHOLD_SLOWDOWN"),
+            ("shutdown_temp_c", "NVML_TEMPERATURE_THRESHOLD_SHUTDOWN"),
+        ):
+            threshold = getattr(libnvml, name, None)
+            if threshold is None:
+                continue
+            try:
+                value = libnvml.nvmlDeviceGetTemperatureThreshold(device.handle, threshold)
+            except Exception:  # noqa: BLE001 — not supported on every part
+                log.debug("%s unavailable", name, exc_info=True)
+                continue
+            if value:
+                setattr(self, attr, float(value))
+
+        log.info(
+            "GPU thermal limits: slowdown %s, shutdown %s",
+            self.slowdown_temp_c,
+            self.shutdown_temp_c,
+        )
 
     def _throttle_signals(self, device: Device) -> tuple[bool | None, bool | None]:
         """Read NVML throttle reasons, if this driver/hardware exposes them.

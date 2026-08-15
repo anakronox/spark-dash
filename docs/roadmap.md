@@ -98,33 +98,50 @@ something currently *missing*.
 
 The highest-value work, because parts of it are wrong today rather than absent.
 
-The root cause of the temperature problem is in
-[health.py](../common/src/spark_dash_common/health.py): CPU and GPU are judged
-against **the same** `TempThresholds` pair.
+**A1–A3 are done (2026-08-15).** The root cause was in
+[health.py](../common/src/spark_dash_common/health.py): CPU and GPU were judged
+against **the same** `TempThresholds` pair, so neither could be tuned without
+breaking the other.
 
-```python
-findings.extend(_temp_findings("GPU", gpu.temp_c, temps))
-findings.extend(_temp_findings("CPU", cpu_temp_c, temps))
-```
+Measuring the hardware settled what the numbers should be. NVML reports, for
+this GB10 — none of which `nvidia-smi` will show you, it prints `N/A` for all of
+them:
 
-Two components with very different normal ranges share one set of bands, so
-neither can be tuned without breaking the other.
-[thresholds.py](../common/src/spark_dash_common/thresholds.py) already documents
-the consequence — the GX10 was observed at 84°C during routine ComfyUI
-generation at 96% utilization *without* throttling, so 80°C is a normal working
-temperature on this hardware. Observed live on 2026-08-15: GPU 82°C and CPU
-92°C under load, health `critical`, clock state `PASS`, no alert firing. That is
-exactly the predicted false alarm.
+| Threshold | Value | Meaning |
+|---|---|---|
+| `SLOWDOWN` | **86 °C** | the GPU begins throttling itself |
+| `SHUTDOWN` | **90 °C** | it cuts power to survive |
+| `GPU_MAX` | 99 °C | spec maximum |
 
-- [ ] **A1.** Split `TempThresholds` into separate GPU and CPU bands. This is
-  the root fix; everything else in the temperature story is downstream of it.
-- [ ] **A2.** Surface `TEMP_WARNING_C` / `TEMP_CRITICAL_C` in
-  [../deploy/node/.env.example](../deploy/node/.env.example). The per-node
-  override already exists in `config.py` but appears in no template, which is
-  why `sparky` is still running the noisy default.
-- [ ] **A3.** Add CPU temperature alert rules. `sparkdash_cpu_temperature_celsius`
-  is exported and feeds the health model, but has **no rule at all**, while GPU
-  has two (`>88` warning, `>94` critical).
+And the CPU's `acpitz` zones all report a `critical` trip at **104 °C**.
+
+Against those, both sets of thresholds were wrong in opposite directions:
+
+- Health called **80 °C** critical — below the point where the GPU is even
+  throttling, which is why `sparky` read `critical` while running perfectly.
+- `GpuTemperatureCritical` waited for **94 °C** on a part that powers itself off
+  at 90 °C. **That rule could never have fired.**
+- `GpuTemperatureHigh` at 88 °C only tripped after throttling had already begun.
+- The CPU, judged against the GPU's bands, was called critical at 92 °C with
+  12 °C of headroom to spare.
+
+- [x] **A1.** Split `TempThresholds` per component, and **derive both from the
+  hardware** rather than hardcoding: the GPU's from NVML's slowdown threshold,
+  the CPU's from the thermal zone's critical trip. Critical lands *on* slowdown
+  (where performance actually degrades); warning gets 4 °C of lead. The CPU's
+  bands sit 6 °C and 12 °C below its trip, because a cooling failure ramps fast.
+  Falls back to generic constants when a part won't report, and says so via
+  `source` so a guess is never mistaken for a measurement.
+- [x] **A2.** Documented the overrides in
+  [../deploy/node/.env.example](../deploy/node/.env.example) — including that
+  they should normally stay unset, now that the values are read from hardware.
+  Both halves of a pair are required; half an override is ignored with a warning.
+- [x] **A3.** Added `CpuTemperatureHigh` / `CpuTemperatureCritical`, and rewrote
+  the GPU pair. **All four now compare against the node's own exported bands**
+  (`sparkdash_{gpu,cpu}_temp_{warning,critical}_celsius`) rather than numbers
+  typed into `alerts.yml`, so there is one source of truth and the rules
+  self-calibrate to whatever silicon is present. `TemperatureBandsNotDerived`
+  flags a node running on fallback guesses.
 - [ ] **A4.** Link-down and RDMA alerts. `sparkdash_network_up`,
   `sparkdash_rdma_port_active` and the `*_errors_total` counters all exist and
   nothing watches them — and for a pair doing distributed inference over RoCE, a
@@ -137,6 +154,13 @@ exactly the predicted false alarm.
 - [ ] **A6.** Node disk-space alert from node-exporter. Named in the original
   Phase 3 list and never built; `PrometheusStorageFillingUp` covers only the
   monitoring VM.
+- [ ] **A8.** Check what the clock-throttle threshold is calibrated against.
+  `throttle_threshold_mhz` derives from `max_sm_clock`, which NVML reports as
+  **3003 MHz** — but the GB10 runs 2411 MHz at 96% utilization and 74 °C, with
+  clock state `PASS` and no thermal throttling. If 3003 is a boost ceiling this
+  part never reaches, the derived threshold is measured against a speed that
+  isn't real, and THROTTLED may be over- or under-reported. Noticed while
+  measuring the thermal limits; not yet investigated.
 - [ ] **A7.** Raise retention. Measured on 2026-08-15: 227 samples/sec,
   ~25 MB/day/node, 35 MB on disk for the first ~33 hours. Three nodes ≈
   75 MB/day → 30d ≈ 2 GB, a full year ≈ 25 GB. The current 30d setting is
@@ -270,7 +294,18 @@ get lost:
    is out of scope for *this* project but affects how much Prometheus service
    discovery needs to do — revisit if orchestration changes.
 5. **Should alert rules derive from the agent's health model, or stay
-   independent?** Today they are two separate opinions about what "bad" means,
+   independent?** **Settled for temperature (2026-08-15): they share a source.**
+   The agent exports the bands it judges itself against
+   (`sparkdash_{gpu,cpu}_temp_{warning,critical}_celsius`) and the rules compare
+   against those, so the two can no longer disagree — which they did, badly,
+   with health calling 80 °C critical while a rule waited for 94 °C on hardware
+   that shuts down at 90 °C.
+
+   This turned out better than either original option: the rules are neither
+   independent nor a copy of the agent's numbers, they *reference* them, and so
+   self-calibrate to whatever hardware reports. The same pattern is available to
+   any other threshold that has a hardware-derived answer. The original question
+   as posed: Today they are two separate opinions about what "bad" means,
    which is how the dashboard can read `critical` while nothing pages. Either
    alert off `sparkdash_node_health{state="critical"}` and make the agent the
    single source of truth, or keep them separate with the rationale written

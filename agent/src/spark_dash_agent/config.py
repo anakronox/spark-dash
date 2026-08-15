@@ -13,7 +13,7 @@ import socket
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from spark_dash_common.thresholds import TEMP_CRITICAL_C, TEMP_WARNING_C, TempThresholds
+from spark_dash_common.thresholds import TempThresholds
 
 log = logging.getLogger(__name__)
 
@@ -60,12 +60,16 @@ class Settings(BaseSettings):
     # Comma-separated vLLM /metrics endpoints on this node.
     vllm_urls: str = ""
 
-    # Temperature bands, overridable per node. The defaults are sparkview's
-    # field-validated values, but a node also running sustained image
-    # generation legitimately runs hotter — the GX10 sits at ~84C under
-    # ComfyUI load without throttling, which would otherwise alert constantly.
-    temp_warning_c: float = TEMP_WARNING_C
-    temp_critical_c: float = TEMP_CRITICAL_C
+    # Temperature bands. Left unset — the normal case — they are DERIVED FROM
+    # THE HARDWARE: the GPU's from NVML's slowdown threshold (86C on GB10), the
+    # CPU's from the thermal zone's critical trip (104C). Set these only to
+    # override a node whose derived values are wrong; a hardcoded band is how
+    # this went wrong before, alarming at 80C during ordinary work while a 94C
+    # alert sat above the 90C at which the GPU powers itself off.
+    temp_warning_c: float | None = None
+    temp_critical_c: float | None = None
+    cpu_temp_warning_c: float | None = None
+    cpu_temp_critical_c: float | None = None
 
     # Baked into the image at build time from the git sha. "unknown" when
     # running from source, which is correct — there's no commit to name.
@@ -116,8 +120,14 @@ class Settings(BaseSettings):
         return _split(self.llama_metrics_routers)
 
     @property
-    def temp_thresholds(self) -> TempThresholds:
-        return TempThresholds(warning_c=self.temp_warning_c, critical_c=self.temp_critical_c)
+    def temp_thresholds(self) -> TempThresholds | None:
+        """Explicit GPU override, or None to derive from the hardware."""
+        return _override(self.temp_warning_c, self.temp_critical_c)
+
+    @property
+    def cpu_temp_thresholds(self) -> TempThresholds | None:
+        """Explicit CPU override, or None to derive from the hardware."""
+        return _override(self.cpu_temp_warning_c, self.cpu_temp_critical_c)
 
     @property
     def vllm_endpoints(self) -> list[str]:
@@ -141,6 +151,22 @@ def _read_host_hostname(hostname_path: Path) -> str:
         return hostname_path.read_text().strip().split("\n")[0].strip()
     except OSError:
         return ""
+
+
+def _override(warning_c: float | None, critical_c: float | None) -> TempThresholds | None:
+    """Build an override only when both bands are given.
+
+    Half an override is a misconfiguration, not a partial instruction: pairing
+    an explicit warning with a derived critical would silently produce bands
+    that don't relate to each other.
+    """
+    if warning_c is None or critical_c is None:
+        if warning_c is not None or critical_c is not None:
+            log.warning(
+                "temperature override ignored: set BOTH warning and critical, or neither"
+            )
+        return None
+    return TempThresholds(warning_c=warning_c, critical_c=critical_c, source="override")
 
 
 def _split(raw: str) -> list[str]:

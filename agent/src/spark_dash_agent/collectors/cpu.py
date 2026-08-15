@@ -8,12 +8,16 @@ round trip.
 
 from __future__ import annotations
 
+import logging
 import os
+from pathlib import Path
 
 import psutil
 from spark_dash_common.models import CpuMetrics
 
 from spark_dash_agent.collectors.base import Collector
+
+log = logging.getLogger(__name__)
 
 # Preference order for which sensor represents "the CPU". GB10's are exposed
 # via the ARM thermal zones; the x86-style names are here so the agent behaves
@@ -42,6 +46,47 @@ def _cpu_temp() -> float | None:
     # since an unknown-but-hot sensor is still worth surfacing.
     readings = [e.current for entries in sensors.values() for e in entries if e.current]
     return float(max(readings)) if readings else None
+
+
+def read_critical_trip_c(sys_path: Path) -> float | None:
+    """The lowest `critical` trip point across the thermal zones, in °C.
+
+    This is where the *kernel* powers the machine off, and it's what the CPU's
+    health bands are derived from — the GX10 reports 104C on every acpitz zone,
+    which is 24C above the temperature that used to be called critical.
+
+    Read from sysfs because psutil doesn't surface it: `sensors_temperatures()`
+    returns `critical=None` for these zones even though the trip point exists.
+
+    The *lowest* trip wins, since the machine is protected by whichever zone
+    trips first.
+    """
+    root = sys_path / "class" / "thermal"
+    trips: list[float] = []
+    try:
+        zones = sorted(root.glob("thermal_zone*"))
+    except OSError:
+        return None
+
+    for zone in zones:
+        for trip_type in sorted(zone.glob("trip_point_*_type")):
+            try:
+                if trip_type.read_text().strip() != "critical":
+                    continue
+                raw = trip_type.with_name(
+                    trip_type.name.replace("_type", "_temp")
+                ).read_text()
+                millidegrees = int(raw.strip())
+            except (OSError, ValueError):
+                continue
+            # 0 means "no trip configured"; the kernel also uses absurd
+            # sentinels on some sensors, so ignore anything implausible.
+            if 0 < millidegrees < 200_000:
+                trips.append(millidegrees / 1000.0)
+
+    if not trips:
+        return None
+    return min(trips)
 
 
 class CpuCollector(Collector[CpuMetrics]):

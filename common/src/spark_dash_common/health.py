@@ -50,13 +50,22 @@ def assess(
     psi: PsiMetrics | None = None,
     cpu_temp_c: float | None = None,
     temps: TempThresholds = DEFAULT_TEMP_THRESHOLDS,
+    cpu_temps: TempThresholds | None = None,
 ) -> tuple[HealthState, list[str]]:
     """Return the worst state across all signals, plus why.
 
     The reasons are not decoration: the UI renders them as the text label
     beside the status color, so meaning never rides on hue alone.
+
+    `temps` covers the GPU and `cpu_temps` the CPU. They are separate because
+    the parts have very different limits — a GB10 GPU throttles at 86C while
+    the CPU next to it is rated to 104C — and a single shared pair meant the
+    GPU band alarmed during ordinary work while the CPU band was far too high
+    to catch anything. `cpu_temps` falls back to `temps` only so existing
+    callers keep working.
     """
     findings: list[tuple[HealthState, str]] = []
+    cpu_bands = cpu_temps if cpu_temps is not None else temps
 
     if psi is not None and psi.state is not PsiState.LOW:
         findings.append((_PSI_TO_HEALTH[psi.state], f"memory pressure {psi.state.value}"))
@@ -71,7 +80,7 @@ def assess(
             findings.extend(_temp_findings("GPU", gpu.temp_c, temps))
 
     if cpu_temp_c is not None:
-        findings.extend(_temp_findings("CPU", cpu_temp_c, temps))
+        findings.extend(_temp_findings("CPU", cpu_temp_c, cpu_bands))
 
     if memory is not None and memory.used_pct > MEM_HIGH_PCT:
         # sparkview keys on the *combination*: high usage alone is unremarkable

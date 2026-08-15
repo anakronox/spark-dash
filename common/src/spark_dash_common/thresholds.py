@@ -34,30 +34,78 @@ CLOCK_LOCKED_TOLERANCE_MHZ = 15.0
 
 # --- Temperature -----------------------------------------------------------
 
-# [FIELD] sparkview's anomaly trigger.
+# [FALLBACK] Used only when the hardware won't say. Prefer the derived values
+# below, which come from the silicon's own limits.
 #
 # CALIBRATION NOTE: the GX10 was observed at 84C during routine ComfyUI image
 # generation, at 96% utilization and WITHOUT throttling. So on this hardware 80C
-# is a normal working temperature, not an anomaly, and alerting on it would fire
-# constantly during ordinary work. These remain the defaults because they are
-# the field-validated values, but they are overridable per node — see
-# TEMP_WARNING_C / TEMP_CRITICAL_C in the agent settings.
-TEMP_CRITICAL_C = 80.0
-# [GUESS] A warning band below the field-validated critical line.
-TEMP_WARNING_C = 70.0
+# is a normal working temperature, and a critical band at 80C fires constantly
+# during ordinary work — which is exactly what it did.
+TEMP_CRITICAL_C = 95.0
+# [FALLBACK] A warning band below the fallback critical line.
+TEMP_WARNING_C = 88.0
+
+# How far below the hardware's own limit each band sits.
+#
+# The GPU critical band lands *on* the slowdown point: above it the hardware
+# throttles itself, so it is the temperature at which you begin losing
+# performance — the meaningful ceiling, distinct from the shutdown point where
+# the part cuts power to survive. Warning gets 4C of lead.
+GPU_WARNING_MARGIN_C = 4.0
+
+# The CPU's only exposed trip is `critical`, where the KERNEL powers the machine
+# off. Both bands are set well below it, because a cooling failure ramps fast
+# and 2C of notice is no notice at all.
+CPU_CRITICAL_MARGIN_C = 6.0
+CPU_WARNING_MARGIN_C = 12.0
 
 
 @dataclass(frozen=True)
 class TempThresholds:
-    """Per-node temperature bands.
+    """Temperature bands for one component.
 
-    Configurable rather than constant because what counts as "hot" depends on
-    the workload mix: a node running sustained image generation legitimately
-    sits where a purely-inference node would be in trouble.
+    Per-component rather than shared: a GB10 GPU throttles at 86C while the CPU
+    beside it is rated to 104C. One pair of numbers for both meant neither could
+    be set correctly — the GPU band alarmed during normal work while the CPU
+    band could not have caught a real cooling failure.
     """
 
     warning_c: float = TEMP_WARNING_C
     critical_c: float = TEMP_CRITICAL_C
+    #: Where the numbers came from, so the UI and a reader can tell a
+    #: hardware-derived band from a fallback guess.
+    source: str = "fallback"
+
+    @classmethod
+    def for_gpu(cls, slowdown_c: float | None) -> TempThresholds:
+        """Bands derived from NVML's slowdown threshold.
+
+        On GB10 that is 86C (shutdown is 90C). Read from the device rather than
+        hardcoded so this stays correct on different silicon, and because
+        `nvidia-smi` reports these as N/A — they are only visible through NVML.
+        """
+        if slowdown_c is None or slowdown_c <= 0:
+            return cls()
+        return cls(
+            warning_c=slowdown_c - GPU_WARNING_MARGIN_C,
+            critical_c=slowdown_c,
+            source="nvml-slowdown",
+        )
+
+    @classmethod
+    def for_cpu(cls, critical_trip_c: float | None) -> TempThresholds:
+        """Bands derived from the thermal zone's `critical` trip point.
+
+        On the GX10 every acpitz zone reports 104C. psutil doesn't surface it
+        for these zones, so it's read from sysfs directly.
+        """
+        if critical_trip_c is None or critical_trip_c <= 0:
+            return cls()
+        return cls(
+            warning_c=critical_trip_c - CPU_WARNING_MARGIN_C,
+            critical_c=critical_trip_c - CPU_CRITICAL_MARGIN_C,
+            source="acpi-critical-trip",
+        )
 
 
 DEFAULT_TEMP_THRESHOLDS = TempThresholds()

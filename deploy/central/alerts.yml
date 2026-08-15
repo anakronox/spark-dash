@@ -91,33 +91,89 @@ groups:
   # ------------------------------------------------------------------- thermal
   - name: thermal
     rules:
-      # [CALIBRATE] The GX10 sits at ~84C during routine ComfyUI generation, at
-      # 96% utilization and WITHOUT throttling — so 80C, sparkview's anomaly
-      # trigger, is a normal working temperature here and would fire constantly.
-      # 88C sustained is well clear of observed-normal while still leaving
-      # headroom below thermal limits.
+      # These compare against the node's OWN bands rather than a number typed
+      # in here, so there is one source of truth and the rules self-calibrate to
+      # whatever silicon is present. The agent derives them from the hardware:
+      # the GPU's from NVML's slowdown threshold (86C on GB10, with shutdown at
+      # 90C), the CPU's from the thermal zone's critical trip (104C).
+      #
+      # The hardcoded numbers these replaced were wrong in both directions. The
+      # old critical waited for 94C on a part that powers itself off at 90C, so
+      # it could never fire; the old warning at 88C only tripped after the GPU
+      # had already begun throttling at 86C.
       - alert: GpuTemperatureHigh
-        expr: sparkdash_gpu_temperature_celsius > 88
+        expr: >-
+          sparkdash_gpu_temperature_celsius
+          >= on(node) sparkdash_gpu_temp_warning_celsius
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "GPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
           description: >-
-            Sustained above 88C for 10 minutes. Normal under load here is
-            around 84C. Check airflow and whether an unusual workload mix is
-            running.
+            Approaching the point where this GPU throttles itself. Still
+            performing normally, but with little headroom left — check airflow
+            and the workload mix.
 
+      # At this point the hardware is slowing itself down, so the cost is real
+      # and measurable rather than anticipated.
       - alert: GpuTemperatureCritical
-        expr: sparkdash_gpu_temperature_celsius > 94
+        expr: >-
+          sparkdash_gpu_temperature_celsius
+          >= on(node) sparkdash_gpu_temp_critical_celsius
         for: 2m
         labels:
           severity: critical
         annotations:
           summary: "GPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
           description: >-
-            Close to thermal limits. Expect the hardware to start throttling
-            itself if it hasn't already.
+            At or above this GPU's slowdown threshold — it is throttling to
+            protect itself, so throughput is already degraded. Shutdown follows
+            a few degrees higher.
+
+      # The CPU had NO alert rule at all, despite feeding node health and
+      # despite being the hotter of the two components in practice.
+      - alert: CpuTemperatureHigh
+        expr: >-
+          sparkdash_cpu_temperature_celsius
+          >= on(node) sparkdash_cpu_temp_warning_celsius
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
+          description: >-
+            Sustained well above normal working temperature and closing on the
+            trip point where the kernel powers the machine off. Check airflow.
+
+      - alert: CpuTemperatureCritical
+        expr: >-
+          sparkdash_cpu_temperature_celsius
+          >= on(node) sparkdash_cpu_temp_critical_celsius
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
+          description: >-
+            Within a few degrees of the kernel's critical trip, which powers
+            the machine off without warning. Cooling failure ramps fast — treat
+            this as immediate.
+
+      # A band that fell back rather than being read from the hardware is a
+      # guess, and a guess is what got the old thresholds wrong. Worth knowing
+      # about, but not at 2am.
+      - alert: TemperatureBandsNotDerived
+        expr: sparkdash_temp_band_source_info{derived="fallback"} == 1
+        for: 6h
+        labels:
+          severity: info
+        annotations:
+          summary: "{{ $labels.component }} bands on {{ $labels.node }} are a fallback guess"
+          description: >-
+            The hardware didn't report a limit for this component, so generic
+            fallback values are in force. Alerts still work, but the thresholds
+            aren't calibrated to this part.
 
   # -------------------------------------------------------------------- clocks
   - name: clocks

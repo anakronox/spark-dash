@@ -314,6 +314,28 @@ class Runtimes(BaseModel):
     vllm: list[VllmMetrics] = Field(default_factory=list)
 
 
+class TempBands(BaseModel):
+    """The temperature bands in force on a node, and where they came from.
+
+    Reported rather than assumed so alerting can compare against the *node's
+    own* thresholds instead of hardcoding numbers in a rule file. That keeps
+    one source of truth: previously the agent called 80°C critical while the
+    alert rules waited for 88°C, and a third rule sat at 94°C — above the 90°C
+    at which a GB10 powers itself off, so it could never have fired.
+
+    `source` distinguishes a hardware-derived band from a fallback guess, which
+    is the difference between a threshold you can trust and one you can't.
+    """
+
+    gpu_warning_c: float
+    gpu_critical_c: float
+    gpu_source: str = "fallback"
+
+    cpu_warning_c: float
+    cpu_critical_c: float
+    cpu_source: str = "fallback"
+
+
 class NodeSnapshot(BaseModel):
     """Everything the dashboard shows for one node at one instant."""
 
@@ -341,6 +363,12 @@ class NodeSnapshot(BaseModel):
         default_factory=list,
         description="Human-readable causes behind `health`; shown as the label "
         "beside the status color so meaning never rides on hue alone.",
+    )
+
+    temp_bands: TempBands | None = Field(
+        default=None,
+        description="Thresholds this node's health was judged against, so a "
+        "reader (and an alert rule) can see them rather than guess.",
     )
 
     gpu: GpuMetrics | None = None

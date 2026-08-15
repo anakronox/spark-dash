@@ -43,6 +43,7 @@ class SnapshotMetricsCollector:
         yield from _memory_metrics(snap, node)
         yield from _psi_metrics(snap, node)
         yield from _cpu_metrics(snap, node)
+        yield from _temp_band_metrics(snap, node)
         yield from _network_metrics(snap, node)
         yield from _process_metrics(snap, node)
         yield from _runtime_metrics(snap, node)
@@ -245,6 +246,44 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             info.add_metric([*labels, port.link_layer, port.rate], 1.0)
 
         yield from (active, rx, tx, errs, info)
+
+
+def _temp_band_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
+    """The thresholds this node judges itself against.
+
+    Exported so alert rules can compare a temperature against the node's own
+    band rather than a number typed into alerts.yml. That keeps one source of
+    truth and makes the rules self-calibrating: a different GPU with different
+    limits gets different thresholds without editing anything.
+
+    It also removes a class of bug that had already happened twice — a rule
+    waiting for 94°C on hardware that shuts down at 90°C could never fire, and
+    a health band at 80°C alarmed during ordinary work.
+    """
+    bands = snap.temp_bands
+    if bands is None:
+        return
+
+    for name, doc, value in (
+        ("gpu_temp_warning_celsius", "GPU temperature warning band", bands.gpu_warning_c),
+        ("gpu_temp_critical_celsius", "GPU temperature critical band", bands.gpu_critical_c),
+        ("cpu_temp_warning_celsius", "CPU temperature warning band", bands.cpu_warning_c),
+        ("cpu_temp_critical_celsius", "CPU temperature critical band", bands.cpu_critical_c),
+    ):
+        metric = _g(name, doc, ["node"])
+        metric.add_metric([node], float(value))
+        yield metric
+
+    # Info-style: `derived` distinguishes a hardware-read band from a fallback
+    # guess, which is what tells you whether to trust the number above.
+    source = _g(
+        "temp_band_source_info",
+        "Always 1; carries where each component's bands came from",
+        ["node", "component", "derived"],
+    )
+    source.add_metric([node, "gpu", bands.gpu_source], 1.0)
+    source.add_metric([node, "cpu", bands.cpu_source], 1.0)
+    yield source
 
 
 def _process_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:

@@ -19,9 +19,11 @@ from spark_dash_common.models import (
     NodeSnapshot,
     ProcessInfo,
     Runtimes,
+    TempBands,
 )
+from spark_dash_common.thresholds import TempThresholds
 
-from spark_dash_agent.collectors.cpu import CpuCollector
+from spark_dash_agent.collectors.cpu import CpuCollector, read_critical_trip_c
 from spark_dash_agent.collectors.gpu import GpuCollector
 from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.collectors.memory import MemoryCollector, detect_unified_memory
@@ -123,9 +125,29 @@ class SnapshotBuilder:
         self._vllm = VllmCollector(settings.vllm_endpoints)
         self._network = NetworkCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
+
+        # The CPU's critical trip doesn't change while the machine runs, so
+        # read it once. The GPU's limits need an open NVML handle and so are
+        # resolved lazily in `_temp_bands`.
+        self._cpu_trip_c = read_critical_trip_c(settings.sys_path)
+        log.info("CPU critical trip point: %s", self._cpu_trip_c)
         # Built lazily: UMA detection needs NVML's total, which isn't known
         # until the GPU collector has opened the device once.
         self._memory: MemoryCollector | None = None
+
+    def _temp_bands(self) -> tuple[TempThresholds, TempThresholds]:
+        """GPU and CPU temperature bands, in precedence order.
+
+        Explicit override, else derived from the hardware, else the fallback
+        constants. Separate per component because a GB10 GPU throttles at 86C
+        while the CPU beside it is rated to 104C — one shared pair could not be
+        right for both, and wasn't.
+        """
+        gpu = self._settings.temp_thresholds or TempThresholds.for_gpu(
+            self._gpu.slowdown_temp_c
+        )
+        cpu = self._settings.cpu_temp_thresholds or TempThresholds.for_cpu(self._cpu_trip_c)
+        return gpu, cpu
 
     @property
     def node_id(self) -> str:
@@ -165,12 +187,14 @@ class SnapshotBuilder:
         # either one.
         processes = resolve_process_routers(processes, llama)
 
+        gpu_bands, cpu_bands = self._temp_bands()
         health, reasons = assess(
             gpu=gpu,
             memory=memory,
             psi=psi,
             cpu_temp_c=cpu.temp_c if cpu else None,
-            temps=self._settings.temp_thresholds,
+            temps=gpu_bands,
+            cpu_temps=cpu_bands,
         )
 
         return NodeSnapshot(
@@ -180,6 +204,14 @@ class SnapshotBuilder:
             agent_version=self._settings.agent_version,
             health=health,
             health_reasons=reasons,
+            temp_bands=TempBands(
+                gpu_warning_c=gpu_bands.warning_c,
+                gpu_critical_c=gpu_bands.critical_c,
+                gpu_source=gpu_bands.source,
+                cpu_warning_c=cpu_bands.warning_c,
+                cpu_critical_c=cpu_bands.critical_c,
+                cpu_source=cpu_bands.source,
+            ),
             gpu=gpu,
             memory=memory,
             psi=psi,
