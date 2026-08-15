@@ -222,6 +222,12 @@ have to double as a debugging session.
   built the dashboard half of this; the metric turns build skew from something
   you have to notice into something that pages.
 
+  **Promoted from optional to load-bearing** by the `:latest` decision (see
+  Open decisions 6). Once images track `:latest`, config no longer records which
+  build is deployed, so this metric becomes the only historical answer to "what
+  was running when" — and a better one, since it records what actually ran
+  rather than what a pin intended.
+
 ## Phase 4 — Polish / nice-to-haves (unscheduled)
 
 - [x] Historical trend views — token throughput and GPU utilization over time.
@@ -328,6 +334,34 @@ get lost:
    nodes would then run different bytes depending on when they pulled. The
    source clone on the other nodes exists for `validate-on-gx10.sh` and
    diagnostics, not for building.
+
+   **Images track `:latest`, not a pinned sha.** Dockhand is configured per
+   managed environment to pull new images once a day in off-hours, so `:latest`
+   converges without a git change — which pinning cannot do, since a pinned tag
+   only moves when someone edits it.
+
+   This reverses the advice still written in
+   [../deploy/node/README.md](../deploy/node/README.md) and printed by
+   `publish-images.sh`, both of which assume a git change is the only deploy
+   trigger. **Both need updating when this lands.**
+
+   Consequences, accepted:
+
+   - **The build becomes the deploy action.** Pushing to `main` ships nothing;
+     images exist only when `publish-images.sh` runs. Running it means "this goes
+     live on every node in the environment within 24 hours," which makes the
+     publish step weightier than it is today, where a pin edit stood between
+     building and running.
+   - **Skew is bounded, not eliminated** — nodes in one environment pull
+     together, and worst case diverge for under a day rather than indefinitely.
+   - **Config no longer records what's running.** `:latest` is not an answer to
+     "what was running on the 12th?", which makes **C2 load-bearing rather than
+     optional**: `sparkdash_agent_build_info` records what actually ran, is
+     queryable historically, and is more honest than a pin, which only ever
+     recorded intent.
+   - **Pinning survives as the exception path.** When a bad build lands
+     overnight, pin the last-good sha in that node's `.env` and commit —
+     Dockhand redeploys immediately, no rebuild needed — then unpin once fixed.
 
    **Guard against drift instead of syncing.** Three hand-maintained
    `compose.yaml` files can diverge once the orchestration repos are
