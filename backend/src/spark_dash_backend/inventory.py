@@ -195,6 +195,15 @@ def parse_file_sd(
             log.warning("skipping malformed inventory entry: %r", entry)
             continue
 
+        # `group` must be read back, not just written. Dropping it here made
+        # clustered nodes look standalone on the file-based path, and the
+        # failure is silent and wrong in the dangerous direction: capacity
+        # arithmetic would stop pooling their memory and under-report what the
+        # group can actually hold, so a model that would fit looks like it
+        # won't.
+        raw_group = labels.get("group")
+        group = str(raw_group).strip() or None if raw_group is not None else None
+
         for target in targets:
             if not isinstance(target, str) or not target.strip():
                 continue
@@ -211,6 +220,7 @@ def parse_file_sd(
                     host=host,
                     agent_port=port,
                     node_exporter_port=node_exporter_port,
+                    group=group,
                 )
             )
 

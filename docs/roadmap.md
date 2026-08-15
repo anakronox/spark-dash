@@ -315,13 +315,31 @@ are involved — `/proc/<pid>/cmdline` is world-readable, unlike `cwd`.
 Work that should land *before* nodes 2 and 3 arrive, so the rollout doesn't
 have to double as a debugging session.
 
-- [ ] **C1.** Expose the node's group as a Prometheus label. The agent doesn't
-  know its own group (`group` is null in the snapshot); grouping lives in
-  `SPARK_NODES` on the backend. Cleanest path is for the backend to emit it as a
-  file-SD label in `agents.yml` so it attaches at scrape time. This is what makes
-  the *sum within a group, never across groups* capacity rule expressible in
-  PromQL. `honor_labels: true` is safe here because the agent exposes no
-  conflicting `group` label.
+- [x] **C1.** Expose the node's group as a Prometheus label.
+
+  **The render half already existed** — `render_file_sd` has been writing
+  `group` into both target files all along, so the mechanism proposed here was
+  already built. What was missing was the other direction and the documentation.
+
+  **`parse_file_sd` dropped it.** The fallback path (reading target files by
+  hand rather than from `SPARK_NODES`) parsed `node` and silently ignored
+  `group`, so clustered nodes reparsed as standalone. That fails in the
+  dangerous direction: without grouping, memory stops being pooled, the group's
+  capacity is under-reported, and a model that would fit looks like it won't.
+  The existing round-trip test missed it because its fixture had no groups.
+
+  Documented the aggregation patterns in
+  [metrics.md](metrics.md#the-group-label-and-why-totals-are-usually-wrong),
+  including the two traps: a standalone node carries *no* `group` label (an
+  empty one would create a phantom group), and `sum` without `by (group)` reads
+  as cluster capacity while describing capacity that doesn't exist.
+
+  **Not yet verified end-to-end**, and cannot be until a grouped node exists:
+  `sparky` is standalone, so no `group` label is currently emitted at all. The
+  label should survive `honor_labels: true` on the agent job, since that setting
+  governs only labels the target itself exposes and the agent exposes no
+  `group` — but that is reasoning, not a measurement. Confirm when node 2 or 3
+  arrives.
 - [x] **C2.** `sparkdash_agent_build_info{node, build}` plus the `AgentBuildSkew`
   alert on `count(count by (build)(sparkdash_agent_build_info)) > 1`, held for
   30m so a rollout in progress doesn't page — it catches a node that is *stuck*.
