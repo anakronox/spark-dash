@@ -64,6 +64,30 @@ groups:
             This collector has been erroring for 15 minutes, so that section of
             the dashboard is blank rather than wrong. Check the agent logs.
 
+      # A stale agent has twice presented as a missing feature rather than as a
+      # stale agent, costing a debugging round trip each time. Images track
+      # :latest and Dockhand pulls daily, so nodes normally converge on their
+      # own — this catches the one that didn't, and the half-finished manual
+      # rollout where node 3 was forgotten.
+      #
+      # The inner count collapses to one series per distinct build; the outer
+      # counts how many distinct builds exist at all. More than one means the
+      # nodes disagree.
+      #
+      # 30m rather than minutes: nodes legitimately differ while a rollout is in
+      # progress. This is for a node that is STUCK, not one mid-update.
+      - alert: AgentBuildSkew
+        expr: count(count by (build) (sparkdash_agent_build_info)) > 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Nodes are running different agent builds"
+          description: >-
+            More than one agent build has been reporting for 30 minutes, which
+            is longer than a rollout should take. Check which node is behind
+            with: count by (build, node) (sparkdash_agent_build_info)
+
   # ------------------------------------------------------------------- thermal
   - name: thermal
     rules:

@@ -183,6 +183,23 @@ def test_states_render_one_series_per_state():
     assert 'sparkdash_node_health{node="gx10-1",state="good"} 1.0' in text
 
 
+def test_build_is_exported_as_an_info_gauge():
+    """A git sha can't be a gauge value, so it rides as a label with a constant
+    1 — the same shape as rdma_port_info. Under :latest nothing in config
+    records which build is deployed, so this is the only historical answer to
+    "what was running when"."""
+    text = render(make_snapshot(agent_version="1cccead"))
+    assert 'sparkdash_agent_build_info{build="1cccead",node="gx10-1"} 1.0' in text
+
+
+def test_build_info_reports_unknown_rather_than_vanishing():
+    """Running from source has no commit to name. The series must still exist,
+    or a node built outside publish-images.sh would silently drop out of the
+    skew check instead of standing out in it."""
+    text = render(make_snapshot(agent_version="unknown"))
+    assert 'sparkdash_agent_build_info{build="unknown",node="gx10-1"} 1.0' in text
+
+
 def test_processes_are_exported_aggregated_never_per_pid():
     """PIDs churn on every model swap, so a pid label would grow cardinality
     without bound and never reuse a series. Aggregating by workload identity

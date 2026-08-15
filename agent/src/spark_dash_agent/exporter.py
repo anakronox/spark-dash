@@ -69,6 +69,32 @@ def _node_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
         errors.add_metric([node, collector], 1.0)
     yield errors
 
+    # An info-style metric, same shape as rdma_port_info: a git sha can't be a
+    # gauge value, so it rides as a label and the value is a constant 1.
+    #
+    # Load-bearing rather than cosmetic. Images track :latest, so no config
+    # records which build a node is on — this is the only historical answer to
+    # "what was running when", and a more honest one than a pinned tag, since it
+    # reports what actually ran rather than what was intended. It also lets any
+    # metric be stamped with its build:
+    #
+    #   sparkdash_gpu_utilization_percent
+    #     * on(node) group_left(build) sparkdash_agent_build_info
+    #
+    # which is what separates "the GPU numbers changed" from "the agent that
+    # measures them changed" — a distinction that has cost real debugging time.
+    #
+    # `build` churns by design: each new build starts a new series and the old
+    # one goes stale. That's bounded by how many builds get deployed, not by
+    # uptime, so it stays small.
+    build = _g(
+        "agent_build_info",
+        "Always 1; carries the agent's build sha as a label",
+        ["node", "build"],
+    )
+    build.add_metric([node, snap.agent_version], 1.0)
+    yield build
+
 
 def _gpu_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
     gpu = snap.gpu

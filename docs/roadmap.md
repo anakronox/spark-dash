@@ -217,16 +217,24 @@ have to double as a debugging session.
   the *sum within a group, never across groups* capacity rule expressible in
   PromQL. `honor_labels: true` is safe here because the agent exposes no
   conflicting `group` label.
-- [ ] **C2.** `sparkdash_agent_build_info{node, build}` plus an alert on
-  `count(count by (build)(sparkdash_agent_build_info)) > 1`. Commit `b9ce1f1`
-  built the dashboard half of this; the metric turns build skew from something
-  you have to notice into something that pages.
+- [x] **C2.** `sparkdash_agent_build_info{node, build}` plus the `AgentBuildSkew`
+  alert on `count(count by (build)(sparkdash_agent_build_info)) > 1`, held for
+  30m so a rollout in progress doesn't page — it catches a node that is *stuck*.
+  Commit `b9ce1f1` built the dashboard half; this is the Prometheus half.
 
-  **Promoted from optional to load-bearing** by the `:latest` decision (see
-  Open decisions 6). Once images track `:latest`, config no longer records which
-  build is deployed, so this metric becomes the only historical answer to "what
-  was running when" — and a better one, since it records what actually ran
-  rather than what a pin intended.
+  **Load-bearing rather than cosmetic** under the `:latest` decision (see Open
+  decisions 6): config no longer records which build is deployed, so this is the
+  only historical answer to "what was running when" — and a better one, since it
+  records what actually ran rather than what a pin intended. It also stamps any
+  metric with its build:
+
+  ```promql
+  sparkdash_gpu_utilization_percent
+    * on(node) group_left(build) sparkdash_agent_build_info
+  ```
+
+  which separates "the GPU numbers changed" from "the agent that measures them
+  changed".
 
 ## Phase 4 — Polish / nice-to-haves (unscheduled)
 
