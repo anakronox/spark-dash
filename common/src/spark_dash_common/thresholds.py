@@ -122,10 +122,17 @@ MEM_HIGH_PCT = 85.0
 
 @dataclass(frozen=True)
 class PsiBands:
-    """Cut points for `some avg10` / `full avg10`, as percent of time stalled.
+    """Cut points for `some avg60` / `full avg60`, as percent of time stalled.
 
     [GUESS] — all of it. Calibrate against a real baseline before alerting.
     `full` (every task stalled) is weighted harder than `some` (at least one).
+
+    Applied to the 60-second average, not the 10-second one — see `classify`.
+    Smoothing halves the peaks (the GX10's 24h maxima were 52% on avg10 against
+    28% on avg60), so these cut points are effectively stricter than the same
+    numbers on avg10 would be. Worth remembering when calibrating: `some_critical`
+    at 50 is now essentially unreachable, and CRITICAL is reached through
+    `full_critical` instead.
     """
 
     some_mod: float = 5.0

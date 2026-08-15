@@ -34,7 +34,12 @@ export const METRICS: MetricSpec[] = [
   { key: 'gpu_power', label: 'GPU power', unit: 'W' },
   { key: 'gpu_clock', label: 'GPU clock', unit: 'MHz' },
   { key: 'cpu_utilization', label: 'CPU utilization', unit: '%', percent: true },
-  { key: 'psi_some_avg10', label: 'Memory pressure', unit: '%', percent: true },
+  /* The 10-second average, deliberately: it shows a spike as a spike, which a
+   * trend chart should. Note the pressure BAND on the node card follows the
+   * 60-second average, so a brief peak here can sit above a calmer band — the
+   * window is named in the label so that reads as intended rather than as a
+   * contradiction. */
+  { key: 'psi_some_avg10', label: 'Memory pressure (10s)', unit: '%', percent: true },
 ];
 
 export interface RangeSpec {

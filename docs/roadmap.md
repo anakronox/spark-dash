@@ -149,8 +149,47 @@ Against those, both sets of thresholds were wrong in opposite directions:
   **Design constraint:** `network_up == 0` is *normal* for the unused f1 ports
   and for wifi, so the rule must key on interfaces that were previously up
   rather than on any down interface.
-- [ ] **A5.** Revisit `MemoryHighWithSwap`. It requires >85% memory, so the
-  6.1 GiB of swap observed at 37% memory usage is currently invisible.
+- [x] **A5 (part 1).** Classify PSI on `avg60` rather than `avg10`.
+
+  **The original note here was wrong and is worth recording as such.** It said
+  6.1 GiB of swap at 37% memory was "invisible", implying a missed alert.
+  Measurement said otherwise: swap sat at 6.13–6.40 GiB *unchanged* across 24h
+  while memory never passed 42%. That's **stale swap** — pages evicted in some
+  past squeeze that nothing has touched since, because Linux never faults them
+  back proactively. Alerting on it would have been a false positive.
+
+  What the data did reveal was worse. Real pressure occurred — `full_avg10`
+  peaked at **51%**, twice its critical band — at **42% memory**, so any rule
+  gated on memory percentage could never have caught it. And PSI, which did
+  catch it, was classified on `avg10`:
+
+  | band | on `avg10` (24h) | on `avg60` (same period) |
+  |---|---|---|
+  | MOD | 405 s | ~50 min |
+  | HIGH | **45 s** | ~36 min |
+  | CRITICAL | **60 s** | **409 s** |
+
+  Alert rules wait 2–5 minutes. Bands that never persisted past a minute meant
+  **every alert sat in `pending` and none ever fired.** Moving to `avg60` makes
+  the existing `for:` durations correct without touching them — smoothing fixed
+  the alerting gap as a side effect of fixing the flicker.
+
+  Note the bands are now effectively stricter, since smoothing halves the peaks
+  (24h maxima: 52% on `avg10` vs 28% on `avg60`). `some_critical` at 50 is
+  essentially unreachable; CRITICAL is now reached via `full_critical`.
+
+- [ ] **A5 (part 2).** Fix the memory rule itself, now that its premise is
+  understood.
+  - Drop the `swap_used > 0` conjunct from `MemoryHighWithSwap`. Stale swap
+    makes it ~always true, so it's a no-op that makes the rule look more
+    specific than it is.
+  - Rename it to what it actually measures: **capacity**, not pressure. "Above
+    85% memory, little room to load another model" is a useful alert; it just
+    isn't about swapping, and pressure is PSI's job.
+  - Add a swap-**I/O** rule for genuine thrash: `rate(node_vmstat_pswpout[5m])`
+    sustained. The counters exist and work (24h peak: 18.6 pages/s swap-in). On
+    a unified-memory box, sustained swap-out means model weights heading to
+    disk — a distinct condition PSI describes only indirectly.
 - [ ] **A6.** Node disk-space alert from node-exporter. Named in the original
   Phase 3 list and never built; `PrometheusStorageFillingUp` covers only the
   monitoring VM.

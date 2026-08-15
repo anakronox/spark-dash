@@ -38,6 +38,7 @@ def test_parse_psi_survives_garbage_values():
 
 
 def test_classify_bands():
+    """Arguments are the 60-second averages — see `classify`."""
     assert classify(0.0, 0.0) is PsiState.LOW
     assert classify(6.0, 0.0) is PsiState.MOD
     assert classify(25.0, 0.0) is PsiState.HIGH
@@ -73,4 +74,43 @@ def test_collector_reads_file(tmp_path):
     metrics = PsiCollector(path=path).collect()
     assert metrics is not None
     assert metrics.some_avg10 == 23.45
-    assert metrics.state is PsiState.HIGH
+    # avg10 alone would read HIGH (23.45 >= 20); the band follows avg60, which
+    # at 12.30/6.05 is still only MOD. See the next test for why.
+    assert metrics.state is PsiState.MOD
+
+
+def test_band_follows_avg60_not_a_10_second_spike(tmp_path):
+    """The regression this replaced.
+
+    avg10 spikes on any transient allocation burst, and classifying on it meant
+    the band flickered without ever settling — measured over 24h on the GX10,
+    avg10 held HIGH for 45 seconds and CRITICAL for 60. Alert rules wait 2-5
+    minutes, so real pressure (full_avg10 peaked at 51%, twice its critical
+    band) never fired a single alert.
+
+    Here avg10 is deep in CRITICAL while avg60 has barely moved. The node is
+    not in crisis, and the band must not say it is.
+    """
+    path = tmp_path / "memory"
+    path.write_text(
+        "some avg10=60.00 avg60=1.00 avg300=0.10 total=1\n"
+        "full avg10=40.00 avg60=0.50 avg300=0.05 total=1\n"
+    )
+    metrics = PsiCollector(path=path).collect()
+    assert metrics is not None
+    assert metrics.some_avg10 == 60.0  # the spike is still reported…
+    assert metrics.state is PsiState.LOW  # …it just doesn't set the band
+
+
+def test_sustained_pressure_still_escalates(tmp_path):
+    """Smoothing must not mean nothing ever reaches CRITICAL. Pressure that
+    persists shows up in avg60, and that is what should escalate."""
+    path = tmp_path / "memory"
+    path.write_text(
+        "some avg10=48.00 avg60=45.00 avg300=30.00 total=9\n"
+        "full avg10=30.00 avg60=27.00 avg300=18.00 total=9\n"
+    )
+    metrics = PsiCollector(path=path).collect()
+    assert metrics is not None
+    # full_avg60 27.0 >= full_critical 25 — the GX10's real peak was 27.27.
+    assert metrics.state is PsiState.CRITICAL
