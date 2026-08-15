@@ -288,13 +288,37 @@ get lost:
    copy-aside-and-restore dance for `.env` that exists *only* because of this
    duplication, and it would go away.
 
-   **Open sub-question:** who owns `compose.yaml`? Dockhand needs it in the
-   orchestration repo, but it's currently derived from `deploy/*/compose.yaml`
-   in this repo. Either it stays derived (and still needs syncing, so
-   `sync-stack-repos.sh` shrinks rather than disappears), or the orchestration
-   repo becomes authoritative and the templates here become reference-only,
-   accepting that they can drift from what's deployed. That choice decides
-   whether the sync script survives.
+   **Who owns `compose.yaml`? Settled: the orchestration repo does.** This
+   mirrors the pattern Brian already uses for third-party stacks — take the
+   compose file (and `.env` if needed), hand-create them in a Forgejo repo, and
+   point Dockhand at that. It's the only workable approach for a public upstream
+   you can't sync from, and it generalizes here.
+
+   Consequences, accepted deliberately:
+
+   - `deploy/*/compose.yaml` become **reference templates**, not the source of
+     truth. What runs is what's in the orchestration repo, so reading the host
+     tells you the truth — the property that was missing when the node README
+     described a path that didn't exist.
+   - `sync-stack-repos.sh` loses its purpose entirely rather than shrinking. A
+     template change has to be applied by hand, which is cheap because there are
+     only two stack repos, not one per node.
+
+   **Remaining question — can `.env` be tracked?** It's the reason the split
+   exists, but node `.env` currently holds `LLAMA_ROUTER_URLS` and `VLLM_URLS`,
+   which name *that host's* routers by LAN IP (the agent has its own netns, so
+   `localhost` isn't the node). That makes them per-node, which forces a choice:
+
+   - **`.env` untracked**, created on the host — keeps one node stack repo for
+     all three GX10s, but the live config isn't versioned or recoverable.
+   - **One orchestration repo per node** — `.env` tracked and versioned, at the
+     cost of three repos to apply a compose change to.
+   - **Make the values uniform**, and keep both properties. Adding
+     `extra_hosts: ["host.docker.internal:host-gateway"]` to the agent service
+     lets `LLAMA_ROUTER_URLS=http://host.docker.internal:8001,...` mean "this
+     node's routers" on every node, so one tracked `.env` serves all three.
+     Needs the routers to be published on the host's bridge-facing address,
+     which they appear to be (`--host 0.0.0.0`, published to 8001/8108).
 7. **Should there be a database?** **Leaning no for metrics, yes eventually for
    events — but only after A7 and B.**
 
