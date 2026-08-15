@@ -304,21 +304,39 @@ get lost:
      template change has to be applied by hand, which is cheap because there are
      only two stack repos, not one per node.
 
-   **Remaining question — can `.env` be tracked?** It's the reason the split
-   exists, but node `.env` currently holds `LLAMA_ROUTER_URLS` and `VLLM_URLS`,
-   which name *that host's* routers by LAN IP (the agent has its own netns, so
-   `localhost` isn't the node). That makes them per-node, which forces a choice:
+   **Settled: one orchestration repo per node.** Node `.env` holds
+   `LLAMA_ROUTER_URLS` and `VLLM_URLS`, which name *that host's* routers by LAN
+   IP (the agent has its own netns, so `localhost` isn't the node) — so the
+   values are per-node and a shared tracked `.env` was never going to work.
+   Per-node repos make the live config versioned and recoverable, which is worth
+   more than one-repo-serves-all.
 
-   - **`.env` untracked**, created on the host — keeps one node stack repo for
-     all three GX10s, but the live config isn't versioned or recoverable.
-   - **One orchestration repo per node** — `.env` tracked and versioned, at the
-     cost of three repos to apply a compose change to.
-   - **Make the values uniform**, and keep both properties. Adding
-     `extra_hosts: ["host.docker.internal:host-gateway"]` to the agent service
-     lets `LLAMA_ROUTER_URLS=http://host.docker.internal:8001,...` mean "this
-     node's routers" on every node, so one tracked `.env` serves all three.
-     Needs the routers to be published on the host's bridge-facing address,
-     which they appear to be (`--host 0.0.0.0`, published to 8001/8108).
+   This does **not** conflict with cloning the single source repo to every host.
+   The two are orthogonal: the source repo holds nothing hand-edited so it pulls
+   freely everywhere, and the orchestration repos are never pulled over. No file
+   lives in both, which is the whole point.
+
+   It also makes image rollout orchestrated rather than manual: pinning
+   `AGENT_IMAGE` becomes a commit in that node's repo, which is exactly the git
+   change Dockhand watches for.
+
+   **Build on one node, not all three.** All GX10s are arm64 and the image
+   carries nothing node-specific (`NODE_ID` comes from the host's hostname at
+   runtime), so `publish-images.sh agent` should run on exactly one of them. Two
+   nodes each building and pushing the same tag would leave the second
+   overwriting the first with a **different digest under the same tag**, and
+   nodes would then run different bytes depending on when they pulled. The
+   source clone on the other nodes exists for `validate-on-gx10.sh` and
+   diagnostics, not for building.
+
+   **Guard against drift instead of syncing.** Three hand-maintained
+   `compose.yaml` files can diverge once the orchestration repos are
+   authoritative. The replacement for `sync-stack-repos.sh` should be a *drift
+   check* that diffs each orchestration repo against `deploy/node/compose.yaml`
+   and reports differences — keeping the template honest without reintroducing
+   the clobbering this design removes. This also raises the value of **C2**:
+   three independently-pinned nodes make build skew routine rather than
+   exceptional.
 7. **Should there be a database?** **Leaning no for metrics, yes eventually for
    events — but only after A7 and B.**
 
