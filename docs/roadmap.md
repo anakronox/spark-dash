@@ -631,9 +631,20 @@ nodes:
   node's model reporting. `/health` should flag nodes whose config names
   endpoints they cannot reach.
 
-**Do this BEFORE nodes 2 and 3 arrive.** Migrating with one node means one
-thing to break; migrating with three means the per-node repos exist first and
-then have to be unwound.
+  A neighbouring case worth folding in: an env var that is now ignored. The
+  compose file no longer requires `SPARK_NODES`, and `cluster.yml` wins
+  whenever it lists a node — so a stale value there is silently inert, which
+  looks exactly like an edit that "didn't take".
+
+**Migration status: DONE on `sparky`, 2026-08-16.** The backend runs with
+`SPARK_NODES` empty in the container and takes its node list, grouping and
+runtimes entirely from `cluster.yml`; the node `.env` carries only
+`BACKEND_URL` and `LOG_LEVEL`. Both routers still report models, and the
+Prometheus target files are rendered from the same entries.
+
+Doing this with one node was the point — migrating with three would have meant
+creating the per-node repos first and then unwinding them. Nodes 2 and 3 are
+now additions to `cluster.yml` and nothing else.
 
 #### Exposing it in the UI — read-only, decided 2026-08-16
 
