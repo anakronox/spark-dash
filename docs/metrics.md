@@ -165,7 +165,7 @@ Computed by the dashboard backend, not scraped directly:
 
 Every scraped series carries `node`, and a **clustered** node also carries
 `group`. The label is attached at scrape time from the `file_sd` target files
-the backend renders out of `SPARK_NODES` — the agent can't supply it, because a
+the backend renders out of `cluster.yml` — the agent can't supply it, because a
 node has no way to know what it has been clustered with.
 
 This exists because **memory sums within a group and never across groups.**

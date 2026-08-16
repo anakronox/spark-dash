@@ -15,6 +15,11 @@ from spark_dash_backend.cluster import (
     parse_cluster,
 )
 
+
+def by_id(nodes):
+    """The parser returns an ordered list; most assertions want a lookup."""
+    return {n.node_id: n for n in nodes}
+
 GX10 = """
 nodes:
   - id: sparky
@@ -33,7 +38,7 @@ class TestParsing:
     def test_ports_resolve_against_the_node_host(self):
         """The whole point: the node stack carries no host-specific config, so
         a port plus the node's host is what makes it identical everywhere."""
-        cfg = parse_cluster(GX10)["sparky"]
+        cfg = by_id(parse_cluster(GX10))["sparky"].runtimes
         assert [r.url for r in cfg.llama_routers] == [
             "http://192.168.50.61:8001",
             "http://192.168.50.61:8108",
@@ -42,34 +47,34 @@ class TestParsing:
     def test_vllm_ports_get_the_metrics_path(self):
         """vLLM's Prometheus endpoint is conventionally /metrics; making every
         entry spell that out would be noise."""
-        assert parse_cluster(GX10)["sparky"].vllm == ["http://192.168.50.61:8120/metrics"]
+        assert by_id(parse_cluster(GX10))["sparky"].runtimes.vllm == ["http://192.168.50.61:8120/metrics"]
 
     def test_scrape_metrics_is_per_router(self):
         """Opting one router in must not opt in the one hosting 70B models —
         the blast radius of waking a model differs by router."""
-        routers = parse_cluster(GX10)["sparky"].llama_routers
+        routers = by_id(parse_cluster(GX10))["sparky"].runtimes.llama_routers
         assert routers[0].scrape_metrics is True
         assert routers[1].scrape_metrics is False
 
     def test_explicit_url_overrides_the_shorthand(self):
         """The escape hatch: a runtime that is not on the node's own address."""
-        cfg = parse_cluster("""
+        cfg = by_id(parse_cluster("""
 nodes:
   - id: n
     host: 10.0.0.1
     runtimes:
       llama_routers:
         - url: http://elsewhere:9999
-""")["n"]
+"""))["n"].runtimes
         assert cfg.llama_routers[0].url == "http://elsewhere:9999"
 
     def test_node_with_no_runtimes(self):
         """Normal: a node may serve neither, and must not fail to parse."""
-        cfg = parse_cluster("nodes:\n  - id: n\n    host: 10.0.0.1\n")["n"]
+        cfg = by_id(parse_cluster("nodes:\n  - id: n\n    host: 10.0.0.1\n"))["n"].runtimes
         assert cfg.llama_routers == [] and cfg.vllm == []
 
     def test_several_nodes_keep_their_own_hosts(self):
-        cfg = parse_cluster("""
+        cfg = by_id(parse_cluster("""
 nodes:
   - id: a
     host: 10.0.0.1
@@ -77,13 +82,13 @@ nodes:
   - id: b
     host: 10.0.0.2
     runtimes: {llama_routers: [{port: 8001}]}
-""")
-        assert cfg["a"].llama_routers[0].url == "http://10.0.0.1:8001"
-        assert cfg["b"].llama_routers[0].url == "http://10.0.0.2:8001"
+"""))
+        assert cfg["a"].runtimes.llama_routers[0].url == "http://10.0.0.1:8001"
+        assert cfg["b"].runtimes.llama_routers[0].url == "http://10.0.0.2:8001"
 
     def test_unparseable_entry_is_skipped_not_fatal(self):
         """One bad runtime entry should not cost the node its other runtimes."""
-        cfg = parse_cluster("""
+        cfg = by_id(parse_cluster("""
 nodes:
   - id: n
     host: 10.0.0.1
@@ -91,7 +96,7 @@ nodes:
       llama_routers:
         - {}
         - port: 8001
-""")["n"]
+"""))["n"].runtimes
         assert [r.url for r in cfg.llama_routers] == ["http://10.0.0.1:8001"]
 
 
@@ -129,17 +134,17 @@ class TestLoading:
     def test_missing_file_is_not_an_error(self, tmp_path):
         """Means this deployment has not migrated from SPARK_NODES yet, so the
         caller falls back rather than the dashboard going dark."""
-        assert load_cluster(tmp_path / "absent.yml") == {}
+        assert load_cluster(tmp_path / "absent.yml") == []
 
     def test_empty_file(self, tmp_path):
         p = tmp_path / "c.yml"
         p.write_text("")
-        assert load_cluster(p) == {}
+        assert load_cluster(p) == []
 
     def test_real_file_round_trip(self, tmp_path):
         p = tmp_path / "c.yml"
         p.write_text(GX10)
-        assert load_cluster(p)["sparky"].vllm == ["http://192.168.50.61:8120/metrics"]
+        assert by_id(load_cluster(p))["sparky"].runtimes.vllm == ["http://192.168.50.61:8120/metrics"]
 
 
 class TestAgentConfigEndpoint:

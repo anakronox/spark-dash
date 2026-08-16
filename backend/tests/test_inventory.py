@@ -223,6 +223,96 @@ class TestInventory:
         assert inv.sync_prometheus_targets() is False
 
 
+CLUSTER = """
+nodes:
+  - id: sparky
+    host: 192.168.50.61
+    runtimes:
+      llama_routers: [8001]
+  - id: sparky2
+    host: 192.168.50.62
+    group: pair
+    agent_port: 9501
+    node_exporter_port: 9101
+"""
+
+
+class TestClusterConfigIsTheSourceOfTruth:
+    """`cluster.yml` defines identity as well as runtimes, so a node is one
+    edit in one file instead of an entry in SPARK_NODES plus a per-node .env."""
+
+    def test_cluster_file_beats_env_and_file_sd(self, tmp_path):
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text(CLUSTER)
+        targets = tmp_path / "agents.yml"
+        targets.write_text(FILE_SD)
+
+        inv = Inventory(
+            cluster_config=cluster,
+            nodes_env="envnode=10.0.0.9",
+            targets_file=targets,
+        )
+        assert [n.node_id for n in inv.nodes(now=0.0)] == ["sparky", "sparky2"]
+        assert inv.source == "cluster.yml"
+
+    def test_identity_fields_come_across(self, tmp_path):
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text(CLUSTER)
+        nodes = {n.node_id: n for n in Inventory(cluster_config=cluster).nodes(now=0.0)}
+
+        assert nodes["sparky"].group is None
+        assert nodes["sparky"].address == "192.168.50.61:9500"
+        assert nodes["sparky2"].group == "pair"
+        assert nodes["sparky2"].address == "192.168.50.62:9501"
+        assert nodes["sparky2"].node_exporter_address == "192.168.50.62:9101"
+
+    def test_missing_file_falls_back_to_env(self, tmp_path):
+        """The migration-order case: the backend ships with a default path for
+        a file that does not exist yet, and must not take the cluster dark."""
+        inv = Inventory(
+            cluster_config=tmp_path / "absent.yml", nodes_env="envnode=10.0.0.9"
+        )
+        assert [n.node_id for n in inv.nodes(now=0.0)] == ["envnode"]
+        assert inv.source == "env"
+
+    def test_malformed_file_keeps_the_previous_inventory(self, tmp_path):
+        """A typo must not silently revert the dashboard to whatever stale
+        SPARK_NODES happens to say — that would look like nodes vanishing, and
+        the wrong file would get blamed. Hold the last good list and shout."""
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text(CLUSTER)
+        inv = Inventory(cluster_config=cluster, nodes_env="envnode=10.0.0.9", ttl_s=0.0)
+        assert len(inv.nodes(now=0.0)) == 2
+
+        cluster.write_text("nodes: not-a-list\n")
+        assert [n.node_id for n in inv.nodes(now=1.0)] == ["sparky", "sparky2"]
+
+    def test_empty_cluster_file_falls_through(self, tmp_path):
+        """An empty file is 'not migrated', not 'a cluster of zero nodes'."""
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text("")
+        inv = Inventory(cluster_config=cluster, nodes_env="envnode=10.0.0.9")
+        assert [n.node_id for n in inv.nodes(now=0.0)] == ["envnode"]
+
+    def test_prometheus_targets_are_rendered_from_it(self, tmp_path):
+        """The whole inversion only holds if Prometheus consumes this file too;
+        otherwise the node list exists twice again and can drift."""
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text(CLUSTER)
+        out = tmp_path / "targets"
+        out.mkdir()
+
+        inv = Inventory(cluster_config=cluster, prometheus_targets_dir=out)
+        assert inv.sync_prometheus_targets() is True
+
+        agents = (out / "agents.yml").read_text()
+        assert "192.168.50.61:9500" in agents
+        assert "192.168.50.62:9501" in agents
+        assert "group: pair" in agents
+        assert "cluster.yml" in agents, "the header must name the file to edit"
+        assert "192.168.50.62:9101" in (out / "node-exporters.yml").read_text()
+
+
 def test_node_equality_is_by_value():
     """Nodes are compared when detecting inventory changes."""
     assert Node("a", "h") == Node("a", "h")

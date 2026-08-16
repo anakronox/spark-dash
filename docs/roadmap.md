@@ -555,26 +555,48 @@ exist and one is ruled out:
   where the NVML data is. The agent already self-identifies from the host's
   hostname, so it can ask what it should be polling. **This is the approach.**
 
-Sketch:
+As built:
 
 ```yaml
-# config/cluster.yml on the monitoring VM — the one place the cluster is defined
+# ${DATA_ROOT}/cluster/cluster.yml on the monitoring VM — the one place the
+# cluster is defined. Identity AND runtimes, so nothing node-specific is left
+# anywhere else.
 nodes:
-  - id: sparky
+  - id: sparky                     # becomes the `node` label on every metric
     host: 192.168.50.61
-    group: null                    # standalone; a group of one
+    # group: pair                  # omitted = standalone; a group of one
+    # agent_port: 9500             # defaults
+    # node_exporter_port: 9100
     runtimes:
+      # Ports, not URLs — `host` above is filled in when this is served to the
+      # agent, so a node's address appears exactly once.
       llama_routers:
-        - url: http://192.168.50.61:8001
-          scrape_metrics: true     # today's LLAMA_METRICS_ROUTERS, per router
-        - url: http://192.168.50.61:8108
+        - port: 8001
+          scrape_metrics: true     # was LLAMA_METRICS_ROUTERS, now per router
+        - port: 8108
       vllm:
-        - http://192.168.50.61:8120/metrics
+        - 8120                     # /metrics appended automatically
 ```
 
-- [x] **F1.** `config/cluster.yml` plus a parser, superseding `SPARK_NODES`.
+- [x] **F1.** `cluster.yml` plus a parser, superseding `SPARK_NODES`.
   It has to feed Prometheus target rendering too, or there are still two
   sources — so this touches `inventory.py`.
+
+  **Extended 2026-08-16 to define node identity, not just runtimes.** The
+  first cut left ids, hosts and groups in `SPARK_NODES` and put only runtimes
+  here, which reproduced the same split it was meant to close — one file
+  saying a node exists, another saying what it serves, with nothing keeping
+  them agreeing. `cluster.yml` now carries `id`, `host`, `group`,
+  `agent_port` and `node_exporter_port` alongside `runtimes`, and `Inventory`
+  prefers it over `SPARK_NODES`. Adding a node is one entry in one file, and
+  the Prometheus target files are rendered from that same entry.
+
+  Fallback order is `cluster.yml` → `SPARK_NODES` → hand-written target
+  files. A missing or empty file falls through, so migration is safe in
+  either order; a file that exists but does not parse holds the last good
+  node list and logs loudly, because silently reverting to a stale
+  `SPARK_NODES` would look like nodes vanishing and get the wrong file
+  blamed.
 - [x] **F2.** `GET /api/agent-config?node=<id>` returning that node's runtime
   block.
 - [x] **F3.** Agent fetches its runtime config on startup and refreshes on a

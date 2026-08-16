@@ -1,8 +1,8 @@
 """Which nodes exist.
 
-ONE place defines the cluster: the `SPARK_NODES` environment variable. The
-backend parses it, uses it for live polling, and renders Prometheus's
-`file_sd` target files from it.
+ONE place defines the cluster: `cluster.yml` on the monitoring VM. The backend
+parses it, uses it for live polling, renders Prometheus's `file_sd` target
+files from it, AND serves each node its runtimes from the same entries.
 
 That inversion is the point. Prometheus can't read environment variables in its
 config, so the obvious alternative is hand-maintained target YAML — which means
@@ -11,8 +11,13 @@ and confusing: a node visible in history but absent from the live view, or the
 reverse. Making the backend the source of truth and Prometheus a consumer means
 adding a node is one edit in one file.
 
-Reading target files directly is still supported as a fallback, for anyone who
-would rather manage them by hand.
+Two fallbacks remain, in order: `SPARK_NODES` (the previous source of truth,
+kept so a deployment that has not migrated keeps working) and reading target
+files directly (for anyone who would rather manage them by hand).
+
+`SPARK_NODES` could only ever express id, host and group; a node's runtimes
+lived in that node's own `.env`. Folding both into `cluster.yml` is what makes
+the per-node stack byte-identical, since nothing node-specific is left in it.
 """
 
 from __future__ import annotations
@@ -23,6 +28,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+
+from spark_dash_backend.cluster import ClusterConfigError, load_cluster
 
 log = logging.getLogger(__name__)
 
@@ -247,27 +254,35 @@ def render_file_sd(nodes: list[Node], *, port_of, header: str) -> str:
     return f"{header}\n{body}"
 
 
-_GENERATED_HEADER = (
-    "# GENERATED FILE — do not edit.\n"
-    "# Rendered by spark-dash-backend from the SPARK_NODES environment\n"
-    "# variable. To add or remove a node, edit SPARK_NODES in deploy/central/.env\n"
-    "# and restart the backend; Prometheus picks the change up on its next\n"
-    "# file_sd refresh without a restart of its own.\n"
-)
+def _generated_header(source: str) -> str:
+    """Name the file's real source, so an operator editing the wrong thing
+    finds out from the file itself rather than from a change that never
+    takes."""
+    origin = {
+        "cluster.yml": "cluster.yml on the monitoring VM",
+        "env": "the SPARK_NODES environment variable in deploy/central/.env",
+    }.get(source, "the Prometheus target files themselves")
+    return (
+        "# GENERATED FILE — do not edit.\n"
+        f"# Rendered by spark-dash-backend from {origin}.\n"
+        "# To add or remove a node, edit that source; Prometheus picks the\n"
+        "# change up on its next file_sd refresh without a restart of its own.\n"
+    )
 
 
-def write_prometheus_targets(nodes: list[Node], targets_dir: Path) -> bool:
+def write_prometheus_targets(
+    nodes: list[Node], targets_dir: Path, *, source: str = "cluster.yml"
+) -> bool:
     """Write the target files Prometheus reads. Returns True if anything changed.
 
     Writes only on change so Prometheus isn't re-reading identical files, and
     so the mtime is a real signal of when the inventory last moved.
     """
+    header = _generated_header(source)
     files = {
-        "agents.yml": render_file_sd(
-            nodes, port_of=lambda n: n.address, header=_GENERATED_HEADER
-        ),
+        "agents.yml": render_file_sd(nodes, port_of=lambda n: n.address, header=header),
         "node-exporters.yml": render_file_sd(
-            nodes, port_of=lambda n: n.node_exporter_address, header=_GENERATED_HEADER
+            nodes, port_of=lambda n: n.node_exporter_address, header=header
         ),
     }
 
@@ -294,6 +309,7 @@ class Inventory:
     def __init__(
         self,
         *,
+        cluster_config: Path | None = None,
         nodes_env: str = "",
         targets_file: Path | None = None,
         prometheus_targets_dir: Path | None = None,
@@ -301,6 +317,7 @@ class Inventory:
         node_exporter_port: int = DEFAULT_NODE_EXPORTER_PORT,
         ttl_s: float = 30.0,
     ) -> None:
+        self._cluster_config = cluster_config
         self._nodes_env = nodes_env
         self._targets_file = targets_file
         self._prometheus_targets_dir = prometheus_targets_dir
@@ -313,6 +330,8 @@ class Inventory:
 
     @property
     def source(self) -> str:
+        if self._cluster_config and self._cluster_config.exists():
+            return "cluster.yml"
         return "env" if self._nodes_env.strip() else "file"
 
     def nodes(self, now: float | None = None) -> list[Node]:
@@ -326,9 +345,41 @@ class Inventory:
         """Render the current inventory into Prometheus's target directory."""
         if self._prometheus_targets_dir is None:
             return False
-        return write_prometheus_targets(self.nodes(), self._prometheus_targets_dir)
+        return write_prometheus_targets(
+            self.nodes(), self._prometheus_targets_dir, source=self.source
+        )
 
     def _load(self) -> list[Node]:
+        # cluster.yml first: it is the one place the cluster is defined, and it
+        # carries identity, grouping AND runtimes together. SPARK_NODES could
+        # only express the first two, leaving runtimes in each node's own .env
+        # — two files describing one thing, with no way to keep them agreeing.
+        if self._cluster_config is not None:
+            try:
+                cluster = load_cluster(self._cluster_config)
+            except ClusterConfigError:
+                # Keep serving the previous inventory rather than dropping every
+                # node because of a typo. Loud, because the alternative is a
+                # dashboard that silently reverts to an older cluster.
+                log.exception(
+                    "cluster config at %s is invalid; keeping the previous "
+                    "inventory. Fix the file — nothing will pick up changes "
+                    "until it parses.",
+                    self._cluster_config,
+                )
+                return self._nodes
+            if cluster:
+                return [
+                    Node(
+                        node_id=c.node_id,
+                        host=c.host,
+                        agent_port=c.agent_port,
+                        node_exporter_port=c.node_exporter_port,
+                        group=c.group,
+                    )
+                    for c in cluster
+                ]
+
         if self._nodes_env.strip():
             nodes = parse_nodes_env(
                 self._nodes_env,

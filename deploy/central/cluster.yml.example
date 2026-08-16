@@ -11,10 +11,26 @@
 # in different files that didn't know about each other, which is why the
 # per-node stack couldn't be identical. Now it can: the agent asks what it
 # should poll.
+#
+# THIS FILE DEFINES THE CLUSTER, not just its runtimes. When it is present and
+# non-empty the backend takes the node list from here and SPARK_NODES is
+# ignored entirely — including for the Prometheus target files it renders, so
+# live view and history cannot disagree about which nodes exist. A missing or
+# empty file falls back to SPARK_NODES, which is how a deployment that has not
+# migrated keeps working. A file that exists but does not parse is an error:
+# the backend keeps the last good node list and logs loudly rather than
+# quietly reverting to the old source.
 
 nodes:
   - id: sparky
+    # The id becomes the `node` label on every metric. Choose it once and keep
+    # it: changing it splits the node's history in two.
+
     host: 192.168.50.61
+
+    # agent_port: 9500          # defaults, shown for reference
+    # node_exporter_port: 9100
+
     # group: pair        # omit for a standalone node — a group of one.
     #
     # Grouping is not cosmetic. Clustered nodes pool memory for distributed
@@ -51,3 +67,9 @@ nodes:
   #   group: pair
   #   runtimes:
   #     llama_routers: [{port: 8001}]
+  #
+  # - id: spark3
+  #   host: 192.168.50.63
+  #   group: pair
+  #   # A node may serve nothing. Listing it with no runtimes still says so
+  #   # deliberately, and that beats leftover values in the node's own .env.

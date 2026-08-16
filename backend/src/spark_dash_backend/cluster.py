@@ -58,6 +58,18 @@ class NodeRuntimes:
         }
 
 
+@dataclass(frozen=True)
+class ClusterNode:
+    """A node as the cluster file defines it: identity, address, and what it serves."""
+
+    node_id: str
+    host: str
+    group: str | None = None
+    agent_port: int = 9500
+    node_exporter_port: int = 9100
+    runtimes: NodeRuntimes = field(default_factory=NodeRuntimes)
+
+
 class ClusterConfigError(ValueError):
     """The file exists but cannot be trusted.
 
@@ -120,12 +132,14 @@ def parse_runtimes(raw: object, host: str) -> NodeRuntimes:
     return NodeRuntimes(llama_routers=routers, vllm=vllm)
 
 
-def parse_cluster(text: str) -> dict[str, NodeRuntimes]:
-    """Parse the runtime half of the cluster file, keyed by node id.
+def parse_cluster(text: str) -> list[ClusterNode]:
+    """Parse the whole cluster: identity, grouping and runtimes together.
 
-    Node identity, hosts and groups are parsed by `inventory.py`, which already
-    owns that shape; this reads the part that used to live in each node's own
-    `.env`.
+    This is deliberately ONE file. Node ids, hosts and groups used to come from
+    `SPARK_NODES` while runtimes came from each node's own `.env` — two places
+    that did not know about each other, describing one thing. Folding identity
+    in here means adding a node is a single edit in a single file, and there is
+    no way for the two halves to disagree.
     """
     try:
         payload = yaml.safe_load(text)
@@ -133,11 +147,12 @@ def parse_cluster(text: str) -> dict[str, NodeRuntimes]:
         raise ClusterConfigError(f"not valid YAML: {exc}") from exc
 
     if payload is None:
-        return {}
+        return []
     if not isinstance(payload, dict) or not isinstance(payload.get("nodes"), list):
         raise ClusterConfigError("expected a top-level `nodes:` list")
 
-    out: dict[str, NodeRuntimes] = {}
+    out: list[ClusterNode] = []
+    seen: set[str] = set()
     for entry in payload["nodes"]:
         if not isinstance(entry, dict):
             raise ClusterConfigError(f"each node must be a mapping, got {type(entry).__name__}")
@@ -147,14 +162,30 @@ def parse_cluster(text: str) -> dict[str, NodeRuntimes]:
             raise ClusterConfigError("a node is missing its `id`")
         if not host:
             raise ClusterConfigError(f"node {node_id!r} is missing its `host`")
-        if node_id in out:
+        if node_id in seen:
             raise ClusterConfigError(f"duplicate node id {node_id!r}")
-        out[node_id] = parse_runtimes(entry.get("runtimes"), host)
+        seen.add(node_id)
+
+        # Grouping is not cosmetic: clustered nodes pool memory for distributed
+        # inference, so capacity sums WITHIN a group and never across groups.
+        raw_group = entry.get("group")
+        group = str(raw_group).strip() or None if raw_group is not None else None
+
+        out.append(
+            ClusterNode(
+                node_id=node_id,
+                host=host,
+                group=group,
+                agent_port=int(entry.get("agent_port") or 9500),
+                node_exporter_port=int(entry.get("node_exporter_port") or 9100),
+                runtimes=parse_runtimes(entry.get("runtimes"), host),
+            )
+        )
 
     return out
 
 
-def load_cluster(path: Path) -> dict[str, NodeRuntimes]:
+def load_cluster(path: Path) -> list[ClusterNode]:
     """Read the cluster file, or return nothing if it does not exist.
 
     A missing file is not an error — it means this deployment has not migrated
@@ -166,7 +197,7 @@ def load_cluster(path: Path) -> dict[str, NodeRuntimes]:
     try:
         text = path.read_text()
     except FileNotFoundError:
-        return {}
+        return []
     except OSError as exc:
         raise ClusterConfigError(f"could not read {path}: {exc}") from exc
 

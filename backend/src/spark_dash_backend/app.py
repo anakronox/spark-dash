@@ -55,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     logging.basicConfig(level=settings.log_level.upper())
 
     inventory = Inventory(
+        cluster_config=settings.cluster_config,
         nodes_env=settings.spark_nodes,
         targets_file=settings.agent_targets_file,
         prometheus_targets_dir=settings.prometheus_targets_dir,
@@ -325,11 +326,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # reporting no models with nothing explaining why.
             raise HTTPException(status_code=500, detail=f"cluster config: {exc}") from exc
 
-        runtimes = cluster.get(node)
+        match = next((c for c in cluster if c.node_id == node), None)
         return {
             "node": node,
-            "configured": runtimes is not None,
-            "runtimes": (runtimes.as_dict() if runtimes else {"llama_routers": [], "vllm": []}),
+            "configured": match is not None,
+            "runtimes": (
+                match.runtimes.as_dict() if match else {"llama_routers": [], "vllm": []}
+            ),
         }
 
     @app.get("/api/alerts/silences")
