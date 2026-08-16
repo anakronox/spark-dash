@@ -26,3 +26,8 @@ secrets/
 # authored — `targets/vllm.yml` is hand-maintained and stays tracked.
 targets/agents.yml
 targets/node-exporters.yml
+
+# The live cluster definition. Same reasoning as .env: it holds this
+# deployment's real values, and the dashboard needs to be able to write it
+# without git credentials. `cluster.yml.example` is the template.
+cluster.yml

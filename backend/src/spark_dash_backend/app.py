@@ -24,6 +24,7 @@ from spark_dash_common.models import ClusterSnapshot
 
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
+from spark_dash_backend.cluster import ClusterConfigError, load_cluster
 from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory
 from spark_dash_backend.poller import LivePoller
@@ -297,6 +298,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Transitions that cost a user latency — the number worth watching
             # if requests feel slow.
             "cold_starts": sum(1 for e in events if e.cold),
+        }
+
+    @app.get("/api/agent-config")
+    async def api_agent_config(node: str) -> dict:
+        """What a node should be polling.
+
+        This is what makes the per-node stack identical everywhere: the agent
+        asks what it serves rather than carrying it in its own `.env`, so the
+        same image and the same compose file deploy unchanged to every GX10.
+
+        Polling stays ON the node deliberately. The obvious alternative — the
+        backend scraping routers itself — cannot work: deciding whether it is
+        safe to scrape a model needs NVML per-process utilization, which only
+        the agent has, and getting that wrong pins models in memory.
+
+        Returns empty runtimes for an unknown node rather than 404-ing. A node
+        that is running but not yet in the cluster file is a normal state
+        during a rollout, and the agent should degrade to "no runtimes" rather
+        than treat it as an error and retry-storm.
+        """
+        try:
+            cluster = load_cluster(settings.cluster_config)
+        except ClusterConfigError as exc:
+            # Loud, not silent: a typo here would otherwise leave every node
+            # reporting no models with nothing explaining why.
+            raise HTTPException(status_code=500, detail=f"cluster config: {exc}") from exc
+
+        runtimes = cluster.get(node)
+        return {
+            "node": node,
+            "configured": runtimes is not None,
+            "runtimes": (runtimes.as_dict() if runtimes else {"llama_routers": [], "vllm": []}),
         }
 
     @app.get("/api/alerts/silences")

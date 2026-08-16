@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     # hand-maintained YAML inventory.
     spark_nodes: str = ""
 
+    # The cluster definition — nodes, groups, and what each one serves.
+    #
+    # Under DATA_ROOT rather than in the stack repo, deliberately: it is live
+    # config like `.env`, and a future UI that retires a decommissioned
+    # endpoint has to be able to write it without touching git. An example is
+    # committed; this file is not.
+    #
+    # Absent means this deployment still uses SPARK_NODES, which keeps working.
+    cluster_config: Path = Path("/etc/spark-dash/cluster.yml")
+
     agent_port: int = 9500
     node_exporter_port: int = 9100
 

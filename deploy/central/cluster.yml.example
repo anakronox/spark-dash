@@ -1,0 +1,53 @@
+# The cluster — nodes, groups, and what each one serves.
+#
+#   cp cluster.yml.example /docker/spark-dash-stack-central/cluster.yml
+#
+# THIS FILE IS NOT TRACKED IN GIT once copied, the same way `.env` isn't. It
+# holds a deployment's live values, and a UI that retires a decommissioned
+# endpoint has to be able to write it without holding git credentials.
+#
+# It replaces two things that used to be separate: SPARK_NODES here, and each
+# node's own LLAMA_ROUTER_URLS / VLLM_URLS / LLAMA_METRICS_ROUTERS. Those lived
+# in different files that didn't know about each other, which is why the
+# per-node stack couldn't be identical. Now it can: the agent asks what it
+# should poll.
+
+nodes:
+  - id: sparky
+    host: 192.168.50.61
+    # group: pair        # omit for a standalone node — a group of one.
+    #
+    # Grouping is not cosmetic. Clustered nodes pool memory for distributed
+    # inference, so a model can span the group and their combined free space is
+    # real capacity. Summing across groups would report capacity that does not
+    # exist.
+
+    runtimes:
+      # PORTS, not URLs. The host above is filled in when this is served to the
+      # agent, so a node's address appears exactly once — which is what lets
+      # the same stack deploy unchanged to every GX10.
+      llama_routers:
+        - port: 8001
+          # Opt-in for per-model metrics (/metrics?model=), which is what
+          # provides tokens/sec and KV cache.
+          #
+          # Costs nothing while a model is working: the agent only scrapes
+          # models NVML reports as busy, so an idle model is left alone and its
+          # router's sleep timer expires normally. Without that gate the scrape
+          # resets the timer on every poll and the model never sleeps —
+          # measured on the GX10, 26.4 GiB held indefinitely.
+          scrape_metrics: true
+        - port: 8108
+
+      # vLLM's /metrics is appended automatically.
+      vllm:
+        - 8120
+
+  # When nodes 2 and 3 arrive they are additions here and nothing else — no
+  # per-node file to edit, no stack repo per node.
+  #
+  # - id: spark2
+  #   host: 192.168.50.62
+  #   group: pair
+  #   runtimes:
+  #     llama_routers: [{port: 8001}]
