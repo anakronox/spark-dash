@@ -43,6 +43,9 @@ options:
   --no-latest      push only the tag, not :latest
   -h, --help       this
 
+options (cont.):
+  --keep N         sha-tagged images to keep locally (default 5, 0 = keep all)
+
 environment:
   REGISTRY   registry host   (default: derived from git remote origin)
   OWNER      registry owner  (default: derived from git remote origin)
@@ -80,7 +83,7 @@ REGISTRY="${REGISTRY:-$DERIVED_REGISTRY}"
 OWNER="${OWNER:-$DERIVED_OWNER}"
 
 # --- arguments --------------------------------------------------------------
-TARGET=""; PUSH=1; PUSH_LATEST=1; TAG_OVERRIDE=""
+TARGET=""; PUSH=1; PUSH_LATEST=1; TAG_OVERRIDE=""; KEEP="${KEEP_IMAGES:-5}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -88,6 +91,7 @@ while [[ $# -gt 0 ]]; do
     --no-push)    PUSH=0 ;;
     --no-latest)  PUSH_LATEST=0 ;;
     --tag)        TAG_OVERRIDE="${2:-}"; shift ;;
+    --keep)       KEEP="${2:-5}"; shift ;;
     -h|--help)    usage; exit 0 ;;
     *) echo "${c_bad}unknown argument:${c_off} $1"; echo; usage; exit 2 ;;
   esac
@@ -144,15 +148,46 @@ build_and_push() {
 
   if [[ $PUSH -eq 0 ]]; then
     echo "${c_ok}built${c_off} ${base}:${TAG} ${c_dim}(not pushed)${c_off}"
+    echo "${c_warn}NOTE${c_off} the stacks set pull_policy: always, so a plain 'up -d'"
+    echo "will fetch the REGISTRY's :latest and ignore this local build. To run"
+    echo "it, pin it: ${env_var}=${base}:${TAG}"
+    prune_old_tags "$base"
     return
   fi
 
   docker push "${base}:${TAG}"
   [[ $PUSH_LATEST -eq 1 ]] && docker push "${base}:latest"
 
-  echo "${c_ok}pushed${c_off} ${base}:${TAG}"
-  echo "${c_dim}pin this in the stack's .env:${c_off}"
+  echo "${c_ok}pushed${c_off} ${base}:${TAG} ${c_dim}(and :latest)${c_off}"
+  echo "${c_dim}stacks tracking :latest pick this up on their next deploy.${c_off}"
+  echo "${c_dim}to PIN this exact build instead, in the stack's .env:${c_off}"
   echo "  ${env_var}=${base}:${TAG}"
+  prune_old_tags "$base"
+}
+
+# Every build leaves a sha-tagged image behind, and `docker image prune` will
+# NOT reclaim them — they are tagged, not dangling. At ~160MB each that is
+# roughly a gigabyte per thirty builds, growing forever and silently.
+#
+# Keep the newest few so a rollback can retag a recent build instead of
+# rebuilding it, and drop the rest. `docker images` lists newest first, so the
+# tail of that list is what ages out. An image still backing a container refuses
+# to be removed, which is the correct outcome — skip it rather than force.
+prune_old_tags() {
+  local base="$1"
+  [[ "$KEEP" -le 0 ]] && return 0
+
+  local stale=()
+  mapfile -t stale < <(docker images "$base" --format '{{.Tag}}' \
+                       | grep -v '^latest$' | tail -n +$((KEEP + 1)))
+  [[ ${#stale[@]} -eq 0 ]] && return 0
+
+  local removed=0
+  for tag in "${stale[@]}"; do
+    if docker rmi "${base}:${tag}" >/dev/null 2>&1; then removed=$((removed + 1)); fi
+  done
+  [[ $removed -gt 0 ]] && echo "${c_dim}pruned ${removed} old image(s), kept the newest ${KEEP}${c_off}"
+  return 0
 }
 
 check_login() {

@@ -52,6 +52,22 @@ services:
 
   spark-dash-agent:
     image: ${AGENT_IMAGE:-forgejo.indielab.tech/brian/spark-dash-agent:latest}
+    # :latest is the norm; pinning is the exception (see .env.example).
+    #
+    # pull_policy MATTERS with a floating tag. Compose's default is `missing`:
+    # if ANY image with this tag already exists locally it is used and the
+    # registry is never contacted — so a node would keep running whatever it
+    # first pulled, forever, and a deploy would report success having changed
+    # nothing. Measured, not assumed.
+    #
+    # Set only on OUR image. A blanket `--pull always` would also re-pull the
+    # pinned third-party images, so a transient registry blip would fail a
+    # deploy that only needed to move our own container.
+    #
+    # Consequence worth knowing: `publish-images.sh --no-push` builds an image
+    # this will then ignore, because it always prefers the registry. Pin that
+    # build's sha to run it.
+    pull_policy: always
     container_name: sparkdash-agent
     restart: unless-stopped
 
