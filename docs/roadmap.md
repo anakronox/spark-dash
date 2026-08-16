@@ -431,15 +431,42 @@ answers:
   and F8's gap detection is the other half of it: the dashboard should notice
   a *configured but absent* server just as it notices an unconfigured one.
 
-**Same read-only tension as F.** Silencing is a write, through the one service
-published on the tunnel — though a much narrower primitive than editing
-`cluster.yml`, since a silence cannot repoint an agent at anything. Worth
-deciding on its own merits rather than inheriting F's answer by default.
+**Resolved 2026-08-16: silencing is allowed.** "Read-only" was always about
+not loading, unloading or killing things — not about being unable to manage
+alarms. A silence cannot repoint an agent, load a model or touch a process; its
+worst case is muted alerts, bounded and behind the same OAuth as the rest of
+the page. That is a categorically narrower primitive than editing
+`cluster.yml`, which would have been a request-forgery vector into the LAN.
 
-- [ ] **G1.** Decide the scope: silence, acknowledge, or neither.
-- [ ] **G2.** If silencing: proxy Alertmanager's silence API, LAN-only, with
-  the silence author recorded — an unattributed silence is how an alert gets
-  lost.
+The workflow argument is the decisive one. This box runs experiments — stacks
+come up and get torn down constantly, and every teardown leaves a target down
+and an alert firing with no way to say "yes, that was me". **An alert you
+cannot clear is one you learn to ignore**, which is worse than no alert.
+
+- [x] **G1.** Scope: **silence**, not acknowledge. Alertmanager has silences
+  natively; acknowledgement would be a new concept needing its own storage.
+- [x] **G2.** Silence and unsilence through the dashboard, proxying
+  Alertmanager's API. Three guardrails, all deliberate:
+  - **Always bounded, capped at 24h.** The failure mode of silencing is
+    forgetting, and a week-long mute set during a five-minute experiment is
+    indistinguishable from an outage nobody is watching. Anything needing
+    permanent silence should have its target removed from configuration —
+    which is the honest fix for a retired stack.
+  - **Scoped to the alert instance**, not just `alertname`. Silencing on the
+    rule name alone would mute it on every node, so a torn-down stack on one
+    box could hide a real failure on another.
+  - **Active silences are always visible**, with an undo. A muted alert nobody
+    can see is a way to hide problems from yourself.
+
+  Verified end to end against the live `PrometheusTargetScrapeFailing` from the
+  deliberately-stopped vLLM container: silence → alert clears → appears under
+  Silenced with its scope and time remaining → unsilence → alert returns.
+
+  **Not yet done: per-user attribution.** Silences are recorded as
+  `spark-dash` rather than a person, because the backend has no user identity —
+  OAuth terminates at the tunnel edge. Closing that needs the
+  `Cf-Access-Authenticated-User-Email` header, which is the same work as the
+  Phase 3 JWT item.
 - [ ] **G3.** Detect *configured but absent*: the inverse of F8. A target that
   has been down long enough is either broken or retired, and the dashboard
   should say which it cannot tell.

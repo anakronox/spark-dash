@@ -13,6 +13,50 @@ export interface AlertItem {
   description: string;
   node: string | null;
   started_at: string | null;
+  /** Every label, so a silence can be scoped to this exact alert instance
+   *  rather than muting the same rule on every node. */
+  labels: Record<string, string>;
+}
+
+export interface Silence {
+  id: string;
+  comment: string;
+  createdBy: string;
+  startsAt: string;
+  endsAt: string;
+  matchers: { name: string; value: string }[];
+}
+
+/** How long a silence can run. Matches the backend's cap — the failure mode of
+ *  silencing is forgetting, so the options are deliberately short. */
+export const SILENCE_DURATIONS = [
+  { label: '1h', hours: 1 },
+  { label: '4h', hours: 4 },
+  { label: '24h', hours: 24 },
+] as const;
+
+export async function createSilence(
+  labels: Record<string, string>,
+  hours: number,
+  comment: string,
+): Promise<void> {
+  const resp = await fetch('/api/alerts/silence', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ labels, hours, comment }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+}
+
+export async function expireSilence(id: string): Promise<void> {
+  const resp = await fetch(`/api/alerts/silence/${id}`, { method: 'DELETE' });
+  if (!resp.ok) throw new Error(await resp.text());
+}
+
+export async function fetchSilences(): Promise<Silence[]> {
+  const resp = await fetch('/api/alerts/silences');
+  if (!resp.ok) throw new Error(String(resp.status));
+  return (await resp.json()).silences ?? [];
 }
 
 /** One continuous period an alert was pending and/or firing. */

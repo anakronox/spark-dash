@@ -1,0 +1,10 @@
+# GENERATED FILE — do not edit.
+# Rendered by spark-dash-backend from the SPARK_NODES environment
+# variable. To add or remove a node, edit SPARK_NODES in deploy/central/.env
+# and restart the backend; Prometheus picks the change up on its next
+# file_sd refresh without a restart of its own.
+
+- targets:
+  - 192.168.50.61:9100
+  labels:
+    node: sparky

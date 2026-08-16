@@ -37,6 +37,13 @@ log = logging.getLogger(__name__)
 # system hitting it every few seconds doesn't drive the poll rate.
 HEALTH_SNAPSHOT_MAX_AGE_S = 30.0
 
+# Longest silence the dashboard will create. Alertmanager itself has no such
+# limit; this is a deliberate product decision. The failure mode of silencing
+# is forgetting, and a week-long mute set during a five-minute experiment is
+# indistinguishable from a real outage nobody is watching. Anything that needs
+# permanent silence should have its target removed from configuration.
+MAX_SILENCE_HOURS = 24.0
+
 
 def _age_seconds(ts: datetime) -> float:
     return (datetime.now(UTC) - ts).total_seconds()
@@ -291,6 +298,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # if requests feel slow.
             "cold_starts": sum(1 for e in events if e.cold),
         }
+
+    @app.get("/api/alerts/silences")
+    async def api_silences() -> dict:
+        """Active silences.
+
+        Surfaced rather than hidden: a muted alert nobody can see is a way to
+        hide problems from yourself, so anything currently silenced has to be
+        visible in the same place the alerts are.
+        """
+        return {"silences": await alertmanager.silences()}
+
+    @app.post("/api/alerts/silence")
+    async def api_create_silence(body: dict) -> dict:
+        """Silence an alert for a bounded period.
+
+        The one write in an otherwise read-only dashboard. Allowed because it
+        is a far narrower primitive than the writes that were ruled out — a
+        silence cannot repoint an agent, load a model or touch a process — and
+        because an alert you cannot clear is one you learn to ignore.
+
+        Scoped to the labels the caller sends, so silencing a torn-down stack
+        on one node does not mute the same alert everywhere. `hours` is capped:
+        a mute that outlives the person's memory of setting it is how a real
+        failure goes unnoticed, and a permanently unwanted alert should have
+        its target removed from configuration instead.
+        """
+        labels = body.get("labels") or {}
+        if not labels:
+            raise HTTPException(status_code=400, detail="labels are required")
+
+        hours = float(body.get("hours", 4))
+        if not 0 < hours <= MAX_SILENCE_HOURS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"hours must be between 0 and {MAX_SILENCE_HOURS}",
+            )
+
+        matchers = [
+            {"name": k, "value": str(v), "isRegex": False, "isEqual": True}
+            for k, v in labels.items()
+        ]
+        try:
+            silence_id = await alertmanager.create_silence(
+                matchers,
+                hours=hours,
+                comment=str(body.get("comment") or "Silenced from the dashboard"),
+            )
+        except Exception as exc:  # noqa: BLE001 — surfaced to the caller
+            raise HTTPException(status_code=502, detail=f"alertmanager: {exc}") from exc
+
+        return {"silence_id": silence_id}
+
+    @app.delete("/api/alerts/silence/{silence_id}")
+    async def api_expire_silence(silence_id: str) -> dict:
+        """End a silence early — the undo for a mute applied by mistake."""
+        try:
+            await alertmanager.expire_silence(silence_id)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"alertmanager: {exc}") from exc
+        return {"expired": silence_id}
 
     @app.get("/api/alerts/history")
     async def api_alert_history(

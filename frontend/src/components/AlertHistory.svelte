@@ -17,8 +17,21 @@
    * and focus restore come from the platform rather than being hand-rolled.
    */
   import { ageFromEpoch, duration } from '../lib/format';
-  import { HISTORY_RANGES, fetchHistory } from '../lib/alerts.svelte';
-  import type { AlertEpisode, AlertFeed, AlertSummary } from '../lib/alerts.svelte';
+  import {
+    HISTORY_RANGES,
+    SILENCE_DURATIONS,
+    createSilence,
+    expireSilence,
+    fetchHistory,
+    fetchSilences,
+  } from '../lib/alerts.svelte';
+  import type {
+    AlertEpisode,
+    AlertFeed,
+    AlertItem,
+    AlertSummary,
+    Silence,
+  } from '../lib/alerts.svelte';
 
   interface Props {
     feed: AlertFeed;
@@ -35,6 +48,64 @@
   let failed = $state(false);
 
   let controller: AbortController | null = null;
+
+  /* Silencing — the one write in an otherwise read-only dashboard.
+   *
+   * Allowed because it is a much narrower primitive than the writes that were
+   * ruled out: a silence cannot repoint an agent, load a model or touch a
+   * process. And it earns its place on workflow grounds — this box runs
+   * experiments, stacks come up and get torn down constantly, and every
+   * teardown leaves an alert firing with no way to say "yes, that was me". An
+   * alert you cannot clear is one you learn to ignore.
+   */
+  let silences = $state<Silence[]>([]);
+  let silencing = $state<string | null>(null);
+  let busy = $state(false);
+
+  const alertKey = (a: AlertItem) => a.name + (a.node ?? '');
+
+  async function loadSilences() {
+    try {
+      silences = await fetchSilences();
+    } catch {
+      silences = [];
+    }
+  }
+
+  async function silence(a: AlertItem, hours: number) {
+    busy = true;
+    try {
+      /* Scoped to THIS alert instance, not just its name. Silencing on
+         alertname alone would mute the same rule on every node — so a
+         torn-down stack on one box would hide a real failure on another. */
+      const labels: Record<string, string> = { alertname: a.name };
+      for (const k of ['instance', 'node', 'job']) {
+        if (a.labels?.[k]) labels[k] = a.labels[k];
+      }
+      await createSilence(labels, hours, `Silenced from the dashboard`);
+      silencing = null;
+      await Promise.all([feed.load(), loadSilences()]);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function unsilence(id: string) {
+    busy = true;
+    try {
+      await expireSilence(id);
+      await Promise.all([feed.load(), loadSilences()]);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function endsIn(iso: string): string {
+    const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+    if (mins < 1) return 'expiring';
+    if (mins < 60) return `${mins}m left`;
+    return `${Math.round(mins / 60)}h left`;
+  }
 
   /* Fetched on open and on range change ONLY. A fly-out re-running a
    * query_range every 30s while it happens to be open is pure waste — the
@@ -64,6 +135,7 @@
     if (open && !dialog.open) {
       dialog.showModal();
       load();
+      loadSilences();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -106,15 +178,49 @@
       {:else if feed.alerts.length === 0}
         <p class="note dim">Nothing firing.</p>
       {:else}
-        {#each feed.alerts as a (a.name + (a.node ?? ''))}
+        {#each feed.alerts as a (alertKey(a))}
           <div class="row now" data-severity={a.severity}>
             <span class="glyph" aria-hidden="true">{a.severity === 'critical' ? '■' : '▲'}</span>
             <span class="name">{a.summary || a.name}</span>
             <span class="dim node">{a.node ?? ''}</span>
+            {#if silencing === alertKey(a)}
+              <!-- Durations are short by design and capped at 24h by the
+                   backend: the failure mode of silencing is forgetting, and a
+                   week-long mute set during a five-minute experiment is
+                   indistinguishable from an outage nobody is watching. -->
+              <span class="durations">
+                {#each SILENCE_DURATIONS as d (d.hours)}
+                  <button class="mini" disabled={busy} onclick={() => silence(a, d.hours)}>
+                    {d.label}
+                  </button>
+                {/each}
+                <button class="mini" onclick={() => (silencing = null)}>×</button>
+              </span>
+            {:else}
+              <button class="mini" onclick={() => (silencing = alertKey(a))}>silence</button>
+            {/if}
           </div>
         {/each}
       {/if}
     </section>
+
+    <!-- Silenced. Shown ALWAYS when non-empty, never tucked away: a muted
+         alert nobody can see is a way to hide problems from yourself, so if
+         something is silenced the dashboard has to say so and offer the undo. -->
+    {#if silences.length}
+      <section class="block">
+        <h3 class="eyebrow dim">Silenced</h3>
+        {#each silences as s (s.id)}
+          <div class="row silenced">
+            <span class="name">
+              {s.matchers.map((m) => `${m.name}=${m.value}`).join(' · ')}
+            </span>
+            <span class="dim">{endsIn(s.endsAt)}</span>
+            <button class="mini" disabled={busy} onclick={() => unsilence(s.id)}>unsilence</button>
+          </div>
+        {/each}
+      </section>
+    {/if}
 
     <!-- History -->
     <section class="block">
@@ -275,6 +381,39 @@
   }
 
   .row.now[data-severity='critical'] .glyph { color: var(--critical, var(--ink)); }
+
+  .row.silenced {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: var(--radius);
+    border: 1px dashed var(--rule);
+    color: var(--ink-muted);
+  }
+
+  .row.silenced .name {
+    font-weight: 400;
+    /* Matchers can be long; the controls must stay reachable. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .durations { display: inline-flex; gap: 3px; margin-left: auto; }
+
+  .mini {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    color: var(--ink-muted);
+    margin-left: auto;
+  }
+  .durations .mini { margin-left: 0; }
+  .mini:hover:not(:disabled) { color: var(--ink); }
+  .mini:disabled { opacity: 0.5; cursor: default; }
 
   .name { font-weight: 500; }
   .node { margin-left: auto; }
