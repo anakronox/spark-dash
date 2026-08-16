@@ -17,7 +17,7 @@
    * would make a quiet hour look as dramatic as a busy one.
    */
   import uPlot from 'uplot';
-  import 'uplot/dist/uplot.min.css';
+  import 'uplot/dist/uPlot.min.css';
   import { onMount } from 'svelte';
   import { chartTheme, metricColor } from '../lib/theme';
   import type { CombinedSeries } from '../lib/history';
