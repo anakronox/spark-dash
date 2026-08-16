@@ -20,7 +20,9 @@
   import {
     HISTORY_RANGES,
     SILENCE_DURATIONS,
+    alertKey,
     createSilence,
+    episodeKey,
     expireSilence,
     fetchHistory,
     fetchSilences,
@@ -61,8 +63,6 @@
   let silences = $state<Silence[]>([]);
   let silencing = $state<string | null>(null);
   let busy = $state(false);
-
-  const alertKey = (a: AlertItem) => a.name + (a.node ?? '');
 
   async function loadSilences() {
     try {
@@ -270,7 +270,7 @@
                 </tr>
               </thead>
               <tbody>
-                {#each episodes as e (e.alertname + e.node + e.started_at)}
+                {#each episodes as e (episodeKey(e))}
                   <tr data-severity={e.severity}>
                     <td class="name">{e.alertname}</td>
                     <td class="dim">{e.node ?? '—'}</td>

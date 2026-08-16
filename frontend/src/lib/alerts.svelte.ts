@@ -61,6 +61,47 @@ export async function fetchSilences(): Promise<Silence[]> {
   return (await resp.json()).silences ?? [];
 }
 
+
+/* KEYS FOR {#each}. These must be unique or Svelte throws each_key_duplicate,
+ * and that throw ABORTS THE RENDER MID-UPDATE — it does not degrade, it leaves
+ * whatever was on screen frozen in place.
+ *
+ * `alertname + node` is not unique. A rule fires once per INSTANCE, so a node
+ * going down trips PrometheusTargetScrapeFailing for both its agent (:9500)
+ * and its node-exporter (:9100) on the same scrape cycle — same rule, same
+ * node, and in history the same `started_at` to the millisecond. Observed
+ * 2026-08-16: the fly-out sat on "Loading…" with the data already fetched and
+ * parsed, because the render that would have replaced it threw.
+ *
+ * The label set is what actually identifies an alert series, so key on that.
+ */
+const labelSignature = (labels: Record<string, string> | undefined): string =>
+  labels && Object.keys(labels).length
+    ? Object.keys(labels)
+        .sort()
+        .map((k) => `${k}=${labels[k]}`)
+        .join(',')
+    : '';
+
+export const alertKey = (a: AlertItem): string =>
+  labelSignature(a.labels) || `${a.name}|${a.node ?? ''}`;
+
+export const episodeKey = (e: AlertEpisode): string =>
+  `${e.started_at}|${labelSignature(e.labels) || `${e.alertname}|${e.node ?? ''}`}`;
+
+/** Last line of defence: drop exact key collisions rather than let one crash
+ *  the whole alert UI. Two entries with an identical label set AND timestamp
+ *  are the same thing anyway, so nothing real is hidden by this. */
+function dedupe<T>(items: T[], key: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const k = key(item);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** One continuous period an alert was pending and/or firing. */
 export interface AlertEpisode {
   alertname: string;
@@ -113,7 +154,7 @@ export class AlertFeed {
       if (!resp.ok) throw new Error(String(resp.status));
       const body = await resp.json();
       this.available = body.available;
-      this.alerts = body.alerts ?? [];
+      this.alerts = dedupe(body.alerts ?? [], alertKey);
     } catch {
       // "Can't tell" is not "all clear" — the banner renders these
       // differently, and only one of them is reassuring.
@@ -145,5 +186,5 @@ export async function fetchHistory(
   const resp = await fetchWithTimeout(`/api/alerts/history?minutes=${minutes}`, { signal });
   if (!resp.ok) throw new Error(String(resp.status));
   const body = await resp.json();
-  return { episodes: body.episodes ?? [], summary: body.summary };
+  return { episodes: dedupe(body.episodes ?? [], episodeKey), summary: body.summary };
 }

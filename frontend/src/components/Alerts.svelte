@@ -14,6 +14,7 @@
    * independent polls could disagree with each other for 30s at a time.
    */
   import { age } from '../lib/format';
+  import { alertKey } from '../lib/alerts.svelte';
   import type { AlertFeed } from '../lib/alerts.svelte';
 
   interface Props {
@@ -36,7 +37,7 @@
   </p>
 {:else if alerts.length}
   <section class="alerts" aria-label="Firing alerts">
-    {#each alerts as alert (alert.name + (alert.node ?? ''))}
+    {#each alerts as alert (alertKey(alert))}
       <button
         class="alert"
         data-severity={alert.severity}
