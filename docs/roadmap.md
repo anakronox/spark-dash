@@ -78,9 +78,9 @@ only `sparky` exists today, and it is the only scrape target.
   *(unverified.)*
 - [ ] (Optional, defense-in-depth) Validate `Cf-Access-Jwt-Assertion` in the
   backend.
-- [ ] Set real Prometheus retention based on observed disk usage. **Now
-  answerable** — see [Next up / A7](#a--alerting-correctness) for the measured
-  numbers.
+- [x] Set real Prometheus retention based on observed disk usage. **Done** —
+  raised 30d → 180d from measured ingest, deployed and confirmed live. See
+  [Next up / A7](#a--alerting-correctness) for the numbers.
 - [x] Add a meaningful `/health` endpoint to the backend — it verifies node
   reachability rather than just returning 200. Pointing UptimeKuma at it is
   *(unverified.)*
