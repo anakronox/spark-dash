@@ -8,54 +8,24 @@
    * purpose. Both are quiet states, but only one of them is reassuring — a
    * dashboard that looks all-clear because its alerting is down is exactly the
    * failure this whole system exists to avoid.
+   *
+   * State comes from a shared AlertFeed rather than being fetched here: the
+   * header trigger and the history fly-out need the same data, and three
+   * independent polls could disagree with each other for 30s at a time.
    */
-  import { onMount } from 'svelte';
+  import { age } from '../lib/format';
+  import type { AlertFeed } from '../lib/alerts.svelte';
 
-  interface AlertItem {
-    name: string;
-    severity: string;
-    summary: string;
-    description: string;
-    node: string | null;
-    started_at: string | null;
+  interface Props {
+    feed: AlertFeed;
   }
+  const { feed }: Props = $props();
 
-  let available = $state(true);
-  let alerts = $state<AlertItem[]>([]);
   let expanded = $state<string | null>(null);
-  let loaded = $state(false);
 
-  async function load() {
-    try {
-      const resp = await fetch('/api/alerts');
-      if (!resp.ok) throw new Error(String(resp.status));
-      const body = await resp.json();
-      available = body.available;
-      alerts = body.alerts ?? [];
-    } catch {
-      available = false;
-      alerts = [];
-    } finally {
-      loaded = true;
-    }
-  }
-
-  onMount(() => {
-    load();
-    // Alert state changes on Prometheus's evaluation interval, not the live
-    // tick — polling faster would just be load with no new information.
-    const timer = setInterval(load, 30_000);
-    return () => clearInterval(timer);
-  });
-
-  function age(iso: string | null): string {
-    if (!iso) return '';
-    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m`;
-    const hours = Math.floor(mins / 60);
-    return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
-  }
+  const available = $derived(feed.available);
+  const alerts = $derived(feed.alerts);
+  const loaded = $derived(feed.loaded);
 </script>
 
 {#if loaded && !available}

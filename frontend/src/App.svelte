@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Alerts from './components/Alerts.svelte';
+  import AlertHistory from './components/AlertHistory.svelte';
   import Section from './components/Section.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
@@ -12,16 +13,23 @@
   import { Layout } from './lib/layout.svelte';
   import { THEMES, Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
+  import { AlertFeed } from './lib/alerts.svelte';
   import { gib, num } from './lib/format';
   import type { NodeSnapshot } from './lib/types';
 
   const feed = new LiveFeed();
+  const alertFeed = new AlertFeed();
+  let historyOpen = $state(false);
   const layout = new Layout();
   const theme = new Theme();
 
   onMount(() => {
     feed.connect();
-    return () => feed.close();
+    alertFeed.start();
+    return () => {
+      feed.close();
+      alertFeed.stop();
+    };
   });
 
   const nodes = $derived(feed.snapshot?.nodes ?? []);
@@ -117,6 +125,25 @@
         tick={feed.tick}
         secondsSinceFrame={feed.secondsSinceFrame}
       />
+      <!-- Permanent, unlike the banner below, which renders nothing when all
+           is quiet — without this there'd be no way to reach history on a
+           healthy day. Understated when there's nothing firing; a counted
+           badge when there is. -->
+      <button
+        class="alerts-trigger"
+        data-severity={alertFeed.worst}
+        aria-label={alertFeed.alerts.length
+          ? `${alertFeed.alerts.length} alerts firing. Open alerts and history.`
+          : 'Open alerts and history'}
+        onclick={() => (historyOpen = true)}
+      >
+        <span aria-hidden="true">{alertFeed.alerts.length ? '■' : '▲'}</span>
+        <span class="label">alerts</span>
+        {#if alertFeed.alerts.length}
+          <span class="badge num">{alertFeed.alerts.length}</span>
+        {/if}
+      </button>
+
       <label class="sr-only" for="theme">Theme</label>
       <select
         id="theme"
@@ -145,7 +172,8 @@
 
   <!-- Above everything: an alert is what you want to see before you start
        reading numbers. Renders nothing when all is quiet. -->
-  <Alerts />
+  <Alerts feed={alertFeed} />
+  <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
 
   {#if versionsDiverge}
     <p class="notice" data-tone="warning">
@@ -451,6 +479,47 @@
 
   /* Only shown once the order has actually been changed — an always-present
      reset for a layout you never touched is clutter. */
+  /* Sits with the connection state and theme picker: page-level controls,
+     not part of any panel. Quiet by default — a permanently loud alerts
+     button on a healthy dashboard trains you to ignore it. */
+  .alerts-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+  }
+
+  .alerts-trigger:hover {
+    color: var(--ink);
+    border-color: var(--rule);
+  }
+
+  .alerts-trigger[data-severity='critical'],
+  .alerts-trigger[data-severity='warning'] {
+    color: var(--ink);
+    border-color: var(--rule);
+  }
+
+  .alerts-trigger .badge {
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--rule);
+    color: var(--ink);
+  }
+
+  @media (max-width: 640px) {
+    .alerts-trigger .label {
+      /* The glyph and count carry it; the word is the first thing to go. */
+      display: none;
+    }
+  }
+
   .reset {
     font-size: 10px;
     letter-spacing: 0.1em;

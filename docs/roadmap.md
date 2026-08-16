@@ -247,6 +247,80 @@ Against those, both sets of thresholds were wrong in opposite directions:
   recover deleted data, so being too short costs permanently while being too
   long costs a disk alert — and both disk rules now watch this host properly.
 
+### D — Alert history view — **shipped 2026-08-16**
+
+A fly-out showing both what is firing now and what has fired before, read back
+out of Prometheus rather than stored separately.
+
+Confirmed against real data on first run: **14 episodes in 7 days, 0 fired, 14
+pending only.** The prediction below was exactly right, which is the strongest
+argument for having built it — that state is invisible in every other view.
+
+**The data already exists.** Prometheus records `ALERTS{alertname, alertstate,
+node, severity}` for every pending or firing alert, plus `ALERTS_FOR_STATE`
+carrying when it began. With retention at 180d that is real history, and it
+reaches back as far as retention does rather than starting from whenever this
+ships — the same property that makes the model timeline worth having.
+
+**But it will launch empty, and that is the interesting part.** Every `ALERTS`
+series in the last 7 days is `alertstate="pending"`. **Nothing has ever
+reached `firing`** — because the PSI rules had `for:` windows longer than the
+events they watched and the temperature rules were miscalibrated, both fixed in
+A1–A5. So the view must treat **pending episodes as first-class**, not filter
+them out as noise. "This nearly fired six times and never crossed the line" is
+precisely the signal that would have exposed the `for:` bug months before it
+was found by hand.
+
+**Where it goes.** Not a tab: alert history is low-frequency reference data, and
+a top-level tab implies parity with the live dashboard while putting the live
+view behind a click. Not an inline disclosure either — the alerts region sits
+above everything, so expanding it reflows the whole page each time you glance at
+history.
+
+A fly-out overlays instead, leaving the layout beneath untouched, and has room
+for a real episode list.
+
+**The constraint that shapes it:** *firing alerts must stay visible with no
+interaction at all.* If the fly-out became the only route to discovering
+something is wrong, that is a regression for a monitoring dashboard. So the
+existing inline banner is untouched and the fly-out is purely additive. It also
+fills a real gap — `Alerts.svelte` renders nothing when quiet, so today there is
+no affordance to click when all is well.
+
+- [x] **D1.** Backend `alert_history.py`, modeled closely on `timeline.py`:
+  reconstruct episodes from `ALERTS` via `query_range`. Same shape of problem —
+  a series that exists while active and vanishes when it isn't — so the
+  gap-detection approach carries over.
+- [x] **D2.** `/api/alerts/history` endpoint, with a range parameter.
+- [x] **D3.** Header trigger in the right-hand cluster beside connection state
+  and theme: understated when quiet, severity-coloured badge with a count when
+  firing.
+- [x] **D4.** The fly-out itself, as a native `<dialog>` + `showModal()` —
+  focus trapping, Escape, backdrop and focus restore come from the platform
+  rather than being hand-rolled, and it is supported in Safari 15.4+. Styled
+  right-anchored and full-height, full-width on narrow screens. Note the
+  codebase has **no overlay pattern yet** (the only `z-index` anywhere is `5`,
+  on the drag lift), so this establishes one — an argument for the primitive
+  over inventing a layer system.
+- [x] **D5.** Extract the alert-row markup into a shared snippet so the banner
+  and the fly-out cannot drift apart.
+
+**Traps to design around, not discover:**
+
+- **Prometheus restarts fragment episodes.** `ALERTS` vanishes on restart and
+  the alert re-enters `pending` afterwards — observed repeatedly during the
+  2026-08-16 deploys. Without gap handling, one long episode reports as several.
+- **A missing series is ambiguous:** it means either "not active" or
+  "Prometheus was down". Needs an `up`-based check or a gap threshold, or the
+  view invents episodes that never happened.
+- **`pending` → `firing` is one episode, not two.** Duration should measure from
+  pending-start with firing marked as a transition inside it.
+- **Don't poll history.** Fetch on open and on range change only; current alerts
+  stay on the existing 30s cadence. A fly-out re-running `query_range` every 30s
+  while open is pure waste.
+- **Design the empty state deliberately.** "No alert has fired in 7 days" plus
+  the pending count is the state that will be seen most, not a degenerate case.
+
 ### B — Per-workload GPU memory history
 
 Export `sparkdash_gpu_process_memory_bytes{node, runtime, model, router}` —

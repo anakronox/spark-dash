@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from spark_dash_common.models import ClusterSnapshot
 
+from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
 from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory
@@ -289,6 +290,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Transitions that cost a user latency — the number worth watching
             # if requests feel slow.
             "cold_starts": sum(1 for e in events if e.cold),
+        }
+
+    @app.get("/api/alerts/history")
+    async def api_alert_history(
+        minutes: int = Query(60 * 24 * 7, ge=5, le=60 * 24 * 180),
+        step: str = Query("60s"),
+    ) -> dict:
+        """What has fired, and what only ever went pending.
+
+        Read from Prometheus's own `ALERTS` series, not from Alertmanager,
+        which keeps no useful history — that gap is the reason this exists.
+
+        `pending_only` is the number worth reading first. An alert that keeps
+        going pending and never fires means its rule is mistuned rather than
+        its condition being rare, and that state is invisible in every other
+        view including Alertmanager's own.
+        """
+        end = time.time()
+        start = end - minutes * 60
+        try:
+            episodes = await fetch_episodes(prom, start=start, end=end, step=step)
+        except PrometheusError as exc:
+            raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
+
+        return {
+            "window_minutes": minutes,
+            "summary": summarise(episodes),
+            "episodes": [e.as_dict() for e in episodes],
         }
 
     @app.get("/api/alerts")

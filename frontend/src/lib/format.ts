@@ -103,3 +103,37 @@ export function breakdown(
 
   return { llmBytes, otherGpuBytes, systemBytes, freeBytes, totalBytes };
 }
+
+/** Compact age from an ISO timestamp: "just now", "8m", "3h", "2d".
+ *
+ * Shared because the alert banner and the history fly-out must describe the
+ * same instant the same way — two formats for one concept reads as two
+ * different pieces of information.
+ */
+export function age(iso: string | null): string {
+  if (!iso) return '';
+  return since(new Date(iso).getTime());
+}
+
+/** Same, from epoch seconds — what the history API returns. */
+export function ageFromEpoch(seconds: number): string {
+  return since(seconds * 1000);
+}
+
+function since(ms: number): string {
+  const mins = Math.floor((Date.now() - ms) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+}
+
+/** A span in seconds, rendered for a table: "<1m", "4m", "2h 10m". */
+export function duration(seconds: number): string {
+  const mins = Math.round(seconds / 60);
+  if (mins < 1) return '<1m';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const rest = mins % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
