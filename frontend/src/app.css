@@ -58,29 +58,48 @@
  * the node name and the chart legend names each line. Colour is never the sole
  * distinction here.
  */
+/* Neon on near-black. Brightness comes from the FOREGROUND, not by lifting the
+   ground — a washed-out background would lose the aesthetic entirely, and the
+   contrast problem was never the dark.
+
+   Measured against `--panel`, WCAG 4.5 for text:
+
+     --ink-muted   3.91 -> 6.18    the reported problem: it carries `.dim`,
+                                   table headers and most labels, so a value
+                                   under 4.5 makes the majority of the small
+                                   text on the page hard to read
+     --series-1    5.39 -> 12.41   cyan was passing but visibly duller than the
+                                   magenta and violet beside it, which read as
+                                   the whole theme being muted
+     --series-2    4.52 -> 6.20
+     --series-3    5.35 -> 7.21
+     --ink-2       8.71 -> 10.93
+
+   Hues are unchanged throughout; only lightness and saturation move. */
 :root[data-theme='cyberpunk'] {
   color-scheme: dark;
   --page: #08060f;
-  --panel: #110d1c;
-  --panel-raised: #1a1330;
-  --rule: #2b2047;
-  --track: #1a1330;
+  /* Lifted a hair so panels separate from the page without going grey. */
+  --panel: #130f21;
+  --panel-raised: #1d1638;
+  --rule: #3b2d63;
+  --track: #1d1638;
 
-  --ink: #f0e9ff;
-  --ink-2: #b9a8e0;
-  --ink-muted: #7a68a8;
+  --ink: #f6f1ff;
+  --ink-2: #cebdf5;
+  --ink-muted: #9d8ac9;
 
-  --series-1: #1795b8; /* cyan    */
-  --series-2: #e0348f; /* magenta */
-  --series-3: #9b6cff; /* violet  */
+  --series-1: #2ee6ff; /* cyan    */
+  --series-2: #ff4fa8; /* magenta */
+  --series-3: #b18cff; /* violet  */
 
   /* Status keeps its meaning and its ordering; only the hue is pushed toward
      the theme. Safe because every status ships with a glyph and a word, so
      colour never carries the meaning alone. */
-  --good: #00d97e;
-  --warning: #ffc233;
-  --serious: #ff8a4c;
-  --critical: #ff2d6f;
+  --good: #00f58e;
+  --warning: #ffd24d;
+  --serious: #ff9d5c;
+  --critical: #ff4d85;
 }
 
 :root[data-theme='light'] {
