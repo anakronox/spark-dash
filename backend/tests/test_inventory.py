@@ -104,47 +104,47 @@ class TestRenderPrometheusTargets:
         assert [n.node_id for n in reparsed] == ["gx10-1", "gx10-2"]
         assert [n.address for n in reparsed] == [n.address for n in nodes]
 
-    def test_group_survives_the_round_trip(self, tmp_path):
-        """The regression this replaced: `group` was written but never read
+    def test_cluster_survives_the_round_trip(self, tmp_path):
+        """The regression this replaced: the cluster label was written but never read
         back, so on the file-based path clustered nodes reparsed as standalone.
 
-        That fails in the dangerous direction. Grouping is what allows memory to
-        be summed WITHIN a cluster, so losing it under-reports what the group
-        can hold and a model that would fit looks like it won't.
+        That fails in the dangerous direction. Clustering is what allows memory
+        to be summed WITHIN a cluster, so losing it under-reports what the
+        cluster can hold and a model that would fit looks like it won't.
 
-        The earlier round-trip test missed it because its fixture had no groups.
+        The earlier round-trip test missed it because its fixture had no clusters.
         """
-        nodes = parse_nodes_env("solo=192.168.50.61,pair/a=192.168.50.62,pair/b=192.168.50.63")
+        nodes = parse_nodes_env("solo=192.168.50.61,alpha/a=192.168.50.62,alpha/b=192.168.50.63")
         write_prometheus_targets(nodes, tmp_path)
 
         reparsed = parse_file_sd((tmp_path / "agents.yml").read_text())
         by_id = {n.node_id: n for n in reparsed}
 
-        assert by_id["solo"].group is None
+        assert by_id["solo"].cluster is None
         assert by_id["solo"].standalone is True
-        assert by_id["a"].group == "pair"
-        assert by_id["b"].group == "pair"
-        # group_key is what capacity aggregation buckets on.
-        assert by_id["a"].group_key == by_id["b"].group_key == "pair"
-        assert by_id["solo"].group_key == "solo"
+        assert by_id["a"].cluster == "alpha"
+        assert by_id["b"].cluster == "alpha"
+        # cluster_key is what capacity aggregation buckets on.
+        assert by_id["a"].cluster_key == by_id["b"].cluster_key == "alpha"
+        assert by_id["solo"].cluster_key == "solo"
 
-    def test_group_label_is_written_only_when_there_is_one(self, tmp_path):
-        """A standalone node must not carry an empty group label — it would
-        create a distinct series and a phantom group in aggregation."""
+    def test_cluster_label_is_written_only_when_there_is_one(self, tmp_path):
+        """A standalone node must not carry an empty cluster label — it would
+        create a distinct series and a phantom cluster in aggregation."""
         write_prometheus_targets(parse_nodes_env("solo=192.168.50.61"), tmp_path)
-        assert "group:" not in (tmp_path / "agents.yml").read_text()
+        assert "cluster:" not in (tmp_path / "agents.yml").read_text()
 
     def test_grouped_node_gets_the_label(self, tmp_path):
-        write_prometheus_targets(parse_nodes_env("pair/a=192.168.50.62"), tmp_path)
+        write_prometheus_targets(parse_nodes_env("alpha/a=192.168.50.62"), tmp_path)
         rendered = (tmp_path / "agents.yml").read_text()
-        assert "group: pair" in rendered
+        assert "cluster: alpha" in rendered
         assert "node: a" in rendered
 
-    def test_group_survives_on_the_node_exporter_file_too(self, tmp_path):
+    def test_cluster_survives_on_the_node_exporter_file_too(self, tmp_path):
         """Both target files carry it, so node-exporter series can be grouped
         the same way the agent's can."""
-        write_prometheus_targets(parse_nodes_env("pair/a=192.168.50.62"), tmp_path)
-        assert "group: pair" in (tmp_path / "node-exporters.yml").read_text()
+        write_prometheus_targets(parse_nodes_env("alpha/a=192.168.50.62"), tmp_path)
+        assert "cluster: alpha" in (tmp_path / "node-exporters.yml").read_text()
 
     def test_node_label_is_written_explicitly(self, tmp_path):
         """A DOWN target still needs an identity, or a node that never came up
@@ -231,7 +231,7 @@ nodes:
       llama_routers: [8001]
   - id: sparky2
     host: 192.168.50.62
-    group: pair
+    cluster: alpha
     agent_port: 9501
     node_exporter_port: 9101
 """
@@ -260,9 +260,9 @@ class TestClusterConfigIsTheSourceOfTruth:
         cluster.write_text(CLUSTER)
         nodes = {n.node_id: n for n in Inventory(cluster_config=cluster).nodes(now=0.0)}
 
-        assert nodes["sparky"].group is None
+        assert nodes["sparky"].cluster is None
         assert nodes["sparky"].address == "192.168.50.61:9500"
-        assert nodes["sparky2"].group == "pair"
+        assert nodes["sparky2"].cluster == "alpha"
         assert nodes["sparky2"].address == "192.168.50.62:9501"
         assert nodes["sparky2"].node_exporter_address == "192.168.50.62:9101"
 
@@ -308,7 +308,7 @@ class TestClusterConfigIsTheSourceOfTruth:
         agents = (out / "agents.yml").read_text()
         assert "192.168.50.61:9500" in agents
         assert "192.168.50.62:9501" in agents
-        assert "group: pair" in agents
+        assert "cluster: alpha" in agents
         assert "cluster.yml" in agents, "the header must name the file to edit"
         assert "192.168.50.62:9101" in (out / "node-exporters.yml").read_text()
 
@@ -337,49 +337,49 @@ class TestParseFileSd:
         assert parse_file_sd("- targets: ['192.168.50.61:9500']\n")[0].node_id == "192.168.50.61"
 
 
-class TestGroups:
+class TestClustering:
     """Not every node is part of a cluster. Grouping is what keeps capacity
     arithmetic honest: memory pools WITHIN a group (clustered nodes do
     distributed inference, so a model can span them) and never across groups.
     """
 
-    def test_group_prefix(self):
-        nodes = parse_nodes_env("solo=10.0.0.1,pair/a=10.0.0.2,pair/b=10.0.0.3")
-        assert [n.group for n in nodes] == [None, "pair", "pair"]
+    def test_cluster_prefix(self):
+        nodes = parse_nodes_env("solo=10.0.0.1,alpha/a=10.0.0.2,alpha/b=10.0.0.3")
+        assert [n.cluster for n in nodes] == [None, "alpha", "alpha"]
         assert [n.node_id for n in nodes] == ["solo", "a", "b"]
 
-    def test_ungrouped_node_is_standalone(self):
+    def test_unclustered_node_is_standalone(self):
         node = parse_nodes_env("solo=10.0.0.1")[0]
         assert node.standalone is True
         # A standalone node is a group of one, so callers aggregate uniformly.
-        assert node.group_key == "solo"
+        assert node.cluster_key == "solo"
 
-    def test_grouped_nodes_share_a_key(self):
-        nodes = parse_nodes_env("pair/a=10.0.0.2,pair/b=10.0.0.3")
-        assert {n.group_key for n in nodes} == {"pair"}
+    def test_clustered_nodes_share_a_key(self):
+        nodes = parse_nodes_env("alpha/a=10.0.0.2,alpha/b=10.0.0.3")
+        assert {n.cluster_key for n in nodes} == {"alpha"}
         assert all(not n.standalone for n in nodes)
 
-    def test_group_prefix_on_a_bare_host(self):
-        node = parse_nodes_env("pair/10.0.0.2")[0]
-        assert node.group == "pair"
+    def test_cluster_prefix_on_a_bare_host(self):
+        node = parse_nodes_env("alpha/10.0.0.2")[0]
+        assert node.cluster == "alpha"
         assert node.node_id == "10.0.0.2"
 
-    def test_group_with_explicit_port(self):
-        node = parse_nodes_env("pair/a=10.0.0.2:9600")[0]
-        assert node.group == "pair"
+    def test_cluster_with_explicit_port(self):
+        node = parse_nodes_env("alpha/a=10.0.0.2:9600")[0]
+        assert node.cluster == "alpha"
         assert node.address == "10.0.0.2:9600"
 
     def test_empty_group_prefix_is_treated_as_ungrouped(self):
-        assert parse_nodes_env("/a=10.0.0.2")[0].group is None
+        assert parse_nodes_env("/a=10.0.0.2")[0].cluster is None
 
-    def test_group_label_is_written_to_prometheus_targets(self, tmp_path):
+    def test_cluster_label_is_written_to_prometheus_targets(self, tmp_path):
         """So history aggregates the same way the live view does: sum by
         (group) is meaningful, a bare sum is not."""
-        nodes = parse_nodes_env("solo=10.0.0.1,pair/a=10.0.0.2")
+        nodes = parse_nodes_env("solo=10.0.0.1,alpha/a=10.0.0.2")
         write_prometheus_targets(nodes, tmp_path)
         agents = (tmp_path / "agents.yml").read_text()
 
-        assert "group: pair" in agents
-        # The standalone node gets no group label rather than a placeholder,
-        # so `group=""` never becomes a meaningless bucket in PromQL.
-        assert agents.count("group:") == 1
+        assert "cluster: alpha" in agents
+        # The standalone node gets no cluster label rather than a placeholder,
+        # so `cluster=""` never becomes a meaningless bucket in PromQL.
+        assert agents.count("cluster:") == 1

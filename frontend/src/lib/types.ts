@@ -144,9 +144,12 @@ export interface NodeSnapshot {
   /** Commit the agent image was built from. */
   agent_version: string;
   /** Cluster this node belongs to, or null when it stands alone.
-   *  Grouped nodes pool memory for distributed inference, so their capacity
-   *  sums; ungrouped ones don't, so it must not. */
-  group: string | null;
+   *  Clustered nodes pool memory for distributed inference, so their capacity
+   *  sums; unclustered ones don't, so it must not.
+   *
+   *  A NAME, never a count — "pair" stops being true at three nodes, and
+   *  clusters in the wild run to 32. */
+  cluster: string | null;
   health: HealthState;
   health_reasons: string[];
   /** Runtimes running on this node with nothing configured to collect them.

@@ -69,14 +69,14 @@ only `sparky` exists today, and it is the only scrape target.
   backend from `cluster.yml` with a 30s refresh. Adding a node needs no Prometheus config
   change and no restart.
 - [x] Extend backend/frontend to aggregate across nodes — `/api/cluster/summary`
-  and the per-node health cards exist and handle grouping.
+  and the per-node health cards exist and handle clustering.
 - [ ] Point the central Prometheus at all 3 nodes.
 
 > **Note for the rollout:** nodes 2 and 3 need no stack repo and no per-node
 > config. Clone `spark-dash-homegrown` into `/docker/`, `cd node`, copy
 > `.env.example` to `.env` (only `BACKEND_URL` and the image pin matter), and
 > `docker compose up -d`. Then add the node to `central/cluster/cluster.yml` on
-> the monitoring VM — that is where its routers, groups and identity live.
+> the monitoring VM — that is where its routers, cluster and identity live.
 >
 > The old hazard here — a stack clone predating `79470ea` still tracking `.env`,
 > so pulling past that commit failed with "local changes would be overwritten" —
@@ -397,8 +397,8 @@ pieces that already exist:
   requiring three views and mental alignment.
 - [ ] **E6.** Cluster outlier detection, once nodes 2 and 3 land: same model,
   three nodes, one slower. Needs per-node comparison rather than aggregates,
-  and the `group` label (C1) is what keeps "compare within the pooled pair, not
-  across groups" expressible.
+  and the `cluster` label (C1) is what keeps "compare within the pooled
+  cluster, not across clusters" expressible.
 
 **The question this cluster can now answer that it could not before:**
 
@@ -536,7 +536,7 @@ cannot clear is one you learn to ignore**, which is worse than no alert.
 ### F — One server-side cluster config
 
 **The problem.** The cluster is defined in two places that don't know about each
-other: `SPARK_NODES` on the monitoring VM (ids, hosts, groups) and each node's
+other: `SPARK_NODES` on the monitoring VM (ids, hosts, clusters) and each node's
 `.env` (its routers, vLLM endpoints, metrics allowlist). That split is the whole
 reason the node stack can't be identical across nodes, which in turn is why
 Phase 2 needs one orchestration repo per node.
@@ -567,7 +567,8 @@ As built:
 nodes:
   - id: sparky                     # becomes the `node` label on every metric
     host: 192.168.50.61
-    # group: pair                  # omitted = standalone; a group of one
+    # cluster: alpha               # omitted = standalone; a cluster of one
+    #                               a NAME, never a count — see cluster.yml.example
     # agent_port: 9500             # defaults
     # node_exporter_port: 9100
     runtimes:
@@ -586,10 +587,10 @@ nodes:
   sources — so this touches `inventory.py`.
 
   **Extended 2026-08-16 to define node identity, not just runtimes.** The
-  first cut left ids, hosts and groups in `SPARK_NODES` and put only runtimes
+  first cut left ids, hosts and clusters in `SPARK_NODES` and put only runtimes
   here, which reproduced the same split it was meant to close — one file
   saying a node exists, another saying what it serves, with nothing keeping
-  them agreeing. `cluster.yml` now carries `id`, `host`, `group`,
+  them agreeing. `cluster.yml` now carries `id`, `host`, `cluster`,
   `agent_port` and `node_exporter_port` alongside `runtimes`, and `Inventory`
   prefers it over `SPARK_NODES`. Adding a node is one entry in one file, and
   the Prometheus target files are rendered from that same entry.
@@ -640,7 +641,7 @@ nodes:
   looks exactly like an edit that "didn't take".
 
 **Migration status: DONE on `sparky`, 2026-08-16.** The backend runs with
-`SPARK_NODES` empty in the container and takes its node list, grouping and
+`SPARK_NODES` empty in the container and takes its node list, clustering and
 runtimes entirely from `cluster.yml`; the node `.env` carries only
 `BACKEND_URL` and `LOG_LEVEL`. Both routers still report models, and the
 Prometheus target files are rendered from the same entries.
@@ -666,7 +667,7 @@ outweigh the convenience:
 Most of the value here is not editing anyway; it is closing the loop between
 what is configured and what is actually happening.
 
-- [ ] **F6.** Cluster panel: each node, its group, its configured runtimes, and
+- [ ] **F6.** Cluster panel: each node, its cluster, its configured runtimes, and
   **whether the agent has actually fetched that config, with a timestamp**.
   Answers "did my edit reach spark3?", which today needs an SSH session.
 - [ ] **F7.** Surface F5's reachability check per endpoint, so a typo'd port
@@ -814,6 +815,29 @@ have to double as a debugging session.
 
   which separates "the GPU numbers changed" from "the agent that measures them
   changed".
+
+### I — Cluster naming (done 2026-08-16)
+
+- [x] **I1.** `group` renamed to `cluster` throughout — config key, Prometheus
+  label, API field, frontend type and UI. Done while no series carried the
+  label and no rule depended on it, which made it free; after nodes 2 and 3
+  are clustered it would have split grouped history.
+
+  **It stays a STRING, deliberately.** An int with `0` = standalone was
+  considered and rejected: the value is rendered as a UI heading and written
+  as a Prometheus label, so `cluster="3"` in a 2am alert needs a decoder ring
+  that lives nowhere; `0` conflates "standalone" with "cluster zero" when
+  omitting the key already says standalone unambiguously; and numbers invite
+  renumbering, which silently rewrites the label and splits history.
+
+  Any scalar still works (`cluster: 2` parses to `"2"`), so numbering is
+  available without being taught. The real defect was the example name `pair`
+  — a name that encodes the size, and therefore wrong the moment a third node
+  joins. Examples now use `alpha`.
+
+  `group:` is still read in `cluster.yml` with a loud warning, because
+  silently ignoring it would drop a node to standalone and break capacity
+  arithmetic in the dangerous direction.
 
 ### H — Genericize for distribution
 

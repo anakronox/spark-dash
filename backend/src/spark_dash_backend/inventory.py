@@ -15,7 +15,7 @@ Two fallbacks remain, in order: `SPARK_NODES` (the previous source of truth,
 kept so a deployment that has not migrated keeps working) and reading target
 files directly (for anyone who would rather manage them by hand).
 
-`SPARK_NODES` could only ever express id, host and group; a node's runtimes
+`SPARK_NODES` could only ever express id, host and cluster; a node's runtimes
 lived in that node's own `.env`. Folding both into `cluster.yml` is what makes
 the per-node stack byte-identical, since nothing node-specific is left in it.
 """
@@ -47,22 +47,26 @@ class Node:
     node_exporter_port: int = DEFAULT_NODE_EXPORTER_PORT
 
     # Nodes clustered together pool their memory for distributed inference, so
-    # a model can span the group. `None` means the node stands alone.
+    # a model can span the cluster. `None` means the node stands alone.
+    #
+    # A NAME, never a count: "pair" is wrong the moment a third node joins, and
+    # clusters in the wild run to 32. It is also a Prometheus label and a UI
+    # heading, so it has to be readable on its own.
     #
     # This is what makes capacity arithmetic correct. Summing free memory
-    # within a group is real; summing across groups describes capacity that
+    # within a cluster is real; summing across clusters describes capacity that
     # doesn't exist, because a model can't span machines that aren't clustered.
-    group: str | None = None
+    cluster: str | None = None
 
     @property
-    def group_key(self) -> str:
-        """Grouping key. A standalone node is a group of one, so callers can
-        aggregate uniformly instead of special-casing."""
-        return self.group or self.node_id
+    def cluster_key(self) -> str:
+        """Aggregation key. A standalone node is a cluster of one, so callers
+        can aggregate uniformly instead of special-casing."""
+        return self.cluster or self.node_id
 
     @property
     def standalone(self) -> bool:
-        return self.group is None
+        return self.cluster is None
 
     @property
     def address(self) -> str:
@@ -95,11 +99,14 @@ def parse_nodes_env(
         gx10-1@192.168.50.61          same, alternative separator
         gx10-1=192.168.50.61:9500     explicit port
         192.168.50.61                 id derived from the host
-        pair/gx10-2=192.168.50.62     node in the group "pair"
+        alpha/gx10-2=192.168.50.62    node in the cluster "alpha"
 
-    A `group/` prefix marks nodes that are clustered together and pool memory
+    A `cluster/` prefix marks nodes that are clustered together and pool memory
     for distributed inference. Nodes without one stand alone. Not every node is
     part of a cluster, and treating them as one would misreport capacity.
+
+    The prefix is a NAME, not a count — "pair" stops being true the moment a
+    third node joins.
 
     Explicit ids are preferred because the id becomes the `node` label on every
     metric — deriving it from an IP means changing that IP silently splits the
@@ -121,15 +128,15 @@ def parse_nodes_env(
                 label, target = label.strip(), target.strip()
                 break
 
-        # A "group/" prefix may appear on either side of the separator, since
-        # `pair/192.168.50.62` (no explicit id) is a reasonable thing to write.
-        group: str | None = None
+        # A "cluster/" prefix may appear on either side of the separator, since
+        # `alpha/192.168.50.62` (no explicit id) is a reasonable thing to write.
+        cluster: str | None = None
         if "/" in label:
-            group, _, label = label.partition("/")
-            group, label = group.strip() or None, label.strip()
+            cluster, _, label = label.partition("/")
+            cluster, label = cluster.strip() or None, label.strip()
         elif "/" in target:
-            group, _, target = target.partition("/")
-            group, target = group.strip() or None, target.strip()
+            cluster, _, target = target.partition("/")
+            cluster, target = cluster.strip() or None, target.strip()
 
         node_id = label
 
@@ -154,7 +161,7 @@ def parse_nodes_env(
                 host=host,
                 agent_port=port,
                 node_exporter_port=node_exporter_port,
-                group=group,
+                cluster=cluster,
             )
         )
 
@@ -202,14 +209,17 @@ def parse_file_sd(
             log.warning("skipping malformed inventory entry: %r", entry)
             continue
 
-        # `group` must be read back, not just written. Dropping it here made
-        # clustered nodes look standalone on the file-based path, and the
-        # failure is silent and wrong in the dangerous direction: capacity
+        # The cluster label must be read back, not just written. Dropping it
+        # here made clustered nodes look standalone on the file-based path, and
+        # the failure is silent and wrong in the dangerous direction: capacity
         # arithmetic would stop pooling their memory and under-report what the
-        # group can actually hold, so a model that would fit looks like it
+        # cluster can actually hold, so a model that would fit looks like it
         # won't.
-        raw_group = labels.get("group")
-        group = str(raw_group).strip() or None if raw_group is not None else None
+        #
+        # `group` is the old label name, still read so target files written by
+        # an older backend keep working.
+        raw_cluster = labels.get("cluster", labels.get("group"))
+        cluster = str(raw_cluster).strip() or None if raw_cluster is not None else None
 
         for target in targets:
             if not isinstance(target, str) or not target.strip():
@@ -227,7 +237,7 @@ def parse_file_sd(
                     host=host,
                     agent_port=port,
                     node_exporter_port=node_exporter_port,
-                    group=group,
+                    cluster=cluster,
                 )
             )
 
@@ -241,14 +251,15 @@ def render_file_sd(nodes: list[Node], *, port_of, header: str) -> str:
     an identity — otherwise a node that never came up would be invisible in
     Prometheus rather than visibly missing.
 
-    `group` is written too, so history can be aggregated the same way the live
-    view does: `sum by (group)` is meaningful, `sum` across everything is not.
+    `cluster` is written too, so history can be aggregated the same way the
+    live view does: `sum by (cluster)` is meaningful, `sum` across everything
+    is not.
     """
     entries = []
     for node in nodes:
         labels = {"node": node.node_id}
-        if node.group:
-            labels["group"] = node.group
+        if node.cluster:
+            labels["cluster"] = node.cluster
         entries.append({"targets": [port_of(node)], "labels": labels})
     body = yaml.safe_dump(entries, default_flow_style=False, sort_keys=False)
     return f"{header}\n{body}"
@@ -351,7 +362,7 @@ class Inventory:
 
     def _load(self) -> list[Node]:
         # cluster.yml first: it is the one place the cluster is defined, and it
-        # carries identity, grouping AND runtimes together. SPARK_NODES could
+        # carries identity, clustering AND runtimes together. SPARK_NODES could
         # only express the first two, leaving runtimes in each node's own .env
         # — two files describing one thing, with no way to keep them agreeing.
         if self._cluster_config is not None:
@@ -375,7 +386,7 @@ class Inventory:
                         host=c.host,
                         agent_port=c.agent_port,
                         node_exporter_port=c.node_exporter_port,
-                        group=c.group,
+                        cluster=c.cluster,
                     )
                     for c in cluster
                 ]

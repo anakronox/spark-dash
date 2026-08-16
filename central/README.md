@@ -48,7 +48,7 @@ cd /docker/spark-dash-homegrown/central
 cp .env.example .env
 $EDITOR .env          # image tag, bind addresses, retention
 
-# The cluster itself — nodes, groups, and what each one serves — lives here,
+# The cluster itself — nodes, clusters, and what each one serves — lives here,
 # not in .env. This is the one file to edit when adding a node.
 mkdir -p cluster
 cp cluster.yml.example cluster/cluster.yml
@@ -334,31 +334,35 @@ observation. The PSI bands are still guesses. See issue #30.
 
 ## Clusters and standalone nodes
 
-Not every node is part of a cluster. Give grouped nodes a `group:`:
+Not every node is part of a cluster. Give clustered nodes a `cluster:`:
 
 ```yaml
 nodes:
   - id: sparky
-    host: 192.168.50.61      # no group — stands alone
+    host: 192.168.50.61      # no cluster: key — stands alone
   - id: spark2
     host: 192.168.50.62
-    group: pair
+    cluster: alpha
   - id: spark3
     host: 192.168.50.63
-    group: pair
+    cluster: alpha
 ```
 
 Here `sparky` stands alone and `spark2`/`spark3` are clustered.
 
 This affects capacity arithmetic, not just presentation. Clustered nodes pool
-memory for distributed inference, so a model can span the group and their
-combined free space is genuine capacity. Ungrouped nodes can't, so free memory
-is summed **within** a group and never across groups — a cluster-wide total
+memory for distributed inference, so a model can span the cluster and their
+combined free space is genuine capacity. Unclustered nodes can't, so free memory
+is summed **within** a cluster and never across clusters — a fleet-wide total
 would report capacity that doesn't exist.
 
-The dashboard draws grouped nodes in a labelled frame with their pooled free
+The name is a NAME, not a count: "pair" stops being true at three nodes, and
+clusters in the wild run to 32. It is rendered as the frame heading and written
+as a Prometheus label, so it has to read well on its own.
+
+The dashboard draws clustered nodes in a labelled frame with their pooled free
 space; standalone nodes get no frame, because there's nothing to combine. The
-`group` label is also written to Prometheus targets, so `sum by (group)` in
+`cluster` label is also written to Prometheus targets, so `sum by (cluster)` in
 PromQL aggregates history the same way.
 
 ## Adding a node

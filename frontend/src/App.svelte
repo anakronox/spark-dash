@@ -34,7 +34,7 @@
 
   const nodes = $derived(feed.snapshot?.nodes ?? []);
 
-  interface Group {
+  interface Cluster {
     key: string;
     /** null for a standalone node — used to decide whether to draw a frame. */
     name: string | null;
@@ -44,16 +44,16 @@
     up: number;
   }
 
-  /* Nodes grouped as they're actually deployed. Not every node is part of a
-     cluster: a standalone node is a group of one, which lets everything below
-     aggregate uniformly instead of special-casing. */
-  const groups = $derived.by<Group[]>(() => {
-    const byKey = new Map<string, Group>();
+  /* Nodes clustered as they're actually deployed. Not every node is in a
+     cluster: a standalone node is a cluster of one, which lets everything
+     below aggregate uniformly instead of special-casing. */
+  const clusters = $derived.by<Cluster[]>(() => {
+    const byKey = new Map<string, Cluster>();
     for (const node of nodes) {
-      const key = node.group ?? node.node_id;
+      const key = node.cluster ?? node.node_id;
       let g = byKey.get(key);
       if (!g) {
-        g = { key, name: node.group, nodes: [], freeBytes: 0, totalBytes: 0, up: 0 };
+        g = { key, name: node.cluster, nodes: [], freeBytes: 0, totalBytes: 0, up: 0 };
         byKey.set(key, g);
       }
       g.nodes.push(node);
@@ -103,13 +103,13 @@
     }
 
     /* The largest block one model could actually occupy: the best any single
-       GROUP offers. Clustered nodes pool memory, so summing within a group is
-       real capacity; summing across groups would describe capacity that
+       CLUSTER offers. Clustered nodes pool memory, so summing within a
+       cluster is real capacity; summing across clusters would describe
        doesn't exist, since a model can't span machines that aren't
        clustered. */
     let largestFreeBytes = 0;
     let largestFreeWhere = '';
-    for (const g of groups) {
+    for (const g of clusters) {
       if (g.up && g.freeBytes > largestFreeBytes) {
         largestFreeBytes = g.freeBytes;
         largestFreeWhere = g.name ?? g.nodes[0].node_id;
@@ -237,37 +237,37 @@
       </dl>
     </section>
 
-    {#each groups as group, gi (group.key)}
-      {#if group.name}
-        <!-- A frame only where grouping is real. Clustered nodes pool memory,
+    {#each clusters as cluster, ci (cluster.key)}
+      {#if cluster.name}
+        <!-- A frame only where clustering is real. Clustered nodes pool memory,
              so their combined free space is a capacity number in its own
              right; standalone nodes get no frame because there's nothing to
              combine. -->
-        <section class="group">
-          <header class="group-head">
-            <h2>{group.name}</h2>
+        <section class="cluster">
+          <header class="cluster-head">
+            <h2>{cluster.name}</h2>
             <span class="dim">
-              {group.nodes.length} nodes pooled · <span class="num">{gib(group.freeBytes)}</span>
-              GiB free of {gib(group.totalBytes)}
+              {cluster.nodes.length} nodes pooled · <span class="num">{gib(cluster.freeBytes)}</span>
+              GiB free of {gib(cluster.totalBytes)}
             </span>
           </header>
           <div class="nodes">
-            {#each group.nodes as node, i (node.node_id)}
-              <NodeCard {node} slot={gi + i} />
+            {#each cluster.nodes as node, i (node.node_id)}
+              <NodeCard {node} slot={ci + i} />
             {/each}
           </div>
         </section>
       {:else}
         <div class="nodes">
-          {#each group.nodes as node (node.node_id)}
-            <NodeCard {node} slot={gi} />
+          {#each cluster.nodes as node (node.node_id)}
+            <NodeCard {node} slot={ci} />
           {/each}
         </div>
       {/if}
     {/each}
 
     <!-- Sections are reorderable and collapsible; both live in localStorage.
-         Node cards and the summary stay put — grouping already orders the
+         Node cards and the summary stay put — clustering already orders the
          nodes meaningfully, and the headline belongs at the top. -->
     <div class="sections">
       {#each layout.order as id, i (id)}
@@ -430,7 +430,7 @@
     color: var(--ink-muted);
   }
 
-  .group {
+  .cluster {
     display: grid;
     gap: 8px;
     padding: 12px 12px 14px;
@@ -438,7 +438,7 @@
     border-radius: var(--radius);
   }
 
-  .group-head {
+  .cluster-head {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
@@ -447,7 +447,7 @@
     font-size: 11px;
   }
 
-  .group-head h2 {
+  .cluster-head h2 {
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.14em;

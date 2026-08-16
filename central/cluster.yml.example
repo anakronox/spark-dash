@@ -1,4 +1,4 @@
-# The cluster — nodes, groups, and what each one serves.
+# The cluster — nodes, clusters, and what each one serves.
 #
 #   cp cluster.yml.example cluster/cluster.yml
 #
@@ -32,12 +32,23 @@ nodes:
     # agent_port: 9500          # defaults, shown for reference
     # node_exporter_port: 9100
 
-    # group: pair        # omit for a standalone node — a group of one.
+    # cluster: alpha    # omit for a standalone node — a cluster of one.
     #
-    # Grouping is not cosmetic. Clustered nodes pool memory for distributed
-    # inference, so a model can span the group and their combined free space is
-    # real capacity. Summing across groups would report capacity that does not
-    # exist.
+    # A NAME, not a size and not a number. It is rendered as a heading in the
+    # dashboard and written as a Prometheus label, so it has to read well on
+    # its own — `cluster="3"` in an alert at 2am needs a decoder ring that
+    # lives nowhere. Naming it after the count ("pair") is worse still: that
+    # becomes a lie the moment a third node joins, and clusters in the wild
+    # run to 32 nodes.
+    #
+    # Any scalar is accepted, so `cluster: 2` works if you prefer numbers.
+    # There is NO sentinel for standalone — omit the key. `cluster: 0` is a
+    # cluster named "0", not a standalone node.
+    #
+    # This is not cosmetic. Clustered nodes pool memory for distributed
+    # inference, so a model can span the cluster and their combined free space
+    # is real capacity. Summing across clusters would report capacity that does
+    # not exist.
 
     runtimes:
       # PORTS, not URLs. The host above is filled in when this is served to the
@@ -65,12 +76,12 @@ nodes:
   #
   # - id: spark2
   #   host: 192.168.50.62
-  #   group: pair
+  #   cluster: alpha
   #   runtimes:
   #     llama_routers: [{port: 8001}]
   #
   # - id: spark3
   #   host: 192.168.50.63
-  #   group: pair
+  #   cluster: alpha
   #   # A node may serve nothing. Listing it with no runtimes still says so
   #   # deliberately, and that beats leftover values in the node's own .env.

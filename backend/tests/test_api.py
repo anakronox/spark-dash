@@ -118,7 +118,7 @@ def test_cluster_summary_aggregates(client):
     assert body["tokens_per_second"] == pytest.approx(129.7)
 
 
-def test_largest_free_block_is_per_group_not_a_total(client):
+def test_largest_free_block_is_per_cluster_not_a_total(client):
     """The fixture's two nodes are ungrouped, so each is its own group. The
     answer to "can I load this" is the best single group can offer — summing
     them would describe capacity that doesn't exist, since a model can't span
@@ -126,18 +126,18 @@ def test_largest_free_block_is_per_group_not_a_total(client):
     body = client.get("/api/cluster/summary").json()
     # Only gx10-1 is up, with 100GB free. gx10-2 is down and contributes none.
     assert body["largest_free_block_bytes"] == 100_000_000_000
-    assert body["largest_free_block_group"] == "gx10-1"
+    assert body["largest_free_block_cluster"] == "gx10-1"
 
 
-def test_ungrouped_nodes_are_each_their_own_group(client):
+def test_unclustered_nodes_are_each_their_own_cluster(client):
     body = client.get("/api/cluster/summary").json()
-    groups = {g["key"]: g for g in body["groups"]}
+    groups = {g["key"]: g for g in body["clusters"]}
     assert set(groups) == {"gx10-1", "gx10-2"}
     assert all(g["standalone"] for g in groups.values())
-    assert all(g["group"] is None for g in groups.values())
+    assert all(g["cluster"] is None for g in groups.values())
 
 
-def test_grouped_nodes_pool_their_memory(tmp_path, monkeypatch):
+def test_clustered_nodes_pool_their_memory(tmp_path, monkeypatch):
     """Clustered nodes do distributed inference, so their combined free memory
     is real capacity for a single model — the one case where summing across
     machines is correct."""
@@ -157,7 +157,7 @@ def test_grouped_nodes_pool_their_memory(tmp_path, monkeypatch):
 
     app = create_app(
         Settings(
-            spark_nodes="solo=10.0.0.1,pair/a=10.0.0.2,pair/b=10.0.0.3",
+            spark_nodes="solo=10.0.0.1,alpha/a=10.0.0.2,alpha/b=10.0.0.3",
             prometheus_targets_dir=tmp_path,
             static_dir=tmp_path / "nostatic",
         )
@@ -165,19 +165,19 @@ def test_grouped_nodes_pool_their_memory(tmp_path, monkeypatch):
     with TestClient(app) as c:
         body = c.get("/api/cluster/summary").json()
 
-    groups = {g["key"]: g for g in body["groups"]}
-    assert set(groups) == {"solo", "pair"}
+    groups = {g["key"]: g for g in body["clusters"]}
+    assert set(groups) == {"solo", "alpha"}
     assert groups["solo"]["standalone"] is True
-    assert groups["pair"]["standalone"] is False
-    assert sorted(groups["pair"]["nodes"]) == ["a", "b"]
+    assert groups["alpha"]["standalone"] is False
+    assert sorted(groups["alpha"]["nodes"]) == ["a", "b"]
 
     # Each node has 100GB free; the pair pools to 200GB, the solo node has 100.
-    assert groups["pair"]["memory_free_bytes"] == 200_000_000_000
+    assert groups["alpha"]["memory_free_bytes"] == 200_000_000_000
     assert groups["solo"]["memory_free_bytes"] == 100_000_000_000
 
     # The pair can host a model the standalone node could not.
     assert body["largest_free_block_bytes"] == 200_000_000_000
-    assert body["largest_free_block_group"] == "pair"
+    assert body["largest_free_block_cluster"] == "alpha"
 
 
 def test_models_flattens_across_runtimes(client):

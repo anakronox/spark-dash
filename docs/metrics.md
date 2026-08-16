@@ -161,41 +161,44 @@ Computed by the dashboard backend, not scraped directly:
 - Aggregate tokens/sec across the whole cluster
 - Node health summary (up/down, last-seen)
 
-### The `group` label, and why totals are usually wrong
+### The `cluster` label, and why totals are usually wrong
 
 Every scraped series carries `node`, and a **clustered** node also carries
-`group`. The label is attached at scrape time from the `file_sd` target files
+`cluster`. The label is attached at scrape time from the `file_sd` target files
 the backend renders out of `cluster.yml` — the agent can't supply it, because a
 node has no way to know what it has been clustered with.
 
-This exists because **memory sums within a group and never across groups.**
+This exists because **memory sums within a cluster and never across clusters.**
 Clustered nodes pool memory for distributed inference, so a model can span them
 and their combined free space is real. Unclustered nodes can't do that, so
 adding their free memory together describes capacity that does not exist.
 
 ```promql
-# Free memory per group — the honest unit of capacity.
-sum by (group) (
+# Free memory per cluster — the honest unit of capacity.
+sum by (cluster) (
   sparkdash_memory_available_bytes
     * on(node) group_left(group) (max by (node, group) (up{job="spark-dash-agent"}))
 )
 
 # The question that actually matters: what is the largest model that fits?
-# The best single group can offer — NOT the sum of all groups.
+# The best single cluster can offer — NOT the sum of all clusters.
 max(
-  sum by (group) (sparkdash_memory_available_bytes)
+  sum by (cluster) (sparkdash_memory_available_bytes)
 )
 ```
 
 Two traps:
 
-- **A standalone node carries no `group` label at all**, deliberately: an empty
-  label would create a distinct series and a phantom group in aggregation. In
-  PromQL that means `sum by (group)` buckets every standalone node together
-  under the empty string. Where that matters, group on `node` for the standalone
-  case, which is what the backend's `group_key` does — a standalone node is a
-  group of one.
-- **`sum` without `by (group)` is almost always the wrong answer.** It reads as
+- **A standalone node carries no `cluster` label at all**, deliberately: an
+  empty label would create a distinct series and a phantom cluster in
+  aggregation. In PromQL that means `sum by (cluster)` buckets every standalone
+  node together under the empty string. Where that matters, aggregate on `node`
+  for the standalone case, which is what the backend's `cluster_key` does — a
+  standalone node is a cluster of one.
+- **The label is a name, never a count.** "pair" is wrong the moment a third
+  node joins. It is also what you read in an alert, so it has to stand alone
+  without a lookup table.
+- **`sum` without `by (cluster)` is almost always the wrong answer.** It reads as
   cluster capacity and isn't.
 
 ## 5. Anomaly thresholds (starting point for Phase 3 alerting)

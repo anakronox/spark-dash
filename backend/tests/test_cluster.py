@@ -215,3 +215,51 @@ class TestAgentConfigEndpoint:
             resp = c.get("/api/agent-config", params={"node": "sparky"})
         assert resp.status_code == 200
         assert resp.json()["configured"] is False
+
+
+class TestClusterNaming:
+    """A cluster is NAMED, not sized or numbered.
+
+    `pair` was the old example and it is wrong as soon as a third node joins —
+    clusters in the wild run to 32. The field is a free string so any name
+    works, including a number for anyone who wants one; what it must never be
+    is a magic sentinel, because omitting the key already means standalone.
+    """
+
+    def test_a_name_is_carried_through(self):
+        nodes = by_id(parse_cluster("""
+nodes:
+  - id: a
+    host: 10.0.0.1
+    cluster: inference-west
+  - id: b
+    host: 10.0.0.2
+    cluster: inference-west
+  - id: solo
+    host: 10.0.0.3
+"""))
+        assert nodes["a"].cluster == nodes["b"].cluster == "inference-west"
+        assert nodes["solo"].cluster is None
+
+    def test_any_scalar_works_including_a_number(self):
+        """No schema change is needed to number clusters — but there is no
+        sentinel value, so `0` is a cluster called "0" and not standalone."""
+        nodes = by_id(parse_cluster("nodes:\n  - id: a\n    host: h\n    cluster: 2\n"))
+        assert nodes["a"].cluster == "2"
+
+    def test_absent_means_standalone_not_a_sentinel(self):
+        nodes = by_id(parse_cluster("nodes:\n  - id: a\n    host: h\n"))
+        assert nodes["a"].cluster is None
+
+    def test_old_group_key_is_still_honoured(self, caplog):
+        """Silently ignoring it would drop the node to standalone, and that
+        breaks capacity arithmetic in the dangerous direction — free memory
+        stops pooling, so a model that would fit reads as one that won't."""
+        nodes = by_id(parse_cluster("nodes:\n  - id: a\n    host: h\n    group: legacy\n"))
+        assert nodes["a"].cluster == "legacy"
+
+    def test_cluster_wins_when_both_are_present(self):
+        nodes = by_id(
+            parse_cluster("nodes:\n  - id: a\n    host: h\n    group: old\n    cluster: new\n")
+        )
+        assert nodes["a"].cluster == "new"

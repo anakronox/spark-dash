@@ -64,7 +64,7 @@ class ClusterNode:
 
     node_id: str
     host: str
-    group: str | None = None
+    cluster: str | None = None
     agent_port: int = 9500
     node_exporter_port: int = 9100
     runtimes: NodeRuntimes = field(default_factory=NodeRuntimes)
@@ -166,16 +166,29 @@ def parse_cluster(text: str) -> list[ClusterNode]:
             raise ClusterConfigError(f"duplicate node id {node_id!r}")
         seen.add(node_id)
 
-        # Grouping is not cosmetic: clustered nodes pool memory for distributed
-        # inference, so capacity sums WITHIN a group and never across groups.
-        raw_group = entry.get("group")
-        group = str(raw_group).strip() or None if raw_group is not None else None
+        # Not cosmetic: clustered nodes pool memory for distributed inference,
+        # so capacity sums WITHIN a cluster and never across clusters.
+        #
+        # `group:` is the old spelling. Still accepted, but LOUDLY — silently
+        # ignoring it would drop the node to standalone, and that breaks
+        # capacity arithmetic in the dangerous direction: free memory stops
+        # pooling, so a model that would fit reads as one that won't.
+        raw_cluster = entry.get("cluster")
+        if raw_cluster is None and entry.get("group") is not None:
+            raw_cluster = entry.get("group")
+            log.warning(
+                "node %r uses `group:`, which was renamed to `cluster:`. Still "
+                "honoured, but rename it — a cluster is named, not sized, and "
+                "`group` will stop being read.",
+                node_id,
+            )
+        cluster = str(raw_cluster).strip() or None if raw_cluster is not None else None
 
         out.append(
             ClusterNode(
                 node_id=node_id,
                 host=host,
-                group=group,
+                cluster=cluster,
                 agent_port=int(entry.get("agent_port") or 9500),
                 node_exporter_port=int(entry.get("node_exporter_port") or 9100),
                 runtimes=parse_runtimes(entry.get("runtimes"), host),

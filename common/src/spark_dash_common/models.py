@@ -395,14 +395,20 @@ class NodeSnapshot(BaseModel):
         "build it's running has to be legible from the dashboard.",
     )
 
-    # Which group this node belongs to, or None when it stands alone.
+    # Which cluster this node belongs to, or None when it stands alone.
+    #
+    # A NAME, not a size or a number. It is rendered as a heading in the UI and
+    # written as a Prometheus label, so it has to read well in an alert at 2am;
+    # `cluster="3"` needs a decoder ring that lives nowhere. Naming it after
+    # the count ("pair") is worse still — that becomes a lie the moment a node
+    # is added, and clusters in the wild run to 32.
     #
     # Set by the backend from its inventory, not by the agent — a node has no
-    # way to know what it's been grouped with. Grouping is what makes capacity
-    # arithmetic correct: memory sums WITHIN a group (a model can span the
-    # members' pooled memory) and never across groups (it can't span machines
-    # that aren't clustered).
-    group: str | None = None
+    # way to know what it's been clustered with. Clustering is what makes
+    # capacity arithmetic correct: memory sums WITHIN a cluster (a model can
+    # span the members' pooled memory) and never across clusters (it can't
+    # span machines that aren't clustered).
+    cluster: str | None = None
     health: HealthState = HealthState.GOOD
     health_reasons: list[str] = Field(
         default_factory=list,
