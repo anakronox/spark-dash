@@ -14,4 +14,7 @@
 # - targets: ['192.168.50.61:8000']
 #   labels:
 #     node: gx10-1
-[]
+
+- targets: ['192.168.50.61:8120']
+  labels:
+    node: sparky
