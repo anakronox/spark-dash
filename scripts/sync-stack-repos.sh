@@ -117,4 +117,9 @@ case "${1:-both}" in
 esac
 
 echo
-echo "Dockhand redeploys on the git change it just saw."
+echo "Pushed to the stack repo — NOT deployed. Dockhand is not yet orchestrating"
+echo "these stacks, so nothing changes on any host until someone pulls there."
+echo
+echo "Config files (prometheus.yml, alerts.yml, alertmanager.yml) additionally"
+echo "need 'docker compose up -d --force-recreate <service>': they are mounted"
+echo "as single files, and a pull replaces the inode the container is holding."

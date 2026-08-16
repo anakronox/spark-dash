@@ -91,6 +91,8 @@ case "$TARGET" in
 esac
 
 echo
-echo "Dockhand will redeploy on the next git change to the stack repo."
-echo "To roll a new image out immediately, pin the new tag in the stack's .env"
-echo "and commit — that's the change Dockhand watches for."
+echo "Once Dockhand is orchestrating these stacks it pulls new images daily in"
+echo "off-hours, so a stack tracking :latest picks this up on its own."
+echo
+echo "Until then, rollout is manual — pin the sha above in the stack's .env and"
+echo "run 'docker compose up -d <service>' on the host."

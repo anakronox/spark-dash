@@ -114,25 +114,44 @@ Anything listed only on the left is new — copy it across from `.env.example`.
 
 ### Rolling out a new image
 
-Pin the tag the publish script printed, rather than chasing `:latest`:
+**Today (Dockhand not yet orchestrated), rollout is manual and pinning is the
+mechanism:**
 
 ```bash
-# In .env
+# In .env — the tag publish-images.sh printed
 AGENT_IMAGE=forgejo.indielab.tech/brian/spark-dash-agent:255e10e
 ```
 
 ```bash
-docker compose up -d
+docker compose up -d spark-dash-agent
 ```
 
-Two reasons to pin rather than `docker compose up -d --pull always`:
+Pin rather than `docker compose up -d --pull always`: `--pull always` re-pulls
+every image including the pinned third-party ones, so a transient registry
+outage fails a deploy that only needed to change our own container.
 
-- **Traceability.** `:latest` moves; a sha tag says exactly which commit is
-  running, and Dockhand redeploys on the git change to `.env` rather than on an
-  image that silently drifted underneath it.
-- **Fewer moving parts.** `--pull always` re-pulls every image including the
-  pinned third-party ones, so a transient Docker Hub outage fails a deploy that
-  only needed to change our own container.
+#### Where this is going: `:latest` + a daily pull
+
+Dockhand is configured per managed environment to **pull new images once a day
+in off-hours**, so once it is actually driving this stack the `.env` will track
+`:latest` and converge on its own. That is the settled design — see
+[roadmap.md](../../docs/roadmap.md) open decision 6 — and it is why images are
+pushed with both a sha tag *and* `:latest`.
+
+Two consequences of that switch, worth knowing before it happens:
+
+- **The build becomes the deploy action.** Pushing to `main` ships nothing;
+  images exist only when `publish-images.sh` runs. Running it will mean "this
+  goes live on every node in the environment within 24 hours", where today a
+  pin edit still sits between building and running.
+- **Configuration stops recording what is deployed.** `:latest` is not an
+  answer to "what was running on the 12th". That is what
+  `sparkdash_agent_build_info` is for — it records what *actually ran*, which
+  is a better answer than a pin, since a pin only ever recorded intent.
+
+Pinning does not disappear; it becomes the **exception path**. When a bad build
+lands overnight, pin the last-good sha and redeploy — no rebuild needed — then
+return to `:latest` once it is fixed.
 
 ## The safety property
 

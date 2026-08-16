@@ -556,10 +556,15 @@ get lost:
    converges without a git change — which pinning cannot do, since a pinned tag
    only moves when someone edits it.
 
-   This reverses the advice still written in
-   [../deploy/node/README.md](../deploy/node/README.md) and printed by
-   `publish-images.sh`, both of which assume a git change is the only deploy
-   trigger. **Both need updating when this lands.**
+   **Docs updated 2026-08-16.** Both stack READMEs, both `.env.example` files,
+   `publish-images.sh` and `sync-stack-repos.sh` now describe the manual
+   rollout that is true *today* and the `:latest` steady state that follows,
+   rather than asserting either as the whole truth. They previously assumed a
+   git change was the only deploy trigger.
+
+   The distinction is kept explicit rather than flipped, because a doc
+   describing a system that does not exist yet would mislead anyone deploying
+   this week — which is everyone, until Dockhand is actually driving it.
 
    Consequences, accepted:
 

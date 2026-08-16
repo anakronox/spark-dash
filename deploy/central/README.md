@@ -103,25 +103,36 @@ docker exec sparkdash-prometheus grep -c AgentBuildSkew /etc/prometheus/alerts.y
 
 ### Rolling out a new image
 
-Pin the tag the publish script printed, rather than chasing `:latest`:
+**Today (Dockhand not yet orchestrated), rollout is manual and pinning is the
+mechanism:**
 
 ```bash
-# In .env
+# In .env — the tag publish-images.sh printed
 BACKEND_IMAGE=forgejo.indielab.tech/brian/spark-dash-backend:9c2b41f
 ```
 
 ```bash
-docker compose up -d
+docker compose up -d backend
 ```
 
-Two reasons to pin rather than `docker compose up -d --pull always`:
+Pin rather than `docker compose up -d --pull always`: `--pull always` re-pulls
+every image including the pinned third-party ones, so a transient registry
+outage fails a deploy that only needed to change our own container.
 
-- **Traceability.** `:latest` moves; a sha tag says exactly which commit is
-  running, and Dockhand redeploys on the git change to `.env` rather than on an
-  image that silently drifted underneath it.
-- **Fewer moving parts.** `--pull always` re-pulls every image including the
-  pinned third-party ones, so a transient Docker Hub outage fails a deploy that
-  only needed to change our own container.
+#### Where this is going: `:latest` + a daily pull
+
+Dockhand is configured per managed environment to **pull new images once a day
+in off-hours**, so once it drives this stack the `.env` will track `:latest`
+and converge without a git change. That is the settled design — see
+[roadmap.md](../../docs/roadmap.md) open decision 6.
+
+Pinning survives as the **exception path**: when a bad build lands overnight,
+pin the last-good sha and redeploy, then return to `:latest` once fixed.
+
+> **Config files are a separate matter.** Changing `prometheus.yml`,
+> `alerts.yml` or `alertmanager.yml` needs a container *recreate*, not just a
+> new image or a reload — see the section above. A daily image pull will not
+> pick those up.
 
 ## Access model
 

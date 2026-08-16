@@ -6,3 +6,11 @@
 #
 # `.env.example` is the template; copy it and edit the copy.
 .env
+
+# Backups taken before editing the live config. Worth making, not worth
+# committing — and they contain the same values `.env` does.
+.env.bak-*
+
+# This stack has no persistent data of its own: the agent holds nothing across
+# restarts and its only mounts are read-only views of the host's /proc and
+# /sys. Nothing else to ignore, which is the point — see README.md.
