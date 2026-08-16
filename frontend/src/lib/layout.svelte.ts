@@ -17,14 +17,23 @@ export interface SectionDef {
   label: string;
 }
 
-/** Default order, top to bottom. Live state first, history below it — you come
- *  for what's happening now and scroll when that raises a question. */
+/** Default order, top to bottom.
+ *
+ * Trend first, then what's consuming the box right now, with the model roster
+ * and the swap timeline below. The node cards above already answer "what is
+ * happening this second", so the section under them is more useful showing
+ * where things have been heading than repeating the live state.
+ *
+ * Only affects browsers with no saved order: `reconcile` keeps an existing
+ * one, so anyone who has already reordered (or simply visited before) keeps
+ * what they had until they use "reset layout".
+ */
 export const SECTIONS: SectionDef[] = [
-  { id: 'models', label: 'Models' },
+  { id: 'history', label: 'History' },
   { id: 'processes', label: 'GPU processes' },
   { id: 'network', label: 'Network' },
+  { id: 'models', label: 'Models' },
   { id: 'activity', label: 'Model activity' },
-  { id: 'history', label: 'History' },
 ];
 
 const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
