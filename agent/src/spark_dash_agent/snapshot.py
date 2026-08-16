@@ -20,6 +20,7 @@ from spark_dash_common.models import (
     ProcessInfo,
     Runtimes,
     TempBands,
+    VllmMetrics,
 )
 from spark_dash_common.thresholds import TempThresholds
 
@@ -35,10 +36,12 @@ from spark_dash_agent.config import Settings
 log = logging.getLogger(__name__)
 
 
-def resolve_process_routers(
-    processes: list[ProcessInfo], routers: list[LlamaRouterMetrics]
+def resolve_process_servers(
+    processes: list[ProcessInfo],
+    routers: list[LlamaRouterMetrics],
+    vllm: list[VllmMetrics] | None = None,
 ) -> list[ProcessInfo]:
-    """Attach the owning router to each process that names a model.
+    """Attach the serving host:port — and for vLLM, the model — to each process.
 
     The join is by model name, because a llama.cpp child's `--alias` is the
     same string its router reports. The label used matches the exporter's
@@ -57,9 +60,9 @@ def resolve_process_routers(
     the host-side endpoint would need cross-namespace socket inspection for a
     case that resolves on ACTIVE state anyway.
     """
-    if not routers:
-        return processes
-
+    # NOT an early return when there are no routers: a vLLM-only node has
+    # none, and skipping the pass below would leave every engine process
+    # unattributed on exactly the deployment vLLM support is for.
     by_model: dict[str, list[LlamaRouterMetrics]] = {}
     for router in routers:
         for model in router.models:
@@ -76,19 +79,48 @@ def resolve_process_routers(
             continue
         candidates = by_model.get(proc.model, [])
         if len(candidates) == 1:
-            proc.router = _label(candidates[0])
+            proc.server = _label(candidates[0])
             continue
         active = [r for r in candidates if _has_active(r, proc.model)]
         if len(active) == 1:
-            proc.router = _label(active[0])
+            proc.server = _label(active[0])
         elif candidates:
             log.debug(
-                "model %r is ambiguous across %d routers; leaving router unset",
+                "model %r is ambiguous across %d routers; leaving server unset",
                 proc.model,
                 len(candidates),
             )
 
+    _resolve_vllm(processes, vllm or [])
     return processes
+
+
+def _resolve_vllm(processes: list[ProcessInfo], vllm: list[VllmMetrics]) -> None:
+    """Name the model and server for vLLM processes.
+
+    vLLM cannot be resolved the way llama.cpp is. It rewrites its process title
+    to a bare `VLLM::EngineCore` with NO arguments at all, so there is nothing
+    in argv to parse — verified on the GX10. The model name is only available
+    from the instance's own /metrics, which the vllm collector already scraped.
+
+    So the join is by count rather than by identity: with exactly one instance
+    configured, every vLLM process on the node belongs to it. With several,
+    there is no way to tell which engine serves which without cross-namespace
+    socket inspection, so they are left unattributed rather than guessed at —
+    the same rule the router join follows.
+    """
+    if len(vllm) != 1:
+        if len(vllm) > 1:
+            log.debug(
+                "%d vLLM instances; cannot attribute engine processes to one", len(vllm)
+            )
+        return
+
+    instance = vllm[0]
+    for proc in processes:
+        if proc.runtime == "vllm":
+            proc.model = proc.model or instance.model
+            proc.server = proc.server or instance.server
 
 
 def _point_psutil_at_host_proc(proc_path: Path) -> None:
@@ -194,7 +226,7 @@ class SnapshotBuilder:
 
         # Needs both collectors' output, so it happens here rather than inside
         # either one.
-        processes = resolve_process_routers(processes, llama)
+        processes = resolve_process_servers(processes, llama, vllm)
 
         gpu_bands, cpu_bands = self._temp_bands()
         health, reasons = assess(

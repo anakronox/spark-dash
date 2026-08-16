@@ -50,7 +50,9 @@ export interface ProcessInfo {
    * so a row here lines up with a row in the models table. Null for a router
    * parent (which serves every model and holds none) and for non-LLM work. */
   model: string | null;
-  router: string | null;
+  /* host:port this model is served from — a router for llama.cpp, the
+   * instance's own endpoint for vLLM. See ProcessInfo.server in the agent. */
+  server: string | null;
   /* Compute, as distinct from memory. A resident model holds tens of GiB while
    * using no SM at all, which looks identical to a busy one if you only read
    * bytes — this is the half that shows who is actually competing. */
@@ -120,6 +122,8 @@ export interface LlamaRouterMetrics {
 
 export interface VllmMetrics {
   model: string;
+  /** host:port. Nothing fronts a vLLM instance, so this is its own endpoint. */
+  server: string;
   requests_running: number;
   requests_waiting: number;
   kv_cache_pct: number | null;

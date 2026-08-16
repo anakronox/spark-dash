@@ -305,7 +305,7 @@ def _process_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
     # Unlabeled is a real category, not missing data: an unrecognized process
     # eating the pool is exactly what you want to see. Empty string rather than
     # a placeholder word keeps it queryable as `runtime=""`.
-    labels = ["node", "runtime", "model", "router"]
+    labels = ["node", "runtime", "model", "server"]
     memory = _g("gpu_process_memory_bytes", "GPU memory held, by workload", labels)
     count = _g("gpu_process_count", "Processes holding GPU memory, by workload", labels)
 
@@ -331,7 +331,7 @@ def _process_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
     enc_totals: dict[tuple[str, str, str], float] = {}
     dec_totals: dict[tuple[str, str, str], float] = {}
     for proc in snap.processes:
-        key = (proc.runtime or "", proc.model or "", proc.router or "")
+        key = (proc.runtime or "", proc.model or "", proc.server or "")
         totals[key] = totals.get(key, 0) + proc.gpu_mem_bytes
         counts[key] = counts.get(key, 0) + 1
         sm_totals[key] = sm_totals.get(key, 0.0) + proc.sm_pct
@@ -339,8 +339,8 @@ def _process_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         dec_totals[key] = dec_totals.get(key, 0.0) + proc.decoder_pct
 
     for key, total in sorted(totals.items()):
-        runtime, model, router = key
-        series_labels = [node, runtime, model, router]
+        runtime, model, server = key
+        series_labels = [node, runtime, model, server]
         memory.add_metric(series_labels, float(total))
         count.add_metric(series_labels, float(counts[key]))
         sm.add_metric(series_labels, sm_totals[key])

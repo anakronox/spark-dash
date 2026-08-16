@@ -22,6 +22,14 @@ from spark_dash_agent.collectors.llama_router import RateTracker
 
 log = logging.getLogger(__name__)
 
+
+def _host_port(url: str) -> str:
+    """`http://host:8120/metrics` -> `host:8120`."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    return parsed.netloc or url
+
 _M_RUNNING = "vllm:num_requests_running"
 _M_WAITING = "vllm:num_requests_waiting"
 _M_KV_CACHE = "vllm:kv_cache_usage_perc"
@@ -85,6 +93,10 @@ class VllmCollector(Collector[list[VllmMetrics]]):
 
         return VllmMetrics(
             model=model_name or url,
+            # host:port, so it sits in the same column as a llama.cpp router
+            # rather than leaving a gap. Nothing fronts a vLLM instance, so its
+            # own endpoint IS where the model is served from.
+            server=_host_port(url),
             requests_running=int(values.get(_M_RUNNING, 0)),
             requests_waiting=int(values.get(_M_WAITING, 0)),
             # vLLM reports this as a 0-1 fraction; the UI wants percent.

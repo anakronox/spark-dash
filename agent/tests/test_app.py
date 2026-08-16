@@ -212,7 +212,7 @@ def test_processes_are_exported_aggregated_never_per_pid():
     assert 'name="llama-server"' not in text
     assert (
         'sparkdash_gpu_process_memory_bytes{model="qwen3-32b",node="gx10-1",'
-        'router="",runtime="llama.cpp"} 4.2e+10' in text
+        'runtime="llama.cpp",server=""} 4.2e+10' in text
     )
 
 
@@ -226,7 +226,7 @@ def test_process_memory_sums_within_a_workload():
             ]
         )
     )
-    labels = 'model="",node="gx10-1",router="",runtime="llama.cpp"'
+    labels = 'model="",node="gx10-1",runtime="llama.cpp",server=""'
     assert f"sparkdash_gpu_process_memory_bytes{{{labels}}} 3500.0" in text
     assert f"sparkdash_gpu_process_count{{{labels}}} 2.0" in text
 
@@ -237,7 +237,7 @@ def test_unlabeled_process_still_reports_its_memory():
     text = render(
         make_snapshot(processes=[ProcessInfo(pid=9, name="mystery", gpu_mem_bytes=5_000)])
     )
-    labels = 'model="",node="gx10-1",router="",runtime=""'
+    labels = 'model="",node="gx10-1",runtime="",server=""'
     assert f"sparkdash_gpu_process_memory_bytes{{{labels}}} 5000.0" in text
 
 

@@ -22,7 +22,7 @@
     key: string;
     node: string;
     runtime: string;
-    router: string;
+    server: string;
     model: string;
     state: ModelState;
     rawStatus: string;
@@ -49,7 +49,7 @@
             key: `${node.node_id}/${router.endpoint}/${m.name}`,
             node: node.node_id,
             runtime: 'llama.cpp',
-            router: router.name || router.endpoint,
+            server: router.name || router.endpoint,
             model: m.name,
             state: m.state,
             rawStatus: m.raw_status,
@@ -65,7 +65,10 @@
           key: `${node.node_id}/vllm/${v.model}`,
           node: node.node_id,
           runtime: 'vllm',
-          router: '—',
+          // vLLM has no router in front of it, so its own endpoint is where
+          // the model is served from. Showing a dash here made it look like
+          // missing data rather than a different topology.
+          server: v.server || '—',
           model: v.model,
           state: 'active',
           rawStatus: '',
@@ -106,7 +109,7 @@
             <th scope="col">model</th>
             <th scope="col">state</th>
             <th scope="col">node</th>
-            <th scope="col">router</th>
+            <th scope="col">server:port</th>
             <th scope="col" class="r">tok/s</th>
             <th scope="col" class="r">kv</th>
             <th scope="col" class="r">run</th>
@@ -124,7 +127,7 @@
                 </span>
               </td>
               <td class="dim">{row.node}</td>
-              <td class="dim">{row.router}</td>
+              <td class="dim">{row.server}</td>
               <!-- Throughput and cache exist only while a model is resident.
                    A zero would be indistinguishable from a loaded-but-idle
                    model, so absent data stays absent. -->

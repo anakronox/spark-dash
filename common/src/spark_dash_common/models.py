@@ -205,11 +205,18 @@ class ProcessInfo(BaseModel):
         "per-model router metrics. None for a router parent (which serves no "
         "single model) and for non-LLM workloads.",
     )
-    router: str | None = Field(
+    server: str | None = Field(
         default=None,
-        description="Router serving this model, matched by name. None when no "
-        "router claims the model, or when several do and none is ACTIVE — "
-        "guessing between them would attribute memory to the wrong router.",
+        description="host:port this model is served from.\n\n"
+        "For a llama.cpp child this is the router that owns it, matched by "
+        "alias. For vLLM it is the instance's own endpoint, since nothing sits "
+        "in front of it. Named `server` rather than `router` because a "
+        "standalone llama.cpp, sglang or vLLM process has no router at all, and "
+        "a column that only ever populated for one runtime read as missing data "
+        "rather than as 'not applicable'.\n\n"
+        "None when it genuinely cannot be determined — several routers claiming "
+        "the same alias with none ACTIVE, or more than one vLLM instance where "
+        "the process cannot be matched to one.",
     )
 
     # --- compute, as distinct from memory -----------------------------------
@@ -331,6 +338,12 @@ class VllmMetrics(BaseModel):
     """One vLLM instance, scraped from its native /metrics endpoint."""
 
     model: str
+    server: str = Field(
+        default="",
+        description="host:port this instance is served from. vLLM has no router "
+        "in front of it, so this is the endpoint itself — which is what lets it "
+        "sit in the same column as a llama.cpp router rather than showing a gap.",
+    )
     requests_running: int = 0
     requests_waiting: int = 0
     kv_cache_pct: float | None = None
