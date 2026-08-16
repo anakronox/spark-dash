@@ -470,6 +470,41 @@ cannot clear is one you learn to ignore**, which is worse than no alert.
 - [ ] **G3.** Detect *configured but absent*: the inverse of F8. A target that
   has been down long enough is either broken or retired, and the dashboard
   should say which it cannot tell.
+- [ ] **G4.** **Retire a scrape target from the UI — removal only.**
+
+  Silencing is the wrong tool for something never coming back. It hides the
+  alert while leaving the dead target in config, so scrapes keep failing and
+  the alert returns the moment the silence expires. What is wanted is for the
+  target to stop existing.
+
+  **The line is environmental vs. scraped, and it is not arbitrary.** A GPU
+  temperature or memory-pressure alert has no "retire" concept — the hardware
+  still exists, and being able to delete those alerts would let someone
+  permanently blind the dashboard to a real failure. An inference endpoint is
+  configuration: it can genuinely be decommissioned. Only scrape targets are
+  removable; environmental rules never are.
+
+  **Removal is safe where add and edit are not**, which is the asymmetry that
+  makes this workable at all. The objection to config writes was
+  request-forgery — adding a URL makes the agent fetch it. Removal cannot
+  introduce a fetch destination or repoint anything; its worst case is that
+  monitoring stops for something, the same class as a silence and no worse.
+  **So: remove from the UI, add and edit in config.**
+
+  **Blocked on where the config lives.** `targets/vllm.yml` is tracked in git,
+  so a UI that removes an entry either edits a tracked file — recreating the
+  repo-versus-live drift that cost most of 2026-08-16 — or needs git
+  credentials in the backend. Neither is acceptable.
+
+  The fix is the pattern already used for `.env`: **live config on the host,
+  template in git.** `cluster.yml` (F1) should live under `DATA_ROOT`,
+  gitignored and backend-owned, with an example committed. The backend then
+  renders *all* scrape targets from it — `vllm.yml` becomes generated like
+  `agents.yml` and `node-exporters.yml` already are — and UI removal is a
+  normal write to a file the backend owns, with no git involved.
+
+  **So G4 depends on F1**, and F1 should place `cluster.yml` under `DATA_ROOT`
+  rather than in the stack repo for exactly this reason.
 
 ### F — One server-side cluster config
 
