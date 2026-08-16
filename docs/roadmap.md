@@ -871,6 +871,32 @@ list of MY values sitting in tracked files where a placeholder belongs:
   real test of whether H1–H3 are done — the current READMEs assume the reader
   is me.
 
+**H1 gates publication; the rest is polish.** `forgejo.indielab.tech` is the
+*default image* in both compose files, not just documentation — so an
+unconfigured clone pulls from a registry the user cannot reach. That has to be
+a local-build default before anyone else runs this. The other items can follow.
+
+**Git history is kept as-is. Decided 2026-08-16.** The hostname appears in 9
+historical commits, and rewriting them was considered and rejected:
+
+- No secrets are tracked. The ntfy topic URL lives in `secrets/`, gitignored,
+  and the README teaches generating your own. A scan for credential-shaped
+  strings turns up only the `./secrets` mount path.
+- Every address in the repo is RFC1918.
+- The hostname is **already public**: `forgejo.indielab.tech` resolves on
+  1.1.1.1 and 8.8.8.8 to `192.168.50.103`. Its existence is not a secret the
+  repo would leak, and it is unreachable from outside.
+
+A rewrite would also change every sha, invalidating the image tags recorded in
+`.env` files and in `sparkdash_agent_build_info`. The history is worth more
+than that — much of the reasoning in this project lives in commit messages.
+
+**If published, it goes to GitHub, not Forgejo** — that instance is
+LAN-internal permanently. Users would clone, build locally and deploy, with no
+registry involved at all: `:latest` there means "what I last built", and
+`git pull && build && up -d` is the whole update path. The registry half of
+`publish-images.sh` stays a maintainer-only path.
+
 **Also explicitly NOT part of this: build-on-deploy.** Decided 2026-08-16
 after confirming the deploy tool supports it. Keeping the build a separate,
 explicit step preserves one-line rollback with no rebuild, keeps every node on
