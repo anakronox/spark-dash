@@ -839,6 +839,59 @@ have to double as a debugging session.
   silently ignoring it would drop a node to standalone and break capacity
   arithmetic in the dangerous direction.
 
+### J — Single-host profile (everything on one GB10)
+
+**The premise this project was built on:** the GB10 is an inference workhorse,
+and monitoring should cost it as little as possible. Most other Spark
+dashboards run directly on the Spark; this one deliberately does not, and the
+node stack is kept to two containers with no persistent state precisely so the
+box stays free for models. That is a design position, not an accident, and J
+must not quietly erode it.
+
+**But not everyone has a spare machine.** A user with one GB10 and no Proxmox
+host currently cannot run this at all, which is a worse outcome than a
+documented, opt-in single-host mode whose cost is stated up front.
+
+**Already possible — verified 2026-08-16, no code changes needed.** Every image
+in the central stack publishes linux/arm64 (`prom/prometheus`,
+`prom/alertmanager`, `prom/node-exporter`), and `publish-images.sh backend`
+run ON a GB10 produces an arm64 image natively: built in 7s, 186MB, `/health`
+200, frontend served. "Compiling for arm64" is not the work.
+
+**Measured footprint, so the trade is a number rather than a claim:**
+
+| | memory | notes |
+|---|---|---|
+| node stack today | **~101 MiB** | agent 91 + node-exporter 10 |
+| central stack adds | **~159 MiB** | backend 79 + prometheus 50 + alertmanager 21 + exporter 10 |
+| TSDB on disk | **79 MB** | at 180d retention, one node, ~4.3k series |
+
+On a 121 GiB unified pool that is ~0.13% of memory — negligible against a
+model, but it is not zero, and on GB10 it comes out of the *same* pool the
+models use. See [[gb10-unified-memory-constraint]].
+
+- [ ] **J1.** `central/compose.single-host.yaml` (or a compose profile) that
+  drops `sparkdash-central-node-exporter`. On one box it duplicates the node
+  stack's exporter on `:9100`, producing near-identical series for the same
+  host; point the `node-exporter-central` job at the node stack's instead.
+- [ ] **J2.** A `cluster.yml` example for self-addressing. The backend polls
+  each node's `host` from inside a container, so `localhost` does not work —
+  it needs the host's LAN IP. Currently an undocumented gotcha that would stop
+  a first-time single-host user cold.
+- [ ] **J3.** README section stating the trade honestly: the failure domain
+  collapses. The whole reason central lives elsewhere is that "node down" is a
+  primary alert, so hosting Prometheus on the node means a crash destroys both
+  the node and the history explaining why. Single-host users accept that; they
+  should not discover it during an outage.
+- [ ] **J4.** Surface the cost in the dashboard itself. The GPU process table
+  already attributes memory per process, so a single-host install can show what
+  monitoring costs *on this box* — turning the footprint argument into a live
+  number the user can watch. This is the feature that keeps J honest.
+
+**Pairs with H.** "Runs on one box" is the first thing anyone evaluating a
+public repo will try, so J1–J3 are effectively part of a credible quickstart
+(H4).
+
 ### H — Genericize for distribution
 
 Not urgent, and only worth doing if publishing this repo publicly becomes a

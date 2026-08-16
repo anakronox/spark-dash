@@ -91,6 +91,23 @@ host, our monitoring stack either joins the same Docker network (declared as
 the host. Prefer joining the existing network where possible — avoids relying
 on published ports that might change.
 
+## Footprint on the inference node is a design constraint
+
+The GB10 is an inference workhorse. Monitoring it should cost it as close to
+nothing as possible, which is why the per-node stack is two containers with no
+persistent state and no data directory, and why everything that stores or
+serves anything lives elsewhere.
+
+Measured 2026-08-16 on `sparky`: agent **91 MiB**, node-exporter **10 MiB** —
+about 0.08% of a 121 GiB unified pool. On GB10 that matters more than the
+percentage suggests, because there is no separate VRAM: every byte the
+monitoring stack holds is a byte a model cannot. See
+[metrics.md](metrics.md) and the unified-memory notes.
+
+Most other Spark dashboards run directly on the Spark. This one deliberately
+does not. A single-host mode for users without spare hardware is roadmap
+workstream J, and it is opt-in with its cost stated rather than the default.
+
 ## Central stack — a dedicated Proxmox VM (settled)
 
 **Decision: the central stack runs on its own Docker host — a dedicated VM on
