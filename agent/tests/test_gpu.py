@@ -235,3 +235,53 @@ class TestNumConversion:
     def test_garbage_becomes_none(self):
         assert _num("not-a-number") is None
         assert _num(object()) is None
+
+
+class FakeSample:
+    def __init__(self, pid, sm, enc=0, dec=0):
+        self.pid, self.smUtil, self.encUtil, self.decUtil = pid, sm, enc, dec
+
+
+class FakeDevice:
+    handle = object()
+
+
+class TestProcessUtilization:
+    """Per-process compute, which memory cannot show.
+
+    Measured on the GX10 with real contention: ComfyUI at 75-91% SM against
+    llama-servers that were merely resident. Plotting bytes alone made those
+    look identical.
+    """
+
+    def test_maps_pids_to_sm_encoder_decoder(self, monkeypatch):
+        import spark_dash_agent.collectors.gpu as gpu
+
+        monkeypatch.setattr(
+            gpu.libnvml,
+            "nvmlDeviceGetProcessUtilization",
+            lambda handle, since: [FakeSample(2553559, 90), FakeSample(3339966, 3, enc=74, dec=12)],
+            raising=False,
+        )
+        util = gpu.read_process_utilization(FakeDevice())
+        assert util[2553559] == (90.0, 0.0, 0.0)
+        assert util[3339966] == (3.0, 74.0, 12.0)
+
+    def test_no_samples_is_empty_not_an_error(self, monkeypatch):
+        """NVML raises NotFound when nothing has been active in the window,
+        which is an ordinary idle GPU rather than a failure."""
+        import spark_dash_agent.collectors.gpu as gpu
+
+        def boom(handle, since):
+            raise RuntimeError("NVML_ERROR_NOT_FOUND")
+
+        monkeypatch.setattr(
+            gpu.libnvml, "nvmlDeviceGetProcessUtilization", boom, raising=False
+        )
+        assert gpu.read_process_utilization(FakeDevice()) == {}
+
+    def test_unsupported_api_is_not_fatal(self, monkeypatch):
+        import spark_dash_agent.collectors.gpu as gpu
+
+        monkeypatch.delattr(gpu.libnvml, "nvmlDeviceGetProcessUtilization", raising=False)
+        assert gpu.read_process_utilization(FakeDevice()) == {}

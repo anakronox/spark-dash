@@ -51,6 +51,14 @@ export interface ProcessInfo {
    * parent (which serves every model and holds none) and for non-LLM work. */
   model: string | null;
   router: string | null;
+  /* Compute, as distinct from memory. A resident model holds tens of GiB while
+   * using no SM at all, which looks identical to a busy one if you only read
+   * bytes — this is the half that shows who is actually competing. */
+  sm_pct: number;
+  /* NVENC/NVDEC are SEPARATE fixed-function blocks: a transcoder at 70%
+   * encoder is not competing for SM, so these stay apart from sm_pct. */
+  encoder_pct: number;
+  decoder_pct: number;
 }
 
 export interface NetworkInterface {

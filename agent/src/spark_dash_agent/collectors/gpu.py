@@ -11,6 +11,7 @@ a value, so every read goes through `_num()` to turn that into `None`.
 from __future__ import annotations
 
 import logging
+import time
 
 from nvitop import NA, Device, libnvml
 from spark_dash_common.models import GpuMetrics, ProcessInfo
@@ -160,6 +161,61 @@ _COMFYUI_FLAGS = (
     "--use-sage-attention",
     "--disable-smart-memory",
 )
+
+
+#: How far back to ask NVML for process utilization samples.
+#
+#: The driver keeps only the MOST RECENT sample per process — verified on the
+#: GX10, where windows of 1s, 5s and 20s all returned exactly one sample per
+#: pid. So this is a staleness bound rather than an averaging window: long
+#: enough that a briefly-idle process isn't dropped, short enough that a
+#: process which has genuinely stopped working disappears instead of lingering
+#: at its last value.
+PROCESS_UTIL_WINDOW_S = 5.0
+
+
+def read_process_utilization(device: Device) -> dict[int, tuple[float, float, float]]:
+    """Per-process compute utilization: pid -> (sm, encoder, decoder) percent.
+
+    This is the half of GPU contention that memory can't show. A model can hold
+    26GiB and use no SM at all while idle, which looks identical to a busy one
+    if you only plot bytes — and on this box the actual compute competition
+    turned out to be ComfyUI at 75-91% SM against models that were merely
+    resident.
+
+    Processes with no recent activity are ABSENT from the samples rather than
+    reported as zero, so a missing pid means idle. Callers should default to 0
+    rather than treating it as unknown.
+
+    A caveat worth carrying: these are instantaneous samples of a time-sliced
+    resource. They do not sum to overall GPU utilization exactly (measured
+    82-96% against an overall 96%), and in principle can exceed it. They answer
+    "who is competing" rather than "what fraction of the device".
+    """
+    getter = getattr(libnvml, "nvmlDeviceGetProcessUtilization", None)
+    if getter is None:
+        return {}
+    since = int((time.time() - PROCESS_UTIL_WINDOW_S) * 1e6)
+    try:
+        samples = getter(device.handle, since)
+    except Exception:  # noqa: BLE001 — unsupported, or simply nothing running
+        # NVML raises NotFound rather than returning empty when no process has
+        # been active in the window, which is a normal idle state and not worth
+        # logging above debug.
+        log.debug("process utilization unavailable", exc_info=True)
+        return {}
+
+    out: dict[int, tuple[float, float, float]] = {}
+    for s in samples:
+        pid = getattr(s, "pid", None)
+        if pid is None:
+            continue
+        out[int(pid)] = (
+            float(getattr(s, "smUtil", 0) or 0),
+            float(getattr(s, "encUtil", 0) or 0),
+            float(getattr(s, "decUtil", 0) or 0),
+        )
+    return out
 
 
 def _read_applications_clock(device: Device) -> float | None:
@@ -365,6 +421,8 @@ class GpuCollector(Collector[GpuMetrics]):
         """
         device = self._get_device()
         out: list[ProcessInfo] = []
+        # One NVML call for the whole device rather than one per process.
+        utilization = read_process_utilization(device)
 
         for pid, proc in device.processes().items():
             try:
@@ -373,6 +431,8 @@ class GpuCollector(Collector[GpuMetrics]):
                 # Read once: it's a /proc access per process, and both the
                 # runtime and the model are derived from it.
                 command = _command_line(proc)
+                # Absent means idle, so 0 is a reading and not a missing value.
+                sm, enc, dec = utilization.get(pid, (0.0, 0.0, 0.0))
                 out.append(
                     ProcessInfo(
                         pid=pid,
@@ -380,6 +440,9 @@ class GpuCollector(Collector[GpuMetrics]):
                         gpu_mem_bytes=int(gpu_mem),
                         runtime=infer_runtime(str(name), command, _cwd(proc)),
                         model=infer_model(command),
+                        sm_pct=sm,
+                        encoder_pct=enc,
+                        decoder_pct=dec,
                     )
                 )
             except Exception:  # noqa: BLE001 — a process exiting mid-scan is normal

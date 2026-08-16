@@ -309,19 +309,49 @@ def _process_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
     memory = _g("gpu_process_memory_bytes", "GPU memory held, by workload", labels)
     count = _g("gpu_process_count", "Processes holding GPU memory, by workload", labels)
 
+    # Compute, kept separate from memory because the two answer different
+    # questions and routinely disagree: a resident model holds tens of GiB
+    # while using no SM at all, which is indistinguishable from a busy one if
+    # only bytes are plotted.
+    #
+    # These are instantaneous samples of a time-sliced resource. They track
+    # overall GPU utilization closely but do not equal it (82-96% measured
+    # against an overall 96%), so they answer "who is competing" rather than
+    # "what fraction of the device".
+    sm = _g("gpu_process_sm_percent", "Share of SM time, by workload", labels)
+    # Encoder and decoder are SEPARATE fixed-function blocks. A transcoder at
+    # 74% encoder is not competing for SM, and folding it into one number would
+    # claim contention that isn't there.
+    enc = _g("gpu_process_encoder_percent", "NVENC utilization, by workload", labels)
+    dec = _g("gpu_process_decoder_percent", "NVDEC utilization, by workload", labels)
+
     totals: dict[tuple[str, str, str], int] = {}
     counts: dict[tuple[str, str, str], int] = {}
+    sm_totals: dict[tuple[str, str, str], float] = {}
+    enc_totals: dict[tuple[str, str, str], float] = {}
+    dec_totals: dict[tuple[str, str, str], float] = {}
     for proc in snap.processes:
         key = (proc.runtime or "", proc.model or "", proc.router or "")
         totals[key] = totals.get(key, 0) + proc.gpu_mem_bytes
         counts[key] = counts.get(key, 0) + 1
+        sm_totals[key] = sm_totals.get(key, 0.0) + proc.sm_pct
+        enc_totals[key] = enc_totals.get(key, 0.0) + proc.encoder_pct
+        dec_totals[key] = dec_totals.get(key, 0.0) + proc.decoder_pct
 
-    for (runtime, model, router), total in sorted(totals.items()):
-        memory.add_metric([node, runtime, model, router], float(total))
-        count.add_metric([node, runtime, model, router], float(counts[(runtime, model, router)]))
+    for key, total in sorted(totals.items()):
+        runtime, model, router = key
+        series_labels = [node, runtime, model, router]
+        memory.add_metric(series_labels, float(total))
+        count.add_metric(series_labels, float(counts[key]))
+        sm.add_metric(series_labels, sm_totals[key])
+        enc.add_metric(series_labels, enc_totals[key])
+        dec.add_metric(series_labels, dec_totals[key])
 
     yield memory
     yield count
+    yield sm
+    yield enc
+    yield dec
 
 
 def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:

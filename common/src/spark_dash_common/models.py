@@ -212,6 +212,30 @@ class ProcessInfo(BaseModel):
         "guessing between them would attribute memory to the wrong router.",
     )
 
+    # --- compute, as distinct from memory -----------------------------------
+    #
+    # Memory answers "what is resident"; these answer "what is actually
+    # running". They diverge constantly: a model can hold 26GiB and use no SM
+    # at all while idle, which looks identical to a busy one if you only plot
+    # memory.
+    sm_pct: float = Field(
+        default=0.0,
+        ge=0,
+        description="Share of sampled time this process had work on the SMs. "
+        "This is the contention that matters for inference latency. Absent "
+        "from NVML's samples means idle, so 0 is a reading rather than a gap.",
+    )
+    encoder_pct: float = Field(
+        default=0.0,
+        ge=0,
+        description="NVENC utilization. A SEPARATE fixed-function block, so a "
+        "process at 70% here is not competing for SM — which is exactly why "
+        "it is reported apart from sm_pct rather than folded into it.",
+    )
+    decoder_pct: float = Field(
+        default=0.0, ge=0, description="NVDEC utilization. Separate block, as encoder_pct."
+    )
+
 
 class ModelState(StrEnum):
     """Lifecycle of a model registered with a llama.cpp router.

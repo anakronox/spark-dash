@@ -28,6 +28,9 @@
     model: string | null;
     bytes: number;
     sharePct: number;
+    smPct: number;
+    encPct: number;
+    decPct: number;
   }
 
   const rows = $derived.by<Row[]>(() => {
@@ -43,6 +46,9 @@
           runtime: p.runtime,
           model: p.model,
           bytes: p.gpu_mem_bytes,
+          smPct: p.sm_pct,
+          encPct: p.encoder_pct,
+          decPct: p.decoder_pct,
           sharePct: ratioPct(p.gpu_mem_bytes, total),
         });
       }
@@ -79,6 +85,7 @@
             <th scope="col">model</th>
             <th scope="col">node</th>
             <th scope="col" class="r">pid</th>
+            <th scope="col" class="r">sm</th>
             <th scope="col" class="r">gpu mem</th>
             <th scope="col" class="share">share of pool</th>
           </tr>
@@ -111,6 +118,27 @@
               </td>
               <td class="dim">{row.node}</td>
               <td class="r num dim">{row.pid}</td>
+              <td class="r num compute">
+                {#if row.smPct > 0}
+                  <span class="sm">{row.smPct.toFixed(0)}%</span>
+                {:else}
+                  <!-- Absent from NVML's samples means idle, so this is a
+                       reading rather than missing data. Dimmed rather than
+                       blank: a resident-but-idle model is the interesting
+                       case, and a gap would read as "unknown". -->
+                  <span class="dim">0%</span>
+                {/if}
+                {#if row.encPct > 0 || row.decPct > 0}
+                  <!-- Encoder/decoder are separate fixed-function blocks, so
+                       this work is NOT competing for SM. Shown small and apart
+                       so it explains a busy GPU without implying contention
+                       that isn't there. -->
+                  <span class="codec dim" title="NVENC / NVDEC — separate from SM">
+                    {row.encPct > 0 ? `enc ${row.encPct.toFixed(0)}%` : ''}
+                    {row.decPct > 0 ? `dec ${row.decPct.toFixed(0)}%` : ''}
+                  </span>
+                {/if}
+              </td>
               <td class="r num">{gib(row.bytes)}</td>
               <td class="share">
                 <!-- An inline bar rather than a separate chart: the number and
@@ -206,6 +234,23 @@
   .model {
     font-family: var(--font-mono, ui-monospace, monospace);
     font-size: 11px;
+  }
+
+  /* Compute sits beside memory rather than in its own panel: the question
+     "who is competing" is only meaningful next to "who is resident". */
+  .compute {
+    min-width: 96px;
+  }
+
+  .sm {
+    color: var(--series-3);
+    font-weight: 500;
+  }
+
+  .codec {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 0.04em;
   }
 
   .bar-track {
