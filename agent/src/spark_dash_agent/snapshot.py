@@ -180,6 +180,15 @@ class SnapshotBuilder:
         cpu = self._cpu.safe_collect(errors)
         network = self._network.safe_collect(errors) or []
         rdma = self._rdma.safe_collect(errors) or []
+        # Tell the router collector which models are actually working, so it
+        # only scrapes those. `/metrics?model=` resets the router's idle timer,
+        # so scraping an idle-but-loaded model would keep it resident forever —
+        # measured, see `LlamaRouterCollector._busy_models`. NVML's per-process
+        # SM view is independent of the router, which is what makes it a safe
+        # signal to gate on.
+        self._llama.set_busy_models(
+            {p.model for p in processes if p.model and p.sm_pct > 0}
+        )
         llama = self._llama.safe_collect(errors) or []
         vllm = self._vllm.safe_collect(errors) or []
 

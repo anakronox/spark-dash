@@ -126,13 +126,48 @@ class TestNeverWakeASleepingModel:
                 model_entry("cold", "unloaded"),
             ]
         )
-        LlamaRouterCollector(
+        collector = LlamaRouterCollector(
             ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
-        ).collect()
+        )
+        # Both gates must be open: allowlisted AND doing real GPU work.
+        collector.set_busy_models({"active-one", "sleeper", "cold"})
+        collector.collect()
 
         assert len(router.metrics_requests) == 1
         assert "active-one" in router.metrics_requests[0]
         assert not any("sleeper" in u or "cold" in u for u in router.metrics_requests)
+
+    def test_loaded_but_idle_model_is_not_scraped(self):
+        """The regression this replaced, and it cost real memory.
+
+        `/metrics?model=` resets the router's idle timer. Measured on the GX10:
+        a model that had slept for 171 minutes under `/v1/models` and `/props`
+        polling stayed ACTIVE for 25+ minutes with a completely flat token
+        counter once metrics scraping was enabled — polling every couple of
+        seconds against a 1200s timeout meant the timer could never expire, and
+        26.4 GiB stayed pinned indefinitely.
+
+        A loaded model with no GPU work must therefore be left alone, so its
+        idle timer runs out and the router can reclaim the memory.
+        """
+        router = RecordingRouter([model_entry("idle-but-loaded", "loaded")])
+        collector = LlamaRouterCollector(
+            ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
+        )
+        # Allowlisted and ACTIVE, but doing no work — the busy set is empty.
+        collector.collect()
+
+        assert router.metrics_requests == []
+
+    def test_busy_set_is_not_a_substitute_for_the_allowlist(self):
+        """Both gates independently. A model can be working hard on a router
+        the operator never opted in, and it still must not be touched."""
+        router = RecordingRouter([model_entry("busy", "loaded")])
+        collector = LlamaRouterCollector(["http://r"], transport=router.transport())
+        collector.set_busy_models({"busy"})
+        collector.collect()
+
+        assert router.metrics_requests == []
 
     def test_unknown_status_is_not_scraped(self):
         """A future llama.cpp inventing a new status must not be able to trick
@@ -168,11 +203,13 @@ class TestNeverWakeASleepingModel:
             return httpx.Response(200, text=METRICS_BODY)
 
         requested: list[str] = []
-        LlamaRouterCollector(
+        collector = LlamaRouterCollector(
             ["http://small:8001", "http://huge:8108"],
             transport=httpx.MockTransport(handler),
             metrics_allowlist=["http://small:8001"],
-        ).collect()
+        )
+        collector.set_busy_models({"m"})
+        collector.collect()
 
         metrics_urls = [u for u in requested if "/metrics" in u]
         assert len(metrics_urls) == 1
@@ -217,11 +254,13 @@ class TestNeverWakeASleepingModel:
                 model_entry("qwen36-35b", "loaded"),
             ]
         )
-        result = LlamaRouterCollector(
+        collector = LlamaRouterCollector(
             ["http://192.168.50.61:8001"],
             transport=router.transport(),
             metrics_allowlist=["http://192.168.50.61:8001"],
-        ).collect()[0]
+        )
+        collector.set_busy_models({"qwen36-35b", "cydonia-24b", "gemma4-26b"})
+        result = collector.collect()[0]
 
         assert [m.name for m in result.active_models] == ["qwen36-35b"]
         assert [m.name for m in result.sleeping_models] == ["cydonia-24b", "gemma4-26b"]
@@ -332,9 +371,11 @@ class TestRouterProperties:
 class TestActiveModelMetrics:
     def test_parses_metrics_for_active_model(self):
         router = RecordingRouter([model_entry("m", "loaded")])
-        result = LlamaRouterCollector(
+        collector = LlamaRouterCollector(
             ["http://r"], transport=router.transport(), metrics_allowlist=["http://r"]
-        ).collect()[0]
+        )
+        collector.set_busy_models({"m"})
+        result = collector.collect()[0]
         model = result.models[0]
 
         assert model.requests_running == 2

@@ -190,10 +190,41 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
                 url,
             )
 
+        # Models with real GPU work happening right now, set by the snapshot
+        # builder from NVML's per-process SM samples before each collect.
+        #
+        # THIS IS WHY THE MODEL CAN STILL SLEEP. A `/metrics?model=` request
+        # resets the router's idle timer — measured on the GX10, where a model
+        # that had previously slept for 171 minutes under `/v1/models` and
+        # `/props` polling stayed active for 25+ minutes with a completely flat
+        # token counter once metrics scraping was switched on. Polling every
+        # couple of seconds against a 1200s timeout meant the timer could never
+        # expire, and the model held 26.4 GiB indefinitely.
+        #
+        # SM utilization comes from NVML, which the router cannot see, so
+        # gating on it breaks that feedback loop rather than trading one
+        # problem for another: an idle model stops being polled and its timer
+        # runs out normally, while a busy one is scraped and would have had its
+        # timer reset by the inference itself anyway.
+        #
+        # Empty means scrape nothing. That is deliberate — if the GPU collector
+        # fails we lose throughput numbers rather than silently pinning every
+        # loaded model in memory.
+        self._busy_models: set[str] = set()
+
         # Test seam — lets the suite assert which URLs are actually requested,
         # which is how the "never wake a sleeping model" guarantee is verified.
         self._transport = transport
         self._rates = RateTracker()
+
+    def set_busy_models(self, names: set[str]) -> None:
+        """Which models have GPU work in flight, from NVML's per-process view.
+
+        Called before `collect()`. Kept as state rather than a `collect()`
+        argument so the `Collector.safe_collect` contract stays uniform across
+        every collector.
+        """
+        self._busy_models = names
 
     def collect(self) -> list[LlamaRouterMetrics]:
         if not self._base_urls:
@@ -288,6 +319,11 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         the operator never opted in.
         """
         if base_url not in self._metrics_allowlist:
+            return
+
+        # Busy right now? See `_busy_models`. Without this the scrape itself
+        # keeps the model awake forever.
+        if model.name not in self._busy_models:
             return
 
         try:
