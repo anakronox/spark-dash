@@ -1,9 +1,12 @@
 # vLLM scrape targets — Prometheus file_sd format.
 #
-# HAND-MANAGED, unlike agents.yml and node-exporters.yml which the backend
-# renders from cluster.yml. vLLM instances don't map one-per-node — a node can
-# run several on arbitrary ports — so there's nothing to derive from the node
-# list.
+# HAND-MANAGED, unlike targets/agents.yml and targets/node-exporters.yml which
+# the backend renders from cluster.yml. vLLM instances don't map one-per-node —
+# a node can run several on arbitrary ports — so there's nothing to derive from
+# the node list.
+#
+# It lives in config/ for exactly that reason: this directory is what git
+# tracks and humans edit, while targets/ is what the backend writes.
 #
 # vLLM exposes /metrics natively, so Prometheus scrapes it directly rather than
 # going through the agent. Empty until vLLM instances are running.

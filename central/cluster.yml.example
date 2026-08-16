@@ -1,10 +1,11 @@
 # The cluster — nodes, groups, and what each one serves.
 #
-#   cp cluster.yml.example /docker/spark-dash-stack-central/cluster.yml
+#   cp cluster.yml.example cluster/cluster.yml
 #
-# THIS FILE IS NOT TRACKED IN GIT once copied, the same way `.env` isn't. It
-# holds a deployment's live values, and a UI that retires a decommissioned
-# endpoint has to be able to write it without holding git credentials.
+# THIS FILE IS NOT TRACKED IN GIT once copied, the same way `.env` isn't —
+# `cluster/` is gitignored. It holds a deployment's live values, and a UI that
+# retires a decommissioned endpoint has to be able to write it without holding
+# git credentials.
 #
 # It replaces two things that used to be separate: SPARK_NODES here, and each
 # node's own LLAMA_ROUTER_URLS / VLLM_URLS / LLAMA_METRICS_ROUTERS. Those lived
@@ -60,7 +61,7 @@ nodes:
         - 8120
 
   # When nodes 2 and 3 arrive they are additions here and nothing else — no
-  # per-node file to edit, no stack repo per node.
+  # per-node file to edit, and nothing node-specific in the node stack.
   #
   # - id: spark2
   #   host: 192.168.50.62

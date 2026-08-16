@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # The cluster definition — nodes, groups, and what each one serves.
     #
-    # Under DATA_ROOT rather than in the stack repo, deliberately: it is live
+    # In the stack directory but gitignored, deliberately: it is live
     # config like `.env`, and a future UI that retires a decommissioned
     # endpoint has to be able to write it without touching git. An example is
     # committed; this file is not.

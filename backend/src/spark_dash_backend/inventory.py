@@ -260,7 +260,7 @@ def _generated_header(source: str) -> str:
     takes."""
     origin = {
         "cluster.yml": "cluster.yml on the monitoring VM",
-        "env": "the SPARK_NODES environment variable in deploy/central/.env",
+        "env": "the SPARK_NODES environment variable in central/.env",
     }.get(source, "the Prometheus target files themselves")
     return (
         "# GENERATED FILE — do not edit.\n"

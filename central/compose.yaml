@@ -1,11 +1,11 @@
 # Central monitoring stack — runs on a dedicated Proxmox VM, never on a GX10.
-# Deployed by Dockhand from git.
+# Cloned from git and started by hand; see README.md.
 #
 # The reasoning is failure domains, not resources: "node down" is a primary
 # alert, so hosting Prometheus on node 1 means a node-1 crash destroys both the
 # node and the history explaining why. See docs/deployment.md.
 #
-# ADDING A NODE: add it to cluster.yml under $DATA_ROOT/cluster. That is the
+# ADDING A NODE: add it to cluster.yml under ./cluster. That is the
 # only place the cluster is defined — identity, grouping and the runtimes each
 # node serves, together. The backend re-reads it on a TTL and renders
 # Prometheus's scrape targets from it, and Prometheus picks those up on its
@@ -19,7 +19,7 @@ services:
     # Runs as `nobody` (65534) by default, which will not be able to write to a
     # bind-mounted host directory owned by anyone else — Prometheus panics on
     # startup with "Unable to create mmap-ed active query log". Set PUID/PGID
-    # to whatever owns DATA_ROOT rather than chowning host dirs to 65534.
+    # to whatever owns this directory rather than chowning host dirs to 65534.
     user: "${PUID:-65534}:${PGID:-65534}"
     command:
       - '--config.file=/etc/prometheus/config/prometheus.yml'
@@ -29,9 +29,11 @@ services:
       - '--storage.tsdb.retention.time=${PROM_RETENTION:-30d}'
       - '--web.enable-lifecycle'
     volumes:
-      # Config comes from git (this stack dir, synced by hawser). Data and
-      # generated files go under DATA_ROOT so they're visible and backup-able
-      # rather than buried in /var/lib/docker.
+      # EVERY MOUNT BELOW IS `./something`, relative to this stack directory.
+      # Config is tracked in git; the rest is runtime state the containers
+      # write, gitignored and sitting right here so it is visible and
+      # backup-able rather than buried in /var/lib/docker.
+      #
       # A DIRECTORY, not three single files. Single-file bind mounts follow
       # the INODE: `git pull` replaces a file rather than editing it, so the
       # container kept reading the old inode while the host showed the new
@@ -42,17 +44,19 @@ services:
       #
       # A directory mount resolves each entry on access, so a replaced file is
       # picked up without recreating the container — which is exactly why
-      # targets/vllm.yml worked first time while alerts.yml did not.
+      # the vLLM targets worked first time while alerts.yml did not: one was
+      # already inside a directory mount, the other was a single-file mount.
       - ./config:/etc/prometheus/config:ro
-      # Two target directories, deliberately separate. A single directory
-      # can't work: the generated mount would hide the stack dir's own files,
-      # so hand-maintained targets would silently never be scraped.
+      # ./targets is PURELY generated — written by the backend from
+      # cluster.yml, gitignored, never hand-edited.
       #
-      #   generated/  written by the backend from cluster.yml
-      #   static/     hand-maintained in git (vLLM instances)
-      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/targets:/etc/prometheus/targets/generated:ro
-      - ./targets:/etc/prometheus/targets/static:ro
-      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/prometheus:/prometheus
+      # The hand-maintained vLLM targets used to live in a second directory
+      # mounted at targets/static, which forced the generated one to be named
+      # through a variable so the two could not collide. They are config, not
+      # data, so they moved into ./config as vllm-targets.yml and the whole
+      # split went away — see config/prometheus.yml's vllm job.
+      - ./targets:/etc/prometheus/targets/generated:ro
+      - ./prometheus:/prometheus
     ports:
       # LAN-reachable. Prometheus has no auth of its own, so this relies on the
       # LAN being the trust boundary — which it is here: only the dashboard on
@@ -76,9 +80,9 @@ services:
     volumes:
       # Directory mount, same reasoning as Prometheus above.
       - ./config:/etc/alertmanager/config:ro
-      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/alertmanager:/alertmanager
+      - ./alertmanager:/alertmanager
       # The ntfy topic URL, kept off git — see alertmanager.yml.
-      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/secrets:/etc/alertmanager/secrets:ro
+      - ./secrets:/etc/alertmanager/secrets:ro
     ports:
       # LAN-reachable, same reasoning as Prometheus. Mainly used for silencing
       # an alert while you work on it; firing alerts show in the dashboard.
@@ -91,7 +95,7 @@ services:
     container_name: sparkdash-backend
     restart: unless-stopped
     # Same reasoning as prometheus: it writes the generated scrape targets, so
-    # it needs write access to DATA_ROOT/targets. The image's own user is
+    # it needs write access to ./targets. The image's own user is
     # 10002; PUID overrides it to match the host.
     user: "${PUID:-10002}:${PGID:-10002}"
     depends_on:
@@ -114,7 +118,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       # Writable here — this is the service that renders the target files.
-      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/targets:/etc/prometheus/targets/generated
+      - ./targets:/etc/prometheus/targets/generated
       # The cluster definition. A DIRECTORY mount, not a file: single-file
       # mounts follow the inode, and any safe write (write-temp-then-rename,
       # which is what the retire-endpoint UI will do) replaces it — leaving the
@@ -126,7 +130,7 @@ services:
       #
       # NOT read-only: G4 will have the dashboard retire a decommissioned
       # endpoint by removing it from here.
-      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/cluster:/etc/spark-dash
+      - ./cluster:/etc/spark-dash
     ports:
       # The dashboard. THE ONLY PORT PUBLISHED THROUGH THE CLOUDFLARE TUNNEL —
       # Prometheus and Alertmanager stay LAN-only, so Google OAuth at the
@@ -162,13 +166,26 @@ services:
     networks:
       - sparkdash
 
-# No named volumes: everything persistent is a bind mount under DATA_ROOT, so
-# it can be found, inspected and backed up without docker volume commands.
+# No named volumes, and no path variable either: everything persistent is a
+# bind mount in THIS directory, so it can be found, inspected and backed up
+# without docker volume commands and without first working out where a
+# variable points.
+#
+# There used to be a DATA_ROOT for this. It existed to keep the generated
+# targets directory from colliding with the hand-maintained one, not because
+# anything needed relocating — and it defaulted to this directory anyway, so
+# the indirection bought nothing and made two mounts resolve to one path.
+# Moving the hand-maintained targets into ./config removed the collision and
+# the variable with it.
+#
+# To put the TSDB on another disk, make ./prometheus a symlink or a mount
+# point. That is the case DATA_ROOT was reachable for, and it stays reachable
+# without every mount having to name a variable.
 #
 # The containers run as non-root. Set PUID/PGID in .env to the uid that owns
-# DATA_ROOT and they will all be able to write there; otherwise they default to
-# their images' own users (65534 for Prometheus and Alertmanager, 10002 for the
-# backend) and the host directories need to be owned accordingly.
+# this directory and they will all be able to write here; otherwise they
+# default to their images' own users (65534 for Prometheus and Alertmanager,
+# 10002 for the backend) and the host directories need to be owned accordingly.
 
 networks:
   sparkdash:

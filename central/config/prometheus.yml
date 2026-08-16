@@ -3,13 +3,16 @@
 # Targets come from files rather than being listed here, so adding a node needs
 # no Prometheus config change and no restart — file_sd is re-read automatically.
 #
-# Two target directories:
-#   generated/  rendered by the backend from cluster.yml (agents, node-exporters)
-#   static/     hand-maintained in this repo (vLLM, which doesn't map per-node)
+# Targets come from two places, by who writes them:
+#   targets/             rendered by the backend from cluster.yml — never edited
+#   config/vllm-targets.yml   hand-maintained in this repo
 #
-# They're separate because the generated ones live in a volume shared with the
-# backend, and mounting that over a single targets/ directory would hide the
-# repo's own files.
+# The hand-maintained ones live in config/ rather than a second targets
+# directory. Sharing one directory is not possible — the backend's mount would
+# hide the repo's own file — and a separate targets/static made the generated
+# directory need a path variable to stay distinct. Filing them by AUTHOR
+# instead of by purpose removes the collision: config/ is what git tracks,
+# targets/ is what the backend writes.
 
 global:
   scrape_interval: 15s
@@ -57,7 +60,7 @@ scrape_configs:
   # than through the agent. Left empty until vLLM instances are running.
   - job_name: vllm
     file_sd_configs:
-      - files: [/etc/prometheus/targets/static/vllm.yml]
+      - files: [/etc/prometheus/config/vllm-targets.yml]
         refresh_interval: 30s
 
   # Prometheus scraping itself — cheap, and it's how you notice the monitoring

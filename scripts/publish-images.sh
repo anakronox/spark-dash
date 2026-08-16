@@ -91,8 +91,6 @@ case "$TARGET" in
 esac
 
 echo
-echo "Once Dockhand is orchestrating these stacks it pulls new images daily in"
-echo "off-hours, so a stack tracking :latest picks this up on its own."
-echo
-echo "Until then, rollout is manual — pin the sha above in the stack's .env and"
+echo "Nothing pulls images on a schedule, so publishing changes nothing until"
+echo "you deploy. Pin the sha above in the stack's .env and"
 echo "run 'docker compose up -d <service>' on the host."

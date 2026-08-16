@@ -1,17 +1,19 @@
 # GX10 node stack
 
-Two containers — stock `node-exporter` plus our `spark-dash-agent`. Deployed by
-Dockhand from git; nothing is installed on the base OS. See
-[../../docs/deployment.md](../../docs/deployment.md).
+Two containers — stock `node-exporter` plus our `spark-dash-agent`. Cloned from
+git and started by hand; nothing is installed on the base OS. See
+[../docs/deployment.md](../docs/deployment.md).
 
-This directory is a **self-contained stack**: `compose.yaml` at its root, so it
-works either as a subpath of this repo or copied verbatim into a standalone
-stack repo.
+This directory is a **self-contained stack**, and an unusually small one:
+`compose.yaml` is the only file it needs. Every bind mount in it is an absolute
+host path (`/proc`, `/sys`, `/etc/hostname`, `/`), so there is no data
+directory to create, no `DATA_ROOT`, and nothing relative to get wrong. The
+`.env` beside it is host-local and gitignored.
 
 ## Prerequisites
 
-1. **The image must be published** for arm64. Dockhand deploys stacks, it
-   doesn't build them:
+1. **The image must be published** for arm64 — nothing here builds it on
+   deploy:
 
    ```bash
    # On a GX10 (arm64 — build native, no QEMU needed).
@@ -34,8 +36,8 @@ stack repo.
 
 Nothing needs to differ per node. The agent reads the **host's** hostname from
 a bind-mounted `/etc/hostname` and uses it as its node id, so this same stack
-deploys unchanged to all three GX10s — one stack repo, no per-node override to
-forget.
+deploys unchanged to all three GX10s — one directory in one repo, no per-node
+override to forget.
 
 > It has to be `/etc/hostname`, not `/proc/sys/kernel/hostname`. The procfs
 > entry is UTS-namespace-aware and returns the *container's* hostname even
@@ -61,9 +63,8 @@ $EDITOR .env
 
 ## Where things land
 
-Dockhand deploys the stack from its git repo into
-`/docker/spark-dash-stack-node/` — a clone of `spark-dash-stack-node`, with the
-untracked `.env` alongside it.
+`/docker/spark-dash-homegrown/node/` — this directory, in a clone of the one
+repo, with the gitignored `.env` alongside `compose.yaml`.
 
 **There is no second directory to create.** The central stack splits config in
 git from a Prometheus TSDB on disk; this one has no persistent data at all. The
@@ -114,8 +115,7 @@ Anything listed only on the left is new — copy it across from `.env.example`.
 
 ### Rolling out a new image
 
-**Today (Dockhand not yet orchestrated), rollout is manual and pinning is the
-mechanism:**
+**Rollout is manual, and pinning is the mechanism:**
 
 ```bash
 # In .env — the tag publish-images.sh printed
@@ -130,28 +130,26 @@ Pin rather than `docker compose up -d --pull always`: `--pull always` re-pulls
 every image including the pinned third-party ones, so a transient registry
 outage fails a deploy that only needed to change our own container.
 
-#### Where this is going: `:latest` + a daily pull
+#### Why not `:latest`
 
-Dockhand is configured per managed environment to **pull new images once a day
-in off-hours**, so once it is actually driving this stack the `.env` will track
-`:latest` and converge on its own. That is the settled design — see
-[roadmap.md](../../docs/roadmap.md) open decision 6 — and it is why images are
-pushed with both a sha tag *and* `:latest`.
+Nothing pulls images on a schedule here — every deploy is someone running
+`up -d` on a node. `:latest` would mean the running build is whatever happened
+to be in the registry the last time that command ran, with no record of which,
+and an `up -d` on an unchanged file would silently change the agent version.
 
-Two consequences of that switch, worth knowing before it happens:
+An earlier plan had Dockhand pulling daily in off-hours, which would have made
+`:latest` converge on its own. That is not how this is deployed, so the pin is
+the mechanism rather than a stopgap.
 
-- **The build becomes the deploy action.** Pushing to `main` ships nothing;
-  images exist only when `publish-images.sh` runs. Running it will mean "this
-  goes live on every node in the environment within 24 hours", where today a
-  pin edit still sits between building and running.
-- **Configuration stops recording what is deployed.** `:latest` is not an
-  answer to "what was running on the 12th". That is what
-  `sparkdash_agent_build_info` is for — it records what *actually ran*, which
-  is a better answer than a pin, since a pin only ever recorded intent.
+**This is why `AgentBuildSkew` matters more than it looks.** Nothing brings a
+missed node into line overnight, so a node forgotten during a rollout stays on
+the old build indefinitely. A stale agent has twice presented as a *missing
+feature* rather than as a stale agent, costing a debugging round trip each
+time — that alert is the only thing that notices.
 
-Pinning does not disappear; it becomes the **exception path**. When a bad build
-lands overnight, pin the last-good sha and redeploy — no rebuild needed — then
-return to `:latest` once it is fixed.
+`sparkdash_agent_build_info` records what **actually ran**, which is a better
+answer to "what was on node 3 on the 12th" than any pin, since a pin only ever
+recorded intent.
 
 ## The safety property
 

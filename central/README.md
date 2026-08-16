@@ -2,16 +2,20 @@
 
 Two containers — Prometheus and the backend — on a dedicated Proxmox VM.
 Deliberately **not** on a GX10: see
-[../../docs/deployment.md](../../docs/deployment.md#central-stack--a-dedicated-proxmox-vm-settled).
+[../docs/deployment.md](../docs/deployment.md#central-stack--a-dedicated-proxmox-vm-settled).
 
-This directory is a **self-contained stack**: `compose.yaml` at its root, so it
-works either as a subpath of this repo or copied verbatim into a standalone
-stack repo.
+This directory is a **self-contained stack**: `compose.yaml` at its root, and
+every bind mount in it is `./something` relative to this directory. Config is
+tracked in git; the containers' state (`prometheus/`, `alertmanager/`,
+`secrets/`, `cluster/`, `targets/`) is written right here and gitignored.
+
+There is no `DATA_ROOT` and no separate stack repo — clone this repo on the
+monitoring VM, `cd central`, and start it.
 
 ## Prerequisites
 
-The image must be published first — Dockhand deploys stacks, it doesn't build
-them. Build on the monitoring VM so the architecture matches:
+The image must be published first — nothing here builds it on deploy. Build on
+the monitoring VM so the architecture matches:
 
 ```bash
 # Clones if absent, updates if already there: `git clone` onto an existing
@@ -27,23 +31,27 @@ docker login forgejo.indielab.tech      # Forgejo token with package write
 
 ## Configure
 
+Everything below is relative to this directory — `cd` here first:
+
 ```bash
+cd /docker/spark-dash-homegrown/central
+
 # Required: .env is not tracked, so a fresh clone has no config.
 cp .env.example .env
-$EDITOR .env          # image tag, DATA_ROOT
+$EDITOR .env          # image tag, bind addresses, retention
 
 # The cluster itself — nodes, groups, and what each one serves — lives here,
 # not in .env. This is the one file to edit when adding a node.
-sudo mkdir -p /docker/spark-dash-stack-central/cluster
-sudo cp cluster.yml.example /docker/spark-dash-stack-central/cluster/cluster.yml
-sudo $EDITOR /docker/spark-dash-stack-central/cluster/cluster.yml
+mkdir -p cluster
+cp cluster.yml.example cluster/cluster.yml
+$EDITOR cluster/cluster.yml
 
 # Create the data directories with the ownership the containers need.
 # Docker auto-creates bind-mount sources as ROOT, which neither container can
 # write to — so this step is required, not optional.
-sudo mkdir -p /docker/spark-dash-stack-central/{prometheus,targets,cluster}
-sudo chown 65534:65534 /docker/spark-dash-stack-central/prometheus
-sudo chown 10002:10002 /docker/spark-dash-stack-central/targets
+mkdir -p prometheus targets alertmanager secrets
+sudo chown 65534:65534 prometheus alertmanager
+sudo chown 10002:10002 targets
 
 docker compose up -d
 ```
@@ -52,8 +60,8 @@ Both containers run as non-root, and each needs write access to one directory:
 
 | Directory | UID | What | Symptom if wrong |
 |---|---|---|---|
-| `$DATA_ROOT/prometheus` | `65534` | Prometheus TSDB (the one that grows) | Prometheus crash-loops: `panic: Unable to create mmap-ed active query log` |
-| `$DATA_ROOT/targets` | `10002` | scrape targets rendered by the backend | backend logs `could not write ... is the volume writable?`; Prometheus scrapes nothing |
+| `central/prometheus` | `65534` | Prometheus TSDB (the one that grows) | Prometheus crash-loops: `panic: Unable to create mmap-ed active query log` |
+| `central/targets` | `10002` | scrape targets rendered by the backend | backend logs `could not write ... is the volume writable?`; Prometheus scrapes nothing |
 
 That first panic is worth recognising — it reads like a Prometheus bug, but it
 is always this.
@@ -99,13 +107,12 @@ docker exec sparkdash-prometheus grep -c AgentBuildSkew /etc/prometheus/config/a
 > and simply did not have the rule.
 >
 > A directory mount resolves each entry on access, so a replaced file is picked
-> up without recreating anything. That is why `targets/vllm.yml` worked first
-> time while `alerts.yml` did not — one was already inside a directory mount.
+> up without recreating anything. That is why the vLLM targets worked first time
+> while `alerts.yml` did not — one was already inside a directory mount.
 
 ### Rolling out a new image
 
-**Today (Dockhand not yet orchestrated), rollout is manual and pinning is the
-mechanism:**
+**Rollout is manual, and pinning is the mechanism:**
 
 ```bash
 # In .env — the tag publish-images.sh printed
@@ -120,15 +127,19 @@ Pin rather than `docker compose up -d --pull always`: `--pull always` re-pulls
 every image including the pinned third-party ones, so a transient registry
 outage fails a deploy that only needed to change our own container.
 
-#### Where this is going: `:latest` + a daily pull
+#### Why not `:latest`
 
-Dockhand is configured per managed environment to **pull new images once a day
-in off-hours**, so once it drives this stack the `.env` will track `:latest`
-and converge without a git change. That is the settled design — see
-[roadmap.md](../../docs/roadmap.md) open decision 6.
+Nothing pulls images on a schedule here — every deploy is someone running
+`up -d`. So `:latest` would mean the running build is whatever happened to be
+in the registry the last time that command ran, with no record of which, and
+`docker compose up -d` on an unchanged file would silently change the running
+version.
 
-Pinning survives as the **exception path**: when a bad build lands overnight,
-pin the last-good sha and redeploy, then return to `:latest` once fixed.
+An earlier plan had Dockhand pulling daily in off-hours, which would have made
+`:latest` converge on its own and turned pinning into an exception path. That
+is not how this is deployed, so the pin is the mechanism rather than a
+stopgap: `publish-images.sh` prints the sha to paste in, and rolling back is
+editing one line.
 
 > **Config files are a separate matter**, but a simpler one than it used to be:
 > they live in `config/` as a directory mount, so a pull plus a reload is
@@ -204,12 +215,12 @@ topic URL is the whole secret.
 TOPIC="spark-dash-$(head -c 9 /dev/urandom | base32 | tr '[:upper:]' '[:lower:]' | tr -d '=')"
 echo "Your topic: $TOPIC"          # note this down — you need it in the app
 
-sudo mkdir -p /docker/spark-dash-stack-central/secrets
+mkdir -p secrets
 echo -n "https://ntfy.sh/$TOPIC?template=alertmanager" \
-  | sudo tee /docker/spark-dash-stack-central/secrets/ntfy-url > /dev/null
+  | sudo tee secrets/ntfy-url > /dev/null
 
-sudo chown -R 65534:65534 /docker/spark-dash-stack-central/secrets
-sudo chmod 600 /docker/spark-dash-stack-central/secrets/ntfy-url
+sudo chown -R 65534:65534 secrets
+sudo chmod 600 secrets/ntfy-url
 ```
 
 Two details that will bite otherwise:
@@ -237,7 +248,7 @@ Enter only the **topic name** in the app, not the full URL.
 docker compose up -d
 
 # Should arrive on your phone within a couple of seconds.
-curl -d "spark-dash test" "$(sudo cat /docker/spark-dash-stack-central/secrets/ntfy-url)"
+curl -d "spark-dash test" "$(sudo cat secrets/ntfy-url)"
 ```
 
 If nothing arrives, `docker logs sparkdash-alertmanager` will name the reason —
@@ -347,7 +358,7 @@ PromQL aggregates history the same way.
 One entry, one file — and no restart:
 
 ```yaml
-# $DATA_ROOT/cluster/cluster.yml
+# central/cluster/cluster.yml
 nodes:
   - id: gx10-1
     host: 192.168.50.61
@@ -371,45 +382,42 @@ If the file doesn't parse, the backend keeps the node list it already had and
 says so loudly in its log rather than dropping back to an older source — check
 `docker logs sparkdash-backend` if an edit appears to do nothing.
 
-`agents.yml` and `node-exporters.yml` under `targets/` are **generated** — they
-are gitignored and should not be edited. `vllm.yml` is hand-maintained, because
-vLLM instances don't map one-per-node.
+Everything under `targets/` is **generated** — gitignored, rewritten by the
+backend, never hand-edited. The one hand-maintained scrape target list lives in
+`config/vllm-targets.yml`, because vLLM instances don't map one-per-node and so
+can't be derived from the node list. Filing them by who WRITES them, rather
+than by what they are, is what let the old `targets/static` mount and the
+`DATA_ROOT` variable that kept it distinct both go away.
 
 ## Where things land
 
-Everything lives under `/docker/spark-dash-stack-central/` — a Dockhand clone of
-the stack repo, with `DATA_ROOT` in `.env` pointing at that same directory. Two
-lifecycles share one path:
+One directory: `/docker/spark-dash-homegrown/central/`, a clone of this repo.
+Config and runtime state share it, distinguished by `.gitignore` rather than by
+path:
 
 | What | Managed by | Tracked in git? |
 |---|---|---|
-| `compose.yaml`, `prometheus.yml`, `alerts.yml`, `alertmanager.yml` | the stack repo | yes |
-| `targets/vllm.yml` | hand-maintained | yes |
+| `compose.yaml`, `config/*.yml` | this repo | yes |
+| `config/vllm-targets.yml` | hand-maintained | yes |
 | `.env` | edited on the host | no — gitignored |
-| `prometheus/` (TSDB), `alertmanager/`, `secrets/` | the containers, at runtime | no — untracked |
-| `targets/agents.yml`, `targets/node-exporters.yml` | the backend, from `cluster.yml` | no — untracked |
+| `cluster/cluster.yml` | edited on the host | no — gitignored |
+| `prometheus/` (TSDB), `alertmanager/`, `secrets/` | the containers, at runtime | no — gitignored |
+| `targets/` | the backend, from `cluster.yml` | no — gitignored |
 
-Config comes from git; data does not. Keeping data in a findable place rather
-than a named volume under `/var/lib/docker` is the point of `DATA_ROOT`, and it
-can be pointed elsewhere if you'd rather separate the two physically.
+Config comes from git; data does not. Keeping data at a findable path rather
+than in a named volume under `/var/lib/docker` is the point — you can `du` it,
+`tar` it, and see it without `docker volume` commands.
 
-> **Only `.env` is gitignored.** The runtime directories are merely *untracked*,
-> so `git add -A` in this directory would happily stage the Prometheus TSDB.
-> Use targeted `git add`, or add them to `.gitignore`.
+> **`git clean -fdx` here would delete the Prometheus TSDB**, along with
+> `.env`, `cluster.yml` and the `.env.bak-*` files — everything gitignored.
+> Plain `git clean -fd` will not: only `-x` removes ignored files. This is the
+> one real cost of keeping data inside the working tree, and it is worth
+> knowing before you reach for that command to clean up a build.
 
-> **`DATA_ROOT` defaults to this same directory,** which makes `./targets` and
-> `${DATA_ROOT}/targets` the same host path — so the container sees one
-> directory mounted at both `/etc/prometheus/targets/static` and
-> `.../generated`. Harmless, because each scrape job names the file it wants,
-> but it does mean the separation described in `prometheus.yml` is notional
-> unless `DATA_ROOT` is pointed somewhere else.
-
-> Earlier revisions of this file claimed the config lived under
-> `/docker/hawser/spark-dash-stack-central/`. It does not — that path doesn't
-> exist on the monitoring VM. hawser's own convention places stacks under
-> `/docker/hawser/<stack>/`, but the spark-dash stacks are deployed by Dockhand
-> and sit top-level, the same as the node stack. Verified on `sparkmon`
-> 2026-08-15.
+> **Every runtime directory is gitignored, not merely untracked.** That is
+> deliberate: `git add -A` in a deployed stack would otherwise stage the entire
+> TSDB, and `secrets/` holds the ntfy topic URL that is deliberately kept out
+> of git.
 
 The main repo — needed for `publish-images.sh` and the validation scripts —
 follows the usual convention:

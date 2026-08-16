@@ -20,7 +20,7 @@ unchecked rather than guessed at.
 Goal: something real running on the existing GX10, informative for day-to-day use.
 
 - [x] Scaffold the monorepo layout (`common/`, `agent/`, `backend/`,
-  `frontend/`, `deploy/`) — see [app-design.md](app-design.md#repo-layout).
+  `frontend/`, `central/`, `node/`) — see [app-design.md](app-design.md#repo-layout).
 - [x] Provision the monitoring VM on Proxmox — running at `192.168.50.156`
   with Prometheus, Alertmanager and the backend.
 - [x] Write the per-node Compose file (`node-exporter` + `spark-dash-agent`).
@@ -28,7 +28,7 @@ Goal: something real running on the existing GX10, informative for day-to-day us
   the inference stack's Docker network. The agent reaches routers and vLLM by
   host address instead, which keeps the stack free of an external-network
   dependency that has to exist before it can start. See the note at the bottom
-  of [../deploy/node/compose.yaml](../deploy/node/compose.yaml).
+  of [../node/compose.yaml](../node/compose.yaml).
 - [x] Build `spark-dash-agent` with its collector modules: `gpu`, `memory`
   (UMA-correct), `psi`, `clock`, `llama_router`, plus `network`/`rdma` added
   later. `spark_hwmon` remains deliberately descoped — see
@@ -150,7 +150,7 @@ Against those, both sets of thresholds were wrong in opposite directions:
   Falls back to generic constants when a part won't report, and says so via
   `source` so a guess is never mistaken for a measurement.
 - [x] **A2.** Documented the overrides in
-  [../deploy/node/.env.example](../deploy/node/.env.example) — including that
+  [../node/.env.example](../node/.env.example) — including that
   they should normally stay unset, now that the values are read from hardware.
   Both halves of a pair are required; half an override is ignored with a warning.
 - [x] **A3.** Added `CpuTemperatureHigh` / `CpuTemperatureCritical`, and rewrote
@@ -521,14 +521,15 @@ cannot clear is one you learn to ignore**, which is worse than no alert.
   credentials in the backend. Neither is acceptable.
 
   The fix is the pattern already used for `.env`: **live config on the host,
-  template in git.** `cluster.yml` (F1) should live under `DATA_ROOT`,
+  template in git.** `cluster.yml` (F1) should live gitignored,
   gitignored and backend-owned, with an example committed. The backend then
   renders *all* scrape targets from it — `vllm.yml` becomes generated like
   `agents.yml` and `node-exporters.yml` already are — and UI removal is a
   normal write to a file the backend owns, with no git involved.
 
-  **So G4 depends on F1**, and F1 should place `cluster.yml` under `DATA_ROOT`
-  rather than in the stack repo for exactly this reason.
+  **So G4 depends on F1**, and F1 should place `cluster.yml` somewhere
+  gitignored rather than git-tracked, for exactly this reason. It lives in
+  `central/cluster/`.
 
 ### F — One server-side cluster config
 
@@ -558,7 +559,7 @@ exist and one is ruled out:
 As built:
 
 ```yaml
-# ${DATA_ROOT}/cluster/cluster.yml on the monitoring VM — the one place the
+# central/cluster/cluster.yml on the monitoring VM — the one place the
 # cluster is defined. Identity AND runtimes, so nothing node-specific is left
 # anywhere else.
 nodes:
@@ -865,61 +866,53 @@ get lost:
    separate-but-documented, since paging thresholds genuinely should be laxer.
    Settle this before doing A1–A3, because it decides whether the thresholds
    live in one place or two.
-6. **Dockhand is not yet orchestrated.** Deploys are currently manual — `git
-   pull` in the stack dir, then `docker compose up -d`. The docs and
-   `sync-stack-repos.sh` describe the intended end state ("Dockhand redeploys on
-   the git change it just saw"), so a push to a stack repo changes nothing on
-   any host until someone pulls. Worth closing before the 3-node rollout, when
-   doing it by hand stops being cheap.
+6. **Deployment: settled 2026-08-16 — one repo, started by hand.** Dockhand was
+   tried and dropped. Everything now lives in `spark-dash-homegrown`: clone it
+   on a host, `cd central` or `cd node`, `docker compose up -d`.
 
-   **Planned shape — two phases, decided 2026-08-15:**
+   **What the three repos were for, and why they went away.** `spark-dash-stack-central`
+   and `spark-dash-stack-node` existed only because Dockhand deploys *a repo* —
+   they held nothing but a copy of `deploy/*` plus a generated `SOURCE.md` and a
+   host-local `.env`, kept in step by `sync-stack-repos.sh`. Without Dockhand
+   there is nothing for a derived repo to do, so both are archived and the sync
+   script is deleted.
 
-   1. Clone the source repo into `/docker/` and pull it freely. Nothing in it is
-      ever hand-edited, so a pull can never conflict.
-   2. A separate Dockhand orchestration repo holding **only** what Dockhand
-      needs to deploy plus what gets hand-modified on the host — `compose.yaml`,
-      `.env`, and anything else that a pull would clobber or that would block a
-      pull with a conflict.
+   The two-phase orchestration-repo plan sketched on 2026-08-15 is therefore
+   moot. Its principle still holds and is what makes one repo safe: *a file
+   that is hand-edited on the host must live where nobody pulls over it.* That
+   is now enforced by `.gitignore` rather than by repo boundaries — `.env`,
+   `cluster/`, `prometheus/`, `alertmanager/`, `secrets/` and `targets/` are all
+   ignored, so a `git pull` in a running stack cannot touch them.
 
-   The principle worth keeping: *a file that is hand-edited on the host must
-   live in exactly one repo — the one nobody pulls over it.* Today's failure was
-   precisely this. `.env` lived in a repo designed to be overwritten, so pinning
-   `AGENT_IMAGE` on `sparky` turned the next `git pull` into "local changes would
-   be overwritten by merge". `sync-stack-repos.sh` already carries a
-   copy-aside-and-restore dance for `.env` that exists *only* because of this
-   duplication, and it would go away.
+   **Layout, flattened 2026-08-16.** `deploy/central` and `deploy/node` became
+   `central/` and `node/` at the repo root, and **`DATA_ROOT` was removed**.
+   Every bind mount in `central/compose.yaml` is now `./something` relative to
+   the stack directory.
 
-   **Who owns `compose.yaml`? Settled: the orchestration repo does.** This
-   mirrors the pattern Brian already uses for third-party stacks — take the
-   compose file (and `.env` if needed), hand-create them in a Forgejo repo, and
-   point Dockhand at that. It's the only workable approach for a public upstream
-   you can't sync from, and it generalizes here.
+   `DATA_ROOT` existed to stop the generated targets directory colliding with
+   the hand-maintained one — not because anything needed relocating, and it
+   defaulted to the stack directory anyway, so the two mounts resolved to one
+   path and the "separation" was fictional. Moving the hand-maintained targets
+   into `config/vllm-targets.yml` — filing them by *who writes them* rather than
+   by what they are — removed the collision and the variable with it.
 
-   Consequences, accepted deliberately:
+   To put the TSDB on another disk, make `central/prometheus` a symlink or a
+   mount point. That was the only case `DATA_ROOT` was reachable for.
 
-   - `deploy/*/compose.yaml` become **reference templates**, not the source of
-     truth. What runs is what's in the orchestration repo, so reading the host
-     tells you the truth — the property that was missing when the node README
-     described a path that didn't exist.
-   - `sync-stack-repos.sh` loses its purpose entirely rather than shrinking. A
-     template change has to be applied by hand, which is cheap because there are
-     only two stack repos, not one per node.
+   **The cost, accepted:** `git clean -fdx` in the repo would delete the
+   Prometheus TSDB along with every other gitignored file. Plain `git clean -fd`
+   would not — only `-x` removes ignored files.
 
-   **Settled: one orchestration repo per node.** Node `.env` holds
-   `LLAMA_ROUTER_URLS` and `VLLM_URLS`, which name *that host's* routers by LAN
-   IP (the agent has its own netns, so `localhost` isn't the node) — so the
-   values are per-node and a shared tracked `.env` was never going to work.
-   Per-node repos make the live config versioned and recoverable, which is worth
-   more than one-repo-serves-all.
+   **Images are pinned, not `:latest`.** Nothing pulls on a schedule now, so
+   `:latest` would mean the running build is whatever was in the registry the
+   last time someone ran `up -d`, with no record of which. `publish-images.sh`
+   prints the sha to paste into `.env`; rolling back is editing one line.
 
-   This does **not** conflict with cloning the single source repo to every host.
-   The two are orthogonal: the source repo holds nothing hand-edited so it pulls
-   freely everywhere, and the orchestration repos are never pulled over. No file
-   lives in both, which is the whole point.
-
-   It also makes image rollout orchestrated rather than manual: pinning
-   `AGENT_IMAGE` becomes a commit in that node's repo, which is exactly the git
-   change Dockhand watches for.
+   This makes **C2 load-bearing**: nothing converges a missed node overnight, so
+   a node forgotten during a rollout stays stale indefinitely.
+   `sparkdash_agent_build_info` and the `AgentBuildSkew` alert are the only
+   things that would notice — and a stale agent has twice presented as a missing
+   *feature* rather than a stale agent.
 
    **Build on one node, not all three.** All GX10s are arm64 and the image
    carries nothing node-specific (`NODE_ID` comes from the host's hostname at
@@ -927,60 +920,17 @@ get lost:
    nodes each building and pushing the same tag would leave the second
    overwriting the first with a **different digest under the same tag**, and
    nodes would then run different bytes depending on when they pulled. The
-   source clone on the other nodes exists for `validate-on-gx10.sh` and
-   diagnostics, not for building.
+   clone on the other nodes exists for `validate-on-gx10.sh` and diagnostics,
+   not for building.
 
-   **Images track `:latest`, not a pinned sha.** Dockhand is configured per
-   managed environment to pull new images once a day in off-hours, so `:latest`
-   converges without a git change — which pinning cannot do, since a pinned tag
-   only moves when someone edits it.
+   **Config-only changes take effect on reload, not recreate** — settled by
+   moving `prometheus.yml`, `alerts.yml` and `alertmanager.yml` into `config/`
+   as a **directory** mount. A single-file mount follows the inode, and `git
+   pull` replaces files rather than editing them, so the container went on
+   reading the old inode while a reload reported success — observed 2026-08-15
+   while deploying C2. A directory mount resolves each entry on access, so a
+   pull plus `docker kill -s HUP sparkdash-prometheus` is enough.
 
-   **Docs updated 2026-08-16.** Both stack READMEs, both `.env.example` files,
-   `publish-images.sh` and `sync-stack-repos.sh` now describe the manual
-   rollout that is true *today* and the `:latest` steady state that follows,
-   rather than asserting either as the whole truth. They previously assumed a
-   git change was the only deploy trigger.
-
-   The distinction is kept explicit rather than flipped, because a doc
-   describing a system that does not exist yet would mislead anyone deploying
-   this week — which is everyone, until Dockhand is actually driving it.
-
-   Consequences, accepted:
-
-   - **The build becomes the deploy action.** Pushing to `main` ships nothing;
-     images exist only when `publish-images.sh` runs. Running it means "this goes
-     live on every node in the environment within 24 hours," which makes the
-     publish step weightier than it is today, where a pin edit stood between
-     building and running.
-   - **Skew is bounded, not eliminated** — nodes in one environment pull
-     together, and worst case diverge for under a day rather than indefinitely.
-   - **Config no longer records what's running.** `:latest` is not an answer to
-     "what was running on the 12th?", which makes **C2 load-bearing rather than
-     optional**: `sparkdash_agent_build_info` records what actually ran, is
-     queryable historically, and is more honest than a pin, which only ever
-     recorded intent.
-   - **Pinning survives as the exception path.** When a bad build lands
-     overnight, pin the last-good sha in that node's `.env` and commit —
-     Dockhand redeploys immediately, no rebuild needed — then unpin once fixed.
-
-   **Config-only changes need a container recreate, not a reload.**
-   `prometheus.yml`, `alerts.yml` and `alertmanager.yml` are bind-mounted as
-   single files, and a file mount follows the inode. A `git pull` replaces the
-   file, so the container keeps reading the old inode and a reload silently
-   re-reads stale content — observed 2026-08-15 while deploying C2. If Dockhand
-   pulls the orchestration repo and runs a plain `docker compose up -d`, a
-   config-only change will **not** take effect, because the compose config
-   itself is unchanged. Either Dockhand must `--force-recreate`, or these files
-   need to move to a directory mount. Worth settling as part of the migration.
-
-   **Guard against drift instead of syncing.** Three hand-maintained
-   `compose.yaml` files can diverge once the orchestration repos are
-   authoritative. The replacement for `sync-stack-repos.sh` should be a *drift
-   check* that diffs each orchestration repo against `deploy/node/compose.yaml`
-   and reports differences — keeping the template honest without reintroducing
-   the clobbering this design removes. This also raises the value of **C2**:
-   three independently-pinned nodes make build skew routine rather than
-   exceptional.
 7. **Should there be a database?** **Leaning no for metrics, yes eventually for
    events — but only after A7 and B.**
 
@@ -1027,7 +977,7 @@ get lost:
 
    **The cost is real and should not be waved away:** it makes the backend
    stateful, which it currently is not. Today that container can be destroyed
-   and recreated freely, and [../deploy/node/README.md](../deploy/node/README.md)
+   and recreated freely, and [../node/README.md](../node/README.md)
    leans on exactly that property. A database means a schema, migrations,
    corruption modes, and a second thing in the backup set — softened only by the
    monitoring VM already carrying the TSDB, so backup discipline isn't starting

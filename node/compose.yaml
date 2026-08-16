@@ -1,15 +1,15 @@
-# Per-node monitoring stack for a GX10. Deployed by Dockhand from git.
+# Per-node monitoring stack for a GX10. Cloned from git and started by hand.
 #
 # Identical on all three nodes, with nothing to change per node: the agent
 # derives its id from the host's hostname. That's the whole Phase 2 rollout
-# story — point Dockhand at this stack on the new node and it just works.
+# story — clone the repo on the new node, `cd node`, `up -d`, and it works.
 #
 # Host preconditions: Docker Engine and the NVIDIA Container Toolkit. Both are
 # already present for the existing GPU-enabled inference containers, so this
 # adds nothing to the base OS.
 #
 # Images come from the Forgejo container registry rather than being built here
-# — Dockhand deploys stacks, it doesn't build them. See scripts/publish-images.sh.
+# — nothing here builds them. See scripts/publish-images.sh.
 
 services:
   node-exporter:

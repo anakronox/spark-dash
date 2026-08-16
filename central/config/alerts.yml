@@ -65,10 +65,12 @@ groups:
             the dashboard is blank rather than wrong. Check the agent logs.
 
       # A stale agent has twice presented as a missing feature rather than as a
-      # stale agent, costing a debugging round trip each time. Images track
-      # :latest and Dockhand pulls daily, so nodes normally converge on their
-      # own — this catches the one that didn't, and the half-finished manual
-      # rollout where node 3 was forgotten.
+      # stale agent, costing a debugging round trip each time.
+      #
+      # Nothing converges the nodes on its own: images are pinned per stack and
+      # rollout is a manual `up -d` on each node. So a node missed during a
+      # rollout stays skewed indefinitely rather than catching up overnight,
+      # which makes this alert the only thing that notices.
       #
       # The inner count collapses to one series per distinct build; the outer
       # counts how many distinct builds exist at all. More than one means the

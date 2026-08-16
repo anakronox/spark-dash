@@ -5,12 +5,12 @@ runtimes a node serves lived in that node's own `.env`, so the cluster was
 defined in two places that did not know about each other — and that split is
 the whole reason the per-node stack could not be identical across nodes.
 
-WHERE THIS FILE LIVES MATTERS. It belongs under `DATA_ROOT` on the monitoring
-VM, gitignored, with an example committed — the same pattern `.env` already
-uses. Putting it in the stack repo would make it git-tracked, and a future UI
-that retires a decommissioned endpoint (roadmap G4) would then have to either
-edit a tracked file or hold git credentials. Neither is acceptable, so the
-placement is a constraint rather than a preference.
+WHERE THIS FILE LIVES MATTERS. It belongs in `central/cluster/` on the
+monitoring VM — inside the stack directory but gitignored, with an example
+committed, the same pattern `.env` already uses. Letting git track it would
+mean a future UI that retires a decommissioned endpoint (roadmap G4) would
+have to either edit a tracked file or hold git credentials. Neither is
+acceptable, so the placement is a constraint rather than a preference.
 
 PORTS RATHER THAN URLS, by default. A node's runtimes are given as ports and
 resolved against that node's own host when served to the agent. Repeating the

@@ -18,10 +18,9 @@ frontend/dist/
 .env
 .DS_Store
 
-# Rendered by the backend from SPARK_NODES into a Docker volume, not the repo.
-# Listed anyway so a local test run can't accidentally commit them.
-deploy/central/targets/agents.yml
-deploy/central/targets/node-exporters.yml
+# Rendered by the backend from cluster.yml. Also ignored by central/.gitignore;
+# listed here too so a local test run can't accidentally commit them.
+central/targets/
 
 # Prometheus target files, rendered by the backend into its working directory.
 # Running the backend locally for testing drops them in the repo root — they

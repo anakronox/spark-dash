@@ -11,21 +11,25 @@
 # committing — and they contain the same secrets `.env` does.
 .env.bak-*
 
-# RUNTIME DATA. DATA_ROOT defaults to this same directory, so the containers
-# write their state right next to the config that git tracks.
+# RUNTIME DATA. The containers write their state right into this directory,
+# next to the config that git tracks — every bind mount in compose.yaml is
+# `./something`, with no path variable in between.
 #
 # Being untracked was not enough: `git add -A` in the deployed stack would
 # stage the entire Prometheus TSDB, and `secrets/` holds the ntfy topic URL
 # that is deliberately kept out of git. Ignoring them makes that mistake
 # impossible rather than merely unlikely.
+#
+# `git clean -fdx` in this repo would DELETE the TSDB. Plain `git clean -fd`
+# will not — only `-x` removes ignored files.
 prometheus/
 alertmanager/
 secrets/
 
-# Scrape targets rendered by the backend from cluster.yml. Generated, not
-# authored — `targets/vllm.yml` is hand-maintained and stays tracked.
-targets/agents.yml
-targets/node-exporters.yml
+# Scrape targets, rendered wholesale by the backend from cluster.yml. The whole
+# directory is generated now: the one hand-maintained file that used to live
+# here moved to config/vllm-targets.yml, so nothing in here is authored.
+targets/
 
 # The live cluster definition. Same reasoning as .env: it holds this
 # deployment's real values, and the dashboard needs to be able to write it

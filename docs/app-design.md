@@ -29,9 +29,13 @@ spark-dash-homegrown/
 ├── backend/
 │   └── app/                     # FastAPI: REST (history) + WebSocket (live)
 ├── frontend/                    # Svelte 5 + Vite
-└── deploy/
-    ├── node/docker-compose.yml      # per-GX10 stack (identical on all 3)
-    └── central/docker-compose.yml   # Prometheus + backend (Proxmox VM)
+├── scripts/                     # publish-images.sh, validate-on-gx10.sh
+├── node/                        # per-GX10 stack (identical on all 3)
+│   └── compose.yaml             #   just this — every mount is an absolute host path
+└── central/                     # Prometheus + Alertmanager + backend (Proxmox VM)
+    ├── compose.yaml             #   every mount is ./something, no DATA_ROOT
+    ├── config/                  #   tracked: prometheus.yml, alerts.yml, vllm-targets.yml
+    └── (cluster/ prometheus/ alertmanager/ secrets/ targets/ — gitignored runtime state)
 ```
 
 `common/` is installed into each image as a local path dependency (Docker build
