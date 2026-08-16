@@ -15,6 +15,7 @@
    * at. Unmounting stops that, at the cost of a refetch when it reopens, which
    * is the right trade for a panel you deliberately put away.
    */
+  import { onDestroy } from 'svelte';
   import type { Snippet } from 'svelte';
   import type { Layout } from '../lib/layout.svelte';
 
@@ -29,6 +30,9 @@
   let host = $state<HTMLElement | null>(null);
   let grabbed = $state(false);
   let offsetY = $state(0);
+  /** Pointer position the current lift is measured from. Re-anchored on each
+   *  reorder, because the node has physically moved under the cursor. */
+  let anchorY = 0;
 
   const label = $derived(layout.label(id));
   const position = $derived(`${index + 1} of ${layout.order.length}`);
@@ -39,15 +43,44 @@
    * Measured from sibling geometry rather than tracked with dragover handlers
    * on every target: fewer moving parts, and it stays correct when sections
    * have wildly different heights (a table of twelve models next to a chart).
+   *
+   * The dragged slot's own rect has the lift transform baked into it, so its
+   * top is corrected back before comparing. Without that it is measured
+   * against where it appears rather than where it sits, and the swap point
+   * drifts by however far it has been lifted.
    */
   function indexAt(clientY: number): number {
     if (!host?.parentElement) return index;
     const slots = [...host.parentElement.querySelectorAll('[data-slot]')];
     for (let i = 0; i < slots.length; i++) {
       const box = slots[i].getBoundingClientRect();
-      if (clientY < box.top + box.height / 2) return i;
+      const top = i === index ? box.top - offsetY : box.top;
+      if (clientY < top + box.height / 2) return i;
     }
     return slots.length - 1;
+  }
+
+  /* Move and release are tracked on the WINDOW, not via setPointerCapture on
+   * the handle.
+   *
+   * Capture looks like the right tool and isn't: reordering re-keys the
+   * wrapper, so Svelte relocates the very node holding the capture. Safari
+   * drops the capture when a capturing element is re-parented, after which no
+   * further pointermove or pointerup arrives — the card freezes mid-drag and
+   * stays stuck, because the pointerup that would have ended it never lands.
+   * Chrome happens to be more forgiving, which is why this only showed up in
+   * Safari. The window is never re-parented, so events keep flowing.
+   */
+  function startTracking() {
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  }
+
+  function stopTracking() {
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('pointercancel', onPointerUp);
   }
 
   function onPointerDown(event: PointerEvent) {
@@ -56,33 +89,44 @@
     if (event.button !== 0) return;
     event.preventDefault();
 
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     grabbed = true;
     layout.dragging = index;
+    anchorY = event.clientY;
     offsetY = 0;
+    startTracking();
   }
 
   function onPointerMove(event: PointerEvent) {
-    if (!grabbed || !host) return;
-    const box = host.getBoundingClientRect();
-    offsetY = event.clientY - (box.top + box.height / 2);
+    if (!grabbed) return;
+
+    /* Measured from where the pointer started, NOT from the element's current
+     * box. getBoundingClientRect() reports the TRANSFORMED rect, so reading it
+     * here fed the lift back into its own input: with the pointer held still,
+     * the offset alternated between the real delta and zero on every frame,
+     * which is the jitter this replaced. */
+    offsetY = event.clientY - anchorY;
 
     const target = indexAt(event.clientY);
     if (target !== index) {
       layout.move(index, target);
-      // The wrapper is re-keyed at its new index, so the visual offset from
-      // the old position is no longer meaningful.
+      // The node now sits where the cursor is, so the lift starts again from
+      // here rather than jumping by the distance it just travelled.
+      anchorY = event.clientY;
       offsetY = 0;
     }
   }
 
-  function onPointerUp(event: PointerEvent) {
+  function onPointerUp() {
     if (!grabbed) return;
-    (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
     grabbed = false;
     layout.dragging = null;
     offsetY = 0;
+    stopTracking();
   }
+
+  // A drag interrupted by the component going away would otherwise leave
+  // window listeners behind, and `grabbed` latched on in a detached closure.
+  onDestroy(stopTracking);
 
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === 'ArrowUp' && index > 0) {
@@ -107,9 +151,6 @@
     aria-label={`Move ${label}. Currently ${position}. Use arrow keys to reorder.`}
     title={`Drag to move ${label}, or focus and use arrow keys`}
     onpointerdown={onPointerDown}
-    onpointermove={onPointerMove}
-    onpointerup={onPointerUp}
-    onpointercancel={onPointerUp}
     onkeydown={onKeyDown}
   >
     <!-- Six dots: the conventional grip, and it reads as "grab me" without a
