@@ -15,7 +15,7 @@
    * at. Unmounting stops that, at the cost of a refetch when it reopens, which
    * is the right trade for a panel you deliberately put away.
    */
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import type { Snippet } from 'svelte';
   import type { Layout } from '../lib/layout.svelte';
 
@@ -30,34 +30,51 @@
   let host = $state<HTMLElement | null>(null);
   let grabbed = $state(false);
   let offsetY = $state(0);
-  /** Pointer position the current lift is measured from. Re-anchored on each
-   *  reorder, because the node has physically moved under the cursor. */
+  /** Pointer position the current lift is measured from. Shifted on each
+   *  reorder by however far the card's home moved, so the lift compensates
+   *  instead of snapping. */
   let anchorY = 0;
+  /** True while a swap is awaiting its DOM flush. */
+  let settling = false;
 
   const label = $derived(layout.label(id));
   const position = $derived(`${index + 1} of ${layout.order.length}`);
   const collapsed = $derived(layout.isCollapsed(id));
 
-  /** Which index the pointer is currently over.
+  /** This card's top with the lift removed — where it actually sits. */
+  function baseTop(): number {
+    return host ? host.getBoundingClientRect().top - offsetY : 0;
+  }
+
+  /** The neighbour to trade places with, or null to stay put.
    *
-   * Measured from sibling geometry rather than tracked with dragover handlers
-   * on every target: fewer moving parts, and it stays correct when sections
-   * have wildly different heights (a table of twelve models next to a chart).
+   * ONE STEP AT A TIME, ONLY IN THE DIRECTION OF TRAVEL, and comparing this
+   * card's own lifted edge against the neighbour's midpoint rather than asking
+   * where the pointer is.
    *
-   * The dragged slot's own rect has the lift transform baked into it, so its
-   * top is corrected back before comparing. Without that it is measured
-   * against where it appears rather than where it sits, and the swap point
-   * drifts by however far it has been lifted.
+   * All three matter, and together they are what stops the shudder when cards
+   * overlap. A pointer-position test sitting near a boundary answers
+   * differently on consecutive frames, so the order flips back and forth every
+   * time the mouse breathes. Allowing multi-slot jumps makes that worse when
+   * sections differ in height as much as a twelve-row table and a chart do.
+   * And gating on direction means that once a swap has happened, reversing it
+   * requires travelling back across the neighbour's midpoint — real hysteresis,
+   * rather than a boundary the card can sit exactly on.
    */
-  function indexAt(clientY: number): number {
-    if (!host?.parentElement) return index;
+  function neighbour(): number | null {
+    if (!host?.parentElement) return null;
     const slots = [...host.parentElement.querySelectorAll('[data-slot]')];
-    for (let i = 0; i < slots.length; i++) {
-      const box = slots[i].getBoundingClientRect();
-      const top = i === index ? box.top - offsetY : box.top;
-      if (clientY < top + box.height / 2) return i;
+    const self = host.getBoundingClientRect();
+
+    if (offsetY > 0 && index < slots.length - 1) {
+      const next = slots[index + 1].getBoundingClientRect();
+      if (self.bottom > next.top + next.height / 2) return index + 1;
     }
-    return slots.length - 1;
+    if (offsetY < 0 && index > 0) {
+      const prev = slots[index - 1].getBoundingClientRect();
+      if (self.top < prev.top + prev.height / 2) return index - 1;
+    }
+    return null;
   }
 
   /* Move and release are tracked on the WINDOW, not via setPointerCapture on
@@ -96,8 +113,10 @@
     startTracking();
   }
 
-  function onPointerMove(event: PointerEvent) {
-    if (!grabbed) return;
+  async function onPointerMove(event: PointerEvent) {
+    // `settling` holds off re-entry while the swap below awaits a DOM flush;
+    // without it a burst of moves would each act on stale geometry.
+    if (!grabbed || settling) return;
 
     /* Measured from where the pointer started, NOT from the element's current
      * box. getBoundingClientRect() reports the TRANSFORMED rect, so reading it
@@ -106,22 +125,37 @@
      * which is the jitter this replaced. */
     offsetY = event.clientY - anchorY;
 
-    const target = indexAt(event.clientY);
-    if (target !== index) {
-      layout.move(index, target);
-      // The node now sits where the cursor is, so the lift starts again from
-      // here rather than jumping by the distance it just travelled.
-      anchorY = event.clientY;
-      offsetY = 0;
-    }
+    const target = neighbour();
+    if (target === null) return;
+
+    settling = true;
+    const before = baseTop();
+    layout.move(index, target);
+    // Wait for the reorder to land so the new home can be measured rather
+    // than assumed — sections differ in height, and there is a gap between
+    // them, so the shift is not a number worth guessing at.
+    await tick();
+    const after = baseTop();
+
+    /* Compensate rather than reset. The card's home just moved by the
+     * neighbour's height, so the lift shrinks by exactly that much and the
+     * card stays visually still through the swap. Resetting the lift to zero
+     * instead made it jump to its new slot while the pointer stood still,
+     * which is the lurch you see as cards overlap. */
+    anchorY += after - before;
+    offsetY = event.clientY - anchorY;
+    settling = false;
   }
 
   function onPointerUp() {
     if (!grabbed) return;
     grabbed = false;
+    settling = false;
     layout.dragging = null;
     offsetY = 0;
     stopTracking();
+    // Persisted once, here, rather than on every swap — see Layout#save.
+    layout.commit();
   }
 
   // A drag interrupted by the component going away would otherwise leave

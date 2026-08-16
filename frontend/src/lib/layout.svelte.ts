@@ -92,6 +92,16 @@ export class Layout {
   dragging = $state<number | null>(null);
 
   #save() {
+    // Skipped mid-drag. `move` is called on every swap, and localStorage
+    // writes are synchronous — doing one per swap puts a blocking write in the
+    // middle of an animation. The drag commits once when the pointer is
+    // released; keyboard reordering isn't dragging, so it saves immediately.
+    if (this.dragging !== null) return;
+    this.commit();
+  }
+
+  /** Write the order out now, whatever the drag state. */
+  commit() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.order));
     } catch {
