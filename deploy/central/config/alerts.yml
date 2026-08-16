@@ -466,8 +466,12 @@ groups:
             Reduce PROM_RETENTION or grow the disk. Predicted from the last 6
             hours of growth, so a one-off spike won't trigger it.
 
+      # INFRASTRUCTURE targets — nodes, exporters, Prometheus itself. These
+      # never age out: the hardware still exists, so a target that stays down
+      # is a fault however long it lasts, and letting it expire would blind
+      # the dashboard to exactly the failure it exists to catch.
       - alert: PrometheusTargetScrapeFailing
-        expr: up == 0
+        expr: up{job!~"vllm"} == 0
         for: 15m
         labels:
           severity: warning
@@ -476,3 +480,34 @@ groups:
           description: >-
             Persistent scrape failure. Distinct from the node being down —
             check the target is listening and reachable from the monitoring VM.
+
+      # INFERENCE targets age out after 24h. An endpoint is configuration, not
+      # hardware: taking a model down is almost always deliberate, and an alert
+      # that cannot be cleared is one you learn to ignore — which costs you the
+      # alerts that do matter.
+      #
+      # `max_over_time(up[24h]) == 1` means "was up at some point in the last
+      # day", so once a target has been continuously down for 24h the alert
+      # resolves itself. Same idiom as NetworkLinkDown, where it stops the
+      # never-cabled ports alerting forever.
+      #
+      # THE TRADEOFF IS REAL AND DELIBERATE: a genuine crash ages out too.
+      # Nothing here can distinguish "torn down on purpose" from "died and
+      # nobody noticed" — both are a container that is not there. What stops
+      # that being silent is that the FACT outlives the ALERT: the dashboard
+      # keeps reporting a configured-but-absent target (see roadmap G3), so it
+      # stops nagging without being forgotten.
+      - alert: InferenceTargetScrapeFailing
+        expr: >-
+          up{job="vllm"} == 0
+          and max_over_time(up{job="vllm"}[24h]) == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus can't scrape {{ $labels.job }} on {{ $labels.instance }}"
+          description: >-
+            An inference endpoint has stopped responding. Resolves itself if it
+            stays down for 24 hours, on the assumption the model was retired —
+            the dashboard will still show it as configured but absent. If it
+            was NOT deliberate, that is the window to act in.

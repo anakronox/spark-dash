@@ -470,7 +470,31 @@ cannot clear is one you learn to ignore**, which is worse than no alert.
 - [ ] **G3.** Detect *configured but absent*: the inverse of F8. A target that
   has been down long enough is either broken or retired, and the dashboard
   should say which it cannot tell.
+- [x] **G0. Inference alerts age out after 24h** (2026-08-16). Brian's
+  suggestion, and it turned out to solve most of what G4 was for with **no UI
+  write at all** — it is a rule change, not a feature.
+
+  `PrometheusTargetScrapeFailing` is split in two along the same
+  environmental/scraped line:
+
+  - **Infrastructure** (`job!~"vllm"`) never ages out. The hardware still
+    exists, so a target that stays down is a fault however long it lasts.
+  - **Inference** (`job="vllm"`) resolves after 24h of continuous failure,
+    via `max_over_time(up[24h]) == 1` — the same idiom `NetworkLinkDown` uses
+    to stop never-cabled ports alerting forever.
+
+  **The tradeoff is real and was accepted deliberately:** a genuine crash ages
+  out too. Nothing can distinguish "torn down on purpose" from "died and nobody
+  noticed" — both are a container that is not there. What keeps it from being
+  silent is that **the fact outlives the alert**: G3 should keep reporting a
+  configured-but-absent target, so it stops nagging without being forgotten.
+  That makes G3 a dependency of this being safe, not an optional extra.
+
 - [ ] **G4.** **Retire a scrape target from the UI — removal only.**
+  Still wanted for the case where you want the target *gone* rather than
+  quiet — an aged-out alert leaves a dead entry in config that keeps failing
+  scrapes and re-fires if the endpoint briefly returns. But G0 removes the
+  urgency.
 
   Silencing is the wrong tool for something never coming back. It hides the
   alert while leaving the dead target in config, so scrapes keep failing and
