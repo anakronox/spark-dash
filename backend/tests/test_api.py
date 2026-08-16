@@ -408,3 +408,14 @@ class TestHealthActuallyChecksNodes:
         body = resp.json()
         assert body["status"] == "degraded"
         assert "could not reach any node to check" in body["problems"]
+
+
+def test_health_reports_the_backend_own_build(client):
+    """AgentBuildSkew compares nodes against EACH OTHER, so it cannot see a
+    backend and an agent that have drifted apart — and with a single node it
+    cannot fire at all. `/health` naming its own build is the only thing that
+    makes that visible, and it is how a stale agent was spotted on 2026-08-16."""
+    body = client.get("/health").json()
+    assert "backend_version" in body
+    assert isinstance(body["backend_version"], str)
+    assert body["backend_version"]

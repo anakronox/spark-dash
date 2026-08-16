@@ -48,7 +48,14 @@ RUN uv sync --frozen --no-dev --no-editable --package spark-dash-backend
 
 FROM python:3.12-slim
 
-ENV PATH="/app/.venv/bin:$PATH" \
+# Set by publish-images.sh from the git sha. The agent has always recorded this
+# and the backend did not, so `/health` could name every agent's build but not
+# its own — and the only record of what backend was running was the image tag
+# in a .env file on the host.
+ARG BUILD_VERSION=unknown
+
+ENV BACKEND_VERSION=${BUILD_VERSION} \
+    PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
 WORKDIR /app

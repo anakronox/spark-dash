@@ -495,6 +495,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "alertmanager": "ok" if alerts_ok else "unreachable",
             "nodes_configured": len(nodes),
             "nodes_up": nodes_up,
+            # Its own build, beside the agents'. AgentBuildSkew compares nodes
+            # against EACH OTHER, so it cannot see a backend and an agent that
+            # have drifted apart — and with a single node it cannot fire at
+            # all. This is the only thing that makes that drift visible.
+            "backend_version": settings.backend_version,
             # Distinct builds across the cluster, so a node left behind on an
             # older agent is visible from a plain curl rather than only in the
             # UI. Uniform is the boring case and shows one entry.

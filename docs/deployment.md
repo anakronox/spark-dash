@@ -304,13 +304,23 @@ Dockerfile at deploy time. Deliberately not used here, decided 2026-08-16:
 Revisit only if the deploy tool can supply the deployed commit as a build arg;
 that removes the third objection and weakens the second.
 
-### `BUILD_VERSION` is agent-only
+### `BUILD_VERSION` and knowing what is actually running
 
-The script passes `--build-arg BUILD_VERSION` to both images, but only
-`agent/Dockerfile` consumes it (`ARG BUILD_VERSION` → `ENV AGENT_VERSION`),
-which is what `sparkdash_agent_build_info` and the `AgentBuildSkew` alert are
-built on. The backend ignores it: it reports no version of its own, so the only
-record of which backend build is running is the image tag in the stack's `.env`
-and `docker inspect`. That asymmetry is fine while there is exactly one backend
-— skew needs two — but it is why `/health` can tell you every agent's version
-and not its own.
+The script passes `--build-arg BUILD_VERSION` to both images and both consume
+it: `ARG BUILD_VERSION` becomes `ENV AGENT_VERSION` / `ENV BACKEND_VERSION`.
+
+- The agent's feeds `sparkdash_agent_build_info` and the `AgentBuildSkew`
+  alert.
+- The backend's is reported by `/health` as `backend_version`.
+
+**`AgentBuildSkew` alone is not enough**, which is why the backend reports its
+own. That rule is `count(count by (build) (...)) > 1` — it compares nodes
+against EACH OTHER. With one node it is always 1 and can never fire, and it
+can never see a backend and an agent that have drifted apart at all. That is
+exactly how an agent sat six commits behind unnoticed on 2026-08-16. Comparing
+`backend_version` against `agent_versions` in a single `curl /health` is the
+check that catches it:
+
+```bash
+curl -s localhost:8080/health | jq '{backend_version, agent_versions}'
+```

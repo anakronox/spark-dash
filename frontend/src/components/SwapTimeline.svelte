@@ -13,6 +13,15 @@
    */
   import { onMount } from 'svelte';
   import { fetchWithTimeout } from '../lib/request';
+  import { compositeKey, dedupeByKey } from '../lib/keys';
+
+  /* Every identifying field, not a subset. `ts + model + router` looked
+     unique and isn't: the timeline is bucketed by a query step, so a model
+     that went active -> sleeping -> active inside one bucket yields two events
+     sharing a timestamp. A duplicate key throws and freezes the panel rather
+     than dropping a row — see lib/keys.ts. */
+  const eventKey = (e: Event) =>
+    compositeKey(e.ts, e.node, e.router, e.model, e.from_state, e.to_state);
 
   interface Event {
     ts: number;
@@ -52,7 +61,7 @@
       );
       if (!resp.ok) throw new Error(String(resp.status));
       const body = await resp.json();
-      events = body.events ?? [];
+      events = dedupeByKey(body.events ?? [], eventKey);
       coldStarts = body.cold_starts ?? 0;
       error = null;
     } catch {
@@ -130,7 +139,7 @@
     </p>
   {:else}
     <ol class="events">
-      {#each events as e (e.ts + e.model + e.router)}
+      {#each events as e (eventKey(e))}
         <li class:cold={e.cold}>
           <span class="time" title={clock(e.ts)}>{when(e.ts)}</span>
           <span class="mark" aria-hidden="true"></span>

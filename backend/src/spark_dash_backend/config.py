@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"  # noqa: S104 — container-internal; published per compose
     port: int = 8080
 
+    # Baked into the image at build time from the git sha. "unknown" when
+    # running from source, which is correct — there's no commit to name.
+    backend_version: str = "unknown"
+
     prometheus_url: str = "http://prometheus:9090"
     prometheus_timeout_s: float = 10.0
 

@@ -6,6 +6,7 @@
  * disagree with each other for up to 30 seconds at a time.
  */
 
+import { compositeKey, dedupeByKey } from './keys';
 import { fetchWithTimeout } from './request';
 
 export interface AlertItem {
@@ -84,23 +85,14 @@ const labelSignature = (labels: Record<string, string> | undefined): string =>
     : '';
 
 export const alertKey = (a: AlertItem): string =>
-  labelSignature(a.labels) || `${a.name}|${a.node ?? ''}`;
+  labelSignature(a.labels) || compositeKey(a.name, a.node);
 
 export const episodeKey = (e: AlertEpisode): string =>
-  `${e.started_at}|${labelSignature(e.labels) || `${e.alertname}|${e.node ?? ''}`}`;
+  compositeKey(
+    e.started_at,
+    labelSignature(e.labels) || compositeKey(e.alertname, e.node),
+  );
 
-/** Last line of defence: drop exact key collisions rather than let one crash
- *  the whole alert UI. Two entries with an identical label set AND timestamp
- *  are the same thing anyway, so nothing real is hidden by this. */
-function dedupe<T>(items: T[], key: (item: T) => string): T[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const k = key(item);
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
 
 /** One continuous period an alert was pending and/or firing. */
 export interface AlertEpisode {
@@ -154,7 +146,7 @@ export class AlertFeed {
       if (!resp.ok) throw new Error(String(resp.status));
       const body = await resp.json();
       this.available = body.available;
-      this.alerts = dedupe(body.alerts ?? [], alertKey);
+      this.alerts = dedupeByKey(body.alerts ?? [], alertKey);
     } catch {
       // "Can't tell" is not "all clear" — the banner renders these
       // differently, and only one of them is reassuring.
@@ -186,5 +178,5 @@ export async function fetchHistory(
   const resp = await fetchWithTimeout(`/api/alerts/history?minutes=${minutes}`, { signal });
   if (!resp.ok) throw new Error(String(resp.status));
   const body = await resp.json();
-  return { episodes: dedupe(body.episodes ?? [], episodeKey), summary: body.summary };
+  return { episodes: dedupeByKey(body.episodes ?? [], episodeKey), summary: body.summary };
 }
