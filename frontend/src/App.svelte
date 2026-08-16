@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Alerts from './components/Alerts.svelte';
-  import Draggable from './components/Draggable.svelte';
+  import Section from './components/Section.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
   import NetworkPanel from './components/NetworkPanel.svelte';
@@ -214,12 +214,12 @@
       {/if}
     {/each}
 
-    <!-- Sections are reorderable; the order lives in localStorage. Node cards
-         and the summary stay put — grouping already orders the nodes
-         meaningfully, and the headline belongs at the top. -->
+    <!-- Sections are reorderable and collapsible; both live in localStorage.
+         Node cards and the summary stay put — grouping already orders the
+         nodes meaningfully, and the headline belongs at the top. -->
     <div class="sections">
       {#each layout.order as id, i (id)}
-        <Draggable {layout} index={i} {id}>
+        <Section {layout} index={i} {id}>
           {#if id === 'models'}
             <ModelsTable {nodes} />
           {:else if id === 'processes'}
@@ -231,7 +231,7 @@
           {:else if id === 'history'}
             <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.current} />
           {/if}
-        </Draggable>
+        </Section>
       {/each}
     </div>
   {:else if feed.state !== 'offline'}

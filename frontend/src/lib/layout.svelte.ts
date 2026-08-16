@@ -1,11 +1,15 @@
-/** Section order, persisted per browser.
+/** Section order and collapsed state, persisted per browser.
  *
  * localStorage rather than server-side: the backend is deliberately stateless,
  * and a layout tuned for a 34" monitor is rarely the one you want on a phone.
  * Per-browser is the behaviour you'd actually want here, not a limitation.
+ *
+ * Order and collapse live under separate keys so that a corrupt or outdated
+ * value for one can't take the other down with it.
  */
 
 const STORAGE_KEY = 'spark-dash.section-order.v1';
+const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 
 export interface SectionDef {
   id: string;
@@ -54,8 +58,27 @@ function read(): string[] {
   }
 }
 
+/** Collapsed section ids, filtered to ones that still exist.
+ *
+ * Unknown ids are dropped rather than kept: a section removed in a later
+ * release would otherwise leave an entry that can never be un-collapsed,
+ * and `isDefault` would report a customised layout forever.
+ */
+function readCollapsed(available: string[] = DEFAULT_ORDER): string[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? 'null');
+    if (!Array.isArray(saved)) return [];
+    const known = new Set(available);
+    return saved.filter((id): id is string => typeof id === 'string' && known.has(id));
+  } catch {
+    return [];
+  }
+}
+
 export class Layout {
   order = $state<string[]>(read());
+  /** Section ids currently collapsed. */
+  collapsed = $state<string[]>(readCollapsed());
   /** Index currently being dragged, or null. Drives the visual lift. */
   dragging = $state<number | null>(null);
 
@@ -65,6 +88,25 @@ export class Layout {
     } catch {
       // Not worth surfacing: reordering still works for this session.
     }
+  }
+
+  #saveCollapsed() {
+    try {
+      localStorage.setItem(COLLAPSE_KEY, JSON.stringify(this.collapsed));
+    } catch {
+      // Same reasoning as #save: the toggle still works for this session.
+    }
+  }
+
+  isCollapsed(id: string): boolean {
+    return this.collapsed.includes(id);
+  }
+
+  toggleCollapsed(id: string) {
+    this.collapsed = this.isCollapsed(id)
+      ? this.collapsed.filter((s) => s !== id)
+      : [...this.collapsed, id];
+    this.#saveCollapsed();
   }
 
   move(from: number, to: number) {
@@ -80,11 +122,19 @@ export class Layout {
 
   reset() {
     this.order = [...DEFAULT_ORDER];
+    this.collapsed = [];
     this.#save();
+    this.#saveCollapsed();
   }
 
+  /** True when nothing has been customised — order untouched AND nothing
+   *  collapsed. Drives whether "reset layout" is offered at all, so it has to
+   *  account for both or a collapsed-but-unreordered dashboard would have no
+   *  way back. */
   get isDefault(): boolean {
-    return this.order.join(',') === DEFAULT_ORDER.join(',');
+    return (
+      this.order.join(',') === DEFAULT_ORDER.join(',') && this.collapsed.length === 0
+    );
   }
 
   label(id: string): string {

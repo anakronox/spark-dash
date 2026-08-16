@@ -1,5 +1,5 @@
 <script lang="ts">
-  /* Wraps a dashboard section so it can be reordered.
+  /* Wraps a dashboard section so it can be reordered and collapsed.
    *
    * Pointer events rather than HTML5 drag-and-drop: HTML5 DnD doesn't fire on
    * touch at all, and its drag image is not stylable. Pointer events cover
@@ -8,6 +8,12 @@
    * The handle is also a button, and arrow keys move the section. Drag alone
    * would make reordering mouse-only, which is a real exclusion rather than a
    * nicety — and it's the cheaper interaction anyway once you know it's there.
+   *
+   * COLLAPSING UNMOUNTS, rather than hiding with CSS. Two sections poll on a
+   * timer — the activity timeline every 60s and history on its range's period
+   * — so a merely-hidden section would go on fetching data nobody is looking
+   * at. Unmounting stops that, at the cost of a refetch when it reopens, which
+   * is the right trade for a panel you deliberately put away.
    */
   import type { Snippet } from 'svelte';
   import type { Layout } from '../lib/layout.svelte';
@@ -26,6 +32,7 @@
 
   const label = $derived(layout.label(id));
   const position = $derived(`${index + 1} of ${layout.order.length}`);
+  const collapsed = $derived(layout.isCollapsed(id));
 
   /** Which index the pointer is currently over.
    *
@@ -117,7 +124,39 @@
     </svg>
   </button>
 
-  {@render children()}
+  <!-- The toggle stays in one place and rotates, rather than moving into the
+       panel when collapsed. A control that changes position depending on the
+       state it's in reads as two different controls. -->
+  <button
+    class="collapse"
+    class:collapsed
+    aria-expanded={!collapsed}
+    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+    title={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+    onclick={() => layout.toggleCollapsed(id)}
+  >
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <path d="M1 3.5 L5 7 L9 3.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+    </svg>
+  </button>
+
+  {#if collapsed}
+    <!-- A stub that still names what's here: collapsing should tidy the page,
+         not make you expand things to find out what they were.
+         Also clickable, as a bigger target than a 10px chevron — the same
+         reason a form label activates its input. The chevron above remains the
+         control; this is the same action with more room. -->
+    <button
+      class="panel stub"
+      aria-label={`Expand ${label}`}
+      onclick={() => layout.toggleCollapsed(id)}
+    >
+      <span class="eyebrow">{label}</span>
+      <span class="dim">collapsed</span>
+    </button>
+  {:else}
+    {@render children()}
+  {/if}
 </div>
 
 <style>
@@ -156,12 +195,74 @@
     fill: currentColor;
   }
 
+  /* Shares the gutter with the drag handle, stacked beneath it. Both are
+     section-level controls, so they belong together and outside the panel —
+     the headers already carry a title at one end and their own controls at
+     the other. */
+  .collapse {
+    position: absolute;
+    left: -20px;
+    top: 38px;
+    padding: 4px 3px;
+    border-radius: var(--radius);
+    color: var(--ink-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease, color 120ms ease;
+  }
+
+  .collapse svg {
+    display: block;
+    transition: transform 140ms ease;
+  }
+
+  /* Points down when open (press to fold away), right when closed (press to
+     open out) — the direction the content will move. */
+  .collapse.collapsed svg {
+    transform: rotate(-90deg);
+  }
+
+  /* A collapsed section is a single thin bar, so a control that only appears
+     on hover of a 40px strip is easy to miss. Once folded, the chevron stays
+     faintly visible as the marker for what is there. */
+  .collapse.collapsed {
+    opacity: 0.55;
+  }
+
   .slot:hover .handle,
-  .handle:focus-visible {
+  .slot:hover .collapse,
+  .handle:focus-visible,
+  .collapse:focus-visible,
+  .slot:hover .collapse.collapsed {
     opacity: 1;
   }
 
-  .handle:hover {
+  .handle:hover,
+  .collapse:hover {
+    color: var(--ink);
+  }
+
+  /* Reads as a panel that's been folded away, not as a different kind of
+     object: same frame and eyebrow as a real header, just nothing under it. */
+  .stub {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 14px 16px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  /* The frame lifts toward the foreground ink on hover — enough to read as
+     interactive without inventing a colour the themes don't define. Every
+     theme sets --rule and --ink-muted, so this works across all of them. */
+  .stub:hover {
+    border-color: var(--ink-muted);
+  }
+
+  .stub .eyebrow {
     color: var(--ink);
   }
 
@@ -182,6 +283,13 @@
       opacity: 0.45;
       padding: 8px 6px;
       left: -22px;
+    }
+
+    .collapse {
+      opacity: 0.45;
+      padding: 8px 6px;
+      left: -22px;
+      top: 46px;
     }
   }
 </style>
