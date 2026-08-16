@@ -111,6 +111,18 @@ services:
     volumes:
       # Writable here — this is the service that renders the target files.
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/targets:/etc/prometheus/targets/generated
+      # The cluster definition. A DIRECTORY mount, not a file: single-file
+      # mounts follow the inode, and any safe write (write-temp-then-rename,
+      # which is what the retire-endpoint UI will do) replaces it — leaving the
+      # container reading the old one. That failure is silent, and it cost most
+      # of 2026-08-16 to find in Prometheus's config.
+      #
+      # Its own directory rather than the stack root, so mounting it does not
+      # also expose .env to the container.
+      #
+      # NOT read-only: G4 will have the dashboard retire a decommissioned
+      # endpoint by removing it from here.
+      - ${DATA_ROOT:-/docker/spark-dash-stack-central}/cluster:/etc/spark-dash
     ports:
       # The dashboard. THE ONLY PORT PUBLISHED THROUGH THE CLOUDFLARE TUNNEL —
       # Prometheus and Alertmanager stay LAN-only, so Google OAuth at the

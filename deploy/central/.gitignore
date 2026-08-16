@@ -30,4 +30,9 @@ targets/node-exporters.yml
 # The live cluster definition. Same reasoning as .env: it holds this
 # deployment's real values, and the dashboard needs to be able to write it
 # without git credentials. `cluster.yml.example` is the template.
+#
+# Lives in its own directory because the backend mounts it as a DIRECTORY —
+# a single-file mount would go stale the first time the file is replaced
+# rather than edited in place.
+cluster/
 cluster.yml
