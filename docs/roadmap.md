@@ -412,6 +412,69 @@ as a 4.9 GiB minor tenant while it was taking 75–91% of SM.
 cannot backfill a metric you did not collect*. Same asymmetry as retention —
 being late costs permanently, being early costs almost nothing.
 
+### F — One server-side cluster config
+
+**The problem.** The cluster is defined in two places that don't know about each
+other: `SPARK_NODES` on the monitoring VM (ids, hosts, groups) and each node's
+`.env` (its routers, vLLM endpoints, metrics allowlist). That split is the whole
+reason the node stack can't be identical across nodes, which in turn is why
+Phase 2 needs one orchestration repo per node.
+
+Collapse both into a single server-side file. The node stack then becomes
+byte-identical everywhere and one repo serves the cluster.
+
+**The design is constrained by something built on 2026-08-16.** Two approaches
+exist and one is ruled out:
+
+- *Backend polls the routers directly.* Removes the URLs from the node
+  entirely — and **does not work**. SM-gated metrics scraping (see D/E work)
+  decides whether to scrape a model based on NVML per-process utilization, data
+  only the agent has. Moving router polling to the backend means either losing
+  that gate — and pinning models in memory again — or inventing a round trip to
+  ask the agent whether scraping is safe. It also turns N local polls into N
+  cross-LAN polls every 2s.
+- **Agent fetches its own config from the backend.** Polling stays on the node
+  where the NVML data is. The agent already self-identifies from the host's
+  hostname, so it can ask what it should be polling. **This is the approach.**
+
+Sketch:
+
+```yaml
+# config/cluster.yml on the monitoring VM — the one place the cluster is defined
+nodes:
+  - id: sparky
+    host: 192.168.50.61
+    group: null                    # standalone; a group of one
+    runtimes:
+      llama_routers:
+        - url: http://192.168.50.61:8001
+          scrape_metrics: true     # today's LLAMA_METRICS_ROUTERS, per router
+        - url: http://192.168.50.61:8108
+      vllm:
+        - http://192.168.50.61:8120/metrics
+```
+
+- [ ] **F1.** `config/cluster.yml` plus a parser, superseding `SPARK_NODES`.
+  It has to feed Prometheus target rendering too, or there are still two
+  sources — so this touches `inventory.py`.
+- [ ] **F2.** `GET /api/agent-config?node=<id>` returning that node's runtime
+  block.
+- [ ] **F3.** Agent fetches its runtime config on startup and refreshes on a
+  TTL, replacing `LLAMA_ROUTER_URLS`, `LLAMA_METRICS_ROUTERS` and `VLLM_URLS`.
+  The node `.env` shrinks to `LOG_LEVEL` and optional overrides.
+- [ ] **F4.** Cache the last-known config to disk. If the backend is
+  unreachable at agent startup the node would otherwise report GPU, memory and
+  network but no models at all — degrading to *stale* beats degrading to
+  *empty*. **This trades the agent's current full autonomy for central
+  control, and that trade should be deliberate.**
+- [ ] **F5.** Validation: a typo'd port in a central file silently breaks one
+  node's model reporting. `/health` should flag nodes whose config names
+  endpoints they cannot reach.
+
+**Do this BEFORE nodes 2 and 3 arrive.** Migrating with one node means one
+thing to break; migrating with three means the per-node repos exist first and
+then have to be unwound.
+
 ### B — Per-workload GPU memory history
 
 Export `sparkdash_gpu_process_memory_bytes{node, runtime, model, router}` —
