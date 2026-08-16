@@ -19,6 +19,13 @@
 # no matter where the checkout lives.
 name: spark-dash-node
 
+# NO RELATIVE PATHS HERE AT ALL, and nothing to configure per node: every
+# mount below is an absolute HOST path (/proc, /sys, /etc/hostname, /), because
+# what this stack reads is the machine itself. There is no data directory to
+# create and nothing to point anywhere — which is why `compose.yaml` is the
+# only file this stack needs, and why the same one deploys unchanged to every
+# GX10. See central/compose.yaml for why THAT stack uses relative paths.
+
 services:
   node-exporter:
     image: prom/node-exporter:v1.8.2

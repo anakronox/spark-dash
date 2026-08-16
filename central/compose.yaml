@@ -10,6 +10,17 @@
 # node serves, together. The backend re-reads it on a TTL and renders
 # Prometheus's scrape targets from it, and Prometheus picks those up on its
 # next file_sd refresh, so neither container needs restarting.
+#
+# RELATIVE MOUNT PATHS ARE DELIBERATE — do not "tidy" them into absolute ones.
+# Every bind mount below is `./something`, so a clone runs unedited from any
+# directory: `git clone`, `cd central`, `docker compose up -d`. Absolute paths
+# would bake one operator's layout into the file, and anyone who cloned
+# somewhere else would hit broken mounts before getting anything running.
+#
+# An operator orchestrating this from elsewhere (a deploy tool that runs
+# compose from its own directory) may well want absolute paths. That belongs
+# in THEIR copy, outside this repo — the drift then costs them one diff,
+# rather than shipping a broken default to everyone else.
 
 # Project name pinned rather than derived from the directory. Compose defaults
 # it to the folder name, so moving or renaming this directory would silently

@@ -815,6 +815,38 @@ have to double as a debugging session.
   which separates "the GPU numbers changed" from "the agent that measures them
   changed".
 
+### H — Genericize for distribution
+
+Not urgent, and only worth doing if publishing this repo publicly becomes a
+real goal rather than a hypothetical. Recorded now because the surface is
+small and contained, and it grows quietly if left unnamed.
+
+The repo already ships portable artifacts — both `compose.yaml` files run from
+a fresh clone with no edits, and every host-specific value lives in a
+gitignored file with a committed `.example` beside it. What remains is a short
+list of MY values sitting in tracked files where a placeholder belongs:
+
+- [ ] **H1.** `central/.env.example` and `node/.env.example` — carry
+  `forgejo.indielab.tech` as the registry and `192.168.50.x` addresses
+  (`BACKEND_URL`, `ALERTMANAGER_EXTERNAL_URL`). Replace with placeholders
+  obvious enough that leaving one unedited fails loudly rather than quietly
+  pointing at somebody else's LAN.
+- [ ] **H2.** `scripts/publish-images.sh` — hardcodes `REGISTRY_HOST` and
+  `OWNER`. They are already environment-overridable; the defaults are the
+  problem. Either drop the defaults so the script demands them, or move them
+  to a gitignored config the same way everything else host-specific works.
+- [ ] **H3.** Sweep the READMEs for `/docker/spark-dash-homegrown` and
+  `192.168.50.x` used as *instruction* rather than *example*. Most are
+  illustrative and fine; the distinction is whether a reader would paste it.
+- [ ] **H4.** A quickstart that a stranger can follow end to end, which is the
+  real test of whether H1–H3 are done — the current READMEs assume the reader
+  is me.
+
+**Explicitly NOT part of this:** making the compose files configurable by
+path. Their relative mounts are what make a clone self-contained, and that
+property is the thing being preserved here, not a limitation to fix. See the
+header comment in `central/compose.yaml`.
+
 ## Phase 4 — Polish / nice-to-haves (unscheduled)
 
 - [x] Historical trend views — token throughput and GPU utilization over time.

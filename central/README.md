@@ -12,6 +12,14 @@ tracked in git; the containers' state (`prometheus/`, `alertmanager/`,
 There is no `DATA_ROOT` and no separate stack repo — clone this repo on the
 monitoring VM, `cd central`, and start it.
 
+**The relative paths are deliberate.** They are what make a clone runnable
+unedited from wherever it lands. Absolute paths would bake one operator's
+directory layout into a tracked file, so anyone who cloned somewhere else
+would hit broken mounts before getting anything running. If you orchestrate
+this with a tool that runs compose from its own directory and you want
+absolute paths, put them in *your* copy, outside this repo — that way the
+drift costs you one diff instead of shipping a broken default to everyone.
+
 ## Prerequisites
 
 The image must be published first — nothing here builds it on deploy. Build on
