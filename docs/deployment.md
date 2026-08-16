@@ -234,5 +234,83 @@ volumes:
   prom-data:
 ```
 
-Exact image tags, registry, and whether we self-host a registry or just build
-locally are implementation details for Phase 1 — flagged as non-blocking here.
+> The compose shapes above are the ORIGINAL SKETCH and are kept for the
+> reasoning around them. The real files are `central/compose.yaml` and
+> `node/compose.yaml`; read those for what actually runs.
+
+## Building and shipping images
+
+Settled. Images are built by hand with `scripts/publish-images.sh`, tagged with
+the commit, and pinned by tag in each stack's `.env`. Four steps, in order:
+
+```bash
+# 1. On a host of the TARGET architecture, from a clone of this repo
+cd /docker/spark-dash-homegrown && git pull
+
+# 2. Build and push. Prints the tag to pin.
+./scripts/publish-images.sh agent       # on a GX10   (arm64)
+./scripts/publish-images.sh backend     # on the VM   (amd64)
+
+# 3. Pin the printed tag in the stack's .env
+#    AGENT_IMAGE=<registry>/<owner>/spark-dash-agent:<sha>
+
+# 4. Deploy — `docker compose up -d`, or commit the .env if a deploy tool
+#    watches that repo.
+```
+
+**Built natively, never cross-built.** The GX10s are arm64 and the monitoring
+VM is amd64. Building each image where it will run avoids QEMU and buildx
+multi-arch entirely, and takes seconds rather than many minutes. The cost is
+building in two places, which is free because each image only ever runs on one
+of them.
+
+**Build on ONE host per image, not on each node.** All three GX10s are arm64
+and the image carries nothing node-specific — `NODE_ID` comes from the host's
+hostname at runtime — so `publish-images.sh agent` runs on exactly one of them.
+Two nodes each building and pushing the same tag would leave the second
+overwriting the first with a **different digest under the same tag**, and nodes
+would then run different bytes depending on when they pulled.
+
+### Script options
+
+| | |
+|---|---|
+| `--no-push` | build locally and stop; no registry or `docker login` needed |
+| `--tag TAG` | override the tag (default: short git sha, `-dirty` if the tree is) |
+| `--no-latest` | push only the tag, not `:latest` |
+| `REGISTRY=` / `OWNER=` | override the registry; both default to the clone's own `origin` remote |
+
+Deriving the registry from `git remote origin` means a fork publishes to its
+own registry with no configuration, and nobody's personal registry is baked
+into a tracked file.
+
+### Why not build on deploy
+
+Deploy tooling can often run `docker compose --build` and build from the
+Dockerfile at deploy time. Deliberately not used here, decided 2026-08-16:
+
+- **Rollback stays cheap.** Going back is a one-line tag edit and a redeploy,
+  with no rebuild — and no dependency on an old commit still building.
+- **Every node runs bytes known to be identical.** Build-on-deploy means each
+  host builds separately, and `agent/Dockerfile` pulls
+  `ghcr.io/astral-sh/uv:latest` unpinned, so the same commit can produce
+  genuinely different images on different days.
+- **The version label would break.** `BUILD_VERSION` is passed as a build arg
+  from the git sha; compose cannot compute one. If it defaulted to `unknown`,
+  every node would report the same placeholder and `AgentBuildSkew`
+  (`count(count by (build) (...)) > 1`) could never fire — coverage that looks
+  real and isn't.
+
+Revisit only if the deploy tool can supply the deployed commit as a build arg;
+that removes the third objection and weakens the second.
+
+### `BUILD_VERSION` is agent-only
+
+The script passes `--build-arg BUILD_VERSION` to both images, but only
+`agent/Dockerfile` consumes it (`ARG BUILD_VERSION` → `ENV AGENT_VERSION`),
+which is what `sparkdash_agent_build_info` and the `AgentBuildSkew` alert are
+built on. The backend ignores it: it reports no version of its own, so the only
+record of which backend build is running is the image tag in the stack's `.env`
+and `docker inspect`. That asymmetry is fine while there is exactly one backend
+— skew needs two — but it is why `/health` can tell you every agent's version
+and not its own.

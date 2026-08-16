@@ -831,16 +831,32 @@ list of MY values sitting in tracked files where a placeholder belongs:
   (`BACKEND_URL`, `ALERTMANAGER_EXTERNAL_URL`). Replace with placeholders
   obvious enough that leaving one unedited fails loudly rather than quietly
   pointing at somebody else's LAN.
-- [ ] **H2.** `scripts/publish-images.sh` — hardcodes `REGISTRY_HOST` and
-  `OWNER`. They are already environment-overridable; the defaults are the
-  problem. Either drop the defaults so the script demands them, or move them
-  to a gitignored config the same way everything else host-specific works.
+- [x] **H2.** `scripts/publish-images.sh` no longer hardcodes a registry.
+  `REGISTRY` and `OWNER` now default to whatever the clone's own `origin`
+  remote points at, so a fork publishes to its own registry with no
+  configuration and nothing personal is committed. Env vars still override for
+  the case where the registry is not where the source lives.
+
+  Also gained `--no-push` (build with no registry or login at all, which is
+  what an evaluator needs), `--tag`, `--no-latest` and `--help`. Documented in
+  [deployment.md](deployment.md#building-and-shipping-images).
 - [ ] **H3.** Sweep the READMEs for `/docker/spark-dash-homegrown` and
   `192.168.50.x` used as *instruction* rather than *example*. Most are
   illustrative and fine; the distinction is whether a reader would paste it.
 - [ ] **H4.** A quickstart that a stranger can follow end to end, which is the
   real test of whether H1–H3 are done — the current READMEs assume the reader
   is me.
+
+**Also explicitly NOT part of this: build-on-deploy.** Decided 2026-08-16
+after confirming the deploy tool supports it. Keeping the build a separate,
+explicit step preserves one-line rollback with no rebuild, keeps every node on
+bytes known to be identical, and keeps `BUILD_VERSION` truthful — compose
+cannot compute a git sha, and a defaulted `unknown` would make `AgentBuildSkew`
+unable to fire. The investment went into making the build script flexible and
+documented instead. Full reasoning in
+[deployment.md](deployment.md#why-not-build-on-deploy).
+
+Revisit only if the deploy tool can pass the deployed commit as a build arg.
 
 **Explicitly NOT part of this:** making the compose files configurable by
 path. Their relative mounts are what make a clone self-contained, and that
