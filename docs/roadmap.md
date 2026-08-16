@@ -572,19 +572,39 @@ nodes:
         - http://192.168.50.61:8120/metrics
 ```
 
-- [ ] **F1.** `config/cluster.yml` plus a parser, superseding `SPARK_NODES`.
+- [x] **F1.** `config/cluster.yml` plus a parser, superseding `SPARK_NODES`.
   It has to feed Prometheus target rendering too, or there are still two
   sources — so this touches `inventory.py`.
-- [ ] **F2.** `GET /api/agent-config?node=<id>` returning that node's runtime
+- [x] **F2.** `GET /api/agent-config?node=<id>` returning that node's runtime
   block.
-- [ ] **F3.** Agent fetches its runtime config on startup and refreshes on a
+- [x] **F3.** Agent fetches its runtime config on startup and refreshes on a
   TTL, replacing `LLAMA_ROUTER_URLS`, `LLAMA_METRICS_ROUTERS` and `VLLM_URLS`.
   The node `.env` shrinks to `LOG_LEVEL` and optional overrides.
-- [ ] **F4.** Cache the last-known config to disk. If the backend is
-  unreachable at agent startup the node would otherwise report GPU, memory and
-  network but no models at all — degrading to *stale* beats degrading to
-  *empty*. **This trades the agent's current full autonomy for central
-  control, and that trade should be deliberate.**
+- [x] **F4.** Last-known config is kept **in memory**, not on disk. A
+  transient backend outage therefore never blanks a node's routers.
+
+  **Disk caching was considered and rejected.** It would close a narrower
+  window — an agent restart *during* a backend outage — at the cost of a
+  writable volume on every node, and the node stack has no persistent state at
+  all today. That property is worth more: it is why the node README can say
+  there is nothing to back up. During a backend outage the dashboard is down
+  anyway; what is lost is model metrics for a node that also happens to restart
+  in that window.
+
+  **Precedence, decided 2026-08-16: central wins where central has an
+  opinion.**
+
+  | situation | what the agent uses |
+  |---|---|
+  | node is in `cluster.yml` | central config; env ignored |
+  | node is absent from it | falls back to env |
+  | backend unreachable | last known config, else env |
+
+  The middle row is what makes a rollout safe: deploying the agent before
+  adding a node to `cluster.yml` would otherwise take its model reporting dark
+  the moment it restarts. A node listed **with no runtimes** still overrides
+  env — that is an opinion, and it is how removing a router centrally takes
+  effect on a node with a stale `.env`.
 - [ ] **F5.** Validation: a typo'd port in a central file silently breaks one
   node's model reporting. `/health` should flag nodes whose config names
   endpoints they cannot reach.

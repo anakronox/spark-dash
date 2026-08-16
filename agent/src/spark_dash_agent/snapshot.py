@@ -8,6 +8,7 @@ the snapshot. A node with a broken router should still show GPU and memory.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from spark_dash_agent.collectors.network import NetworkCollector, RdmaCollector
 from spark_dash_agent.collectors.psi import PsiCollector
 from spark_dash_agent.collectors.vllm import VllmCollector
 from spark_dash_agent.config import Settings
+from spark_dash_agent.remote_config import RemoteConfig, RuntimeConfig
 
 log = logging.getLogger(__name__)
 
@@ -198,6 +200,16 @@ class SnapshotBuilder:
             metrics_allowlist=settings.llama_metrics_allowlist,
         )
         self._vllm = VllmCollector(settings.vllm_endpoints)
+
+        # Central config, if a backend is configured. Built after the
+        # collectors so the env-derived ones above are the starting point and
+        # the fallback.
+        self._remote = RemoteConfig(
+            settings.backend_url,
+            self._node_id,
+            ttl_s=settings.cluster_config_ttl_s,
+        )
+        self._applied: RuntimeConfig | None = None
         self._network = NetworkCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
 
@@ -209,6 +221,31 @@ class SnapshotBuilder:
         # Built lazily: UMA detection needs NVML's total, which isn't known
         # until the GPU collector has opened the device once.
         self._memory: MemoryCollector | None = None
+
+    def _apply_remote_config(self, now: float) -> None:
+        """Rebuild the runtime collectors when central config changes.
+
+        Rebuilt rather than mutated because both collectors hold rate-tracking
+        state keyed by endpoint, and an endpoint that has changed has no
+        meaningful history to carry over. Only done when the config actually
+        differs, so a steady state never resets rates.
+        """
+        runtimes = self._remote.current(now)
+        if runtimes is None or runtimes == self._applied:
+            return
+
+        log.info(
+            "applying cluster config: routers=%s vllm=%s",
+            runtimes.llama_routers or "none",
+            runtimes.vllm or "none",
+        )
+        self._llama = LlamaRouterCollector(
+            runtimes.llama_routers,
+            timeout=self._settings.llama_router_timeout_s,
+            metrics_allowlist=runtimes.metrics_allowlist,
+        )
+        self._vllm = VllmCollector(runtimes.vllm)
+        self._applied = runtimes
 
     def _temp_bands(self) -> tuple[TempThresholds, TempThresholds]:
         """GPU and CPU temperature bands, in precedence order.
@@ -240,6 +277,7 @@ class SnapshotBuilder:
 
     def build(self) -> NodeSnapshot:
         errors: dict[str, str] = {}
+        self._apply_remote_config(time.monotonic())
 
         # GPU first: it populates the NVML total that UMA detection depends on.
         gpu = self._gpu.safe_collect(errors)

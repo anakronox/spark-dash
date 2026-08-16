@@ -77,6 +77,17 @@ services:
       - SYS_PATH=/host/sys
       - HOSTNAME_PATH=/host/etc/hostname
 
+      # Where this node fetches its runtime config from.
+      #
+      # THE SAME ON EVERY NODE — it names the monitoring VM, not the node —
+      # which is exactly what lets this file deploy unchanged to all three
+      # GX10s. The node asks what it serves instead of carrying it.
+      - BACKEND_URL=${BACKEND_URL:-}
+
+      # The three below are now FALLBACKS, used only while a node is not yet
+      # listed in cluster.yml on the monitoring VM. Once it is, central config
+      # wins and these are ignored — see remote_config.py for the precedence.
+      #
       # Comma-separated: a node commonly runs several router containers.
       # Leave blank on a node that serves only vLLM.
       - LLAMA_ROUTER_URLS=${LLAMA_ROUTER_URLS:-}

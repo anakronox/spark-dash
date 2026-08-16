@@ -60,6 +60,17 @@ class Settings(BaseSettings):
     # Comma-separated vLLM /metrics endpoints on this node.
     vllm_urls: str = ""
 
+    # Where to fetch this node's runtime config from.
+    #
+    # THE SAME VALUE ON EVERY NODE — it names the monitoring VM, not the node
+    # — which is what lets one stack config deploy unchanged everywhere. That
+    # is the entire point: the node asks what it serves rather than carrying it.
+    #
+    # Unset disables central config and the settings above stay authoritative,
+    # which is how a deployment that has not migrated keeps working.
+    backend_url: str = ""
+    cluster_config_ttl_s: float = 60.0
+
     # Temperature bands. Left unset — the normal case — they are DERIVED FROM
     # THE HARDWARE: the GPU's from NVML's slowdown threshold (86C on GB10), the
     # CPU's from the thermal zone's critical trip (104C). Set these only to
