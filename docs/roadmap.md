@@ -412,6 +412,38 @@ as a 4.9 GiB minor tenant while it was taking 75–91% of SM.
 cannot backfill a metric you did not collect*. Same asymmetry as retention —
 being late costs permanently, being early costs almost nothing.
 
+### G — Clearing an alarm
+
+Surfaced 2026-08-16 by deliberately stopping the vLLM container: the target
+goes down, `PrometheusTargetScrapeFailing` starts counting toward firing, and
+there is nothing in the dashboard that says "yes, I did that on purpose".
+
+Three different things hide behind "clear an alarm", and they want different
+answers:
+
+- **Temporarily silence** while you work on something. Alertmanager already
+  does this and already has a UI for it on `:9093` — LAN-only, which is why
+  the README calls it out. The gap is that you have to leave the dashboard.
+- **Acknowledge** — keep it visible but mark it as seen, so a second person
+  knows it is being handled. Alertmanager has no concept of this.
+- **Retire the thing entirely** — a stopped vLLM instance should leave the
+  config, not be silenced forever. That is a config edit, not an alarm action,
+  and F8's gap detection is the other half of it: the dashboard should notice
+  a *configured but absent* server just as it notices an unconfigured one.
+
+**Same read-only tension as F.** Silencing is a write, through the one service
+published on the tunnel — though a much narrower primitive than editing
+`cluster.yml`, since a silence cannot repoint an agent at anything. Worth
+deciding on its own merits rather than inheriting F's answer by default.
+
+- [ ] **G1.** Decide the scope: silence, acknowledge, or neither.
+- [ ] **G2.** If silencing: proxy Alertmanager's silence API, LAN-only, with
+  the silence author recorded — an unattributed silence is how an alert gets
+  lost.
+- [ ] **G3.** Detect *configured but absent*: the inverse of F8. A target that
+  has been down long enough is either broken or retired, and the dashboard
+  should say which it cannot tell.
+
 ### F — One server-side cluster config
 
 **The problem.** The cluster is defined in two places that don't know about each
