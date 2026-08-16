@@ -410,6 +410,20 @@ class NodeSnapshot(BaseModel):
         "beside the status color so meaning never rides on hue alone.",
     )
 
+    unmonitored_runtimes: list[str] = Field(
+        default_factory=list,
+        description="Inference runtimes running on this node that nothing is "
+        "configured to collect from.\n\n"
+        "The failure this catches is silence: a vLLM container can run for days "
+        "holding GPU memory with no throughput, latency or queue-depth data "
+        "reaching the dashboard, and nothing else says so — the node looks "
+        "healthy because the parts being measured are healthy.\n\n"
+        "Only runtimes there is a collector FOR are reported. sglang, TGI and "
+        "ollama are deliberately excluded: with no collector to configure, "
+        "flagging them would produce a warning that can never be resolved, "
+        "which trains the reader to ignore the whole indicator.",
+    )
+
     temp_bands: TempBands | None = Field(
         default=None,
         description="Thresholds this node's health was judged against, so a "

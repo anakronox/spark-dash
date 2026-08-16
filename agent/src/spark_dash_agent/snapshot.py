@@ -123,6 +123,49 @@ def _resolve_vllm(processes: list[ProcessInfo], vllm: list[VllmMetrics]) -> None
             proc.server = proc.server or instance.server
 
 
+#: Runtimes this agent has a collector for. A gap is only actionable if there
+#: is something to configure — see `detect_unmonitored_runtimes`.
+COLLECTIBLE_RUNTIMES = frozenset({"llama.cpp", "vllm"})
+
+
+def detect_unmonitored_runtimes(
+    processes: list[ProcessInfo],
+    *,
+    llama_configured: bool,
+    vllm_configured: bool,
+) -> list[str]:
+    """Runtimes observed on the GPU that nothing is configured to collect from.
+
+    Both halves already exist in every snapshot: NVML sees each process and
+    infers its runtime, and the settings say which endpoints are configured.
+    The delta is the gap — and it is the failure nothing else reports, because
+    an unmonitored server looks like an absence rather than an error.
+
+    Compares against what is CONFIGURED, not what was successfully collected.
+    A vLLM endpoint that is configured but momentarily erroring drops out of
+    the collected list, and treating that as "unconfigured" would raise a gap
+    warning for a transient scrape failure.
+
+    Deliberately does NOT try to match listening ports against configured
+    ports. A process's port is not readable across the network namespace — the
+    same wall hit when attributing vLLM processes to models — so the rule is
+    coarser: flag a runtime only when *nothing at all* is configured for it.
+    That catches the completely-unmonitored case, which is the one that
+    matters, and cannot false-positive when one instance spawns several
+    engine processes.
+    """
+    configured = set()
+    if llama_configured:
+        configured.add("llama.cpp")
+    if vllm_configured:
+        configured.add("vllm")
+
+    observed = {
+        p.runtime for p in processes if p.runtime in COLLECTIBLE_RUNTIMES
+    }
+    return sorted(observed - configured)
+
+
 def _point_psutil_at_host_proc(proc_path: Path) -> None:
     """Redirect psutil to the host's procfs.
 
@@ -228,6 +271,18 @@ class SnapshotBuilder:
         # either one.
         processes = resolve_process_servers(processes, llama, vllm)
 
+        unmonitored = detect_unmonitored_runtimes(
+            processes,
+            llama_configured=bool(self._settings.llama_router_endpoints),
+            vllm_configured=bool(self._settings.vllm_endpoints),
+        )
+        if unmonitored:
+            log.warning(
+                "inference runtime(s) running with nothing configured to "
+                "collect from them: %s",
+                ", ".join(unmonitored),
+            )
+
         gpu_bands, cpu_bands = self._temp_bands()
         health, reasons = assess(
             gpu=gpu,
@@ -245,6 +300,7 @@ class SnapshotBuilder:
             agent_version=self._settings.agent_version,
             health=health,
             health_reasons=reasons,
+            unmonitored_runtimes=unmonitored,
             temp_bands=TempBands(
                 gpu_warning_c=gpu_bands.warning_c,
                 gpu_critical_c=gpu_bands.critical_c,

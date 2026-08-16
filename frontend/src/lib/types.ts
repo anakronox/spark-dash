@@ -149,6 +149,10 @@ export interface NodeSnapshot {
   group: string | null;
   health: HealthState;
   health_reasons: string[];
+  /** Runtimes running on this node with nothing configured to collect them.
+   *  A gap here is a silence — the node looks healthy because everything
+   *  being measured is healthy. */
+  unmonitored_runtimes: string[];
   gpu: GpuMetrics | null;
   memory: MemoryMetrics | null;
   psi: PsiMetrics | null;

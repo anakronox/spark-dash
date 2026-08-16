@@ -307,6 +307,26 @@ groups:
             usually catch this too; this rule names the mechanism, which is what
             tells you it's memory rather than something else stalling.
 
+      # An inference server running with nothing configured to collect from it
+      # is a SILENCE, and a silence is what nobody notices: the node looks
+      # healthy because everything being measured is healthy, while a container
+      # holds GPU memory and reports no throughput, latency or queue depth.
+      #
+      # `for: 30m` rather than minutes — a server that has just been started is
+      # legitimately unconfigured for as long as it takes someone to add it, and
+      # paging on that would punish the normal workflow.
+      - alert: UnmonitoredInferenceRuntime
+        expr: sparkdash_unmonitored_runtime == 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.runtime }} on {{ $labels.node }} is not being collected"
+          description: >-
+            A {{ $labels.runtime }} process is using the GPU but no endpoint is
+            configured for it, so none of its throughput, queue depth or cache
+            metrics reach the dashboard. Add it to that node's configuration.
+
   # ------------------------------------------------------------------- fabric
   - name: fabric
     rules:

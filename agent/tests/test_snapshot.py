@@ -13,6 +13,7 @@ from spark_dash_agent.config import Settings
 from spark_dash_agent.snapshot import (
     SnapshotBuilder,
     _point_psutil_at_host_proc,
+    detect_unmonitored_runtimes,
     resolve_process_servers,
 )
 from spark_dash_common.models import (
@@ -342,3 +343,77 @@ def test_agent_version_defaults_to_unknown():
     """Running from source, there's no commit to name — and saying 'unknown' is
     honest where inventing a version would not be."""
     assert SnapshotBuilder(Settings(node_id="n1")).build().agent_version == "unknown"
+
+
+class TestUnmonitoredRuntimes:
+    """The gap between what is running on the GPU and what is configured to be
+    collected from. Catches a silence — an unmonitored server looks like an
+    absence rather than an error, so nothing else reports it.
+    """
+
+    def _proc(self, runtime, pid=1):
+        return ProcessInfo(pid=pid, name="x", gpu_mem_bytes=1, runtime=runtime)
+
+    def test_vllm_running_with_nothing_configured(self):
+        """The real case: a vLLM container ran on sparky for an unknown period
+        holding GPU memory, with no throughput or queue data reaching the
+        dashboard, and nothing said so."""
+        gaps = detect_unmonitored_runtimes(
+            [self._proc("vllm")], llama_configured=True, vllm_configured=False
+        )
+        assert gaps == ["vllm"]
+
+    def test_nothing_flagged_when_configured(self):
+        gaps = detect_unmonitored_runtimes(
+            [self._proc("vllm")], llama_configured=False, vllm_configured=True
+        )
+        assert gaps == []
+
+    def test_compares_against_configuration_not_collection_success(self):
+        """A configured endpoint that is momentarily erroring must not raise a
+        gap warning — that would turn a transient scrape failure into a
+        misconfiguration report."""
+        gaps = detect_unmonitored_runtimes(
+            [self._proc("vllm")], llama_configured=False, vllm_configured=True
+        )
+        assert gaps == []
+
+    def test_runtimes_with_no_collector_are_not_flagged(self):
+        """sglang, TGI and ollama have nothing to configure, so flagging them
+        would produce a warning that can never be resolved — which teaches the
+        reader to ignore the indicator entirely."""
+        gaps = detect_unmonitored_runtimes(
+            [self._proc("sglang"), self._proc("ollama", pid=2)],
+            llama_configured=False,
+            vllm_configured=False,
+        )
+        assert gaps == []
+
+    def test_non_llm_workloads_are_irrelevant(self):
+        """ComfyUI holds GPU memory but is not an inference server; there is no
+        endpoint to configure for it."""
+        gaps = detect_unmonitored_runtimes(
+            [self._proc("comfyui")], llama_configured=False, vllm_configured=False
+        )
+        assert gaps == []
+
+    def test_both_runtimes_unconfigured(self):
+        gaps = detect_unmonitored_runtimes(
+            [self._proc("vllm"), self._proc("llama.cpp", pid=2)],
+            llama_configured=False,
+            vllm_configured=False,
+        )
+        assert gaps == ["llama.cpp", "vllm"]
+
+    def test_several_engine_processes_report_one_gap(self):
+        """One vLLM instance spawns several processes. The gap is per RUNTIME,
+        not per process, so this must not report the same thing twice."""
+        gaps = detect_unmonitored_runtimes(
+            [self._proc("vllm", 1), self._proc("vllm", 2), self._proc("vllm", 3)],
+            llama_configured=False,
+            vllm_configured=False,
+        )
+        assert gaps == ["vllm"]
+
+    def test_idle_node_reports_nothing(self):
+        assert detect_unmonitored_runtimes([], llama_configured=False, vllm_configured=False) == []

@@ -84,6 +84,15 @@
 
   const versionsDiverge = $derived(agentVersions.length > 1);
 
+  /* Inference servers running with nothing configured to collect them.
+     Grouped by node so three engine processes on one box read as one problem
+     rather than three. */
+  const unmonitored = $derived.by<[string, string[]][]>(() =>
+    nodes
+      .filter((n) => n.up && n.unmonitored_runtimes?.length)
+      .map((n) => [n.node_id, n.unmonitored_runtimes] as [string, string[]]),
+  );
+
   const cluster = $derived.by(() => {
     let tokensPerSec = 0;
     let up = 0;
@@ -174,6 +183,21 @@
        reading numbers. Renders nothing when all is quiet. -->
   <Alerts feed={alertFeed} />
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
+
+  {#if unmonitored.length}
+    <!-- Sits with the other cross-cutting notices rather than in a panel: it
+         reports something MISSING, and a panel for absent data is a place
+         nobody looks. The node otherwise reads as healthy, because everything
+         being measured is. -->
+    <p class="notice" data-tone="warning">
+      Running but not collected:
+      {#each unmonitored as [node, runtimes], i (node)}
+        {i > 0 ? ' · ' : ''}<span class="num">{runtimes.join(', ')}</span>
+        <span class="dim">on {node}</span>
+      {/each}
+      <span class="dim">— no throughput, queue depth or cache metrics for these.</span>
+    </p>
+  {/if}
 
   {#if versionsDiverge}
     <p class="notice" data-tone="warning">

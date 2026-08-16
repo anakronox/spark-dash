@@ -96,6 +96,20 @@ def _node_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
     build.add_metric([node, snap.agent_version], 1.0)
     yield build
 
+    # Exported so the gap is alertable and historical, not just visible while
+    # someone happens to be looking at the dashboard. An unmonitored inference
+    # server is a silence, and a silence is exactly what a person does not
+    # notice.
+    if snap.unmonitored_runtimes:
+        unmonitored = _g(
+            "unmonitored_runtime",
+            "1 when a runtime is running with nothing configured to collect it",
+            ["node", "runtime"],
+        )
+        for runtime in snap.unmonitored_runtimes:
+            unmonitored.add_metric([node, runtime], 1.0)
+        yield unmonitored
+
 
 def _gpu_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
     gpu = snap.gpu

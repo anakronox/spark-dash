@@ -530,7 +530,15 @@ what is configured and what is actually happening.
 - [ ] **F7.** Surface F5's reachability check per endpoint, so a typo'd port
   reads as `spark2 · llama_routers · :8002 — no response` instead of failing
   silently.
-- [ ] **F8.** **Gap detection: inference servers observed but not configured.**
+- [x] **F8.** **Gap detection: inference servers observed but not configured.**
+  **Done 2026-08-16, and it needed none of F1–F5** — the agent's snapshot
+  already carries both halves, so this works against the current `.env` setup
+  and will keep working after the config migration. Reported per node in the
+  snapshot, exported as `sparkdash_unmonitored_runtime{node,runtime}` so it is
+  alertable and historical rather than only visible while someone is looking,
+  surfaced as a dashboard notice, and alerted by
+  `UnmonitoredInferenceRuntime` after 30m — long enough that a
+  just-started server is not punished for the normal add-it-next workflow.
   The agent already sees every GPU process and its runtime via NVML, so a
   `VLLM::EngineCore` running on a node with no configured vLLM endpoint is
   detectable — and is precisely the failure where nothing else would be
