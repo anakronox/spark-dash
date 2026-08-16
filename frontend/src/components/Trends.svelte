@@ -137,6 +137,11 @@
       error = (err as Error).message;
       data = {};
     } finally {
+      // Only the most recent request may clear the flag — an older one
+      // finishing late must not make a newer in-flight load look done. This is
+      // correct only because every request now settles: with no timeout on
+      // fetch, a hung request stayed `inflight` forever and nothing could
+      // clear the flag. See lib/request.ts.
       if (inflight === controller) loading = false;
     }
   }
@@ -148,10 +153,20 @@
     load();
   });
 
-  // Refresh on the range's own timescale rather than on the live tick: a 7-day
-  // chart redrawing every 2 seconds would be pointless load on Prometheus.
+  /* Refresh on the range's own timescale rather than on the live tick: a 7-day
+   * chart redrawing every 2 seconds would be pointless load on Prometheus.
+   *
+   * CAPPED, though. Scaling with the range put the 7d refresh 84 minutes out,
+   * and that interval is also the only thing that retries after a failed load
+   * — so a request that died with the backend left this panel on "Loading…"
+   * for an hour and a half while everything else recovered. Five minutes is
+   * still cheap for a 7d query and bounds how long a transient failure can
+   * show. The real fix is the fetch timeout in lib/request.ts; this bounds the
+   * blast radius of anything else that goes wrong. */
+  const MAX_REFRESH_MS = 5 * 60_000;
+
   $effect(() => {
-    const period = Math.max(30_000, (range.minutes * 60_000) / 120);
+    const period = Math.min(MAX_REFRESH_MS, Math.max(30_000, (range.minutes * 60_000) / 120));
     const timer = setInterval(load, period);
     return () => clearInterval(timer);
   });

@@ -6,6 +6,8 @@
  * disagree with each other for up to 30 seconds at a time.
  */
 
+import { fetchWithTimeout } from './request';
+
 export interface AlertItem {
   name: string;
   severity: string;
@@ -40,7 +42,7 @@ export async function createSilence(
   hours: number,
   comment: string,
 ): Promise<void> {
-  const resp = await fetch('/api/alerts/silence', {
+  const resp = await fetchWithTimeout('/api/alerts/silence', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ labels, hours, comment }),
@@ -49,12 +51,12 @@ export async function createSilence(
 }
 
 export async function expireSilence(id: string): Promise<void> {
-  const resp = await fetch(`/api/alerts/silence/${id}`, { method: 'DELETE' });
+  const resp = await fetchWithTimeout(`/api/alerts/silence/${id}`, { method: 'DELETE' });
   if (!resp.ok) throw new Error(await resp.text());
 }
 
 export async function fetchSilences(): Promise<Silence[]> {
-  const resp = await fetch('/api/alerts/silences');
+  const resp = await fetchWithTimeout('/api/alerts/silences');
   if (!resp.ok) throw new Error(String(resp.status));
   return (await resp.json()).silences ?? [];
 }
@@ -107,7 +109,7 @@ export class AlertFeed {
 
   async load() {
     try {
-      const resp = await fetch('/api/alerts');
+      const resp = await fetchWithTimeout('/api/alerts');
       if (!resp.ok) throw new Error(String(resp.status));
       const body = await resp.json();
       this.available = body.available;
@@ -140,7 +142,7 @@ export async function fetchHistory(
   minutes: number,
   signal?: AbortSignal,
 ): Promise<{ episodes: AlertEpisode[]; summary: AlertSummary }> {
-  const resp = await fetch(`/api/alerts/history?minutes=${minutes}`, { signal });
+  const resp = await fetchWithTimeout(`/api/alerts/history?minutes=${minutes}`, { signal });
   if (!resp.ok) throw new Error(String(resp.status));
   const body = await resp.json();
   return { episodes: body.episodes ?? [], summary: body.summary };

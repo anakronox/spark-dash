@@ -5,6 +5,8 @@
  * them would make the live view as laggy as the scrape interval.
  */
 
+import { fetchWithTimeout } from './request';
+
 export interface HistorySeries {
   node: string | null;
   labels: Record<string, string>;
@@ -85,7 +87,7 @@ export async function fetchHistory(
   signal?: AbortSignal,
 ): Promise<HistoryResponse> {
   const params = new URLSearchParams({ metric, minutes: String(minutes), step });
-  const resp = await fetch(`/api/history?${params}`, { signal });
+  const resp = await fetchWithTimeout(`/api/history?${params}`, { signal });
   if (!resp.ok) {
     const detail = await resp.json().catch(() => null);
     throw new Error(detail?.detail ?? `history request failed (${resp.status})`);

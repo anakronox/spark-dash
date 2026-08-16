@@ -12,6 +12,7 @@
    * the number worth watching if throughput feels inconsistent.
    */
   import { onMount } from 'svelte';
+  import { fetchWithTimeout } from '../lib/request';
 
   interface Event {
     ts: number;
@@ -46,7 +47,7 @@
       // Step scales with the window: a 7-day view at 60s would return far more
       // points than there are transitions to find in them.
       const step = win.minutes <= 360 ? '60s' : win.minutes <= 1440 ? '120s' : '600s';
-      const resp = await fetch(
+      const resp = await fetchWithTimeout(
         `/api/models/timeline?minutes=${win.minutes}&step=${step}`,
       );
       if (!resp.ok) throw new Error(String(resp.status));
