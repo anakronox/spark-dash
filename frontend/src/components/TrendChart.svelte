@@ -30,10 +30,18 @@
      *  build time and can't follow CSS variables afterwards. */
     theme: string;
     height?: number;
+    /** Metric identity colour, used when there is exactly ONE node.
+     *
+     * With several nodes the lines keep their node colours, because a line
+     * matching its card is load-bearing on this page and worth more than
+     * per-metric tinting. With one node there is no such conflict, so the line
+     * takes the metric's colour and matches its legend entry. */
+    accent?: string;
   }
 
-  const { x, columns, names, slots, unit, percent = false, theme, height = 200 }: Props =
-    $props();
+  const {
+    x, columns, names, slots, unit, percent = false, theme, height = 200, accent,
+  }: Props = $props();
 
   let host = $state<HTMLDivElement | null>(null);
   let chart: uPlot | null = null;
@@ -84,7 +92,7 @@
         {},
         ...names.map((name) => ({
           label: name,
-          stroke: nodeColor(slots.get(name) ?? 0),
+          stroke: accent && names.length === 1 ? accent : nodeColor(slots.get(name) ?? 0),
           width: 2,
           points: { show: false },
           // Values are read from the tooltip, not from labels on every point.

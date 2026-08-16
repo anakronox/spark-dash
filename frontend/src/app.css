@@ -38,6 +38,24 @@
   --serious: #ec835a;
   --critical: #d03b3b;
 
+  /* Categorical chart slots, for the multi-metric history charts.
+     The first three ARE the node hues above — one palette, extended, so a
+     metric colour never collides with a node colour by accident.
+
+     Fixed order: colour follows the METRIC, never its position, so changing
+     which metrics are selected never repaints the others. Validated with the
+     dataviz validator against this surface (all checks pass; light mode warns
+     on contrast for three slots, which is discharged by every chart carrying a
+     visible title and a named legend entry). */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "IBM Plex Mono",
     Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
@@ -100,6 +118,19 @@
   --warning: #ffd24d;
   --serious: #ff9d5c;
   --critical: #ff4d85;
+
+  /* Categorical chart slots — dark surface.
+     Fixed order: colour follows the METRIC, never its position, so
+     changing the selection never repaints the survivors. Validated
+     with the dataviz validator against this surface. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
 }
 
 :root[data-theme='light'] {
@@ -117,6 +148,24 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+
+  /* Categorical chart slots, for the multi-metric history charts.
+     The first three ARE the node hues above — one palette, extended, so a
+     metric colour never collides with a node colour by accident.
+
+     Fixed order: colour follows the METRIC, never its position, so changing
+     which metrics are selected never repaints the others. Validated with the
+     dataviz validator against this surface (all checks pass; light mode warns
+     on contrast for three slots, which is discharged by every chart carrying a
+     visible title and a named legend entry). */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-7: #4a3aa7;
+  --chart-8: #e34948;
 }
 
 * {

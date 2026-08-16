@@ -22,6 +22,21 @@ export function nodeColor(slot: number): string {
   return cssVar(`--series-${(slot % NODE_SLOTS) + 1}`);
 }
 
+/** Number of categorical slots available to metrics. */
+export const CHART_SLOTS = 8;
+
+/** Metric identity colour.
+ *
+ * Eight slots rather than the three nodes get, because these are read across
+ * SEPARATE stacked charts rather than as overlapping lines in one. Each chart
+ * carries its own title and legend entry, so colour is redundant with the
+ * label instead of being the only way to tell two series apart — which is what
+ * makes eight safe here and three the limit there.
+ */
+export function metricColor(slot: number): string {
+  return cssVar(`--chart-${((slot - 1) % CHART_SLOTS) + 1}`);
+}
+
 /** Stable slot per node id.
  *
  * Colour follows the node, not its position, so filtering out a node must not

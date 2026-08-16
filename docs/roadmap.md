@@ -321,6 +321,80 @@ no affordance to click when all is well.
 - **Design the empty state deliberately.** "No alert has fired in 7 days" plus
   the pending count is the state that will be seen most, not a degenerate case.
 
+### E — More signal, and correlating it
+
+Came out of asking what would actually help diagnose a trend on a GB10, rather
+than what is easy to add.
+
+**Closed question: memory bandwidth is not reachable via NVML on GB10.**
+Measured 2026-08-16 — `nvmlDeviceGetUtilizationRates().memory` reads **0% while
+the GPU is at 96%**, and per-process `memUtil` is 0 as well. The discrete-GPU
+notion of framebuffer-controller activity does not apply to a unified LPDDR5x
+pool, the same root cause that makes `nvmlDeviceGetMemoryInfo` report the wrong
+size here.
+
+This matters more than a missing metric usually would: on a unified-memory part
+bandwidth is plausibly the real bottleneck, and we cannot see it. Everything
+below works around that rather than closing it. The only remaining route is DCGM
+profiling counters (`DCGM_FI_PROF_DRAM_ACTIVE`), which is a timeboxed spike with
+an uncertain answer, not a plan item. **Do not propose NVML for this again.**
+
+**There are 748 distinct metrics in the TSDB and the dashboard reads a
+fraction.** Three are already collected by node-exporter and worth surfacing:
+
+- [ ] **E1.** CPU and I/O pressure. `node_pressure_cpu_*` and
+  `node_pressure_io_*` are already there; only *memory* PSI is surfaced. "Slow"
+  has at least three distinct causes and we currently distinguish one.
+- [ ] **E2.** CPU frequency (`node_cpu_scaling_frequency_hertz`, 3.35 GHz
+  observed). Grace cores throttling would slow prompt processing invisibly —
+  the CPU-side equivalent of the GPU clock check A8 fixed.
+- [ ] **E3.** Disk saturation (`node_disk_io_time_seconds_total`, 2 disks).
+  Explains a slow cold start: weights coming off disk.
+
+**The correlation layer** — the more valuable half, and mostly assembly of
+pieces that already exist:
+
+- [x] **E4.** Multi-metric history: selectable metrics on **one plot against a
+  fixed 0/25/50/75/100% axis**, each with its own colour.
+
+  These span %, °C, W, MHz and tok/s, so they cannot share a raw axis — and a
+  second y-axis is the single most common charting mistake, because two scales
+  let a chart imply a correlation purely by where the crossings land. Each
+  series is instead normalised against a **fixed** ceiling (100°C, 300W,
+  3003MHz), never the window's own maximum, which would rescale the line every
+  time the range changed.
+
+  The absolute reading is not lost: hovering reports the real value in its own
+  unit, shown **on the metric chips** rather than in a separate legend. The
+  chips already carry the colour and name, so they serve as legend and readout
+  together — which is what let the chart legend go, and kept the panel compact.
+
+  Colour follows the metric, never its position: verified in-browser that
+  removing the first metric leaves every other line's colour unchanged.
+- [ ] **E5.** Event annotations on those charts — model swaps, alert episodes,
+  agent build changes. Both event sources already exist (`/api/models/timeline`
+  and `/api/alerts/history`); this only draws them on the axis they already
+  share. A dip then arrives with its candidate explanation attached instead of
+  requiring three views and mental alignment.
+- [ ] **E6.** Cluster outlier detection, once nodes 2 and 3 land: same model,
+  three nodes, one slower. Needs per-node comparison rather than aggregates,
+  and the `group` label (C1) is what keeps "compare within the pooled pair, not
+  across groups" expressible.
+
+**The question this cluster can now answer that it could not before:**
+
+```promql
+sparkdash_gpu_process_sm_percent{runtime="comfyui"}
+  and on(node) sparkdash_llama_model_tokens_per_second
+```
+
+Is image generation stealing compute from inference? Memory alone showed ComfyUI
+as a 4.9 GiB minor tenant while it was taking 75–91% of SM.
+
+**Sequencing note.** Do E1–E3 early even though the views come later: *you
+cannot backfill a metric you did not collect*. Same asymmetry as retention —
+being late costs permanently, being early costs almost nothing.
+
 ### B — Per-workload GPU memory history
 
 Export `sparkdash_gpu_process_memory_bytes{node, runtime, model, router}` —
