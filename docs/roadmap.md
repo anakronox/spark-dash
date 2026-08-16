@@ -37,12 +37,20 @@ Goal: something real running on the existing GX10, informative for day-to-day us
   `./scripts/validate-on-gx10.sh` passes 11/11 on `sparky`: unified memory
   detected, total agrees with `/proc/meminfo` within 2%, power conversion
   plausible, clock load-gating correct, host PID namespace visible.
-- [ ] Confirm vLLM containers expose `/metrics` and add them as Prometheus
-  scrape targets. **Not done**, but the scaffolding is in place: the `vllm` job
-  exists in `prometheus.yml` and `deploy/central/targets/vllm.yml` is tracked,
-  documented, and deliberately empty (`[]`) pending real instances. `VLLM_URLS`
-  is also unset, so nothing vLLM-shaped is scraped anywhere yet. All that's
-  missing is target entries.
+- [x] Confirm vLLM containers expose `/metrics` and add them as Prometheus
+  scrape targets. **Done 2026-08-16** against a real instance on
+  `sparky:8120` serving `qwen36-35b-heretic`.
+
+  All five metric names the collector expects were verified present on that
+  build before anything was wired, so no collector change was needed. It
+  exposes 76 `vllm:` families in total — spec-decode counters and MFU
+  estimates among them — so there is more to read here than we currently do.
+
+  Both paths are configured because they answer different questions: the agent
+  polls it for the live view (`VLLM_URLS`), and Prometheus scrapes it directly
+  for history (`targets/vllm.yml`, labelled `node: sparky` so the series join
+  against that node's GPU and memory metrics). Target came up healthy with 426
+  series and no Prometheus restart — `file_sd` picked it up on its own refresh.
 - [x] Stand up Prometheus on the monitoring VM, scraping the GX10 over the LAN.
 - [x] Backend API (Python 3.12 + FastAPI): `/api/nodes`, `/api/history`,
   `/api/models`, `/api/models/timeline`, `/api/cluster/summary`, `/api/alerts`,
