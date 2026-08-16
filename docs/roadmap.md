@@ -65,20 +65,22 @@ only `sparky` exists today, and it is the only scrape target.
 
 - [ ] Roll out the same per-node stack to nodes 2 and 3.
 - [x] Move Prometheus target list to file-based service discovery. **Done** —
-  `prometheus.yml` uses `file_sd_configs` against
-  `targets/generated/{agents,node-exporters}.yml`, rendered by the backend from
-  `SPARK_NODES` with a 30s refresh. Adding a node needs no Prometheus config
+  `prometheus.yml` uses `file_sd_configs` against `targets/`, rendered by the
+  backend from `cluster.yml` with a 30s refresh. Adding a node needs no Prometheus config
   change and no restart.
 - [x] Extend backend/frontend to aggregate across nodes — `/api/cluster/summary`
   and the per-node health cards exist and handle grouping.
 - [ ] Point the central Prometheus at all 3 nodes.
 
-> **Note for the rollout:** a stack clone created before `79470ea` still tracks
-> `.env`, and pulling past that commit fails with "local changes would be
-> overwritten" as soon as anyone pins `AGENT_IMAGE`. Reconcile with: copy `.env`
-> aside, `git checkout -- .env`, pull, copy back — verifying by checksum. Done
-> on `sparky` 2026-08-15; nodes 2 and 3 will need the same if they get clones
-> from before that commit.
+> **Note for the rollout:** nodes 2 and 3 need no stack repo and no per-node
+> config. Clone `spark-dash-homegrown` into `/docker/`, `cd node`, copy
+> `.env.example` to `.env` (only `BACKEND_URL` and the image pin matter), and
+> `docker compose up -d`. Then add the node to `central/cluster/cluster.yml` on
+> the monitoring VM — that is where its routers, groups and identity live.
+>
+> The old hazard here — a stack clone predating `79470ea` still tracking `.env`,
+> so pulling past that commit failed with "local changes would be overwritten" —
+> is gone with the stack repos themselves.
 
 ## Phase 3 — Remote access & hardening
 
