@@ -417,3 +417,34 @@ class TestUnmonitoredRuntimes:
 
     def test_idle_node_reports_nothing(self):
         assert detect_unmonitored_runtimes([], llama_configured=False, vllm_configured=False) == []
+
+
+class TestGapDetectionUnderCentralConfig:
+    """The regression the migration exposed.
+
+    Once a node is managed centrally its env is empty by design. Checking the
+    environment alone therefore reported every running runtime as unmonitored
+    the moment the migration completed — a false positive on exactly the
+    configuration the feature exists to support.
+    """
+
+    def test_central_config_counts_as_configured(self):
+        from spark_dash_agent.remote_config import RuntimeConfig
+
+        builder = SnapshotBuilder(Settings(node_id="n1", llama_router_urls=""))
+        builder._applied = RuntimeConfig(llama_routers=["http://r:8001"])
+
+        procs = [ProcessInfo(pid=1, name="llama-server", gpu_mem_bytes=1, runtime="llama.cpp")]
+        gaps = detect_unmonitored_runtimes(
+            procs,
+            llama_configured=bool(builder._applied.llama_routers),
+            vllm_configured=bool(builder._applied.vllm),
+        )
+        assert gaps == [], "central-configured routers must not read as unmonitored"
+
+    def test_env_still_counts_when_central_is_absent(self):
+        """A node not yet migrated keeps working off its environment."""
+        procs = [ProcessInfo(pid=1, name="llama-server", gpu_mem_bytes=1, runtime="llama.cpp")]
+        assert detect_unmonitored_runtimes(
+            procs, llama_configured=True, vllm_configured=False
+        ) == []

@@ -309,10 +309,21 @@ class SnapshotBuilder:
         # either one.
         processes = resolve_process_servers(processes, llama, vllm)
 
+        # Against the EFFECTIVE config, not the environment.
+        #
+        # Once a node is managed centrally its env is empty by design, so
+        # checking `settings` alone reported every running runtime as
+        # unmonitored the moment the migration completed — a false positive on
+        # exactly the configuration this feature is meant to support.
+        applied = self._applied
         unmonitored = detect_unmonitored_runtimes(
             processes,
-            llama_configured=bool(self._settings.llama_router_endpoints),
-            vllm_configured=bool(self._settings.vllm_endpoints),
+            llama_configured=bool(
+                applied.llama_routers if applied else self._settings.llama_router_endpoints
+            ),
+            vllm_configured=bool(
+                applied.vllm if applied else self._settings.vllm_endpoints
+            ),
         )
         if unmonitored:
             log.warning(
