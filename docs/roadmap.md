@@ -475,6 +475,52 @@ nodes:
 thing to break; migrating with three means the per-node repos exist first and
 then have to be unwound.
 
+#### Exposing it in the UI — read-only, decided 2026-08-16
+
+**The dashboard stays read-only.** No config editing, for two reasons that
+outweigh the convenience:
+
+1. It is *the only service published through the tunnel*, and being unable to
+   change anything is a deliberate security property, not an oversight. A write
+   path would let a compromise of that path repoint agents at arbitrary URLs —
+   the agent fetches whatever appears in `llama_routers`, which is a
+   request-forgery primitive aimed at the LAN.
+2. `cluster.yml` belongs in git. A UI that writes it either bypasses git —
+   recreating exactly the repo-versus-live-file drift that cost most of
+   2026-08-16 — or needs git credentials inside the backend.
+
+Most of the value here is not editing anyway; it is closing the loop between
+what is configured and what is actually happening.
+
+- [ ] **F6.** Cluster panel: each node, its group, its configured runtimes, and
+  **whether the agent has actually fetched that config, with a timestamp**.
+  Answers "did my edit reach spark3?", which today needs an SSH session.
+- [ ] **F7.** Surface F5's reachability check per endpoint, so a typo'd port
+  reads as `spark2 · llama_routers · :8002 — no response` instead of failing
+  silently.
+- [ ] **F8.** **Gap detection: inference servers observed but not configured.**
+  The agent already sees every GPU process and its runtime via NVML, so a
+  `VLLM::EngineCore` running on a node with no configured vLLM endpoint is
+  detectable — and is precisely the failure where nothing else would be
+  noticed. Would have caught the `:8120` container before it was wired up.
+
+  **Match on runtime presence, NOT on ports.** The obvious implementation
+  compares observed listening ports against configured ones, and cannot work:
+  a process's listening port is not readable across the network namespace
+  (established while resolving vLLM model attribution). The sound rule is
+  coarser — flag when a runtime is observed on a node that has *zero*
+  configured endpoints of that type. That catches the completely-unmonitored
+  case, which is the one that matters, and avoids false positives from a
+  single instance spawning several engine processes.
+- [ ] **F9.** Copy-YAML affordance for an unconfigured server: generate the
+  block to paste into `cluster.yml`. Most of the convenience of editing with
+  no write path.
+
+If editing is ever wanted, the honest form is to split the surface — writes
+refused for requests arriving through the tunnel — and have the backend commit
+to git rather than write the file. That is real work and it weakens a property
+that was built on purpose.
+
 ### B — Per-workload GPU memory history
 
 Export `sparkdash_gpu_process_memory_bytes{node, runtime, model, router}` —
