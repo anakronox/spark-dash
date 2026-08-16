@@ -419,3 +419,51 @@ def test_health_reports_the_backend_own_build(client):
     assert "backend_version" in body
     assert isinstance(body["backend_version"], str)
     assert body["backend_version"]
+
+
+class TestDataFreshness:
+    """Reachable and recording are different things.
+
+    A clock step on 2026-08-16 left Prometheus answering queries perfectly
+    while rejecting every incoming sample. Alertmanager was fine, so the banner
+    rendered a confident "nothing firing" over half an hour of no data. The API
+    has to be able to say which of those it means.
+    """
+
+    def test_alerts_reports_data_freshness(self, client):
+        body = client.get("/api/alerts").json()
+        assert "data_stale" in body
+        assert "data_age_s" in body
+
+    def test_unknown_freshness_is_treated_as_stale(self, client, monkeypatch):
+        """Not knowing is not the same as being fine, and must not render as
+        reassurance."""
+        import spark_dash_backend.app as app_mod  # noqa: F401
+
+        async def unknown(self):
+            return None
+
+        monkeypatch.setattr(
+            "spark_dash_backend.prometheus.PrometheusClient.data_age_s", unknown
+        )
+        assert client.get("/api/alerts").json()["data_stale"] is True
+
+    def test_fresh_data_is_not_stale(self, client, monkeypatch):
+        async def fresh(self):
+            return 3.0
+
+        monkeypatch.setattr(
+            "spark_dash_backend.prometheus.PrometheusClient.data_age_s", fresh
+        )
+        body = client.get("/api/alerts").json()
+        assert body["data_stale"] is False
+        assert body["data_age_s"] == 3.0
+
+    def test_old_data_is_stale(self, client, monkeypatch):
+        async def old(self):
+            return 600.0
+
+        monkeypatch.setattr(
+            "spark_dash_backend.prometheus.PrometheusClient.data_age_s", old
+        )
+        assert client.get("/api/alerts").json()["data_stale"] is True

@@ -25,6 +25,16 @@
   let expanded = $state<string | null>(null);
 
   const available = $derived(feed.available);
+  const dataStale = $derived(feed.dataStale);
+
+  /** "No data recorded for 14m" reads as a fact; "stale" reads as jargon. */
+  const staleFor = $derived(
+    feed.dataAgeS == null
+      ? null
+      : feed.dataAgeS < 120
+        ? `${Math.round(feed.dataAgeS)}s`
+        : `${Math.round(feed.dataAgeS / 60)}m`,
+  );
   const alerts = $derived(feed.alerts);
   const loaded = $derived(feed.loaded);
 </script>
@@ -34,6 +44,18 @@
     <span aria-hidden="true">▲</span>
     Alertmanager is unreachable — nothing would notify you right now, including
     of this.
+  </p>
+{:else if loaded && dataStale}
+  <!-- The dangerous state, and the one that was invisible until 2026-08-16:
+       Prometheus answers queries normally while recording nothing, so every
+       rule evaluates against no data and an empty alert list renders as calm.
+       Said plainly, because "nothing is wrong" and "we cannot tell" must never
+       look the same. -->
+  <p class="unavailable">
+    <span aria-hidden="true">▲</span>
+    Prometheus has recorded nothing{staleFor ? ` for ${staleFor}` : ''} — alerts
+    and history are blind. The live readings below still come straight from the
+    nodes. Check <code>docker logs sparkdash-prometheus</code>.
   </p>
 {:else if alerts.length}
   <section class="alerts" aria-label="Firing alerts">

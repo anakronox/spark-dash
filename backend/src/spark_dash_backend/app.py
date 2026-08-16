@@ -43,6 +43,11 @@ HEALTH_SNAPSHOT_MAX_AGE_S = 30.0
 # is forgetting, and a week-long mute set during a five-minute experiment is
 # indistinguishable from a real outage nobody is watching. Anything that needs
 # permanent silence should have its target removed from configuration.
+#: Prometheus is considered to have stopped recording past this. Comfortably
+#: over the 15s scrape interval so a single missed scrape is not an alarm, and
+#: under the 5m staleness horizon at which the probe series vanishes entirely.
+DATA_STALE_AFTER_S = 120.0
+
 MAX_SILENCE_HOURS = 24.0
 
 
@@ -433,11 +438,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """
         reachable = await alertmanager.reachable()
         alerts = await alertmanager.firing() if reachable else []
+
+        # Alertmanager being reachable says nothing about whether Prometheus is
+        # still RECORDING. A clock step on 2026-08-16 left it answering queries
+        # while rejecting every sample, so "nothing firing" was rendered with
+        # confidence over half an hour of no data. The banner needs to be able
+        # to tell those apart.
+        age = await prom.data_age_s()
+        stale = age is None or age > DATA_STALE_AFTER_S
+
         return {
             "available": reachable,
             "alerts": [a.as_dict() for a in alerts],
             "critical": sum(1 for a in alerts if a.severity == "critical"),
             "warning": sum(1 for a in alerts if a.severity == "warning"),
+            "data_stale": stale,
+            "data_age_s": None if age is None or age == float("inf") else round(age, 1),
         }
 
     # -------------------------------------------------------------- health

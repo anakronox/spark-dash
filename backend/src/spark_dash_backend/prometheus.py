@@ -71,6 +71,31 @@ class PrometheusClient:
             out.append(Series(labels=result.get("metric", {}), points=points))
         return out
 
+    async def data_age_s(self) -> float | None:
+        """Seconds since Prometheus last recorded a sample, or None if unknown.
+
+        Being REACHABLE and being RECORDING are different things, and the gap
+        between them is invisible without asking. On 2026-08-16 a clock step
+        left this Prometheus answering queries perfectly while rejecting every
+        incoming sample, so the dashboard reported "nothing firing" for half an
+        hour with no data behind it.
+
+        `up{job="prometheus"}` is the probe because Prometheus always scrapes
+        itself: if that timestamp is not advancing, nothing is.
+        """
+        try:
+            series = await self.query('time() - timestamp(up{job="prometheus"})')
+        except Exception:  # noqa: BLE001 — unreachable is the caller's problem
+            return None
+        if not series:
+            # The series aged out entirely, which means appends stopped long
+            # enough ago that even the last sample went stale. Not "unknown".
+            return float("inf")
+        points = series[0].points
+        if not points:
+            return None
+        return float(points[-1][1])
+
     async def healthy(self) -> bool:
         """Whether Prometheus is answering — feeds the backend's own /health."""
         try:

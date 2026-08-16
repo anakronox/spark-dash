@@ -128,6 +128,12 @@ export class AlertFeed {
   alerts = $state<AlertItem[]>([]);
   loaded = $state(false);
 
+  /** Prometheus reachable but NOT recording. A distinct state from
+   *  `!available`, and the more dangerous one: Alertmanager answers normally,
+   *  so an empty alert list renders as reassurance over no data at all. */
+  dataStale = $state(false);
+  dataAgeS = $state<number | null>(null);
+
   #timer: ReturnType<typeof setInterval> | null = null;
 
   get critical(): number {
@@ -147,11 +153,17 @@ export class AlertFeed {
       const body = await resp.json();
       this.available = body.available;
       this.alerts = dedupeByKey(body.alerts ?? [], alertKey);
+      this.dataStale = Boolean(body.data_stale);
+      this.dataAgeS = body.data_age_s ?? null;
     } catch {
       // "Can't tell" is not "all clear" — the banner renders these
       // differently, and only one of them is reassuring.
       this.available = false;
       this.alerts = [];
+      // Unknown, not "fine". The banner must not imply recording is healthy
+      // when we could not ask.
+      this.dataStale = true;
+      this.dataAgeS = null;
     } finally {
       this.loaded = true;
     }

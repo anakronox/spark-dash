@@ -78,6 +78,53 @@ groups:
       #
       # 30m rather than minutes: nodes legitimately differ while a rollout is in
       # progress. This is for a node that is STUCK, not one mid-update.
+      # MONITORING THE MONITOR. On 2026-08-16 this VM rebooted twice with its
+      # clock ~3h fast; NTP stepped it back, and every subsequent sample was
+      # older than the TSDB head, so Prometheus rejected ALL of them from ALL
+      # targets — including itself — with "out of bounds". Nothing was recorded
+      # for half an hour and the dashboard showed a confident "nothing firing",
+      # because Alertmanager was perfectly reachable. The reassuring state and
+      # the blind state were indistinguishable.
+      #
+      # `absent()` is the load-bearing half. Once appends stop, `up` goes stale
+      # and disappears within ~5 minutes, at which point a plain staleness
+      # comparison silently returns no data and CANNOT fire — the exact trap
+      # this repo keeps finding. The two halves cover each other: the timestamp
+      # check catches a slow stall while the series still exists, `absent()`
+      # catches it once the series is gone.
+      #
+      # This still fires with appends broken: rule evaluation and Alertmanager
+      # notification run from in-memory state, not from the TSDB write path.
+      - alert: PrometheusNotIngesting
+        expr: absent(up{job="prometheus"}) or (time() - timestamp(up{job="prometheus"})) > 300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus has stopped recording"
+          description: >-
+            No new samples for over 5 minutes. Every other alert is blind while
+            this is true, and the dashboard cannot tell you so on its own.
+            Check `docker logs sparkdash-prometheus` for "out of bounds" (a
+            clock step: the TSDB head is ahead of now) or a full disk.
+
+      # The narrower signal, for when rejection is PARTIAL — one target's
+      # samples refused while the rest land. Useless when everything is
+      # rejected, since this counter is scraped from Prometheus itself and
+      # would be refused too; that case is what PrometheusNotIngesting is for.
+      - alert: PrometheusRejectingSamples
+        expr: increase(prometheus_target_scrapes_sample_out_of_bounds_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus is discarding samples as out of bounds"
+          description: >-
+            Samples are being rejected for having timestamps outside the
+            acceptable window — almost always a clock step on the monitoring
+            host or on a scrape target. History has gaps for as long as this
+            lasts.
+
       - alert: AgentBuildSkew
         expr: count(count by (build) (sparkdash_agent_build_info)) > 1
         for: 30m
