@@ -82,6 +82,14 @@ only `sparky` exists today, and it is the only scrape target.
 
 ## Phase 3 — Remote access & hardening
 
+> **Durability is handled at the hypervisor, not here.** The monitoring VM sits
+> on Proxmox with ZFS replication to two additional nodes, and backup jobs run
+> at the Proxmox Datacenter level — implicit unless a guest is explicitly
+> excluded. So there is deliberately no in-guest backup job for the Prometheus
+> TSDB, and adding one would duplicate work already done a layer down. Recorded
+> because the absence of a visible backup job inside the VM otherwise reads as a
+> gap; it isn't one.
+
 - [ ] Confirm dashboard works through the Cloudflare Tunnel + Google OAuth path.
   *(unverified.)*
 - [ ] (Optional, defense-in-depth) Validate `Cf-Access-Jwt-Assertion` in the
@@ -90,8 +98,9 @@ only `sparky` exists today, and it is the only scrape target.
   raised 30d → 180d from measured ingest, deployed and confirmed live. See
   [Next up / A7](#a--alerting-correctness) for the numbers.
 - [x] Add a meaningful `/health` endpoint to the backend — it verifies node
-  reachability rather than just returning 200. Pointing UptimeKuma at it is
-  *(unverified.)*
+  reachability rather than just returning 200. **UptimeKuma monitors both
+  `:8080` (backend) and `:9090` (Prometheus) on `192.168.50.156`**, confirmed
+  2026-08-16, so the "who monitors the monitor" gap is closed.
 - [x] Basic alerting for the things that matter at 2am — Alertmanager with 12
   rules delivering to ntfy. **But see Next up / A: the rules have real gaps,
   and the thresholds disagree with the agent's own health model.**
