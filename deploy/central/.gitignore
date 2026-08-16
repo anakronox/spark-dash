@@ -22,7 +22,7 @@ prometheus/
 alertmanager/
 secrets/
 
-# Scrape targets rendered by the backend from SPARK_NODES. Generated, not
+# Scrape targets rendered by the backend from cluster.yml. Generated, not
 # authored — `targets/vllm.yml` is hand-maintained and stays tracked.
 targets/agents.yml
 targets/node-exporters.yml

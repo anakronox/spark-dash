@@ -4,7 +4,7 @@
 # no Prometheus config change and no restart — file_sd is re-read automatically.
 #
 # Two target directories:
-#   generated/  rendered by the backend from SPARK_NODES (agents, node-exporters)
+#   generated/  rendered by the backend from cluster.yml (agents, node-exporters)
 #   static/     hand-maintained in this repo (vLLM, which doesn't map per-node)
 #
 # They're separate because the generated ones live in a volume shared with the

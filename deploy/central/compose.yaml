@@ -5,10 +5,11 @@
 # alert, so hosting Prometheus on node 1 means a node-1 crash destroys both the
 # node and the history explaining why. See docs/deployment.md.
 #
-# ADDING A NODE: edit SPARK_NODES in .env, then `docker compose up -d backend`.
-# That is the only place the cluster is defined. The backend renders
-# Prometheus's scrape targets from it, and Prometheus picks them up on its next
-# file_sd refresh without restarting.
+# ADDING A NODE: add it to cluster.yml under $DATA_ROOT/cluster. That is the
+# only place the cluster is defined — identity, grouping and the runtimes each
+# node serves, together. The backend re-reads it on a TTL and renders
+# Prometheus's scrape targets from it, and Prometheus picks those up on its
+# next file_sd refresh, so neither container needs restarting.
 
 services:
   prometheus:
@@ -47,7 +48,7 @@ services:
       # can't work: the generated mount would hide the stack dir's own files,
       # so hand-maintained targets would silently never be scraped.
       #
-      #   generated/  written by the backend from SPARK_NODES
+      #   generated/  written by the backend from cluster.yml
       #   static/     hand-maintained in git (vLLM instances)
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/targets:/etc/prometheus/targets/generated:ro
       - ./targets:/etc/prometheus/targets/static:ro
@@ -97,9 +98,12 @@ services:
       - prometheus
       - alertmanager
     environment:
-      # ---- the only place nodes are defined ----
+      # ---- node list: fallback only ----
+      # Nodes are defined in cluster.yml (mounted below), which supersedes
+      # this. Optional, and ignored entirely whenever that file lists any
+      # node — kept so a deployment that has not migrated still comes up.
       #   SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62
-      - SPARK_NODES=${SPARK_NODES:?set SPARK_NODES in .env}
+      - SPARK_NODES=${SPARK_NODES:-}
       - AGENT_PORT=${AGENT_PORT:-9500}
       - NODE_EXPORTER_PORT=${NODE_EXPORTER_PORT:-9100}
 

@@ -30,12 +30,18 @@ docker login forgejo.indielab.tech      # Forgejo token with package write
 ```bash
 # Required: .env is not tracked, so a fresh clone has no config.
 cp .env.example .env
-$EDITOR .env          # set SPARK_NODES
+$EDITOR .env          # image tag, DATA_ROOT
+
+# The cluster itself — nodes, groups, and what each one serves — lives here,
+# not in .env. This is the one file to edit when adding a node.
+sudo mkdir -p /docker/spark-dash-stack-central/cluster
+sudo cp cluster.yml.example /docker/spark-dash-stack-central/cluster/cluster.yml
+sudo $EDITOR /docker/spark-dash-stack-central/cluster/cluster.yml
 
 # Create the data directories with the ownership the containers need.
 # Docker auto-creates bind-mount sources as ROOT, which neither container can
 # write to — so this step is required, not optional.
-sudo mkdir -p /docker/spark-dash-stack-central/{prometheus,targets}
+sudo mkdir -p /docker/spark-dash-stack-central/{prometheus,targets,cluster}
 sudo chown 65534:65534 /docker/spark-dash-stack-central/prometheus
 sudo chown 10002:10002 /docker/spark-dash-stack-central/targets
 
@@ -309,10 +315,18 @@ observation. The PSI bands are still guesses. See issue #30.
 
 ## Clusters and standalone nodes
 
-Not every node is part of a cluster. Prefix grouped nodes with `group/`:
+Not every node is part of a cluster. Give grouped nodes a `group:`:
 
-```bash
-SPARK_NODES=sparky=192.168.50.61,pair/spark2=192.168.50.62,pair/spark3=192.168.50.63
+```yaml
+nodes:
+  - id: sparky
+    host: 192.168.50.61      # no group — stands alone
+  - id: spark2
+    host: 192.168.50.62
+    group: pair
+  - id: spark3
+    host: 192.168.50.63
+    group: pair
 ```
 
 Here `sparky` stands alone and `spark2`/`spark3` are clustered.
@@ -330,20 +344,32 @@ PromQL aggregates history the same way.
 
 ## Adding a node
 
-One line, one place:
+One entry, one file — and no restart:
 
-```bash
-# deploy/central/.env
-SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62
+```yaml
+# $DATA_ROOT/cluster/cluster.yml
+nodes:
+  - id: gx10-1
+    host: 192.168.50.61
+  - id: gx10-2
+    host: 192.168.50.62
+    runtimes:
+      llama_routers: [{port: 8001, scrape_metrics: true}]
 ```
 
-```bash
-docker compose up -d backend
-```
+That's the whole change. The backend re-reads the file on a TTL, so the node
+appears in the live view on its own; it renders Prometheus's scrape targets
+from that same entry, so there's no second inventory to keep in sync, and
+Prometheus picks the new targets up on its next `file_sd` refresh without
+restarting either.
 
-That's the whole change. The backend renders Prometheus's scrape targets from
-`SPARK_NODES`, so there's no second inventory to keep in sync, and Prometheus
-picks the new targets up on its next `file_sd` refresh without restarting.
+The new node's own stack needs nothing node-specific — it asks the backend
+what it should be polling, and the answer is the `runtimes` block above. That
+is what lets one stack config deploy unchanged to every GX10.
+
+If the file doesn't parse, the backend keeps the node list it already had and
+says so loudly in its log rather than dropping back to an older source — check
+`docker logs sparkdash-backend` if an edit appears to do nothing.
 
 `agents.yml` and `node-exporters.yml` under `targets/` are **generated** — they
 are gitignored and should not be edited. `vllm.yml` is hand-maintained, because
@@ -361,7 +387,7 @@ lifecycles share one path:
 | `targets/vllm.yml` | hand-maintained | yes |
 | `.env` | edited on the host | no — gitignored |
 | `prometheus/` (TSDB), `alertmanager/`, `secrets/` | the containers, at runtime | no — untracked |
-| `targets/agents.yml`, `targets/node-exporters.yml` | the backend, from `SPARK_NODES` | no — untracked |
+| `targets/agents.yml`, `targets/node-exporters.yml` | the backend, from `cluster.yml` | no — untracked |
 
 Config comes from git; data does not. Keeping data in a findable place rather
 than a named volume under `/var/lib/docker` is the point of `DATA_ROOT`, and it
@@ -397,7 +423,7 @@ git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" |
 
 | Path in container | Source | Contents |
 |---|---|---|
-| `targets/generated/` | Docker volume, written by the backend | `agents.yml`, `node-exporters.yml` — from `SPARK_NODES` |
+| `targets/generated/` | Docker volume, written by the backend | `agents.yml`, `node-exporters.yml` — from `cluster.yml` |
 | `targets/static/` | bind mount from the stack dir | `vllm.yml` — hand-maintained |
 
 They're separate on purpose. A single directory can't work: the volume holding

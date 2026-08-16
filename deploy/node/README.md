@@ -43,7 +43,7 @@ forget.
 > changes on every recreate.
 
 Check `hostname` on the box first: that string becomes the `node` label on
-every metric, and it must match what `SPARK_NODES` uses on the central stack,
+every metric, and it must match the `id` used in `cluster.yml` on the central stack,
 or the agent's metrics won't join node-exporter's.
 
 ```bash
