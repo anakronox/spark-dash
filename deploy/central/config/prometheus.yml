@@ -19,8 +19,13 @@ global:
 
 # Alert rules live in their own file so tuning a threshold is a small, obvious
 # diff rather than an edit buried in scrape config.
+# Under config/ with this file, which is mounted as a DIRECTORY. That is
+# load-bearing: a single-file bind mount follows the inode, so replacing
+# alerts.yml (which is what git does) left the container reading the old one
+# while the host showed the new. A directory mount resolves each entry on
+# access, so an edited rule takes effect on the next reload.
 rule_files:
-  - /etc/prometheus/alerts.yml
+  - /etc/prometheus/config/alerts.yml
 
 alerting:
   alertmanagers:

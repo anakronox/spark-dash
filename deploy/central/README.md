@@ -72,34 +72,29 @@ Anything listed only on the left is new — copy it across from `.env.example`.
 
 ### Changing prometheus.yml, alerts.yml or alertmanager.yml
 
-**A `git pull` is not enough, and neither is a reload.** These three are
-bind-mounted as *single files*, and a file bind-mount follows the **inode**, not
-the path. `git pull` replaces a file rather than editing it in place, so the new
-content lands on a new inode and the container keeps reading the old one. A
-SIGHUP or `POST /-/reload` then faithfully re-reads the stale file and reports
-success.
-
-That failure is silent: the host shows your new alert rule, Prometheus says the
-config reloaded fine, and the rule simply isn't there. Observed 2026-08-15 —
-host inode 427369, container still on 420933.
-
-Recreate the container so the mount re-resolves:
+They live in `config/`, which is mounted as a **directory**. A `git pull` then
+takes effect on the next reload — no container recreate, no special flags:
 
 ```bash
-docker compose up -d --force-recreate prometheus     # or alertmanager
+docker kill -s HUP sparkdash-prometheus     # or POST /-/reload
 ```
-
-`--force-recreate` is required: a plain `up -d` sees an unchanged compose config
-and does nothing.
 
 ```bash
-# Confirm it actually took, rather than trusting the reload:
-docker exec sparkdash-prometheus grep -c AgentBuildSkew /etc/prometheus/alerts.yml
+# Confirm it landed, rather than trusting the reload:
+docker exec sparkdash-prometheus grep -c AgentBuildSkew /etc/prometheus/config/alerts.yml
 ```
 
-> This applies to anything that delivers config by replacing files — including
-> a future Dockhand pull. If Dockhand pulls the orchestration repo and runs a
-> plain `docker compose up -d`, a config-only change will **not** take effect.
+> **Why a directory and not three file mounts.** A single-file bind mount
+> follows the **inode**, and `git pull` replaces files rather than editing them
+> in place. The container went on reading the old inode while the host showed
+> the new content — measured here as host inode 2391 against container 430115,
+> with a plain `docker compose up -d` reporting "Running" and changing nothing.
+> The failure was silent in the worst way: Prometheus reported a clean reload
+> and simply did not have the rule.
+>
+> A directory mount resolves each entry on access, so a replaced file is picked
+> up without recreating anything. That is why `targets/vllm.yml` worked first
+> time while `alerts.yml` did not — one was already inside a directory mount.
 
 ### Rolling out a new image
 
@@ -129,10 +124,10 @@ and converge without a git change. That is the settled design — see
 Pinning survives as the **exception path**: when a bad build lands overnight,
 pin the last-good sha and redeploy, then return to `:latest` once fixed.
 
-> **Config files are a separate matter.** Changing `prometheus.yml`,
-> `alerts.yml` or `alertmanager.yml` needs a container *recreate*, not just a
-> new image or a reload — see the section above. A daily image pull will not
-> pick those up.
+> **Config files are a separate matter**, but a simpler one than it used to be:
+> they live in `config/` as a directory mount, so a pull plus a reload is
+> enough — see the section above. A daily image pull will not trigger that
+> reload for you, so a config-only change still needs the SIGHUP.
 
 ## Access model
 

@@ -21,7 +21,7 @@ services:
     # to whatever owns DATA_ROOT rather than chowning host dirs to 65534.
     user: "${PUID:-65534}:${PGID:-65534}"
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--config.file=/etc/prometheus/config/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       # Generous for now — real retention gets set in Phase 3 from observed
       # disk usage rather than guessed here.
@@ -31,8 +31,18 @@ services:
       # Config comes from git (this stack dir, synced by hawser). Data and
       # generated files go under DATA_ROOT so they're visible and backup-able
       # rather than buried in /var/lib/docker.
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      # A DIRECTORY, not three single files. Single-file bind mounts follow
+      # the INODE: `git pull` replaces a file rather than editing it, so the
+      # container kept reading the old inode while the host showed the new
+      # content — measured here, host inode 2391 against container 430115,
+      # with a plain `up -d` reporting "Running" and changing nothing. The
+      # failure was silent in the worst way: Prometheus reported a clean
+      # reload and simply didn't have the rule.
+      #
+      # A directory mount resolves each entry on access, so a replaced file is
+      # picked up without recreating the container — which is exactly why
+      # targets/vllm.yml worked first time while alerts.yml did not.
+      - ./config:/etc/prometheus/config:ro
       # Two target directories, deliberately separate. A single directory
       # can't work: the generated mount would hide the stack dir's own files,
       # so hand-maintained targets would silently never be scraped.
@@ -57,13 +67,14 @@ services:
     restart: unless-stopped
     user: "${PUID:-65534}:${PGID:-65534}"
     command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--config.file=/etc/alertmanager/config/alertmanager.yml'
       - '--storage.path=/alertmanager'
       # Needed for links in notifications to be clickable rather than pointing
       # at a container-internal hostname.
       - '--web.external-url=${ALERTMANAGER_EXTERNAL_URL:-http://localhost:9093}'
     volumes:
-      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Directory mount, same reasoning as Prometheus above.
+      - ./config:/etc/alertmanager/config:ro
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/alertmanager:/alertmanager
       # The ntfy topic URL, kept off git — see alertmanager.yml.
       - ${DATA_ROOT:-/docker/spark-dash-stack-central}/secrets:/etc/alertmanager/secrets:ro
