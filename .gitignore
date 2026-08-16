@@ -22,3 +22,10 @@ frontend/dist/
 # Listed anyway so a local test run can't accidentally commit them.
 deploy/central/targets/agents.yml
 deploy/central/targets/node-exporters.yml
+
+# Prometheus target files, rendered by the backend into its working directory.
+# Running the backend locally for testing drops them in the repo root — they
+# belong to a deployment, not to the source, and have been committed by
+# accident twice.
+/agents.yml
+/node-exporters.yml
