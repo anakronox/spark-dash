@@ -11,6 +11,14 @@
 # Prometheus's scrape targets from it, and Prometheus picks those up on its
 # next file_sd refresh, so neither container needs restarting.
 
+# Project name pinned rather than derived from the directory. Compose defaults
+# it to the folder name, so moving or renaming this directory would silently
+# start a SECOND project with the same container_names and fail on a name
+# conflict — which is exactly what happened moving this stack out of the old
+# per-stack repo. Pinning it means the containers belong to `spark-dash-central`
+# no matter where the checkout lives.
+name: spark-dash-central
+
 services:
   prometheus:
     image: prom/prometheus:v3.1.0

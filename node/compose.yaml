@@ -11,6 +11,14 @@
 # Images come from the Forgejo container registry rather than being built here
 # — nothing here builds them. See scripts/publish-images.sh.
 
+# Project name pinned rather than derived from the directory. Compose defaults
+# it to the folder name, so moving or renaming this directory would silently
+# start a SECOND project with the same container_names and fail on a name
+# conflict — which is exactly what happened moving this stack out of the old
+# per-stack repo. Pinning it means the containers belong to `spark-dash-node`
+# no matter where the checkout lives.
+name: spark-dash-node
+
 services:
   node-exporter:
     image: prom/node-exporter:v1.8.2
