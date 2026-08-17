@@ -1757,6 +1757,55 @@ these toggles. Deliberately kept History-local for now — one panel's control
 that later merges is a smaller mistake than a page-wide filter built early that
 M2 then has to fight.
 
+### P — Agent footprint — **first pass 2026-08-17**
+
+The node stack is deliberately two containers with no persistent state so the
+box stays free for models. That premise is worth checking rather than assuming,
+and the GB10 makes it sharper than usual: there is ONE memory pool, no separate
+VRAM, so every megabyte the monitoring agent holds is a megabyte a model cannot
+have.
+
+Measured on `sparky` before and after, agent container:
+
+| | before | after |
+|---|---|---|
+| `docker stats` | 218.2 MiB | **81.3 MiB** |
+| cgroup `anon` | 138.9 MB | 72.8 MB |
+| cgroup `slab` | 77.9 MB | 2.5 MB |
+| process RSS | 151.6 MB | 90.4 MB |
+| threads | 11 | 7 |
+
+Two changes, neither of them code:
+
+- **`MALLOC_ARENA_MAX=2`.** Glibc opens a malloc arena per thread, up to 8 x
+  cores, and each keeps its freed memory rather than returning it. Ten threads
+  on a 20-core Grace is the shape that punishes hardest. Two rather than one
+  because a single arena serialises every allocation and the collectors run
+  concurrently.
+- **`uvicorn` without `[standard]`.** That extra pulls uvloop, httptools,
+  watchfiles, websockets and python-dotenv — machinery for a busy web service,
+  on an agent serving three read-only GETs at a 2s poll and a 15s scrape. It
+  also accounts for the four threads that went. `uvicorn.run()` passes no
+  `loop=` or `http=`, so nothing changed in code; it falls back to asyncio and
+  h11.
+
+**Do not read the slab row as a 97% win.** Slab is kernel dentry and inode cache
+accumulated by polling hundreds of `/proc` and `/sys` files, and the "after"
+figure is a container that had been up for a minute against one that had been up
+26 hours. It will regrow. It is also RECLAIMABLE — the kernel evicts it under
+pressure, so it never actually denied memory to a model. The honest headline is
+the anon and RSS rows, and even those flatter the new build slightly for the
+same warm-up reason. Re-measure after a day before quoting a number.
+
+**Still on the table, not done:** `nvitop` is a TUI monitoring library used for
+`NA`, `Device` and `libnvml`, which `nvidia-ml-py` provides directly. Likely the
+largest remaining win, but `collectors/gpu.py` is 400+ lines built around
+nvitop's sentinel and process view — exactly the code where a subtle regression
+stays invisible until a reading is wrong. Worth doing against the `diagnose`
+command as a cross-check, and worth re-measuring first: at 81 MiB the agent is
+now smaller than `llama-lab-router` (187 MiB) and a fifth of `backrest`
+(486 MiB), so the case for spending that risk has weakened.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
