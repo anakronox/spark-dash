@@ -86,8 +86,22 @@ export function chartTheme(): ChartTheme {
   return {
     ink: cssVar('--ink'),
     inkMuted: cssVar('--ink-muted'),
+    /* LINES stay recessive. A grid is a reference, not content, and one that
+       competes with the data is worse than none. `--rule` is the hairline
+       token and that is exactly right here. */
     grid: cssVar('--rule'),
-    axis: cssVar('--rule'),
+    /* TEXT does not. uPlot uses an axis's `stroke` for its TICK LABELS, so this
+       token is type, not a line — and it was `--rule` too, which painted every
+       number on every axis in the border colour. Measured against the panel
+       that is 1.24:1 in dark, 1.29:1 in light and 1.56:1 in cyberpunk, against
+       a 4.5:1 floor for text this size: the labels were very nearly invisible,
+       and an axis whose numbers cannot be read is an axis that is not doing its
+       job.
+       `--ink-muted` clears the floor in all three themes (6.02 / 4.61 / 6.18)
+       while staying subordinate to the plotted lines. It is also what the table
+       column headings use, so a chart's axis and a table's header now read at
+       the same weight, which is what they are. */
+    axis: cssVar('--ink-muted'),
     surface: cssVar('--panel'),
   };
 }

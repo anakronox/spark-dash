@@ -203,10 +203,11 @@
       <!-- Each theme is stepped on its own surface rather than derived by
            inverting another, so this is a real choice between three palettes,
            not a light/dark switch with a skin. -->
-      <p class="note dim">
-        Every theme is validated separately for contrast and colourblind
-        separation against its own background.
-      </p>
+      <!-- No note. The three buttons say what they do, and "every theme is
+           validated separately for contrast and colourblind separation against
+           its own background" is a fact about the palette rather than about
+           this control — it belongs in app.css beside the tokens it constrains,
+           which is where it is. -->
     </section>
 
     <!-- Layout -->
@@ -229,11 +230,13 @@
           onclick={() => layout.setCompactCards(true)}
         >Compact</button>
       </div>
-      <p class="note dim">
-        Compact keeps the name, status and memory band — the reading that
-        cannot be inferred from anywhere else, since models, other GPU work and
-        the system share one pool. A node that is down stays full size.
-      </p>
+      <!-- Why those three readings and not others: models, other GPU work and
+           the system share ONE pool on this hardware, so the memory band is the
+           reading that cannot be inferred from anywhere else on the page. And a
+           node that is DOWN is never compacted — the moment a card matters most
+           is the wrong moment to shrink it. Both are properties of the compact
+           card, implemented in NodeCard, not instructions for this switch. -->
+      <p class="note dim">Compact keeps name, status and the memory band.</p>
     </section>
 
     <section class="block">
@@ -241,19 +244,27 @@
       <!-- HIDE, not collapse. Collapsing already has a control on the section
            itself, and duplicating it here would be two ways to do one thing.
            Hiding is the one that has to live here: a hidden section renders
-           nothing, so this panel is the only place it can be found again. -->
-      <p class="note dim">
-        Placement, row cap and visibility. Order and collapse stay on the
-        sections themselves, and so does the choice of which COLUMNS a table
-        shows — that control lives in each card's top-right corner, next to the
-        data it affects. Reset below clears it along with everything here. The row cap is what a section shows before it
-        pages — it puts a ceiling on how tall a section can grow as nodes are
-        added, so one long table cannot set the height of the whole column. Full-width sections form a band above the two columns, which
-        fill independently — so a short section can sit under another short one
-        whatever the other column is doing. Below 1100px the columns stack and
-        everything is full width regardless, because a half-width table is
-        unreadable there.
-      </p>
+           nothing, so this panel is the only place it can be found again.
+
+           The three controls per row, and the reasoning that used to be printed
+           above them — a settings panel is not the place to teach the layout
+           model, and this all belongs in the docs or in the code that
+           implements it:
+
+           - PLACEMENT (full / left / right). Full-width sections form a band
+             above two columns that fill INDEPENDENTLY, so a short section can
+             sit under another short one whatever the other column is doing.
+             Below 1100px the columns stack and everything is full width
+             regardless, because a half-width table is unreadable there.
+           - ROWS, the cap before a section pages. It puts a ceiling on how tall
+             a section can grow as nodes are added, so one long table cannot set
+             the height of a whole column.
+           - SHOWN / HIDDEN, per the note above.
+
+           Not here: order and collapse live on the sections themselves, and
+           which COLUMNS a table shows lives in each card's top-right corner,
+           next to the data it affects. Reset below clears all of it. -->
+      <p class="note dim">Placement, rows before paging, and whether it shows.</p>
       <ol class="sections">
         {#each layout.order as id (id)}
           {@const hidden = layout.isHidden(id)}
@@ -323,11 +334,11 @@
       {:else if !draft}
         <p class="note dim">Loading…</p>
       {:else}
-        <p class="note dim">
-          Stored in <code>{cfg?.path}</code> on the monitoring VM. Adding a node
-          here is all that is needed — the node's own stack carries nothing
-          cluster-specific and asks for this on a timer.
-        </p>
+        <!-- Adding a node here really is all that is needed: the node's own
+             stack carries nothing cluster-specific and asks for this on a
+             timer. True and worth knowing once, which is what the README is
+             for; the path is the part you need while looking at this panel. -->
+        <p class="note dim">Stored in <code>{cfg?.path}</code> on the monitoring VM.</p>
 
         {#each draft as n, i (i)}
           <div class="node">
@@ -432,10 +443,11 @@
                generic failure. -->
           <p class="note" data-tone="warning">{saveError}</p>
         {/if}
-        <p class="note dim">
-          Saving rewrites the file, so comments in it are not preserved. The
-          documented reference is <code>central/cluster.yml.example</code>.
-        </p>
+        <!-- Kept, unlike the other notes: this is not background, it is what
+             the button next to it will DO to a file the reader may have
+             hand-edited. The pointer to central/cluster.yml.example went — that
+             one is documentation. -->
+        <p class="note dim">Saving rewrites the file; comments are not preserved.</p>
       {/if}
     </section>
 
@@ -445,10 +457,7 @@
       <!-- Said plainly because the alternative is discovering it: these do not
            follow you to another browser or machine, and there is no account to
            sync them to. The dashboard is deliberately stateless server-side. -->
-      <p class="note dim">
-        Preferences are stored in this browser only. They do not sync to other
-        devices, and clearing site data resets them.
-      </p>
+      <p class="note dim">This browser only; clearing site data resets them.</p>
     </section>
   </div>
 </dialog>

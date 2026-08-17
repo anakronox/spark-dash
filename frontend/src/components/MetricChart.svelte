@@ -73,14 +73,57 @@
 
   const fmt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1));
 
-  /** Room for the widest tick this axis can print.
+  /* 11px, up from 10. These are eight small charts rather than one large one,
+     so their axes are the densest type on the page and were also the smallest.
+     Monospace, so the digits stay in tabular columns down the axis. */
+  const AXIS_FONT = '11px ui-monospace, monospace';
+
+  /** Gap between the widest tick label and the plot's edge. */
+  const AXIS_PAD = 14;
+
+  /* One offscreen context, reused. Text measurement needs the real font, not a
+     characters-times-a-constant estimate — see axisWidth. */
+  let measurer: CanvasRenderingContext2D | null = null;
+  function textWidth(str: string): number {
+    measurer ??= document.createElement('canvas').getContext('2d');
+    if (!measurer) return str.length * 7;
+    measurer.font = AXIS_FONT;
+    return measurer.measureText(str).width;
+  }
+
+  /** Formats a tick the way the axis will.
    *
-   * A flat 44px clipped the clock chart to "20MHz" where it meant "3003MHz" —
-   * an axis that silently truncates its own numbers is worse than no axis. Sized
-   * from the actual widest label: the ceiling, formatted, plus the unit. */
-  const axisWidth = $derived(
-    Math.max(44, `${fmt(ceiling ?? 1000)}${metric.unit}`.length * 6.4 + 16),
-  );
+   * DECIMALS ONLY WHEN THE SCALE IS SMALL. "50.0%" carries a decimal that says
+   * nothing — a tenth of a percent is far below what this axis resolves — and
+   * it is the same decimal that made the MIDDLE label wider than the ceiling.
+   * Throughput genuinely needs it, since its whole scale can be 0 to 1. */
+  function ticks(values: number[]): string[] {
+    const fine = values.some((v) => v !== 0 && Math.abs(v) < 10);
+    return values.map((v) => `${fine ? v.toFixed(1) : v.toFixed(0)}${metric.unit}`);
+  }
+
+  /** How wide the y-axis gutter must be, MEASURED.
+   *
+   * Three attempts, and the first two guessed. A flat 44px turned "3003MHz"
+   * into "20MHz". Sizing from the CEILING's label then clipped "50.0°C",
+   * because the widest label is usually NOT the ceiling: a middle split gains a
+   * decimal the top of the scale does not, so "50.0°C" beats "100°C".
+   *
+   * Passing uPlot a `size` CALLBACK looked like the clean answer — it hands you
+   * the formatted values — but it is called before those exist, so it returned
+   * bare padding and clipped every chart on the page. Measuring the labels this
+   * axis can actually print, in the font that will draw them, needs no callback
+   * and no guess.
+   */
+  const axisWidth = $derived.by(() => {
+    // The auto-fitted case has no ceiling, so take the tallest sample instead —
+    // a throughput axis reaching 1500 needs room for "1500tok/s".
+    const top =
+      ceiling ??
+      Math.max(1, ...columns.flat().filter((v): v is number => v != null && isFinite(v)));
+    const candidates = [0, top / 4, top / 2, (top * 3) / 4, top];
+    return Math.ceil(Math.max(...ticks(candidates).map(textWidth))) + AXIS_PAD;
+  });
 
   function build() {
     if (!host) return;
@@ -130,17 +173,22 @@
           stroke: t.axis,
           grid: { stroke: t.grid, width: 1 },
           ticks: { stroke: t.grid },
-          font: '10px ui-monospace, monospace',
+          font: AXIS_FONT,
         },
         {
           stroke: t.axis,
           grid: { stroke: t.grid, width: 1 },
           ticks: { stroke: t.grid },
-          font: '10px ui-monospace, monospace',
+          font: AXIS_FONT,
           size: axisWidth,
-          // The unit on the tick, since there is only one unit per chart now
-          // and it is the thing that makes the number readable.
-          values: (_u, splits) => splits.map((v) => `${fmt(v)}${metric.unit}`),
+          /* The unit on the tick, since there is only one unit per chart now
+             and it is what makes the number readable.
+             DECIMALS ONLY WHEN THE SCALE IS SMALL. "50.0%" and "0.0°C" carry a
+             decimal that says nothing — the tenth of a percent is below what
+             the axis can resolve — and it is the same decimal that made the
+             middle label wider than the ceiling. Throughput does need it, since
+             its whole scale can be 0 to 1. */
+          values: (_u, splits) => ticks(splits),
         },
       ],
       /* A metric with no samples still gets its axes, gridlines and time span

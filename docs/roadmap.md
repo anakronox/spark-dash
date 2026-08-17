@@ -1635,6 +1635,61 @@ exercised by stubbing the history response in the browser. That is a rendering
 test and nothing more: it says the chart draws four nodes correctly, not that
 the backend returns four.
 
+**Axis text was unreadable, and had been all along.** `chartTheme()` returned
+`axis: cssVar('--rule')` — and uPlot uses an axis's `stroke` for its TICK
+LABELS, so every number on every axis was painted in the hairline/border token.
+Measured against the panel: **1.24:1 in dark, 1.29:1 in light, 1.56:1 in
+cyberpunk**, against a 4.5:1 floor for text that size. Barely above invisible,
+and it predates the split into small multiples — the old combined chart had it
+too, on eight times fewer axis labels.
+
+The fix is to stop using one token for two jobs. Grid and tick LINES keep
+`--rule` and stay recessive, which is correct: a grid is a reference, not
+content. The label text takes `--ink-muted`, which clears the floor in all three
+themes while staying subordinate to the plotted lines — and is what the table
+column headings already use, so an axis and a table header now read at the same
+weight, which is what they are.
+
+Verified from the rendered CANVAS PIXELS rather than from the token, since uPlot
+resolves colours at build time: **6.08 / 4.66 / 6.25** across dark, light and
+cyberpunk, with gridlines still sampling at 1.56.
+
+Axis font also went 10px → 11px. These are eight small charts rather than one
+large one, so their axes carry the densest type on the page and were also its
+smallest.
+
+**Y-axis labels were being clipped, and it took three attempts to size that
+gutter.** Worth recording all three, because the first two look right:
+
+1. A flat `44px`. Turned "3003MHz" into "20MHz".
+2. Sized from the CEILING's formatted label. Still clipped "50.0°C" — because
+   **the widest label is usually not the ceiling**. `fmt` added a decimal below
+   100, so the MIDDLE split "50.0°C" (6 chars) beat the top one "100°C" (5).
+   A percentage axis was surviving on 1.5px of margin.
+3. Passing uPlot a `size` CALLBACK, which hands you the formatted values. This
+   looked like the clean answer and was the worst of the three: it is called
+   before those values exist, so it returned bare padding and clipped **every**
+   chart on the page.
+
+What works is measuring the labels this axis can actually print — candidates
+across its own scale, in the font that will draw them, via an offscreen 2d
+context. No callback, no characters-times-a-constant estimate. The auto-fitted
+case takes its top from the tallest sample rather than a ceiling it does not
+have, so a throughput axis reaching 1500 gets room for "1500tok/s".
+
+The decimals went too, and that was the same bug wearing a different hat.
+"50.0%" carries a tenth of a percent the axis cannot resolve — it says nothing,
+and it was what made the middle label the widest. Ticks are integers unless the
+scale is genuinely small, which keeps throughput's 0.0 / 0.5 / 1.0 readable.
+
+A trap worth recording for anyone testing theming here: setting `data-theme` on
+the documentElement directly does NOT restyle a chart. Canvas colours are
+resolved when uPlot builds, and the rebuild is keyed on the `themeKey` prop, so
+a theme switched underneath the app leaves every chart painted in the previous
+theme's colours. Switch themes through the app's own control, or the measurement
+is of the wrong thing — it read 2.98:1 for light and the pixel turned out to be
+dark's muted ink.
+
 **Deferred: past eight nodes** there are not enough distinguishable colours for
 one line each, and the answer is probably a min/median/max band with the
 outliers named rather than 32 lines. Additive, and hypothetical at 1-4 nodes, so
