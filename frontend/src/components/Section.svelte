@@ -38,7 +38,9 @@
   let settling = false;
 
   const label = $derived(layout.label(id));
-  const position = $derived(`${index + 1} of ${layout.order.length}`);
+  // Counted against what is ON SCREEN. Announcing "3 of 5" when two are
+  // hidden describes a page the listener cannot perceive.
+  const position = $derived(`${index + 1} of ${layout.visible.length}`);
   const collapsed = $derived(layout.isCollapsed(id));
 
   /** This card's top with the lift removed — where it actually sits. */
@@ -130,7 +132,7 @@
 
     settling = true;
     const before = baseTop();
-    layout.move(index, target);
+    layout.moveVisible(index, target);
     // Wait for the reorder to land so the new home can be measured rather
     // than assumed — sections differ in height, and there is a gap between
     // them, so the shift is not a number worth guessing at.
@@ -165,10 +167,10 @@
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === 'ArrowUp' && index > 0) {
       event.preventDefault();
-      layout.move(index, index - 1);
-    } else if (event.key === 'ArrowDown' && index < layout.order.length - 1) {
+      layout.moveVisible(index, index - 1);
+    } else if (event.key === 'ArrowDown' && index < layout.visible.length - 1) {
       event.preventDefault();
-      layout.move(index, index + 1);
+      layout.moveVisible(index, index + 1);
     }
   }
 </script>

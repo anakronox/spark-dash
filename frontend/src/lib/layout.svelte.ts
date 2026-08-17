@@ -1,15 +1,22 @@
-/** Section order and collapsed state, persisted per browser.
+/** Section order, collapsed state and visibility, persisted per browser.
  *
  * localStorage rather than server-side: the backend is deliberately stateless,
  * and a layout tuned for a 34" monitor is rarely the one you want on a phone.
  * Per-browser is the behaviour you'd actually want here, not a limitation.
  *
- * Order and collapse live under separate keys so that a corrupt or outdated
- * value for one can't take the other down with it.
+ * Order, collapse and visibility live under separate keys so that a corrupt or
+ * outdated value for one can't take the others down with it.
+ *
+ * COLLAPSED AND HIDDEN ARE DIFFERENT THINGS. A collapsed section is still on
+ * the page as a named bar, one click from coming back — that control lives on
+ * the section itself. A hidden one is not rendered at all, so nothing on the
+ * page can bring it back; that is precisely why it is toggled from settings,
+ * which is the only place it can be found again.
  */
 
 const STORAGE_KEY = 'spark-dash.section-order.v1';
 const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
+const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 
 export interface SectionDef {
   id: string;
@@ -67,15 +74,17 @@ function read(): string[] {
   }
 }
 
-/** Collapsed section ids, filtered to ones that still exist.
+/** A saved list of section ids, filtered to ones that still exist.
  *
  * Unknown ids are dropped rather than kept: a section removed in a later
- * release would otherwise leave an entry that can never be un-collapsed,
- * and `isDefault` would report a customised layout forever.
+ * release would otherwise leave an entry that can never be cleared, and
+ * `isDefault` would report a customised layout forever. For the hidden list
+ * that failure is worse than untidy — a stale id would hide a section with no
+ * way to bring it back.
  */
-function readCollapsed(available: string[] = DEFAULT_ORDER): string[] {
+function readIdList(key: string, available: string[] = DEFAULT_ORDER): string[] {
   try {
-    const saved = JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? 'null');
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null');
     if (!Array.isArray(saved)) return [];
     const known = new Set(available);
     return saved.filter((id): id is string => typeof id === 'string' && known.has(id));
@@ -84,10 +93,16 @@ function readCollapsed(available: string[] = DEFAULT_ORDER): string[] {
   }
 }
 
+function readCollapsed(available: string[] = DEFAULT_ORDER): string[] {
+  return readIdList(COLLAPSE_KEY, available);
+}
+
 export class Layout {
   order = $state<string[]>(read());
-  /** Section ids currently collapsed. */
+  /** Section ids currently collapsed — present on the page, but folded. */
   collapsed = $state<string[]>(readCollapsed());
+  /** Section ids not rendered at all. Recoverable only from settings. */
+  hidden = $state<string[]>(readIdList(HIDDEN_KEY));
   /** Index currently being dragged, or null. Drives the visual lift. */
   dragging = $state<number | null>(null);
 
@@ -128,6 +143,50 @@ export class Layout {
     this.#saveCollapsed();
   }
 
+  isHidden(id: string): boolean {
+    return this.hidden.includes(id);
+  }
+
+  /** Take a section off the dashboard entirely, or put it back.
+   *
+   * Collapse state is left untouched rather than cleared: hiding is not a
+   * stronger collapse, it is a different axis. Something you folded away and
+   * then hid should come back folded, not sprung open.
+   */
+  toggleHidden(id: string) {
+    this.hidden = this.isHidden(id)
+      ? this.hidden.filter((s) => s !== id)
+      : [...this.hidden, id];
+    try {
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify(this.hidden));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  /** The order with hidden sections removed — what the page actually renders.
+   *
+   * Indices come from THIS list, not from `order`, because Section uses its
+   * index for drag arithmetic and the accessible "3 of 5" position. Passing an
+   * index from the unfiltered list would make a hidden section above shift
+   * every position below it out of step with what is on screen.
+   */
+  get visible(): string[] {
+    return this.order.filter((id) => !this.isHidden(id));
+  }
+
+  /** Reorder by VISIBLE index, which is what the page renders and what a drag
+   *  reports. Translating here rather than at the call site keeps the mapping
+   *  in one place: with a section hidden, visible index 2 is not order index 2,
+   *  and moving the wrong row is a silent, baffling bug.
+   */
+  moveVisible(from: number, to: number) {
+    const vis = this.visible;
+    if (from === to || from < 0 || to < 0) return;
+    if (from >= vis.length || to >= vis.length) return;
+    this.move(this.order.indexOf(vis[from]), this.order.indexOf(vis[to]));
+  }
+
   move(from: number, to: number) {
     if (from === to || from < 0 || to < 0) return;
     if (from >= this.order.length || to >= this.order.length) return;
@@ -142,17 +201,25 @@ export class Layout {
   reset() {
     this.order = [...DEFAULT_ORDER];
     this.collapsed = [];
+    this.hidden = [];
+    try {
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify(this.hidden));
+    } catch {
+      // Still applied for this session.
+    }
     this.#save();
     this.#saveCollapsed();
   }
 
-  /** True when nothing has been customised — order untouched AND nothing
-   *  collapsed. Drives whether "reset layout" is offered at all, so it has to
-   *  account for both or a collapsed-but-unreordered dashboard would have no
+  /** True when nothing has been customised — order untouched, nothing
+   *  collapsed AND nothing hidden. Drives whether "reset layout" is offered at
+   *  all, so it has to account for all three or a customised dashboard has no
    *  way back. */
   get isDefault(): boolean {
     return (
-      this.order.join(',') === DEFAULT_ORDER.join(',') && this.collapsed.length === 0
+      this.order.join(',') === DEFAULT_ORDER.join(',') &&
+      this.collapsed.length === 0 &&
+      this.hidden.length === 0
     );
   }
 

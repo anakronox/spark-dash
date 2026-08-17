@@ -273,7 +273,7 @@
          Node cards and the summary stay put — clustering already orders the
          nodes meaningfully, and the headline belongs at the top. -->
     <div class="sections">
-      {#each layout.order as id, i (id)}
+      {#each layout.visible as id, i (id)}
         <Section {layout} index={i} {id}>
           {#if id === 'models'}
             <ModelsTable {nodes} />

@@ -88,20 +88,25 @@
     <!-- Layout -->
     <section class="block">
       <h3 class="eyebrow dim">Sections</h3>
+      <!-- HIDE, not collapse. Collapsing already has a control on the section
+           itself, and duplicating it here would be two ways to do one thing.
+           Hiding is the one that has to live here: a hidden section renders
+           nothing, so this panel is the only place it can be found again. -->
       <p class="note dim">
-        Drag a section by its handle to reorder, or use the chevron to collapse
-        it. Both persist.
+        Remove a section from the dashboard entirely. Reorder and collapse stay
+        on the sections themselves.
       </p>
       <ol class="sections">
-        {#each layout.order as id, i (id)}
-          <li class="row">
-            <span class="pos num">{i + 1}</span>
+        {#each layout.order as id (id)}
+          {@const hidden = layout.isHidden(id)}
+          <li class="row" class:off={hidden}>
             <span class="name">{layout.label(id)}</span>
             <button
               class="mini"
-              aria-pressed={layout.isCollapsed(id)}
-              onclick={() => layout.toggleCollapsed(id)}
-            >{layout.isCollapsed(id) ? 'collapsed' : 'shown'}</button>
+              aria-pressed={!hidden}
+              aria-label={`${hidden ? 'Show' : 'Hide'} ${layout.label(id)}`}
+              onclick={() => layout.toggleHidden(id)}
+            >{hidden ? 'hidden' : 'shown'}</button>
           </li>
         {/each}
       </ol>
@@ -111,7 +116,7 @@
         class="mini reset"
         disabled={layout.isDefault}
         onclick={() => layout.reset()}
-      >Reset to default order</button>
+      >Reset sections</button>
     </section>
 
     <!-- Where this lives -->
@@ -216,8 +221,12 @@
     border: 1px solid var(--rule);
   }
 
-  .pos { color: var(--ink-muted); font-size: 10px; }
   .name { font-weight: 500; }
+
+  /* A hidden row stays legible rather than being greyed to the edge of
+     readability — this is the only place it can be switched back on, so it
+     must not look disabled. */
+  .row.off .name { color: var(--ink-muted); }
 
   .mini {
     font-size: 10px;
