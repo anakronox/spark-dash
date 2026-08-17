@@ -22,25 +22,80 @@ const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
+const PLACEMENT_KEY = 'spark-dash.section-placement.v1';
 
-/** Sections are laid out in a TWO-column grid. A section is either half — one
- *  column, sharing its row — or full, spanning both.
+/** Which of the page's three zones a section sits in.
  *
- *  Two columns rather than an arbitrary number, deliberately. These sections
- *  are wide data tables and a chart; at three across, columns collide and the
- *  history plot loses the time resolution that makes it worth having. Two is
- *  the count where side-by-side is genuinely readable, so it is a constant
- *  rather than a setting. */
-export type SectionWidth = 'half' | 'full';
+ * WHY ZONES REPLACED A WIDTH FLAG. The previous model was one ordered list
+ * plus half/full, rendered as a two-column CSS grid. That model cannot express
+ * the thing this layout is for: a grid packs by ROWS, and a row is as tall as
+ * its tallest item, so a short section beside a tall one leaves dead space that
+ * nothing can occupy. Measured on the real dashboard, `models` (337px) beside
+ * `processes` (661px) left 324px unusable — and `activity` (167px) would have
+ * fitted in it twice over.
+ *
+ * Columns that fill INDEPENDENTLY are the only fix, and independent columns
+ * have to be separate elements: there is no row for their contents to align to.
+ * So a section is in the left column, the right column, or the full-width band.
+ *
+ * THE BAND IS ABOVE THE COLUMNS, and that is a real constraint rather than an
+ * oversight. A full-width section cannot sit BETWEEN column content, because
+ * two independently-filling columns have no shared horizontal line for it to
+ * interrupt. Wide things — the history chart — go at the top, which is where
+ * they belonged anyway.
+ *
+ * Two columns rather than an arbitrary number, deliberately. These sections are
+ * wide data tables; at three across the columns collide and the history plot
+ * loses the time resolution that makes it worth having.
+ */
+export type Zone = 'full' | 'left' | 'right';
 
-function readWidths(available: string[] = DEFAULT_ORDER): Record<string, SectionWidth> {
+export const ZONES: Zone[] = ['full', 'left', 'right'];
+
+export const ZONE_LABEL: Record<Zone, string> = {
+  full: 'full width',
+  left: 'left column',
+  right: 'right column',
+};
+
+function isZone(v: unknown): v is Zone {
+  return v === 'full' || v === 'left' || v === 'right';
+}
+
+/** Placement, migrating a saved half/full width if that is all there is.
+ *
+ * Without the migration, everyone who had already arranged a dashboard would
+ * open this release to a single full-width stack. Halves alternate into the two
+ * columns in their existing order, which is the closest thing to what the grid
+ * was showing them.
+ */
+function readPlacement(available: string[] = DEFAULT_ORDER): Record<string, Zone> {
+  const known = new Set(available);
   try {
-    const saved = JSON.parse(localStorage.getItem(WIDTH_KEY) ?? 'null');
-    if (!saved || typeof saved !== 'object') return {};
-    const known = new Set(available);
-    const out: Record<string, SectionWidth> = {};
-    for (const [id, w] of Object.entries(saved)) {
-      if (known.has(id) && (w === 'half' || w === 'full')) out[id] = w;
+    const saved = JSON.parse(localStorage.getItem(PLACEMENT_KEY) ?? 'null');
+    if (saved && typeof saved === 'object') {
+      const out: Record<string, Zone> = {};
+      for (const [id, z] of Object.entries(saved)) {
+        if (known.has(id) && isZone(z)) out[id] = z;
+      }
+      return out;
+    }
+  } catch {
+    return {};
+  }
+
+  try {
+    const widths = JSON.parse(localStorage.getItem(WIDTH_KEY) ?? 'null');
+    if (!widths || typeof widths !== 'object') return {};
+    const out: Record<string, Zone> = {};
+    let nextHalf: Zone = 'left';
+    for (const id of available) {
+      const w = (widths as Record<string, unknown>)[id];
+      if (w === 'full') out[id] = 'full';
+      else if (w === 'half') {
+        out[id] = nextHalf;
+        nextHalf = nextHalf === 'left' ? 'right' : 'left';
+      }
     }
     return out;
   } catch {
@@ -151,18 +206,30 @@ export class Layout {
    * Default off; the person who needs it turns it on and it stays on. */
   compactCards = $state<boolean>(readCompact());
 
-  /* Per-section width. Absent means full, so a section added in a later
-     release shows at full width rather than silently half. */
-  widths = $state<Record<string, SectionWidth>>(readWidths());
-  /** Index currently being dragged, or null. Drives the visual lift. */
-  dragging = $state<number | null>(null);
+  /* Which zone each section sits in. Absent means full width, so a section
+     added in a later release spans the page rather than silently appearing in
+     a column the reader may have scrolled past. */
+  placement = $state<Record<string, Zone>>(readPlacement());
+
+  /** Id of the section being dragged, or null. Drives the lift and dims the
+   *  card it came from. An id rather than an index: the section keeps its
+   *  place in the layout for the whole drag now, so there is no index to
+   *  track. */
+  dragId = $state<string | null>(null);
+
+  /** Where a release would put it: the zone, the position within that zone,
+   *  and the y offset (relative to the zone's box) to draw the line at.
+   *
+   * NOTHING MOVES UNTIL THE POINTER IS RELEASED. The previous version reordered
+   * live on every crossing, which meant the layout was rearranging underneath
+   * the thing you were aiming at, and the card had to be re-anchored after each
+   * swap to stop it jumping. Showing the destination instead of performing it
+   * is both calmer to use and drastically simpler: no compensation, no
+   * animation bookkeeping, and no way for a reorder to feed back into the
+   * targeting that caused it. */
+  drop = $state<{ zone: Zone; index: number; y: number } | null>(null);
 
   #save() {
-    // Skipped mid-drag. `move` is called on every swap, and localStorage
-    // writes are synchronous — doing one per swap puts a blocking write in the
-    // middle of an animation. The drag commits once when the pointer is
-    // released; keyboard reordering isn't dragging, so it saves immediately.
-    if (this.dragging !== null) return;
     this.commit();
   }
 
@@ -203,17 +270,76 @@ export class Layout {
     }
   }
 
-  widthOf(id: string): SectionWidth {
-    return this.widths[id] ?? 'full';
+  zoneOf(id: string): Zone {
+    return this.placement[id] ?? 'full';
   }
 
-  setWidth(id: string, w: SectionWidth) {
-    this.widths = { ...this.widths, [id]: w };
+  #savePlacement() {
     try {
-      localStorage.setItem(WIDTH_KEY, JSON.stringify(this.widths));
+      localStorage.setItem(PLACEMENT_KEY, JSON.stringify(this.placement));
     } catch {
       // Still applied for this session.
     }
+  }
+
+  /** The visible sections of one zone, in order.
+   *
+   * Derived from the single `order` array rather than stored per zone. Because
+   * filtering preserves relative order, each zone's sequence is independent for
+   * free — reordering the right column cannot disturb the left — while there
+   * is still only one list to reconcile against new or removed sections.
+   */
+  inZone(zone: Zone): string[] {
+    return this.visible.filter((id) => this.zoneOf(id) === zone);
+  }
+
+  /** Put a section in a zone at a position, where `index` counts the OTHER
+   *  sections already in that zone.
+   *
+   * Counting others rather than the zone as it currently reads is what makes a
+   * drag within one column work: the section being moved is still sitting in
+   * that column while you aim, and an index that included it would be off by
+   * one for every destination below its current home.
+   */
+  place(id: string, zone: Zone, index: number) {
+    const others = this.inZone(zone).filter((x) => x !== id);
+    const next = this.order.filter((x) => x !== id);
+
+    let at: number;
+    if (others.length === 0) at = next.length;
+    else if (index >= others.length) at = next.indexOf(others[others.length - 1]) + 1;
+    else at = next.indexOf(others[index]);
+
+    next.splice(at, 0, id);
+    this.order = next;
+    this.placement = { ...this.placement, [id]: zone };
+    this.#savePlacement();
+    this.#save();
+  }
+
+  /** Move a section up or down within its own zone. */
+  moveInZone(id: string, delta: number) {
+    const zone = this.zoneOf(id);
+    const list = this.inZone(zone);
+    const i = list.indexOf(id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= list.length) return;
+    this.place(id, zone, j);
+  }
+
+  /** Move a section to the neighbouring zone, keeping it at the end.
+   *
+   * The keyboard counterpart of dragging across. Appending rather than trying
+   * to preserve a position: the two columns fill independently, so "the same
+   * place" in another column is not a meaningful spot, and the end is the one
+   * position that always exists.
+   */
+  shiftZone(id: string, delta: number) {
+    const i = ZONES.indexOf(this.zoneOf(id));
+    const j = i + delta;
+    if (j < 0 || j >= ZONES.length) return;
+    const zone = ZONES[j];
+    this.place(id, zone, this.inZone(zone).filter((x) => x !== id).length);
   }
 
   isHidden(id: string): boolean {
@@ -248,18 +374,6 @@ export class Layout {
     return this.order.filter((id) => !this.isHidden(id));
   }
 
-  /** Reorder by VISIBLE index, which is what the page renders and what a drag
-   *  reports. Translating here rather than at the call site keeps the mapping
-   *  in one place: with a section hidden, visible index 2 is not order index 2,
-   *  and moving the wrong row is a silent, baffling bug.
-   */
-  moveVisible(from: number, to: number) {
-    const vis = this.visible;
-    if (from === to || from < 0 || to < 0) return;
-    if (from >= vis.length || to >= vis.length) return;
-    this.move(this.order.indexOf(vis[from]), this.order.indexOf(vis[to]));
-  }
-
   move(from: number, to: number) {
     if (from === to || from < 0 || to < 0) return;
     if (from >= this.order.length || to >= this.order.length) return;
@@ -275,10 +389,14 @@ export class Layout {
     this.order = [...DEFAULT_ORDER];
     this.collapsed = [];
     this.hidden = [];
-    this.widths = {};
+    this.placement = {};
     this.setCompactCards(false);
+    this.#savePlacement();
     try {
-      localStorage.setItem(WIDTH_KEY, JSON.stringify(this.widths));
+      // Cleared as well as superseded: readPlacement falls back to the old
+      // width key when there is no placement, so leaving a stale one behind
+      // would resurrect the previous arrangement on the next load.
+      localStorage.removeItem(WIDTH_KEY);
     } catch {
       // Still applied for this session.
     }
@@ -300,7 +418,7 @@ export class Layout {
       this.order.join(',') === DEFAULT_ORDER.join(',') &&
       this.collapsed.length === 0 &&
       this.hidden.length === 0 &&
-      Object.keys(this.widths).length === 0 &&
+      Object.keys(this.placement).length === 0 &&
       !this.compactCards
     );
   }

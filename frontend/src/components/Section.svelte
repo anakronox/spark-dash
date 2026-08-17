@@ -1,13 +1,21 @@
 <script lang="ts">
-  /* Wraps a dashboard section so it can be reordered and collapsed.
+  /* Wraps a dashboard section so it can be moved between zones and collapsed.
    *
    * Pointer events rather than HTML5 drag-and-drop: HTML5 DnD doesn't fire on
    * touch at all, and its drag image is not stylable. Pointer events cover
    * mouse, touch and pen with one code path.
    *
-   * The handle is also a button, and arrow keys move the section. Drag alone
-   * would make reordering mouse-only, which is a real exclusion rather than a
-   * nicety — and it's the cheaper interaction anyway once you know it's there.
+   * The handle is also a button, and arrow keys move the section — up and down
+   * within its column, left and right between columns. Drag alone would make
+   * rearranging mouse-only, which is a real exclusion rather than a nicety.
+   *
+   * AIM, THEN DROP. Dragging shows where the section WILL land — a line in the
+   * target zone — and only moves it when the pointer is released. The earlier
+   * version reordered live on every crossing, so the layout was rearranging
+   * underneath the thing being aimed at, and each reorder had to re-anchor the
+   * card to stop it jumping. That feedback loop was the whole source of the
+   * oscillation, the stutter, and the FLIP bookkeeping that came with it. None
+   * of it exists here, because nothing moves during the drag.
    *
    * COLLAPSING UNMOUNTS, rather than hiding with CSS. Two sections poll on a
    * timer — the activity timeline every 60s and history on its range's period
@@ -15,173 +23,124 @@
    * at. Unmounting stops that, at the cost of a refetch when it reopens, which
    * is the right trade for a panel you deliberately put away.
    */
-  import { onDestroy, tick } from 'svelte';
+  import { onDestroy } from 'svelte';
   import type { Snippet } from 'svelte';
-  import type { Layout } from '../lib/layout.svelte';
+  import type { Layout, Zone } from '../lib/layout.svelte';
+  import { ZONE_LABEL } from '../lib/layout.svelte';
 
   interface Props {
     layout: Layout;
-    index: number;
     id: string;
     children: Snippet;
   }
-  const { layout, index, id, children }: Props = $props();
+  const { layout, id, children }: Props = $props();
 
-  let host = $state<HTMLElement | null>(null);
   let grabbed = $state(false);
   /** Lift, in pixels from where the pointer went down. */
-  let offsetY = $state(0);
   let offsetX = $state(0);
-  /** Pointer position the current lift is measured from. Shifted on each
-   *  reorder by however far the card's home moved, so the lift compensates
-   *  instead of snapping. */
-  let anchorY = 0;
+  let offsetY = $state(0);
   let anchorX = 0;
-  /** True while a reorder is awaiting its DOM flush.
-   *
-   * This gates ONLY the reorder decision, never the lift. The previous version
-   * returned out of the whole move handler while settling, so the card stopped
-   * following the pointer during every swap — which is exactly what made
-   * dragging feel unresponsive. The card is now glued to the pointer at all
-   * times and only the decision to reorder waits. */
-  let reordering = false;
+  let anchorY = 0;
 
   const label = $derived(layout.label(id));
-  // Counted against what is ON SCREEN. Announcing "3 of 5" when two are
-  // hidden describes a page the listener cannot perceive.
-  const position = $derived(`${index + 1} of ${layout.visible.length}`);
+  const zone = $derived(layout.zoneOf(id));
+  const siblings = $derived(layout.inZone(zone));
+  // Counted within the zone and against what is ON SCREEN. "3 of 5" across the
+  // whole page describes a sequence the reader cannot see, now that the page is
+  // three independent stacks rather than one.
+  const position = $derived(`${siblings.indexOf(id) + 1} of ${siblings.length}, ${ZONE_LABEL[zone]}`);
   const collapsed = $derived(layout.isCollapsed(id));
 
-  /** This card's top with the lift removed — where it actually sits. */
-  function baseTop(): number {
-    return host ? host.getBoundingClientRect().top - offsetY : 0;
+  /** Squared distance from a point to a rect; 0 when inside. */
+  function distance(r: DOMRect, px: number, py: number): number {
+    const dx = Math.max(r.left - px, 0, px - r.right);
+    const dy = Math.max(r.top - py, 0, py - r.bottom);
+    return dx * dx + dy * dy;
   }
 
-  function baseLeft(): number {
-    return host ? host.getBoundingClientRect().left - offsetX : 0;
-  }
-
-  /** The slot the POINTER is currently inside, or null.
+  /** The zone the pointer is over, falling back to the nearest one.
    *
-   * The pointer, not the card's centre. The handle sits in the page's left
-   * padding, so the card's centre is half a card away from the cursor — asking
-   * where the CENTRE is meant that pointing at a cell did not select it, and
-   * the disagreement between the two made the target oscillate as the
-   * compensation moved the card after each reorder.
-   *
-   * "Inside the cell" is the snap and the hysteresis at once: the cursor has to
-   * travel fully into another cell to change the target, so there is no
-   * trading places when two edges merely brush. Direction gating and
-   * one-step-at-a-time are unnecessary as a result.
-   *
-   * Multi-cell jumps are allowed. They were the thrash risk before only
-   * because neighbours teleported; with FLIP animating them, dragging across
-   * three positions reads as three tiles gliding aside.
+   * The fallback is not a nicety. The zones do not tile the window — there are
+   * gaps between the columns, margins either side, and everything below the
+   * last card is outside all three. Without "nearest", the drop target would
+   * blink out whenever the pointer strayed into any of that, which reads as the
+   * drag having broken.
    */
-  function targetSlot(px: number, py: number): number | null {
-    if (!host?.parentElement) return null;
-    const slots = [...host.parentElement.querySelectorAll('[data-slot]')];
-    for (let i = 0; i < slots.length; i++) {
-      if (i === index) continue;
-      const r = slots[i].getBoundingClientRect();
-      if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) return i;
+  function zoneAt(px: number, py: number): HTMLElement | null {
+    const els = [...document.querySelectorAll<HTMLElement>('[data-zone]')];
+    if (!els.length) return null;
+
+    let best = els[0];
+    let bestD = Infinity;
+    for (const el of els) {
+      const d = distance(el.getBoundingClientRect(), px, py);
+      if (d < bestD) {
+        bestD = d;
+        best = el;
+      }
+      if (d === 0) break;
     }
-    return null;
+    return best;
   }
 
-  /** FLIP the siblings so a reorder reads as tiles making room.
+  /** Where in a zone the pointer is aiming, and where to draw the line.
    *
-   * Without this they teleport into their new cells, which gives no sense of
-   * the layout responding — the single biggest reason the first attempt felt
-   * wrong. The dragged card is excluded: it already carries its own transform
-   * following the pointer, and animating it too would fight that.
+   * Midpoint comparison down a single stack, which is exact — unlike the
+   * two-dimensional case this replaced, a column has only one axis to be on the
+   * wrong side of.
+   *
+   * This card is excluded from the reckoning while remaining in the flow. It
+   * keeps its space for the whole drag, so nothing reflows under the pointer;
+   * and because the index counts only the OTHER cards, the gap it leaves behind
+   * cannot shift the destination by one.
    */
-  /** How long a sibling takes to glide into its new cell. Long enough to read
-   *  as movement, short enough not to be in the way of the next reorder. */
-  const FLIP_MS = 160;
+  function aim(zoneEl: HTMLElement, py: number): { index: number; y: number } {
+    const cards = [...zoneEl.querySelectorAll<HTMLElement>(':scope > [data-slot]')].filter(
+      (el) => el.dataset.slot !== id,
+    );
+    const zr = zoneEl.getBoundingClientRect();
 
-  async function reorderWithFlip(target: number) {
-    const container = host?.parentElement;
-    if (!container) return;
+    if (!cards.length) return { index: 0, y: Math.min(24, zr.height / 2) };
 
-    const cells = () =>
-      [...container.querySelectorAll<HTMLElement>('[data-slot]')].map((el) => ({
-        el,
-        key: el.dataset.slot ?? '',
-        rect: el.getBoundingClientRect(),
-      }));
-
-    const before = new Map(cells().map((c) => [c.key, c.rect]));
-
-    const homeBefore = { x: baseLeft(), y: baseTop() };
-    layout.moveVisible(index, target);
-    await tick();
-    const homeAfter = { x: baseLeft(), y: baseTop() };
-
-    for (const { el, key, rect } of cells()) {
-      if (key === id) continue; // the dragged card owns its own transform
-      const prev = before.get(key);
-      if (!prev) continue;
-      const dx = prev.left - rect.left;
-      const dy = prev.top - rect.top;
-      if (!dx && !dy) continue;
-
-      /* Invert, then play. The play step is triggered by a FORCED REFLOW, not
-         requestAnimationFrame.
-         rAF does not fire in a background tab, so an rAF-driven play left every
-         sibling stuck at its inverted offset — invisible while the tab was
-         hidden, and a visibly broken layout on returning to it. Reading
-         offsetWidth flushes layout synchronously, which is all the browser
-         needs to treat the next assignment as a transition rather than as the
-         same frame. */
-      el.style.transition = 'none';
-      el.style.transform = `translate(${dx}px, ${dy}px)`;
-      void el.offsetWidth;
-      el.style.transition = `transform ${FLIP_MS}ms cubic-bezier(0.2, 0, 0, 1)`;
-      el.style.transform = '';
-      /* Clear the inline transition once it has played. Leaving it behind
-         would mean the NEXT card picked up carries a 160ms transform
-         transition, which smooths the lift and is felt as the drag lagging the
-         pointer.
-
-         On a TIMER, not transitionend. That event never fires when the tab is
-         hidden — transitions do not run there — so an event-driven cleanup
-         leaves the style behind exactly in the case nobody is watching, ready
-         to bite on the next drag after the tab is focused again. */
-      setTimeout(() => {
-        el.style.transition = '';
-      }, FLIP_MS + 20);
+    let index = cards.length;
+    for (let i = 0; i < cards.length; i++) {
+      const r = cards[i].getBoundingClientRect();
+      if (py < r.top + r.height / 2) {
+        index = i;
+        break;
+      }
     }
 
-    /* Compensate the lift rather than reset it. This card's home just moved,
-       so the lift shrinks by exactly that much and the card stays visually
-       still under the pointer through the reorder. Resetting instead made it
-       jump to its new cell while the pointer stood still. */
-    anchorX += homeAfter.x - homeBefore.x;
-    anchorY += homeAfter.y - homeBefore.y;
+    const y =
+      index < cards.length
+        ? cards[index].getBoundingClientRect().top - zr.top - 8
+        : cards[cards.length - 1].getBoundingClientRect().bottom - zr.top + 8;
+
+    return { index, y };
   }
 
   /* Move and release are tracked on the WINDOW, not via setPointerCapture on
    * the handle.
    *
-   * Capture looks like the right tool and isn't: reordering re-keys the
-   * wrapper, so Svelte relocates the very node holding the capture. Safari
-   * drops the capture when a capturing element is re-parented, after which no
-   * further pointermove or pointerup arrives — the card freezes mid-drag and
-   * stays stuck, because the pointerup that would have ended it never lands.
-   * Chrome happens to be more forgiving, which is why this only showed up in
-   * Safari. The window is never re-parented, so events keep flowing.
+   * Capture looks like the right tool and isn't: Safari drops a capture when
+   * the capturing element is re-parented, after which no further pointermove or
+   * pointerup arrives — the card freezes mid-drag and stays stuck, because the
+   * pointerup that would have ended it never lands. Chrome happens to be more
+   * forgiving, which is why this only showed up in Safari. The window is never
+   * re-parented, so events keep flowing.
    */
   function startTracking() {
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('keydown', onEscape);
   }
 
   function stopTracking() {
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
-    window.removeEventListener('pointercancel', onPointerUp);
+    window.removeEventListener('pointercancel', onCancel);
+    window.removeEventListener('keydown', onEscape);
   }
 
   function onPointerDown(event: PointerEvent) {
@@ -190,59 +149,57 @@
     if (event.button !== 0) return;
     event.preventDefault();
 
-    /* Defensive: a FLIP that was interrupted (a second drag started before
-       its transition ended) could leave an inline transition on this card,
-       which would smooth the lift. */
-    if (host) {
-      host.style.transition = '';
-      host.style.transform = '';
-    }
-
     grabbed = true;
-    layout.dragging = index;
+    layout.dragId = id;
+    anchorX = event.clientX;
     anchorY = event.clientY;
-    offsetY = 0;
     offsetX = 0;
+    offsetY = 0;
     startTracking();
   }
 
   function onPointerMove(event: PointerEvent) {
     if (!grabbed) return;
 
-    /* The lift updates on EVERY move, unconditionally. Measured from where the
-       pointer went down, not from the element's current box: a
-       getBoundingClientRect() here reports the TRANSFORMED rect and would feed
-       the lift back into its own input, which is the jitter this replaced. */
+    /* Measured from where the pointer went down, not from the element's current
+       box: a getBoundingClientRect() here reports the TRANSFORMED rect and
+       would feed the lift back into its own input. */
     offsetX = event.clientX - anchorX;
     offsetY = event.clientY - anchorY;
 
-    // Only the REORDER waits for its flush. Gating the whole handler on this
-    // is what made the drag stutter.
-    if (reordering) return;
+    const zoneEl = zoneAt(event.clientX, event.clientY);
+    if (!zoneEl) return;
+    const z = zoneEl.dataset.zone as Zone;
+    const { index, y } = aim(zoneEl, event.clientY);
+    layout.drop = { zone: z, index, y };
+  }
 
-    const target = targetSlot(event.clientX, event.clientY);
-    if (target === null || target === index) return;
-
-    reordering = true;
-    void reorderWithFlip(target).finally(() => {
-      reordering = false;
-      // The pointer has kept moving while that settled; re-sync so the card
-      // does not lag a frame behind by the width of the reorder.
-      offsetX = event.clientX - anchorX;
-      offsetY = event.clientY - anchorY;
-    });
+  function finish() {
+    grabbed = false;
+    layout.dragId = null;
+    layout.drop = null;
+    offsetX = 0;
+    offsetY = 0;
+    stopTracking();
   }
 
   function onPointerUp() {
     if (!grabbed) return;
-    grabbed = false;
-    layout.dragging = null;
-    offsetY = 0;
-    offsetX = 0;
-    reordering = false;
-    stopTracking();
-    // Persisted once, here, rather than on every swap — see Layout#save.
-    layout.commit();
+    const target = layout.drop;
+    // Read before finish() clears it; applied after, so the card lands in a
+    // page that is no longer in a drag state.
+    finish();
+    if (target) layout.place(id, target.zone, target.index);
+  }
+
+  /** Abandon without moving anything. Free to offer now that the drag is only
+   *  an aim: there is nothing to undo. */
+  function onCancel() {
+    if (grabbed) finish();
+  }
+
+  function onEscape(event: KeyboardEvent) {
+    if (event.key === 'Escape') onCancel();
   }
 
   // A drag interrupted by the component going away would otherwise leave
@@ -250,21 +207,22 @@
   onDestroy(stopTracking);
 
   function onKeyDown(event: KeyboardEvent) {
-    if (event.key === 'ArrowUp' && index > 0) {
-      event.preventDefault();
-      layout.moveVisible(index, index - 1);
-    } else if (event.key === 'ArrowDown' && index < layout.visible.length - 1) {
-      event.preventDefault();
-      layout.moveVisible(index, index + 1);
-    }
+    const moves: Record<string, () => void> = {
+      ArrowUp: () => layout.moveInZone(id, -1),
+      ArrowDown: () => layout.moveInZone(id, 1),
+      ArrowLeft: () => layout.shiftZone(id, -1),
+      ArrowRight: () => layout.shiftZone(id, 1),
+    };
+    const move = moves[event.key];
+    if (!move) return;
+    event.preventDefault();
+    move();
   }
 </script>
 
 <div
-  bind:this={host}
   data-slot={id}
   class="slot"
-  class:full={layout.widthOf(id) === 'full'}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
     ? `translate(${offsetX}px, ${offsetY}px)`
@@ -272,7 +230,7 @@
 >
   <button
     class="handle"
-    aria-label={`Move ${label}. Currently ${position}. Use arrow keys to reorder.`}
+    aria-label={`Move ${label}. Currently ${position}. Arrow keys move it within and between columns.`}
     title={`Drag to move ${label}, or focus and use arrow keys`}
     onpointerdown={onPointerDown}
     onkeydown={onKeyDown}
@@ -314,9 +272,7 @@
 
          No "collapsed" caption. A single thin bar where a panel used to be
          already says so, and the state is carried properly anyway: the chevron
-         has aria-expanded and this button is labelled "Expand {label}". A word
-         that restates what the layout already shows is just something else to
-         read on every collapsed row. -->
+         has aria-expanded and this button is labelled "Expand {label}". -->
     <button
       class="panel stub"
       aria-label={`Expand ${label}`}
@@ -332,14 +288,6 @@
 <style>
   .slot {
     position: relative;
-    /* Default half — one column of the two. A section that wants the row says
-       so with .full. Below the grid's breakpoint there is only one column, so
-       this is a no-op there and everything is full width anyway. */
-    grid-column: span 1;
-  }
-
-  .slot.full {
-    grid-column: 1 / -1;
   }
 
   .slot.grabbed {
@@ -348,9 +296,16 @@
        anyway. */
     pointer-events: none;
     /* Lifted above its neighbours while moving, so it reads as picked up
-       rather than as a gap opening beneath it. */
+       rather than as a gap opening beneath it. Still BELOW the drop line — a
+       section is exactly as wide as the column it is aiming at, so an opaque
+       card directly over its own destination would hide the one thing the drag
+       exists to show. */
     z-index: 5;
-    opacity: 0.9;
+    /* Slightly translucent and lifted. At 0.7 it blended into whatever dense
+       table it was passing over and became hard to read; the shadow does the
+       work of saying "picked up" that the transparency was being asked to do. */
+    opacity: 0.85;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
   }
 
   .handle {
@@ -436,8 +391,7 @@
   }
 
   /* The frame lifts toward the foreground ink on hover — enough to read as
-     interactive without inventing a colour the themes don't define. Every
-     theme sets --rule and --ink-muted, so this works across all of them. */
+     interactive without inventing a colour the themes don't define. */
   .stub:hover {
     border-color: var(--ink-muted);
   }

@@ -29,6 +29,7 @@
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
+  import { ZONES, ZONE_LABEL } from '../lib/layout.svelte';
 
   interface Props {
     theme: Theme;
@@ -242,22 +243,35 @@
            Hiding is the one that has to live here: a hidden section renders
            nothing, so this panel is the only place it can be found again. -->
       <p class="note dim">
-        Width and visibility. Reorder and collapse stay on the sections
-        themselves. Two sections fit a row; below 1100px everything is full
-        width regardless, because a half-width table is unreadable there.
+        Placement and visibility. Order and collapse stay on the sections
+        themselves. Full-width sections form a band above the two columns, which
+        fill independently — so a short section can sit under another short one
+        whatever the other column is doing. Below 1100px the columns stack and
+        everything is full width regardless, because a half-width table is
+        unreadable there.
       </p>
       <ol class="sections">
         {#each layout.order as id (id)}
           {@const hidden = layout.isHidden(id)}
+          {@const zone = layout.zoneOf(id)}
           <li class="row" class:off={hidden}>
             <span class="name">{layout.label(id)}</span>
+            <!-- Cycles full -> left -> right rather than offering three
+                 buttons: it is the same control as the arrow keys on the
+                 section's own handle, and a row of radio buttons per section
+                 would be fifteen targets in a panel that has to stay
+                 scannable. -->
             <button
               class="mini w"
               disabled={hidden}
-              aria-label={`${layout.label(id)} width: ${layout.widthOf(id)}`}
+              aria-label={`${layout.label(id)} placement: ${ZONE_LABEL[zone]}`}
               onclick={() =>
-                layout.setWidth(id, layout.widthOf(id) === 'full' ? 'half' : 'full')}
-            >{layout.widthOf(id) === 'full' ? 'full' : 'half'}</button>
+                layout.place(
+                  id,
+                  ZONES[(ZONES.indexOf(zone) + 1) % ZONES.length],
+                  layout.inZone(ZONES[(ZONES.indexOf(zone) + 1) % ZONES.length]).length,
+                )}
+            >{zone}</button>
             <button
               class="mini"
               aria-pressed={!hidden}

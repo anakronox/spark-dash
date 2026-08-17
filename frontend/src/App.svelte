@@ -12,7 +12,8 @@
   import ProcessTable from './components/ProcessTable.svelte';
   import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
-  import { Layout } from './lib/layout.svelte';
+  import { Layout, ZONE_LABEL } from './lib/layout.svelte';
+  import type { Zone } from './lib/layout.svelte';
   import { Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { AlertFeed } from './lib/alerts.svelte';
@@ -324,25 +325,22 @@
     {/each}
     </div>
 
-    <!-- Sections are reorderable and collapsible; both live in localStorage.
+    <!-- Sections are arrangeable and collapsible; both live in localStorage.
          Node cards and the summary stay put — clustering already orders the
-         nodes meaningfully, and the headline belongs at the top. -->
-    <div class="sections">
-      {#each layout.visible as id, i (id)}
-        <Section {layout} index={i} {id}>
-          {#if id === 'models'}
-            <ModelsTable {nodes} />
-          {:else if id === 'processes'}
-            <ProcessTable {nodes} />
-          {:else if id === 'network'}
-            <NetworkPanel {nodes} />
-          {:else if id === 'activity'}
-            <SwapTimeline />
-          {:else if id === 'history'}
-            <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.current} />
-          {/if}
-        </Section>
-      {/each}
+         nodes meaningfully, and the headline belongs at the top.
+
+         THREE ZONES, NOT A GRID. A full-width band above two columns that fill
+         INDEPENDENTLY. A CSS grid packs by rows and a row is as tall as its
+         tallest item, so a short section beside a tall one strands the space
+         beneath it — measured here at 324px between `models` and `processes`,
+         enough for two more sections. Independent columns need to be separate
+         elements: there is no row for their contents to align to. -->
+    <div class="sections" class:dragging={layout.dragId !== null}>
+      {@render dropZone('full')}
+      <div class="cols">
+        {@render dropZone('left')}
+        {@render dropZone('right')}
+      </div>
     </div>
   {:else if feed.state !== 'offline'}
     <p class="notice">Waiting for the first frame…</p>
@@ -355,6 +353,45 @@
     {/if}
   </footer>
 </div>
+
+<!-- One zone renderer for all three, so the drop affordances cannot drift
+     apart between them. -->
+{#snippet dropZone(z: Zone)}
+  {@const ids = layout.inZone(z)}
+  <div class="zone" data-zone={z} class:empty={ids.length === 0}>
+    {#each ids as id (id)}
+      <Section {layout} {id}>
+        {#if id === 'models'}
+          <ModelsTable {nodes} />
+        {:else if id === 'processes'}
+          <ProcessTable {nodes} />
+        {:else if id === 'network'}
+          <NetworkPanel {nodes} />
+        {:else if id === 'activity'}
+          <SwapTimeline />
+        {:else if id === 'history'}
+          <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.current} />
+        {/if}
+      </Section>
+    {/each}
+
+    <!-- An empty zone is zero pixels tall, which would make it impossible to
+         drag anything INTO — the commonest case being the very first move, out
+         of the default single stack. During a drag it becomes a labelled target
+         instead. -->
+    {#if ids.length === 0}
+      <span class="zone-hint">{ZONE_LABEL[z]}</span>
+    {/if}
+
+    <!-- Where a release would put it. Absolutely positioned rather than
+         inserted into the flow: a placeholder that takes up space would push
+         the cards it is measured against, and the measurement would chase
+         itself. -->
+    {#if layout.drop?.zone === z}
+      <div class="drop-line" style:top="{layout.drop.y}px"></div>
+    {/if}
+  </div>
+{/snippet}
 
 <style>
   .shell {
@@ -724,17 +761,103 @@
   .sections {
     display: grid;
     gap: 16px;
+  }
+
+  /* A zone is a plain vertical stack, and that is the whole point: each fills
+     to its own content's height, so a short section can sit under another
+     short section regardless of how tall the other column has grown. */
+  .zone {
+    position: relative;
+    display: grid;
+    gap: 16px;
+    align-content: start;
+  }
+
+  .cols {
+    display: grid;
+    gap: 16px;
+    /* One column until there is room for two readable tables. Below this the
+       two zones stack, which keeps every section full width — a half-width
+       table on a laptop is unreadable, and honouring the arrangement there
+       would be obeying the letter of it against the point. */
     grid-template-columns: 1fr;
     align-items: start;
   }
 
-  /* Side by side only where there is room for two readable tables. Below this
-     everything is full width regardless of its setting — a half-width table on
-     a laptop is unreadable, and honouring the preference there would be
-     obeying the letter of it against the point. */
   @media (min-width: 1100px) {
-    .sections {
+    .cols {
       grid-template-columns: repeat(2, 1fr);
     }
+  }
+
+  /* Empty zones are invisible and take no space until a drag starts, so the
+     page is never decorated with placeholders for arrangements nobody asked
+     for. */
+  .sections.dragging .zone.empty {
+    min-height: 76px;
+    border: 1px dashed var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .zone-hint {
+    display: none;
+    /* Centred in the empty zone rather than at its top edge: it is a label for
+       the whole target, not a heading for a list. */
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    pointer-events: none;
+  }
+
+  .sections.dragging .zone.empty .zone-hint {
+    display: flex;
+  }
+
+  /* The destination, drawn where the section will land.
+     An accent line rather than a ghost outline of the card: the card being
+     carried is already on screen at full size, and a second copy of it reads as
+     two sections rather than one being moved. */
+  .drop-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--series-1);
+    pointer-events: none;
+    /* Above the card being carried (z-index 5), deliberately. The card is as
+       wide as the column, so whenever the pointer is near the destination the
+       card sits directly over it — and the destination is the one thing that
+       must stay visible for the whole drag. */
+    z-index: 6;
+    /* Slides between destinations instead of jumping, which is what makes the
+       target legible while the pointer is still moving. */
+    transition: top 90ms ease-out;
+  }
+
+  /* Caps, so the line reads as an insertion point between two things rather
+     than as a rule belonging to the card below it. */
+  .drop-line::before,
+  .drop-line::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    width: 3px;
+    height: 9px;
+    border-radius: 2px;
+    background: var(--series-1);
+  }
+
+  .drop-line::before {
+    left: 0;
+  }
+
+  .drop-line::after {
+    right: 0;
   }
 </style>

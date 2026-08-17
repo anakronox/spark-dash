@@ -1166,6 +1166,73 @@ whole page, which cannot collide.
 network) — 32 nodes multiplies every row count. K only fixes the cards; the
 tables are a separate question, probably filtering rather than compaction.
 
+### N — Arranging the sections — **shipped 2026-08-17**
+
+Two columns for the sections themselves, so a tall table and a short one can
+sit side by side. Went through three implementations; the first two were wrong
+in ways worth recording, because both looked reasonable on paper.
+
+**Attempt 1 — a two-column CSS grid, half/full per section.** Correct-looking
+and fundamentally unable to do the job. **A grid packs by ROWS, and a row is as
+tall as its tallest item.** Put a short section beside a tall one and the space
+under the short one belongs to that row and nothing can occupy it. Measured on
+the running dashboard: `models` (337px) beside `processes` (661px) stranded
+324px — and `activity` (167px) would have fitted in it twice. No amount of
+`dense` packing or auto-flow tuning fixes this; it is what a grid IS.
+
+**Attempt 2 — live reordering during the drag.** Sections swapped as the
+pointer crossed them. Every problem it had traces to one property: **the layout
+was rearranging underneath the thing being aimed at.** Each swap moved the
+dragged card's home, so the lift had to be re-anchored to stop it jumping; the
+compensation moved the card; the moved card changed what was under the pointer;
+that re-triggered the swap. Direction gating, one-step-at-a-time, FLIP
+animation and a settle-gate were all added to damp a loop that should not have
+existed.
+
+**Shipped — three zones, and the drag only aims.**
+
+*Zones.* A full-width band above two columns that fill INDEPENDENTLY. They have
+to be separate elements: independent fill means there is no row for their
+contents to align to, which is precisely what a grid cannot express. A section
+is `full`, `left` or `right`, stored in `spark-dash.section-placement.v1`.
+
+*The band is above the columns, and that is a real constraint.* A full-width
+section cannot sit BETWEEN column content, because two independently-filling
+columns share no horizontal line for it to interrupt. Accepted deliberately:
+the wide thing is the history chart, which belonged at the top anyway.
+
+*Aim, then drop.* Dragging shows a line where the section WILL land and moves
+nothing until release. This is the fix for attempt 2 and it is a deletion, not
+an addition — no compensation, no FLIP, no settle-gate, no way for a reorder to
+feed back into the targeting that caused it. Escape cancels, which is free to
+offer once a drag has nothing to undo.
+
+*Ordering stays one array.* Zone membership filters `order`, and filtering
+preserves relative order — so each zone's sequence is independent for free,
+while there is still a single list to reconcile against added or removed
+sections.
+
+Details that were bugs first:
+
+- **An empty zone is 0px tall**, so nothing could be dragged into one — and the
+  first move anyone makes is out of the default single stack, into an empty
+  column. Empty zones become labelled dashed targets for the duration of a
+  drag, and are invisible otherwise.
+- **The drop line draws ABOVE the carried card.** A section is exactly as wide
+  as the column it is aiming at, so whenever the pointer nears the destination
+  the card covers it — hiding the one thing the drag exists to show.
+- **`nearest zone` rather than `zone under the pointer`.** The zones do not tile
+  the window: there are gaps between columns, margins either side, and
+  everything below the last card. Without the fallback the target blinks out
+  whenever the pointer strays into any of that, which reads as a broken drag.
+- **`reset` removes the old width key**, not just the new placement one.
+  Placement falls back to migrating half/full when absent, so a leftover width
+  key resurrects the arrangement that was just reset.
+
+Half/full arrangements migrate on first load — full stays full, halves
+alternate into the two columns in their existing order. Keyboard: up/down
+within a column, left/right between zones.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
