@@ -11,6 +11,7 @@
    * start but holds almost no memory.
    */
   import { MODEL_GLYPH, num } from '../lib/format';
+  import { TableView } from '../lib/table.svelte';
   import type { NodeSnapshot, ModelState } from '../lib/types';
 
   interface Props {
@@ -85,6 +86,37 @@
     );
   });
 
+  /* Sorting and pagination. The table keeps its own order as the default —
+     state first, so what is serving leads — and sorting is an override you can
+     cycle back out of. Ten rows a page keeps the section a fixed height
+     whether the cluster is one node or thirty-two. */
+  const view = new TableView<Row>([
+    { key: 'model', value: (r) => r.model },
+    { key: 'state', value: (r) => STATE_ORDER[r.state] },
+    { key: 'node', value: (r) => r.node },
+    { key: 'server', value: (r) => r.server },
+    { key: 'tok', value: (r) => r.tokensPerSec },
+    { key: 'kv', value: (r) => r.kvCachePct },
+    { key: 'run', value: (r) => r.running },
+    { key: 'wait', value: (r) => r.waiting },
+  ]);
+
+  const shown = $derived(view.slice(rows));
+
+  /* Header definitions in one place, so the sortable key and the label can
+     never drift apart — the failure would be a header that sorts by the column
+     beside it, which reads as the data being wrong. */
+  const COLUMNS: { key: string; label: string; right?: boolean }[] = [
+    { key: 'model', label: 'model' },
+    { key: 'state', label: 'state' },
+    { key: 'node', label: 'node' },
+    { key: 'server', label: 'server:port' },
+    { key: 'tok', label: 'tok/s', right: true },
+    { key: 'kv', label: 'kv', right: true },
+    { key: 'run', label: 'run', right: true },
+    { key: 'wait', label: 'wait', right: true },
+  ];
+
   const summary = $derived.by(() => {
     const counts = new Map<ModelState, number>();
     for (const r of rows) counts.set(r.state, (counts.get(r.state) ?? 0) + 1);
@@ -106,18 +138,22 @@
       <table>
         <thead>
           <tr>
-            <th scope="col">model</th>
-            <th scope="col">state</th>
-            <th scope="col">node</th>
-            <th scope="col">server:port</th>
-            <th scope="col" class="r">tok/s</th>
-            <th scope="col" class="r">kv</th>
-            <th scope="col" class="r">run</th>
-            <th scope="col" class="r">wait</th>
+            {#each COLUMNS as c (c.key)}
+              <th scope="col" class:r={c.right} aria-sort={view.ariaSort(c.key)}>
+                <button
+                  class="sort"
+                  class:active={view.sortKey === c.key}
+                  onclick={() => view.toggle(c.key)}
+                >
+                  {c.label}<span class="arrow" aria-hidden="true"
+                    >{view.sortKey === c.key ? (view.dir === 'asc' ? '▲' : '▼') : ''}</span>
+                </button>
+              </th>
+            {/each}
           </tr>
         </thead>
         <tbody>
-          {#each rows as row (row.key)}
+          {#each shown as row (row.key)}
             <tr class:idle={row.state === 'unloaded'}>
               <td class="model">{row.model}</td>
               <td>
@@ -144,6 +180,29 @@
         </tbody>
       </table>
     </div>
+
+    {#if rows.length > view.pageSize}
+      <!-- Shown only when it does something. A pager under a six-row table is
+           chrome that says "there is more" when there is not. -->
+      <nav class="pager" aria-label="Models pages">
+        <!-- The RANGE, not the page number: the question is "how much am I not
+             looking at", and "11–20 of 288" answers it where "page 2 of 29"
+             makes you do arithmetic. -->
+        <span class="dim">{view.range(rows.length)}</span>
+        <span class="controls">
+          <button
+            class="page"
+            disabled={view.current(rows.length) === 0}
+            onclick={() => view.go(-1, rows.length)}
+          >prev</button>
+          <button
+            class="page"
+            disabled={view.current(rows.length) >= view.pageCount(rows.length) - 1}
+            onclick={() => view.go(1, rows.length)}
+          >next</button>
+        </span>
+      </nav>
+    {/if}
   {:else}
     <p class="empty">
       No models registered. Check <code>LLAMA_ROUTER_URLS</code> on the node stack.
@@ -221,6 +280,47 @@
   /* Row hover. Cheap, and it is what makes a wide table navigable: with the
      identity columns on the left and the numbers on the right, the eye needs
      something to hold the line across the gap between them. */
+  /* Header cells become buttons. Kept looking like headers rather than growing
+     borders and backgrounds: the affordance is the cursor and the arrow, and a
+     row of chunky buttons would read as a toolbar sitting on the data. */
+  .sort {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .sort:hover { color: var(--ink); }
+  .sort.active { color: var(--ink); }
+
+  .arrow { font-size: 8px; }
+
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    padding-top: 8px;
+  }
+
+  .controls { display: inline-flex; gap: 4px; }
+
+  .page {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    color: var(--ink-muted);
+  }
+  .page:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-muted); }
+  .page:disabled { opacity: 0.4; cursor: default; }
+
   tbody tr:hover {
     background: var(--panel-raised);
   }

@@ -969,7 +969,39 @@ Widening the page also exposed that these tables do not have enough columns to
 fill 1491px however they are sized. That is not a CSS problem; it is the
 tables being under-specified for the space now available.
 
-- [ ] **M1. Sorting.** Clearly worth it. "Which model is actually serving" is a
+- [~] **M1. Sorting AND pagination — prototyped in the Models table
+  2026-08-17.** `lib/table.svelte.ts` (`TableView`) plus sortable headers and a
+  pager; Models is capped at 10 rows showing "1–10 of 36".
+
+  **They belong together, and neither works alone.** Sorting without a page
+  limit still renders every row, so the section keeps growing as nodes are
+  added. Paginating without sorting just hides rows behind a control, and the
+  one you wanted is as likely to be on page 9 as page 1. Together, the sort
+  decides what "interesting" means and the limit makes the section cost a fixed
+  amount of screen at any cluster size.
+
+  Decisions worth keeping if this is rolled out:
+  - **Sort cycles desc → asc → the table's own order.** Descending first
+    because every numeric column here has "most" as the interesting end.
+    Returning to the table's deliberate order matters — that order encodes
+    reasoning (models lead with what is serving) and a control that could not
+    get back to it would throw that away.
+  - **Nulls sort last in both directions.** A missing reading is not a small
+    one, and letting nulls lead an ascending sort fills page 1 with rows that
+    have nothing to say.
+  - **The pager reports a RANGE, not a page number.** "11–20 of 288" answers
+    "how much am I not looking at"; "page 2 of 29" makes you do arithmetic.
+  - **The pager only renders when it does something.** Under a six-row table it
+    would be chrome claiming there is more.
+  - **The page index is clamped on read**, because the row count moves: a node
+    going away can shrink the table while you are on its last page, and being
+    stranded on an empty one reads as broken data.
+
+  Still to decide before rolling out to Processes, Network and Model activity:
+  page size (10 is a guess), whether it should persist per table in settings,
+  and whether sort state should survive a reload.
+
+- [ ] **M1b. Original sorting note.** Clearly worth it. "Which model is actually serving" is a
   sort by tok/s, and today it is a scroll. Client-side, since the data is
   already in the page.
 
