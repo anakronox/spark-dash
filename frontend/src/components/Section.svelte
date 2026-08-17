@@ -220,14 +220,19 @@
          not make you expand things to find out what they were.
          Also clickable, as a bigger target than a 10px chevron — the same
          reason a form label activates its input. The chevron above remains the
-         control; this is the same action with more room. -->
+         control; this is the same action with more room.
+
+         No "collapsed" caption. A single thin bar where a panel used to be
+         already says so, and the state is carried properly anyway: the chevron
+         has aria-expanded and this button is labelled "Expand {label}". A word
+         that restates what the layout already shows is just something else to
+         read on every collapsed row. -->
     <button
       class="panel stub"
       aria-label={`Expand ${label}`}
       onclick={() => layout.toggleCollapsed(id)}
     >
       <span class="eyebrow">{label}</span>
-      <span class="dim">collapsed</span>
     </button>
   {:else}
     {@render children()}
@@ -322,8 +327,6 @@
   .stub {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
     width: 100%;
     padding: 14px 16px;
     text-align: left;
