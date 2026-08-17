@@ -21,6 +21,32 @@ const STORAGE_KEY = 'spark-dash.section-order.v1';
 const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
+const WIDTH_KEY = 'spark-dash.section-widths.v1';
+
+/** Sections are laid out in a TWO-column grid. A section is either half — one
+ *  column, sharing its row — or full, spanning both.
+ *
+ *  Two columns rather than an arbitrary number, deliberately. These sections
+ *  are wide data tables and a chart; at three across, columns collide and the
+ *  history plot loses the time resolution that makes it worth having. Two is
+ *  the count where side-by-side is genuinely readable, so it is a constant
+ *  rather than a setting. */
+export type SectionWidth = 'half' | 'full';
+
+function readWidths(available: string[] = DEFAULT_ORDER): Record<string, SectionWidth> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WIDTH_KEY) ?? 'null');
+    if (!saved || typeof saved !== 'object') return {};
+    const known = new Set(available);
+    const out: Record<string, SectionWidth> = {};
+    for (const [id, w] of Object.entries(saved)) {
+      if (known.has(id) && (w === 'half' || w === 'full')) out[id] = w;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 function readCompact(): boolean {
   try {
@@ -124,6 +150,10 @@ export class Layout {
    * disorienting, and a node joining is exactly when someone is watching.
    * Default off; the person who needs it turns it on and it stays on. */
   compactCards = $state<boolean>(readCompact());
+
+  /* Per-section width. Absent means full, so a section added in a later
+     release shows at full width rather than silently half. */
+  widths = $state<Record<string, SectionWidth>>(readWidths());
   /** Index currently being dragged, or null. Drives the visual lift. */
   dragging = $state<number | null>(null);
 
@@ -168,6 +198,19 @@ export class Layout {
     this.compactCards = on;
     try {
       localStorage.setItem(COMPACT_KEY, on ? '1' : '0');
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  widthOf(id: string): SectionWidth {
+    return this.widths[id] ?? 'full';
+  }
+
+  setWidth(id: string, w: SectionWidth) {
+    this.widths = { ...this.widths, [id]: w };
+    try {
+      localStorage.setItem(WIDTH_KEY, JSON.stringify(this.widths));
     } catch {
       // Still applied for this session.
     }
@@ -232,7 +275,13 @@ export class Layout {
     this.order = [...DEFAULT_ORDER];
     this.collapsed = [];
     this.hidden = [];
+    this.widths = {};
     this.setCompactCards(false);
+    try {
+      localStorage.setItem(WIDTH_KEY, JSON.stringify(this.widths));
+    } catch {
+      // Still applied for this session.
+    }
     try {
       localStorage.setItem(HIDDEN_KEY, JSON.stringify(this.hidden));
     } catch {
@@ -251,6 +300,7 @@ export class Layout {
       this.order.join(',') === DEFAULT_ORDER.join(',') &&
       this.collapsed.length === 0 &&
       this.hidden.length === 0 &&
+      Object.keys(this.widths).length === 0 &&
       !this.compactCards
     );
   }

@@ -242,14 +242,22 @@
            Hiding is the one that has to live here: a hidden section renders
            nothing, so this panel is the only place it can be found again. -->
       <p class="note dim">
-        Remove a section from the dashboard entirely. Reorder and collapse stay
-        on the sections themselves.
+        Width and visibility. Reorder and collapse stay on the sections
+        themselves. Two sections fit a row; below 1100px everything is full
+        width regardless, because a half-width table is unreadable there.
       </p>
       <ol class="sections">
         {#each layout.order as id (id)}
           {@const hidden = layout.isHidden(id)}
           <li class="row" class:off={hidden}>
             <span class="name">{layout.label(id)}</span>
+            <button
+              class="mini w"
+              disabled={hidden}
+              aria-label={`${layout.label(id)} width: ${layout.widthOf(id)}`}
+              onclick={() =>
+                layout.setWidth(id, layout.widthOf(id) === 'full' ? 'half' : 'full')}
+            >{layout.widthOf(id) === 'full' ? 'full' : 'half'}</button>
             <button
               class="mini"
               aria-pressed={!hidden}
@@ -581,6 +589,12 @@
   }
   .mini:hover:not(:disabled) { color: var(--ink); }
   .mini:disabled { opacity: 0.5; cursor: default; }
+
+  /* Width sits left of the visibility toggle, not pushed right with it —
+     they are different questions and a shared right edge made them read as one
+     control with two halves. */
+  .mini.w { margin-left: auto; }
+  .mini.w + .mini { margin-left: 0; }
 
   .reset { margin-left: 0; align-self: flex-start; margin-top: 4px; }
 

@@ -717,8 +717,24 @@
     color: var(--ink);
   }
 
+  /* TWO columns, never more. These are wide tables and a chart; at three
+     across the columns collide and the history plot loses the time resolution
+     that justifies it. So the count is a constant and the per-section choice
+     is just "share a row or take it". */
   .sections {
     display: grid;
     gap: 16px;
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  /* Side by side only where there is room for two readable tables. Below this
+     everything is full width regardless of its setting — a half-width table on
+     a laptop is unreadable, and honouring the preference there would be
+     obeying the letter of it against the point. */
+  @media (min-width: 1100px) {
+    .sections {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
 </style>

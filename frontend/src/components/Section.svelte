@@ -30,10 +30,12 @@
   let host = $state<HTMLElement | null>(null);
   let grabbed = $state(false);
   let offsetY = $state(0);
+  let offsetX = $state(0);
   /** Pointer position the current lift is measured from. Shifted on each
    *  reorder by however far the card's home moved, so the lift compensates
    *  instead of snapping. */
   let anchorY = 0;
+  let anchorX = 0;
   /** True while a swap is awaiting its DOM flush. */
   let settling = false;
 
@@ -46,6 +48,10 @@
   /** This card's top with the lift removed — where it actually sits. */
   function baseTop(): number {
     return host ? host.getBoundingClientRect().top - offsetY : 0;
+  }
+
+  function baseLeft(): number {
+    return host ? host.getBoundingClientRect().left - offsetX : 0;
   }
 
   /** The neighbour to trade places with, or null to stay put.
@@ -63,20 +69,38 @@
    * requires travelling back across the neighbour's midpoint — real hysteresis,
    * rather than a boundary the card can sit exactly on.
    */
-  function neighbour(): number | null {
+  /* Which slot the POINTER is over, as one step toward it.
+   *
+   * Was a purely vertical test against the next slot's midpoint, which is
+   * wrong the moment two sections share a row: their tops are equal, so
+   * `self.bottom > next.top + next.height / 2` is already true before the
+   * pointer has moved, and the smallest downward twitch swapped them.
+   *
+   * Hit-testing the pointer against the other slots' own rects is
+   * layout-agnostic — it works down a column, across a row, or in the mixed
+   * grid a half-width section beside a full-width one produces. Self is
+   * skipped because the dragged card is translated under the pointer and would
+   * always match.
+   *
+   * Still ONE STEP AT A TIME and direction-gated. Jumping straight to the
+   * hovered index was what produced twenty swaps in twenty frames; moving one
+   * place per settle keeps the reorder legible and the animation honest.
+   */
+  function neighbour(px: number, py: number): number | null {
     if (!host?.parentElement) return null;
     const slots = [...host.parentElement.querySelectorAll('[data-slot]')];
-    const self = host.getBoundingClientRect();
 
-    if (offsetY > 0 && index < slots.length - 1) {
-      const next = slots[index + 1].getBoundingClientRect();
-      if (self.bottom > next.top + next.height / 2) return index + 1;
+    let over = -1;
+    for (let i = 0; i < slots.length; i++) {
+      if (i === index) continue;
+      const r = slots[i].getBoundingClientRect();
+      if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
+        over = i;
+        break;
+      }
     }
-    if (offsetY < 0 && index > 0) {
-      const prev = slots[index - 1].getBoundingClientRect();
-      if (self.top < prev.top + prev.height / 2) return index - 1;
-    }
-    return null;
+    if (over === -1) return null;
+    return over > index ? index + 1 : index - 1;
   }
 
   /* Move and release are tracked on the WINDOW, not via setPointerCapture on
@@ -112,6 +136,7 @@
     layout.dragging = index;
     anchorY = event.clientY;
     offsetY = 0;
+    offsetX = 0;
     startTracking();
   }
 
@@ -126,18 +151,21 @@
      * the offset alternated between the real delta and zero on every frame,
      * which is the jitter this replaced. */
     offsetY = event.clientY - anchorY;
+    offsetX = event.clientX - anchorX;
 
-    const target = neighbour();
+    const target = neighbour(event.clientX, event.clientY);
     if (target === null) return;
 
     settling = true;
     const before = baseTop();
+    const beforeX = baseLeft();
     layout.moveVisible(index, target);
     // Wait for the reorder to land so the new home can be measured rather
     // than assumed — sections differ in height, and there is a gap between
     // them, so the shift is not a number worth guessing at.
     await tick();
     const after = baseTop();
+    const afterX = baseLeft();
 
     /* Compensate rather than reset. The card's home just moved by the
      * neighbour's height, so the lift shrinks by exactly that much and the
@@ -145,7 +173,9 @@
      * instead made it jump to its new slot while the pointer stood still,
      * which is the lurch you see as cards overlap. */
     anchorY += after - before;
+    anchorX += afterX - beforeX;
     offsetY = event.clientY - anchorY;
+    offsetX = event.clientX - anchorX;
     settling = false;
   }
 
@@ -179,8 +209,11 @@
   bind:this={host}
   data-slot={id}
   class="slot"
+  class:full={layout.widthOf(id) === 'full'}
   class:grabbed
-  style:transform={grabbed && offsetY ? `translateY(${offsetY}px)` : undefined}
+  style:transform={grabbed && (offsetX || offsetY)
+    ? `translate(${offsetX}px, ${offsetY}px)`
+    : undefined}
 >
   <button
     class="handle"
@@ -244,6 +277,14 @@
 <style>
   .slot {
     position: relative;
+    /* Default half — one column of the two. A section that wants the row says
+       so with .full. Below the grid's breakpoint there is only one column, so
+       this is a no-op there and everything is full width anyway. */
+    grid-column: span 1;
+  }
+
+  .slot.full {
+    grid-column: 1 / -1;
   }
 
   .slot.grabbed {
