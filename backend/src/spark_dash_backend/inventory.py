@@ -29,7 +29,7 @@ from pathlib import Path
 
 import yaml
 
-from spark_dash_backend.cluster import ClusterConfigError, load_cluster
+from spark_dash_backend.cluster import ClusterConfigError, authority, load_cluster
 
 log = logging.getLogger(__name__)
 
@@ -265,6 +265,35 @@ def render_file_sd(nodes: list[Node], *, port_of, header: str) -> str:
     return f"{header}\n{body}"
 
 
+def render_vllm_file_sd(cluster_nodes, *, header: str) -> str:
+    """Render every configured vLLM endpoint as Prometheus `file_sd` YAML.
+
+    ONE ENTRY PER ENDPOINT, not per node: a node may serve several vLLM
+    instances, which is why this cannot reuse `render_file_sd` — that renders
+    one target per node.
+
+    WHY THIS IS GENERATED AT ALL. It was hand-maintained in
+    `config/vllm-targets.yml`, which made cluster.yml and that file two
+    independent sources for one fact. Retiring an endpoint from the dashboard
+    removed it from cluster.yml, so the AGENT stopped polling it — and
+    Prometheus, reading the other file, carried on scraping. The banner
+    correctly came back and the button looked broken. One source removes the
+    class of bug rather than the instance.
+
+    Reduced to `host:port`: the config holds a scrape URL with a path, and
+    Prometheus wants an authority.
+    """
+    entries = []
+    for node in cluster_nodes:
+        for url in node.runtimes.vllm:
+            labels = {"node": node.node_id}
+            if node.cluster:
+                labels["cluster"] = node.cluster
+            entries.append({"targets": [authority(url)], "labels": labels})
+    body = yaml.safe_dump(entries, default_flow_style=False, sort_keys=False)
+    return f"{header}\n{body}"
+
+
 def _generated_header(source: str) -> str:
     """Name the file's real source, so an operator editing the wrong thing
     finds out from the file itself rather than from a change that never
@@ -282,7 +311,11 @@ def _generated_header(source: str) -> str:
 
 
 def write_prometheus_targets(
-    nodes: list[Node], targets_dir: Path, *, source: str = "cluster.yml"
+    nodes: list[Node],
+    targets_dir: Path,
+    *,
+    source: str = "cluster.yml",
+    cluster_nodes=None,
 ) -> bool:
     """Write the target files Prometheus reads. Returns True if anything changed.
 
@@ -296,6 +329,11 @@ def write_prometheus_targets(
             nodes, port_of=lambda n: n.node_exporter_address, header=header
         ),
     }
+    # Only when the cluster file is the source. Under SPARK_NODES there are no
+    # runtimes to render, and writing an empty list would silently retire every
+    # vLLM target the moment someone fell back to env.
+    if cluster_nodes is not None:
+        files["vllm.yml"] = render_vllm_file_sd(cluster_nodes, header=header)
 
     changed = False
     for name, content in files.items():
@@ -337,6 +375,10 @@ class Inventory:
         self._ttl_s = ttl_s
 
         self._nodes: list[Node] = []
+        #: The cluster file's own entries, kept because `Node` deliberately
+        #: carries only identity and ports — the runtimes it drops are exactly
+        #: what the vLLM scrape targets are rendered from.
+        self._cluster: list = []
         self._loaded_at = 0.0
 
     @property
@@ -365,8 +407,14 @@ class Inventory:
         """Render the current inventory into Prometheus's target directory."""
         if self._prometheus_targets_dir is None:
             return False
+        # `nodes()` first: it refreshes the cache that `_cluster` is filled
+        # from, so asking in the other order would render last cycle's vLLM.
+        rendered = self.nodes()
         return write_prometheus_targets(
-            self.nodes(), self._prometheus_targets_dir, source=self.source
+            rendered,
+            self._prometheus_targets_dir,
+            source=self.source,
+            cluster_nodes=self._cluster,
         )
 
     def _load(self) -> list[Node]:
@@ -389,6 +437,9 @@ class Inventory:
                 )
                 return self._nodes
             if cluster:
+                # Kept alongside, because `Node` drops the runtimes and those
+                # are what the vLLM scrape targets are rendered from.
+                self._cluster = cluster
                 return [
                     Node(
                         node_id=c.node_id,
@@ -399,6 +450,10 @@ class Inventory:
                     )
                     for c in cluster
                 ]
+
+        # Past this point the cluster file is not in play, so any retained
+        # entries would describe a source no longer being used.
+        self._cluster = []
 
         if self._nodes_env.strip():
             nodes = parse_nodes_env(

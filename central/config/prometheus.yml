@@ -58,9 +58,19 @@ scrape_configs:
 
   # vLLM exposes Prometheus metrics natively, so it's scraped directly rather
   # than through the agent. Left empty until vLLM instances are running.
+  # GENERATED, like agents and node-exporters — see the note at the top of
+  # this file about which directory is whose.
+  #
+  # It was hand-maintained in config/vllm-targets.yml, which made cluster.yml
+  # and that file two independent sources for one fact. Retiring an endpoint
+  # from the dashboard removed it from cluster.yml so the AGENT stopped polling
+  # it, while Prometheus went on scraping from the other file — the alert and
+  # the "configured but absent" banner correctly returned, and the button
+  # looked broken. One source removes the class of bug rather than the
+  # instance.
   - job_name: vllm
     file_sd_configs:
-      - files: [/etc/prometheus/config/vllm-targets.yml]
+      - files: [/etc/prometheus/targets/vllm.yml]
         refresh_interval: 30s
 
   # Prometheus scraping itself — cheap, and it's how you notice the monitoring

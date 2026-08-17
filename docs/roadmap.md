@@ -540,6 +540,30 @@ cannot clear is one you learn to ignore**, which is worse than no alert.
   exist (it is `node.runtimes.vllm`), and `llama_routers` holds objects while
   `vllm` holds plain URL strings — assuming both were the same shape was a 500.
 
+  **It did not work in production, and the reason was a design error.**
+  Reported the same day: retire cleared the "not answering" banner and the
+  "configured but absent" one came straight back.
+
+  G4 says retire a SCRAPE TARGET. What shipped removed the endpoint from
+  `cluster.yml`, which is the AGENT's polling config — so the agent stopped
+  polling (the F7 banner cleared, correctly) while Prometheus went on scraping
+  from `config/vllm-targets.yml`, a separate hand-maintained file. Two
+  independent sources for one fact, and the button could only ever fix half of
+  it.
+
+  Fixed by removing the second source rather than writing to it: vLLM scrape
+  targets are now GENERATED into `targets/vllm.yml` from `cluster.yml`, exactly
+  as `agents.yml` and `node-exporters.yml` already were, and `prometheus.yml`
+  reads the generated file. Writing to the hand-maintained one was rejected on
+  the project's own rule — it is git-tracked, so a backend write would conflict
+  on the next pull.
+
+  **And a pre-existing bug the same investigation turned up:**
+  `sync_prometheus_targets()` was only ever called at STARTUP. Both the retire
+  path and the settings save invalidated the inventory cache and left the target
+  files alone, so a node added from settings got no scrape target until the
+  backend happened to restart. Both paths now re-render.
+
 ### F — One server-side cluster config
 
 **The problem.** The cluster is defined in two places that don't know about each

@@ -1,23 +1,19 @@
-# vLLM scrape targets — Prometheus file_sd format.
+# SUPERSEDED — no longer read by Prometheus.
 #
-# HAND-MANAGED, unlike targets/agents.yml and targets/node-exporters.yml which
-# the backend renders from cluster.yml. vLLM instances don't map one-per-node —
-# a node can run several on arbitrary ports — so there's nothing to derive from
-# the node list.
+# vLLM scrape targets are now GENERATED into targets/vllm.yml from cluster.yml,
+# the same way agents.yml and node-exporters.yml are. Prometheus reads that
+# file; this one is inert.
 #
-# It lives in config/ for exactly that reason: this directory is what git
-# tracks and humans edit, while targets/ is what the backend writes.
+# Why it changed: this file and cluster.yml were two independent sources for
+# one fact. Retiring an endpoint from the dashboard removed it from cluster.yml
+# so the agent stopped polling it, while Prometheus kept scraping from here —
+# the target never went away, the "configured but absent" banner correctly came
+# back, and the retire button looked broken.
 #
-# vLLM exposes /metrics natively, so Prometheus scrapes it directly rather than
-# going through the agent. Empty until vLLM instances are running.
+# To add or remove a vLLM endpoint, edit cluster.yml. An endpoint that does not
+# live on a node's own address is still expressible there: a runtime entry
+# accepts a full URL as well as a bare port.
 #
-# Set `node` to the GX10 the instance runs on, so vLLM series can be joined
-# against that node's GPU and memory metrics.
-#
-# - targets: ['192.168.50.61:8000']
-#   labels:
-#     node: gx10-1
-
-- targets: ['192.168.50.61:8120']
-  labels:
-    node: sparky
+# Kept rather than deleted so that a deploy which has not yet picked up the new
+# prometheus.yml finds an empty list here instead of a missing file.
+[]

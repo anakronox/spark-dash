@@ -350,7 +350,7 @@ def test_authority_ignores_scheme_path_and_trailing_slash():
     """Prometheus names an instance host:port; the config holds a URL.
     Comparing whole strings would make retire a silent no-op — the button
     appears to work and the target comes straight back."""
-    from spark_dash_backend.app import _authority
+    from spark_dash_backend.cluster import authority as _authority
 
     assert _authority("http://192.168.50.61:8120/metrics") == "192.168.50.61:8120"
     assert _authority("http://192.168.50.61:8120/") == "192.168.50.61:8120"

@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +79,19 @@ class ClusterConfigError(ValueError):
     that quietly degrades to "no nodes" would take the whole dashboard dark and
     look like an outage rather than a typo.
     """
+
+
+def authority(url: str) -> str:
+    """host:port from a URL — how Prometheus names an instance.
+
+    Shared because two places must agree on it: the file_sd renderer, which
+    turns a configured URL into a scrape target, and the retire endpoint, which
+    matches a Prometheus instance back to a config entry. If they disagreed,
+    retire would silently match nothing and the target would come straight
+    back.
+    """
+    parsed = urlparse(url if "//" in url else f"//{url}")
+    return parsed.netloc or url
 
 
 def _resolve(entry: object, host: str, *, default_path: str = "") -> str | None:

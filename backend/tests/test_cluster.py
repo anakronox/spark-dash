@@ -9,6 +9,7 @@ saying why.
 """
 
 import pytest
+import yaml
 from spark_dash_backend.cluster import (
     ClusterConfigError,
     load_cluster,
@@ -395,3 +396,98 @@ class TestCopyYamlRoundTrip:
         node = load_cluster(path)[0]
         assert node.runtimes.llama_routers == []
         assert node.runtimes.vllm == []
+
+
+class TestVllmScrapeTargetsAreGenerated:
+    """Retiring an endpoint must stop Prometheus scraping it.
+
+    The first version of G4 removed the endpoint from cluster.yml only, which
+    is the AGENT's polling config. Prometheus read a separate hand-maintained
+    file, so it carried on scraping, `up == 0` persisted, and the "configured
+    but absent" banner correctly came back — making the button look broken.
+    Two sources for one fact. These pin the single source.
+    """
+
+    def test_every_configured_endpoint_becomes_a_scrape_target(self, tmp_path):
+        from spark_dash_backend.inventory import render_vllm_file_sd
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n"
+            "- id: sparky\n"
+            "  host: 192.168.50.61\n"
+            "  cluster: alpha\n"
+            "  runtimes:\n"
+            "    vllm:\n"
+            "      - 8120\n"
+            "      - 8121\n"
+        )
+        out = yaml.safe_load(render_vllm_file_sd(load_cluster(path), header="# x"))
+        # ONE ENTRY PER ENDPOINT, not per node — a node may serve several.
+        assert [e["targets"] for e in out] == [
+            ["192.168.50.61:8120"],
+            ["192.168.50.61:8121"],
+        ]
+        # host:port, never the scrape URL: the config holds a path, Prometheus
+        # wants an authority.
+        assert all("/" not in t for e in out for t in e["targets"])
+        assert out[0]["labels"] == {"node": "sparky", "cluster": "alpha"}
+
+    def test_removing_it_from_the_cluster_file_removes_the_target(self, tmp_path):
+        """The whole point: retire has to reach Prometheus, not just the agent."""
+        from spark_dash_backend.inventory import render_vllm_file_sd
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
+            "  runtimes:\n    vllm:\n      - 8120\n"
+        )
+        assert yaml.safe_load(render_vllm_file_sd(load_cluster(path), header="# x"))
+
+        # ...as the retire endpoint leaves it.
+        path.write_text("nodes:\n- id: sparky\n  host: 192.168.50.61\n")
+        # An empty LIST, not a missing file: Prometheus reads it and ends up
+        # with no vLLM targets, which is what retiring the last one means.
+        assert yaml.safe_load(render_vllm_file_sd(load_cluster(path), header="# x")) == []
+
+    def test_env_fallback_does_not_render_an_empty_vllm_file(self, tmp_path):
+        """Under SPARK_NODES there are no runtimes to render. Writing an empty
+        list would silently retire every vLLM target the moment someone fell
+        back to env."""
+        from spark_dash_backend.inventory import write_prometheus_targets
+
+        targets = tmp_path / "targets"
+        targets.mkdir()
+        write_prometheus_targets([], targets, source="env", cluster_nodes=None)
+        assert not (targets / "vllm.yml").exists()
+
+
+def test_saving_the_cluster_rewrites_prometheus_targets(tmp_path):
+    """Invalidating the cache is not enough — the target files are what
+    Prometheus reads.
+
+    `sync_prometheus_targets` was only ever called at startup, so a node added
+    from settings got no scrape target until the backend happened to restart,
+    and a retired endpoint kept being scraped. Both looked like the write had
+    silently failed.
+    """
+    from spark_dash_backend.inventory import Inventory
+
+    cfg = tmp_path / "cluster.yml"
+    cfg.write_text(
+        "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
+        "  runtimes:\n    vllm:\n      - 8120\n"
+    )
+    targets = tmp_path / "targets"
+    targets.mkdir()
+
+    inv = Inventory(cluster_config=cfg, prometheus_targets_dir=targets)
+    inv.sync_prometheus_targets()
+    assert "192.168.50.61:8120" in (targets / "vllm.yml").read_text()
+
+    # The endpoint is retired from the file...
+    cfg.write_text("nodes:\n- id: sparky\n  host: 192.168.50.61\n")
+    inv.invalidate()
+    inv.sync_prometheus_targets()
+    # ...and stops being a scrape target.
+    assert "8120" not in (targets / "vllm.yml").read_text()

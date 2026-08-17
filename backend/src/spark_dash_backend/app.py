@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 import time
-from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -33,6 +32,7 @@ from spark_dash_backend.cluster import (
     NodeRuntimes,
     RouterConfig,
     _own_port,
+    authority,
     load_cluster,
     write_cluster,
 )
@@ -437,7 +437,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # holds a URL. Compare on the authority so a trailing /metrics
                 # or a scheme difference cannot cause a silent no-op — the
                 # failure being a button that looks like it worked.
-                if _authority(url) == instance:
+                if authority(url) == instance:
                     removed.append(f"{node.node_id}:{url}")
                 else:
                     keep.append(url)
@@ -460,6 +460,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=f"cluster config: {exc}") from exc
 
         inventory.invalidate()
+        # AND re-render Prometheus's targets. Invalidating only drops the
+        # backend's cache; without this the endpoint stays a scrape target and
+        # `up == 0` persists, so the "configured but absent" banner correctly
+        # returns and the button looks broken. That is exactly the bug this
+        # feature was reported for.
+        inventory.sync_prometheus_targets()
         log.info("retired inference target %s (%s)", instance, ", ".join(removed))
         return {"retired": removed}
 
@@ -625,6 +631,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The inventory caches on a TTL; drop it so the change is visible at
         # once rather than up to 30s later, which would read as a failed save.
         inventory.invalidate()
+        # Same reason as the retire path, and this one predates it: saving the
+        # cluster from settings invalidated the cache but left Prometheus's
+        # target files as they were, so a node added here got no scrape target
+        # until the backend happened to restart. `sync_prometheus_targets` was
+        # only ever called at startup.
+        inventory.sync_prometheus_targets()
         return await api_cluster_config()
 
     @app.get("/api/agent-config")
@@ -863,18 +875,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _mount_frontend(app, settings)
     return app
-
-
-def _authority(url: str) -> str:
-    """host:port from a URL, which is how Prometheus names an instance.
-
-    Compared on the authority rather than the whole string so a trailing
-    `/metrics`, a scheme difference or a stray slash cannot turn a retire into
-    a silent no-op — the failure mode being that the button appears to work and
-    the target comes straight back.
-    """
-    parsed = urlparse(url if "//" in url else f"//{url}")
-    return parsed.netloc or url
 
 
 def _unreachable_endpoints(snapshot) -> list[str]:
