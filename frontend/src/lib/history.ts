@@ -26,10 +26,6 @@ export interface MetricSpec {
   /** Fixed 0-100 axis where the quantity is a percentage, so a quiet hour
    *  doesn't get auto-scaled into looking dramatic. */
   percent?: boolean;
-  /** Categorical slot (1-8), fixed per metric. Colour follows the metric and
-   *  not its position in the selection, so adding or removing one never
-   *  repaints the others. */
-  slot: number;
   /** Value that reads as 100% when this metric shares the common axis.
    *
    * FIXED, not the maximum observed in the window. An observed max would
@@ -43,24 +39,48 @@ export interface MetricSpec {
 }
 
 export const METRICS: MetricSpec[] = [
-  { key: 'gpu_utilization', label: 'GPU utilization', unit: '%', percent: true, slot: 1 },
+  { key: 'gpu_utilization', label: 'GPU utilization', unit: '%', percent: true },
   // 100°C: above the 90°C at which this part shuts down, so the plotted
   // height stays meaningful right through the danger band.
-  { key: 'gpu_temperature', label: 'GPU temperature', unit: '°C', slot: 2, scaleMax: 100 },
-  { key: 'memory_used_percent', label: 'Memory used', unit: '%', percent: true, slot: 3 },
-  { key: 'tokens_per_second', label: 'Throughput', unit: 'tok/s', slot: 4 },
+  { key: 'gpu_temperature', label: 'GPU temperature', unit: '°C', scaleMax: 100 },
+  { key: 'memory_used_percent', label: 'Memory used', unit: '%', percent: true },
+  { key: 'tokens_per_second', label: 'Throughput', unit: 'tok/s' },
   // The GB10 idles ~12W and peaks well under 300W.
-  { key: 'gpu_power', label: 'GPU power', unit: 'W', slot: 5, scaleMax: 300 },
+  { key: 'gpu_power', label: 'GPU power', unit: 'W', scaleMax: 300 },
   // max_sm_clock as NVML reports it. Note the part actually runs ~2411MHz,
   // so a healthy clock sits around 80% here rather than at the top.
-  { key: 'gpu_clock', label: 'GPU clock', unit: 'MHz', slot: 6, scaleMax: 3003 },
-  { key: 'cpu_utilization', label: 'CPU utilization', unit: '%', percent: true, slot: 7 },
+  { key: 'gpu_clock', label: 'GPU clock', unit: 'MHz', scaleMax: 3003 },
+  { key: 'cpu_utilization', label: 'CPU utilization', unit: '%', percent: true },
+  /* Grace cores throttling would slow prompt processing invisibly — the
+     CPU-side equivalent of the GPU clock check. Averaged across cores rather
+     than maxed, because throttling shows up as every core dropping together
+     and a max would be held up by whichever one happened to boost.
+     3500MHz: the part is observed at 3354MHz, so a healthy clock sits near the
+     top of this axis rather than at it. */
+  { key: 'cpu_clock', label: 'CPU clock', unit: 'MHz', scaleMax: 3500 },
   /* The 10-second average, deliberately: it shows a spike as a spike, which a
    * trend chart should. Note the pressure BAND on the node card follows the
    * 60-second average, so a brief peak here can sit above a calmer band — the
    * window is named in the label so that reads as intended rather than as a
    * contradiction. */
-  { key: 'psi_some_avg10', label: 'Memory pressure (10s)', unit: '%', percent: true, slot: 8 },
+  { key: 'psi_some_avg10', label: 'Memory pressure (10s)', unit: '%', percent: true },
+  /* "SLOW" HAS AT LEAST THREE CAUSES and until now the dashboard could
+     distinguish one. Memory pressure said the box was thrashing; a machine
+     stalled on CPU runqueue or on disk read looked identical to a healthy one.
+     These are the other two.
+     Note the smoothing differs from the memory gauge above it. That one is the
+     kernel's own 10-second average, read by the agent. These are counters of
+     seconds stalled, so the backend takes a rate over a window scaled to the
+     chart's step — same units and the same meaning, but a longer and
+     step-dependent smoothing. A spike an hour ago will read lower here than
+     the memory chart would have shown it. */
+  { key: 'psi_cpu_some', label: 'CPU pressure', unit: '%', percent: true },
+  { key: 'psi_io_some', label: 'I/O pressure', unit: '%', percent: true },
+  /* Explains a slow cold start: weights coming off disk. Maxed across devices,
+     not averaged — saturation is "is any disk pegged", and averaging a busy
+     disk against an idle one reports a comfortable 50% for a machine that is
+     completely stalled on one of them. */
+  { key: 'disk_busy', label: 'Disk busy', unit: '%', percent: true },
 ];
 
 export interface RangeSpec {

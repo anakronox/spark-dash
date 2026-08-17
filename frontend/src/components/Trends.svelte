@@ -7,7 +7,7 @@
    */
   import MetricChart from './MetricChart.svelte';
   import { METRICS, RANGES, fetchHistory, snapGrid, toColumnar } from '../lib/history';
-  import { metricColor, nodeColor } from '../lib/theme';
+  import { nodeColor } from '../lib/theme';
 
   interface Props {
     /** Ordered node ids, so chart colours match the cards. */
@@ -364,7 +364,13 @@
         aria-pressed={on}
         onclick={() => toggle(m.key)}
       >
-        <span class="swatch" style:background={on ? metricColor(m.slot) : 'transparent'}></span>
+        <!-- Filled when on, hollow when off — a STATE mark, not an identity
+             colour. It used to be the metric's own hue, which was right when
+             every metric was a line on one shared plot. It is not any more:
+             each metric has its own chart and the lines in it are coloured by
+             NODE, so a per-metric hue here named a colour that appears nowhere
+             on the page. Same fault the node legend had. -->
+        <span class="swatch" class:on></span>
         {m.label}
       </button>
     {/each}
@@ -521,7 +527,14 @@
     width: 8px;
     height: 8px;
     border-radius: 2px;
-    border: 1px solid var(--rule);
+    border: 1px solid var(--ink-muted);
+    background: transparent;
+  }
+
+  /* Fill plus the brighter label and panel behind it, so selection is never
+     carried by one channel alone. */
+  .metric .swatch.on {
+    background: currentColor;
   }
 
   .note {

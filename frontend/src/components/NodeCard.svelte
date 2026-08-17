@@ -67,11 +67,23 @@
   );
 </script>
 
+<!-- FOCUSABLE ONLY WHEN COMPACT, so a sighted keyboard user can reach what
+     hover reveals. In full mode nothing is hidden, so the card stays out of the
+     tab order rather than adding a stop per node for no reason.
+     `group` rather than leaving it roleless: the element genuinely does gather
+     several readings under one label, and a focus stop with no role is what the
+     a11y rule is warning about.
+     Note this is NOT how assistive tech gets the data — see .reveal, which
+     stays in the accessibility tree whether or not it is on screen. -->
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <article
   class="node panel"
   class:down={!node.up}
   class:dense
   style:--accent={accent}
+  role={dense ? 'group' : undefined}
+  aria-label={dense ? `${node.node_id} details` : undefined}
+  tabindex={dense ? 0 : undefined}
 >
   <header>
     <h2>
@@ -94,7 +106,27 @@
       usedBytes={node.memory.used_bytes}
       processes={node.processes}
     />
-    {#if !dense}
+    {#if dense}
+      <!-- COMPACT BY DEFAULT, COMPLETE ON DEMAND.
+           Compact keeps only the reading that cannot be inferred elsewhere;
+           this is everything it dropped, on hover or focus. Copied from the
+           chart tooltip deliberately: absolutely positioned, so it costs no
+           layout and cannot reflow the grid it sits in — which is the whole
+           point, since a panel that grew on hover would shove every card below
+           it down as the pointer crossed the page.
+           pointer-events: none, so the pointer never enters it and the card
+           beneath keeps the hover. -->
+      <div class="reveal">
+        <span class="dim">{routerSummary}</span>
+        <Vitals
+          gpu={node.gpu}
+          cpu={node.cpu}
+          psi={node.psi}
+          memory={node.memory}
+          tokensPerSec={nodeTokensPerSec}
+        />
+      </div>
+    {:else}
       <Vitals
         gpu={node.gpu}
         cpu={node.cpu}
@@ -119,12 +151,63 @@
 
 <style>
   .node {
+    /* Positioning context for the compact card's reveal. */
+    position: relative;
     padding: 16px 18px;
     display: grid;
     gap: 14px;
     /* The node's identity colour appears once, as a rule — enough to tell
        cards apart at a glance without tinting the whole panel. */
     border-top: 2px solid var(--accent);
+  }
+
+  /* What compact mode hides, shown on hover or keyboard focus.
+     Anchored to the card's own left/right edges so it reads as belonging to it,
+     and lifted above the neighbours it overlaps. */
+  .reveal {
+    position: absolute;
+    top: 100%;
+    left: -1px;
+    right: -1px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--panel-raised);
+    border: 1px solid var(--rule);
+    border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+    pointer-events: none;
+
+    /* VISUALLY hidden, not hidden. `display: none` and `visibility: hidden`
+       both drop content out of the accessibility tree, which would mean the
+       compact card withheld these readings from a screen reader entirely —
+       turning a density preference into an information one. Clipping hides the
+       paint and keeps the content announced, so compact is what it claims to
+       be: a visual choice. */
+    clip-path: inset(100%);
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  /* `:focus`, not `:focus-visible`. If focus is on the card, these readings
+     are wanted however focus arrived — and :focus-visible deliberately does not
+     match programmatic or mouse focus, which would make the reveal depend on
+     how you got there. The OUTLINE below keeps :focus-visible, since that is
+     exactly the case it exists for: a ring on mouse-click focus is noise. */
+  .node.dense:hover .reveal,
+  .node.dense:focus .reveal {
+    clip-path: none;
+    opacity: 1;
+  }
+
+  /* The card keeps its own outline when focused, so the reveal is not the only
+     signal that focus landed here. */
+  .node.dense:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   /* Tighter padding and gap, not a smaller type scale. Shrinking the text

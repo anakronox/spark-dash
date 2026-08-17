@@ -361,14 +361,45 @@ an uncertain answer, not a plan item. **Do not propose NVML for this again.**
 **There are 748 distinct metrics in the TSDB and the dashboard reads a
 fraction.** Three are already collected by node-exporter and worth surfacing:
 
-- [ ] **E1.** CPU and I/O pressure. `node_pressure_cpu_*` and
-  `node_pressure_io_*` are already there; only *memory* PSI is surfaced. "Slow"
-  has at least three distinct causes and we currently distinguish one.
-- [ ] **E2.** CPU frequency (`node_cpu_scaling_frequency_hertz`, 3.35 GHz
-  observed). Grace cores throttling would slow prompt processing invisibly —
-  the CPU-side equivalent of the GPU clock check A8 fixed.
-- [ ] **E3.** Disk saturation (`node_disk_io_time_seconds_total`, 2 disks).
-  Explains a slow cold start: weights coming off disk.
+- [x] **E1. CPU and I/O pressure — shipped 2026-08-17.** "Slow" had at least
+  three causes and the dashboard could distinguish one. Memory pressure said the
+  box was thrashing; a machine stalled on runqueue or on disk looked identical
+  to a healthy one.
+
+  Note the smoothing differs from the memory gauge beside it, and that is worth
+  knowing when comparing the two: memory PSI is the kernel's own 10-second
+  average read by the agent, while these are counters of seconds stalled, so the
+  backend takes a rate over a window scaled to the chart's step.
+- [x] **E2. CPU frequency — shipped 2026-08-17.** `avg by (node)`, not max:
+  throttling shows up as every core dropping together, and a max would be held
+  up by whichever core happened to boost — hiding the exact condition this
+  exists to catch. Ceiling 3500MHz against 3354MHz observed, so a healthy clock
+  sits near the top of the axis rather than at it.
+- [x] **E3. Disk saturation — shipped 2026-08-17.** `max by (node)` across
+  devices, not avg: saturation is "is any disk pegged", and averaging a busy
+  disk against an idle one reports a comfortable 50% for a machine completely
+  stalled on one of them.
+
+**Three things E1-E3 turned up, worth keeping:**
+
+- **node_exporter already carries a `node` label**, because the file_sd targets
+  are written with one. These slot into the same per-node charts as the agent's
+  metrics with no joining at all — which is why this was an afternoon rather
+  than a project.
+- **node_exporter also runs ON the monitoring VM**, under its own job. Without a
+  `job="node-exporter"` filter the VM appears in every chart as a node the
+  cluster does not contain, with no card and no colour slot.
+- **A fixed rate window is wrong at both ends.** Too long and a 1h chart smooths
+  away the spike you opened it for; too short and a 7d chart samples two minutes
+  out of every ten and calls it a trend. The window is now four steps wide,
+  floored at 1m.
+
+**The metric chips stopped meaning anything and nobody noticed.** Their swatches
+were the metric's own hue — correct when every metric was a line on one shared
+plot. Since O split them, each metric has its own chart and the lines in it are
+coloured by NODE, so a per-metric hue named a colour that appeared nowhere on
+the page. Exactly the fault the node legend had. They are now a fill-vs-hollow
+state mark, and `metricColor` is deleted.
 
 **The correlation layer** — the more valuable half, and mostly assembly of
 pieces that already exist:
@@ -1220,10 +1251,24 @@ that size. This is about what happens past that.
   **A down node is never compacted.** Compact exists to fit more healthy nodes
   on screen; shrinking the one that needs attention would invert the point, so
   it keeps its full treatment and its error text.
-- [ ] **K2.** Hover reveals the rest. The chart tooltip added on 2026-08-16 is
-  the pattern to copy: it costs no layout, cannot reflow the page, and it kept
-  the readings that the History chips gave up. The same trade applies here —
-  compact by default, complete on demand.
+- [x] **K2. Hover reveals the rest — shipped 2026-08-17.** Copied from the
+  chart tooltip as planned: absolutely positioned, so it costs no layout and
+  cannot reflow the grid. Verified by measuring — card 117px and grid 221px are
+  identical with the reveal open and closed. A panel that grew on hover would
+  shove every card below it down as the pointer crossed the page.
+
+  **Compact hides pixels, not information.** `display: none` and
+  `visibility: hidden` both drop content out of the ACCESSIBILITY tree, which
+  would have made the compact card withhold these readings from a screen reader
+  entirely — turning a density preference into an information one. The reveal is
+  clipped instead, so the paint is hidden and the content stays announced.
+
+  Focus reveals it too, on `:focus` rather than `:focus-visible`: if focus is on
+  the card the readings are wanted however focus arrived, and `:focus-visible`
+  deliberately does not match programmatic or mouse focus. The outline keeps
+  `:focus-visible`, which is exactly the case that selector exists for. The card
+  is focusable ONLY when compact — in full mode nothing is hidden, so it stays
+  out of the tab order rather than adding a stop per node for nothing.
 - [x] **K3.** Shipped 2026-08-17. Compact mode flows cards through a shared
   grid (`auto-fill, minmax(300px, 1fr)`), so they stop spanning edge to edge.
 

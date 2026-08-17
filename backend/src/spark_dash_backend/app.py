@@ -37,7 +37,13 @@ from spark_dash_backend.cluster import (
 from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory
 from spark_dash_backend.poller import LivePoller
-from spark_dash_backend.prometheus import HISTORY_QUERIES, PrometheusClient, PrometheusError
+from spark_dash_backend.prometheus import (
+    HISTORY_QUERIES,
+    NODE_FILTERABLE,
+    PrometheusClient,
+    PrometheusError,
+    rate_window,
+)
 from spark_dash_backend.timeline import fetch_events
 
 log = logging.getLogger(__name__)
@@ -292,7 +298,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail=f"unknown metric {metric!r}; valid: {sorted(HISTORY_QUERIES)}",
             )
         if node:
+            # Refused rather than attempted for the aggregations and arithmetic
+            # — appending a matcher to `sum by (node) (x)` is not valid PromQL,
+            # and doing it anyway would surface as a 503 from Prometheus that
+            # reads like an outage instead of a 400 that names the mistake.
+            if metric not in NODE_FILTERABLE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"metric {metric!r} cannot be filtered by node; "
+                        f"filterable: {sorted(NODE_FILTERABLE)}"
+                    ),
+                )
             expr = f'{expr}{{node="{_sanitize_label(node)}"}}'
+
+        # Only the rate-based metrics carry the placeholder; format() on the
+        # others is a no-op.
+        expr = expr.replace("{window}", rate_window(step))
 
         end = time.time()
         start = end - minutes * 60

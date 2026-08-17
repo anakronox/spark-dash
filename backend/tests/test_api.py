@@ -213,6 +213,72 @@ def test_history_rejects_absurd_window(client):
                                               "minutes": 999999}).status_code == 422
 
 
+def test_history_refuses_node_filter_on_aggregations(client):
+    """Appending `{node="x"}` to `sum by (node) (...)` is not valid PromQL.
+
+    Attempting it anyway reached Prometheus and came back a 503, which reads
+    like an outage rather than like the caller having asked for something that
+    cannot be expressed.
+    """
+    resp = client.get(
+        "/api/history", params={"metric": "tokens_per_second", "node": "sparky"}
+    )
+    assert resp.status_code == 400
+    assert "cannot be filtered by node" in resp.json()["detail"]
+
+
+def test_history_allows_node_filter_on_bare_selectors(client):
+    """The simple metrics still take the filter — this is a narrowing, not a
+    removal.
+
+    Asserted as "not rejected" rather than as 200: there is no real Prometheus
+    behind the test client, so the request gets as far as querying and then
+    fails. What matters here is that it was not turned away at the door.
+    """
+    resp = client.get(
+        "/api/history", params={"metric": "gpu_utilization", "node": "sparky"}
+    )
+    assert resp.status_code != 400
+
+
+def test_every_history_query_is_valid_promql_shape():
+    """Every rate-based query must carry the window placeholder, and nothing
+    else may — a query that keeps a literal `{window}` would reach Prometheus
+    as a syntax error, and one that hardcodes a window silently ignores the
+    step."""
+    from spark_dash_backend.prometheus import HISTORY_QUERIES, rate_window
+
+    for key, expr in HISTORY_QUERIES.items():
+        filled = expr.replace("{window}", rate_window("60s"))
+        assert "{window}" not in filled, key
+        if "rate(" in expr:
+            assert "{window}" in expr, f"{key} uses rate() with a fixed window"
+
+
+def test_rate_window_scales_with_step_and_has_a_floor():
+    from spark_dash_backend.prometheus import rate_window
+
+    assert rate_window("60s") == "240s"
+    assert rate_window("600s") == "2400s"
+    # A window shorter than a couple of scrapes yields nothing at all.
+    assert rate_window("5s") == "60s"
+    assert rate_window("2m") == "480s"
+    # Unparseable input must not raise in a request path. It lands on the same
+    # window a default 60s step would, which is the step the endpoint defaults
+    # to — a fallback that disagreed with the default would be its own bug.
+    assert rate_window("") == "240s"
+
+
+def test_node_exporter_queries_exclude_the_monitoring_vm():
+    """node_exporter also runs on the monitoring VM under its own job. Without
+    the filter it would appear in every chart as a node the cluster does not
+    contain."""
+    from spark_dash_backend.prometheus import HISTORY_QUERIES
+
+    for key in ("psi_cpu_some", "psi_io_some", "cpu_clock", "disk_busy"):
+        assert 'job="node-exporter"' in HISTORY_QUERIES[key], key
+
+
 def test_health_flags_the_down_node(client):
     """The fixture has gx10-2 down, so 1-of-2 reachable must read as degraded.
     Rounding a partial outage up to "ok" is how a dead node goes unnoticed."""
