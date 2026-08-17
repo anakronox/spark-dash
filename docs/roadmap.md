@@ -1468,6 +1468,100 @@ Result: all four tables fit their column exactly, every column delta 0 over 55s
 of live data, no scrollbars, CLS 0.0003 — and that remainder is sub-pixel, with
 the reported sources showing dx=0 dy=0.
 
+### O — History as small multiples
+
+**Designed 2026-08-17, not yet built.** The History panel was built around one
+node and does not survive a cluster. Measured on the four-node test rig, with
+seven metrics selected:
+
+- **28 lines in 7 colours.** Series are coloured by METRIC
+  (`metricColor(s.slot)`), so all four nodes' GPU temperature are the same
+  orange. Which line belongs to which node is only answerable by hovering.
+- **The node legend colours nothing.** Checked directly: no series stroke
+  matches any legend swatch. The legend maps colours to nodes and no line on
+  the chart uses them — it is decoration that looks like a key.
+- **The legend collides at the fourth node anyway.** `nodeColor()` is
+  `--series-{slot % 3 + 1}`, so `gx10-a` and `gx10-d` are both blue. The node
+  CARDS were moved to `--chart-1..8` when this same bug was fixed there; the
+  two agree for three nodes and diverge from the fourth.
+- **`TrendChart.svelte` is dead code.** Nothing imports it.
+
+**One chart per METRIC, not per node.** Per-node was the instinct and it is the
+wrong axis, for a reason that has nothing to do with taste: the chart count
+would grow with the cluster, which is the exact problem being solved. Per-metric
+is capped at the metric list — eight charts at 32 nodes as at 1.
+
+Two things follow from it that are worth more than the layout change:
+
+- **One unit per chart means a real axis.** The present normalisation — every
+  series divided by a fixed ceiling onto a shared 0-100% scale — exists ONLY
+  because metrics of different units share one plot. Split them and it goes,
+  along with the "scaled to the window's own maximum" caveat for every metric
+  that has a ceiling.
+- **Colour becomes the node**, which is what the legend already claims and what
+  the cards already use. The `nodeColor` / `--chart-1..8` divergence gets
+  resolved by making the charts use what the cards use.
+
+**The node legend becomes the control.** This is what completes the design
+rather than decorating it: toggling nodes across every chart at once takes the
+panel from "which node is different?" to "what is this one box doing?" without a
+second layout. It needs no new real estate, because the legend is already there
+with one swatch per node — it just does nothing today.
+
+Settled:
+
+- **Click solos, click again restores.** One click each way for the drill-down
+  case; shift-click adds a second node for a pairwise comparison. Plain per-node
+  toggles would be seven clicks to isolate one of eight.
+- **Not persisted.** Scoping to one node is a question you ask, not a preference
+  you hold. On a monitoring dashboard a node you forgot you deselected is a node
+  whose history you have stopped watching — the same hazard as a hidden `err`
+  column, resolved the same way, by refusing to let the state outlive the
+  session. Cards and alerts are unaffected either way, so the blast radius is
+  small, but resetting removes it entirely.
+- **Fixed ceiling per metric, real units.** 0-100°C, 0-300W, 0-100%. Heights
+  stay comparable between nodes and across time, a quiet chart genuinely looks
+  quiet, and — the reason this interacts with the toggles — switching a node off
+  does not rescale every chart under the cursor. Throughput has no natural
+  ceiling, still auto-fits, still flagged.
+- **The metric chips keep choosing which charts are drawn.** They now control
+  the section's height as well as its content, which matters more than it used
+  to now that sections sit in columns under a row cap.
+- **Never zero nodes and never zero metrics**, the rule the chips already have:
+  an empty plot reads as broken rather than as a choice.
+
+Layout: up to 4 per row, snapping 1 / 2 / 4 — powers of two, the same reasoning
+as the node grid in K, because a 3-wide row is the one that strands a row on a
+power-of-two fleet.
+
+Watch for, when building:
+
+- **Colour must follow the node, not its position.** Deselecting `gx10-b` must
+  not repaint `gx10-c`. `nodeSlots()` already derives slots from the full
+  ordered list rather than the visible subset, which is exactly right — it is
+  also exactly the kind of thing that quietly breaks when the visible list
+  becomes the input.
+- **`combine()` does not simply get deleted.** Its merging of several metrics
+  into one series list does go. But its timestamp SNAPPING exists because
+  parallel range queries come back on grids offset by milliseconds, and a
+  synchronised cursor across charts still needs those grids to line up or the
+  crosshair will land on different instants in each. Keep the snapping, drop the
+  merge.
+- **Synchronised cursor is not optional for small multiples.** Reading eight
+  charts at one instant is the entire point; uPlot has `cursor.sync` for it.
+- Eight uPlot instances instead of one — worth measuring before assuming it is
+  free, particularly on a 7d range.
+
+**Deferred: past eight nodes** there are not enough distinguishable colours for
+one line each, and the answer is probably a min/median/max band with the
+outliers named rather than 32 lines. Additive, and hypothetical at 1-4 nodes, so
+it is not being decided now.
+
+**Related:** M2's page-wide node filter will eventually want to converge with
+these toggles. Deliberately kept History-local for now — one panel's control
+that later merges is a smaller mistake than a page-wide filter built early that
+M2 then has to fight.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
