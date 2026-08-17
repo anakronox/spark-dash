@@ -978,12 +978,23 @@ chart at the same time, which is the whole point of the page.
 The full card is right for one to three nodes and it should stay the default at
 that size. This is about what happens past that.
 
-- [ ] **K1.** A compact card carrying only what you scan for: node name, status
-  and the **shared memory band**. That band is the one reading that is
-  GB10-specific and cannot be inferred from anything else on the page — models,
-  other GPU work and system all draw from one pool, so it is the fleet's real
-  capacity signal. Everything else on the card (clock, temp, power, CPU, mem %,
-  throughput, pressure) is detail, not scan material.
+- [x] **K1.** Shipped 2026-08-17. Compact card keeps node name, status and the
+  **shared memory band** — the one reading that is GB10-specific and cannot be
+  inferred from anything else on the page, since models, other GPU work and
+  system all draw from one pool. Clock, temp, power, CPU, mem %, throughput and
+  pressure drop, along with the runtime summary (a sentence per card is what
+  makes a grid of them unscannable).
+
+  Measured on the 3-node test: **147px → 96px**, a 35% saving, which puts the
+  History panel above the fold at three nodes. At eight: 1176px → 768px.
+
+  Padding and gap tighten; the type scale does not. Shrinking the text would
+  make a compact card harder to read at exactly the moment there are more of
+  them to read.
+
+  **A down node is never compacted.** Compact exists to fit more healthy nodes
+  on screen; shrinking the one that needs attention would invert the point, so
+  it keeps its full treatment and its error text.
 - [ ] **K2.** Hover reveals the rest. The chart tooltip added on 2026-08-16 is
   the pattern to copy: it costs no layout, cannot reflow the page, and it kept
   the readings that the History chips gave up. The same trade applies here —
@@ -991,12 +1002,14 @@ that size. This is about what happens past that.
 - [ ] **K3.** Grid layout, so cards flow in columns rather than stacking. This
   is where the actual saving is: 32 compact cards in a 4-column grid is one
   screen instead of five.
-- [ ] **K4.** Decide how the mode is chosen. Automatic past N nodes is
-  tempting, but a layout that reorganises itself when a node joins is
-  disorienting — and node 4 arriving is exactly when someone is watching. Prefer
-  an explicit toggle that PERSISTS (localStorage, as the metric selection and
-  section order already do), defaulting to compact above a threshold on first
-  run only.
+- [x] **K4.** Settled and shipped 2026-08-17: an explicit Full/Compact toggle
+  in settings, persisted to `spark-dash.compact-cards.v1`, defaulting to Full.
+
+  **No automatic switching at all**, including the "compact above a threshold
+  on first run" idea floated when this was filed. A page that rearranges itself
+  when a node joins is disorienting, and a node joining is exactly when someone
+  is watching it. The person who needs compact turns it on once and it stays
+  on. `reset` clears it along with the rest of the layout.
 
 **Watch the accent colours.** Node identity is carried by `--series-1..3`,
 which is three slots. A grid of 32 needs identity to come from the name and

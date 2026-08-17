@@ -256,14 +256,14 @@
           </header>
           <div class="nodes">
             {#each cluster.nodes as node, i (node.node_id)}
-              <NodeCard {node} slot={ci + i} />
+              <NodeCard {node} slot={ci + i} compact={layout.compactCards} />
             {/each}
           </div>
         </section>
       {:else}
         <div class="nodes">
           {#each cluster.nodes as node (node.node_id)}
-            <NodeCard {node} slot={ci} />
+            <NodeCard {node} slot={ci} compact={layout.compactCards} />
           {/each}
         </div>
       {/if}

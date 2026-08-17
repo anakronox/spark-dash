@@ -210,6 +210,32 @@
 
     <!-- Layout -->
     <section class="block">
+      <h3 class="eyebrow dim">Node cards</h3>
+      <!-- Deliberate, never automatic. Switching on node count would mean the
+           page rearranges itself the moment a node joins — which is exactly
+           when someone is watching it. -->
+      <div class="choices" role="group" aria-label="Node card density">
+        <button
+          class="choice"
+          class:active={!layout.compactCards}
+          aria-pressed={!layout.compactCards}
+          onclick={() => layout.setCompactCards(false)}
+        >Full</button>
+        <button
+          class="choice"
+          class:active={layout.compactCards}
+          aria-pressed={layout.compactCards}
+          onclick={() => layout.setCompactCards(true)}
+        >Compact</button>
+      </div>
+      <p class="note dim">
+        Compact keeps the name, status and memory band — the reading that
+        cannot be inferred from anywhere else, since models, other GPU work and
+        the system share one pool. A node that is down stays full size.
+      </p>
+    </section>
+
+    <section class="block">
       <h3 class="eyebrow dim">Sections</h3>
       <!-- HIDE, not collapse. Collapsing already has a control on the section
            itself, and duplicating it here would be two ways to do one thing.

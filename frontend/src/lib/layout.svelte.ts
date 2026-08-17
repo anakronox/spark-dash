@@ -1,4 +1,7 @@
-/** Section order, collapsed state and visibility, persisted per browser.
+/** Layout preferences — section order, visibility, and node card density.
+ *
+ * Named Layout rather than Sections because it owns how the page is arranged,
+ * not just the stack below the node cards.
  *
  * localStorage rather than server-side: the backend is deliberately stateless,
  * and a layout tuned for a 34" monitor is rarely the one you want on a phone.
@@ -17,6 +20,15 @@
 const STORAGE_KEY = 'spark-dash.section-order.v1';
 const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
+const COMPACT_KEY = 'spark-dash.compact-cards.v1';
+
+function readCompact(): boolean {
+  try {
+    return localStorage.getItem(COMPACT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 export interface SectionDef {
   id: string;
@@ -103,6 +115,15 @@ export class Layout {
   collapsed = $state<string[]>(readCollapsed());
   /** Section ids not rendered at all. Recoverable only from settings. */
   hidden = $state<string[]>(readIdList(HIDDEN_KEY));
+
+  /* Node cards reduced to name, status and the memory band.
+   *
+   * A DELIBERATE CHOICE, never automatic. Switching on node count is tempting
+   * — the stack is 147px per card, so eight nodes push everything else below
+   * the fold — but a page that rearranges itself when a node joins is
+   * disorienting, and a node joining is exactly when someone is watching.
+   * Default off; the person who needs it turns it on and it stays on. */
+  compactCards = $state<boolean>(readCompact());
   /** Index currently being dragged, or null. Drives the visual lift. */
   dragging = $state<number | null>(null);
 
@@ -141,6 +162,15 @@ export class Layout {
       ? this.collapsed.filter((s) => s !== id)
       : [...this.collapsed, id];
     this.#saveCollapsed();
+  }
+
+  setCompactCards(on: boolean) {
+    this.compactCards = on;
+    try {
+      localStorage.setItem(COMPACT_KEY, on ? '1' : '0');
+    } catch {
+      // Still applied for this session.
+    }
   }
 
   isHidden(id: string): boolean {
@@ -202,6 +232,7 @@ export class Layout {
     this.order = [...DEFAULT_ORDER];
     this.collapsed = [];
     this.hidden = [];
+    this.setCompactCards(false);
     try {
       localStorage.setItem(HIDDEN_KEY, JSON.stringify(this.hidden));
     } catch {
@@ -219,7 +250,8 @@ export class Layout {
     return (
       this.order.join(',') === DEFAULT_ORDER.join(',') &&
       this.collapsed.length === 0 &&
-      this.hidden.length === 0
+      this.hidden.length === 0 &&
+      !this.compactCards
     );
   }
 

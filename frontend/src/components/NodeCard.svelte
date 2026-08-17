@@ -17,8 +17,24 @@
     /** Categorical slot index, so a node keeps its colour as others come and
      *  go. Colour follows the node, never its position. */
     slot: number;
+    /** Reduced to name, status and the memory band.
+     *
+     * WHAT SURVIVES, AND WHY THOSE. The memory band is the one reading here
+     * that is GB10-specific and cannot be inferred from anything else on the
+     * page: models, other GPU work and the system all draw from ONE pool, so
+     * it is the node's real capacity signal. Status is what tells you whether
+     * to look closer. Clock, temperature, power, CPU and pressure are detail
+     * you read after deciding to — not scan material.
+     *
+     * A down node ignores this and keeps its full treatment. Compact is for
+     * fitting more healthy nodes on screen; shrinking the one that needs
+     * attention would invert the point. */
+    compact?: boolean;
   }
-  const { node, slot }: Props = $props();
+  const { node, slot, compact = false }: Props = $props();
+
+  /* Down nodes are never compacted — see `compact` above. */
+  const dense = $derived(compact && node.up);
 
   const accent = $derived(`var(--series-${(slot % 3) + 1})`);
 
@@ -46,7 +62,12 @@
   );
 </script>
 
-<article class="node panel" class:down={!node.up} style:--accent={accent}>
+<article
+  class="node panel"
+  class:down={!node.up}
+  class:dense
+  style:--accent={accent}
+>
   <header>
     <h2>
       <span class="mark" aria-hidden="true"></span>
@@ -54,7 +75,11 @@
     </h2>
     <div class="meta">
       <StatusPill health={node.health} reasons={node.health_reasons} />
-      <span class="dim sep">{routerSummary}</span>
+      <!-- The runtime summary goes in compact mode: it is a sentence, and a
+           sentence per card is what makes a grid of them unscannable. -->
+      {#if !dense}
+        <span class="dim sep">{routerSummary}</span>
+      {/if}
     </div>
   </header>
 
@@ -64,13 +89,15 @@
       usedBytes={node.memory.used_bytes}
       processes={node.processes}
     />
-    <Vitals
-      gpu={node.gpu}
-      cpu={node.cpu}
-      psi={node.psi}
-      memory={node.memory}
-      tokensPerSec={nodeTokensPerSec}
-    />
+    {#if !dense}
+      <Vitals
+        gpu={node.gpu}
+        cpu={node.cpu}
+        psi={node.psi}
+        memory={node.memory}
+        tokensPerSec={nodeTokensPerSec}
+      />
+    {/if}
   {:else}
     <p class="offline">
       No data. Last seen {relativeTime(node.ts)}.
@@ -93,6 +120,18 @@
     /* The node's identity colour appears once, as a rule — enough to tell
        cards apart at a glance without tinting the whole panel. */
     border-top: 2px solid var(--accent);
+  }
+
+  /* Tighter padding and gap, not a smaller type scale. Shrinking the text
+     would make a compact card harder to read at the exact moment there are
+     more of them to read. */
+  .node.dense {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .node.dense h2 {
+    font-size: 15px;
   }
 
   .node.down {
