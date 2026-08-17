@@ -362,13 +362,13 @@
     {#each ids as id (id)}
       <Section {layout} {id}>
         {#if id === 'models'}
-          <ModelsTable {nodes} />
+          <ModelsTable {nodes} maxRows={layout.rowsFor(id)} />
         {:else if id === 'processes'}
-          <ProcessTable {nodes} />
+          <ProcessTable {nodes} maxRows={layout.rowsFor(id)} />
         {:else if id === 'network'}
-          <NetworkPanel {nodes} />
+          <NetworkPanel {nodes} maxRows={layout.rowsFor(id)} />
         {:else if id === 'activity'}
-          <SwapTimeline />
+          <SwapTimeline maxRows={layout.rowsFor(id)} />
         {:else if id === 'history'}
           <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.current} />
         {/if}

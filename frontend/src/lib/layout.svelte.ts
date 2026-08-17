@@ -21,6 +21,7 @@ const STORAGE_KEY = 'spark-dash.section-order.v1';
 const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
+const ROWS_KEY = 'spark-dash.section-rows.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
 const PLACEMENT_KEY = 'spark-dash.section-placement.v1';
 
@@ -138,6 +139,53 @@ export const SECTIONS: SectionDef[] = [
 
 const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
 
+/** Sections whose body is a list of rows, and can therefore be capped.
+ *
+ * History is absent because it is a chart: its height is set by the plot, not
+ * by a row count, and a "max rows" control on it would be a setting that does
+ * nothing.
+ */
+export const PAGED_SECTIONS = new Set(['processes', 'models', 'network', 'activity']);
+
+/** Row caps offered in settings. `0` means uncapped.
+ *
+ * A sentinel rather than Infinity because this round-trips through JSON, where
+ * `Infinity` serialises to `null` and comes back as a broken value. Translated
+ * at the single point of use in `rowsFor`.
+ */
+export const ROW_CHOICES = [5, 8, 10, 15, 25, 50, 0];
+
+/** Per section, because the sections are not alike.
+ *
+ * Network is lower because it draws TWO tables — RDMA ports and interfaces —
+ * and the cap applies to each, so 8 there is 16 rows of section against 10 for
+ * a table that draws one.
+ */
+const DEFAULT_ROWS: Record<string, number> = {
+  processes: 10,
+  models: 10,
+  network: 8,
+  activity: 10,
+};
+
+function readRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ROWS_KEY) ?? 'null');
+    if (!saved || typeof saved !== 'object') return {};
+    const known = new Set(available);
+    const out: Record<string, number> = {};
+    for (const [id, n] of Object.entries(saved)) {
+      // Validated against the offered choices rather than merely "is a number":
+      // a hand-edited 100000 would silently defeat the whole point of the cap,
+      // and a negative would render nothing at all.
+      if (known.has(id) && typeof n === 'number' && ROW_CHOICES.includes(n)) out[id] = n;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /** Reconcile a saved order against the sections that currently exist.
  *
  * Both directions matter and both are silent failures otherwise: a section
@@ -211,6 +259,10 @@ export class Layout {
      a column the reader may have scrolled past. */
   placement = $state<Record<string, Zone>>(readPlacement());
 
+  /** Rows a section shows before it pages. Absent means the section's own
+   *  default; `0` means uncapped. */
+  rows = $state<Record<string, number>>(readRows());
+
   /** Id of the section being dragged, or null. Drives the lift and dims the
    *  card it came from. An id rather than an index: the section keeps its
    *  place in the layout for the whole drag now, so there is no index to
@@ -272,6 +324,32 @@ export class Layout {
 
   zoneOf(id: string): Zone {
     return this.placement[id] ?? 'full';
+  }
+
+  /** The row cap a section's tables should use.
+   *
+   * `Infinity` for uncapped, which is what the table code wants: it makes the
+   * page arithmetic degenerate correctly — one page, everything on it, and the
+   * pager hides itself because the row count is never greater than the cap.
+   */
+  rowsFor(id: string): number {
+    const n = this.rows[id] ?? DEFAULT_ROWS[id] ?? 10;
+    return n === 0 ? Infinity : n;
+  }
+
+  /** The stored value, for settings to display. Distinct from `rowsFor`
+   *  because 0 must read as "all" there, not as Infinity. */
+  rowChoice(id: string): number {
+    return this.rows[id] ?? DEFAULT_ROWS[id] ?? 10;
+  }
+
+  setRows(id: string, n: number) {
+    this.rows = { ...this.rows, [id]: n };
+    try {
+      localStorage.setItem(ROWS_KEY, JSON.stringify(this.rows));
+    } catch {
+      // Still applied for this session.
+    }
   }
 
   #savePlacement() {
@@ -390,8 +468,14 @@ export class Layout {
     this.collapsed = [];
     this.hidden = [];
     this.placement = {};
+    this.rows = {};
     this.setCompactCards(false);
     this.#savePlacement();
+    try {
+      localStorage.removeItem(ROWS_KEY);
+    } catch {
+      // Still applied for this session.
+    }
     try {
       // Cleared as well as superseded: readPlacement falls back to the old
       // width key when there is no placement, so leaving a stale one behind
@@ -419,6 +503,7 @@ export class Layout {
       this.collapsed.length === 0 &&
       this.hidden.length === 0 &&
       Object.keys(this.placement).length === 0 &&
+      Object.keys(this.rows).length === 0 &&
       !this.compactCards
     );
   }

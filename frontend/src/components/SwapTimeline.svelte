@@ -12,8 +12,16 @@
    * the number worth watching if throughput feels inconsistent.
    */
   import { onMount } from 'svelte';
+  import Pager from './Pager.svelte';
   import { fetchWithTimeout } from '../lib/request';
+  import { TableView } from '../lib/table.svelte';
   import { compositeKey, dedupeByKey } from '../lib/keys';
+
+  interface Props {
+    /** Events before it pages. Infinity = uncapped. */
+    maxRows?: number;
+  }
+  const { maxRows = 10 }: Props = $props();
 
   /* Every identifying field, not a subset. `ts + model + router` looked
      unique and isn't: the timeline is bucketed by a query step, so a model
@@ -50,6 +58,20 @@
   let loaded = $state(false);
 
   const win = $derived(WINDOWS.find((w) => w.key === windowKey) ?? WINDOWS[1]);
+
+  /* A TableView with no columns: this is a timeline, so there is nothing to
+     sort BY — the order is chronological and that is the whole point of it.
+     Only the paging half is wanted, and reusing the same object keeps the page
+     clamping and the range wording identical to the tables rather than
+     reimplementing both slightly differently. */
+  const view = new TableView<Event>([]);
+
+  // Before paint — see ModelsTable.
+  $effect.pre(() => {
+    view.pageSize = maxRows;
+  });
+
+  const shown = $derived(view.slice(events));
 
   async function load() {
     try {
@@ -139,7 +161,7 @@
     </p>
   {:else}
     <ol class="events">
-      {#each events as e (eventKey(e))}
+      {#each shown as e (eventKey(e))}
         <li class:cold={e.cold}>
           <span class="time" title={clock(e.ts)}>{when(e.ts)}</span>
           <span class="mark" aria-hidden="true"></span>
@@ -156,6 +178,8 @@
         </li>
       {/each}
     </ol>
+
+    <Pager {view} total={events.length} label="Model activity pages" />
   {/if}
 </section>
 

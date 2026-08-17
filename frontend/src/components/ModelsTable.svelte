@@ -11,6 +11,7 @@
    * start but holds almost no memory.
    */
   import { MODEL_GLYPH, num } from '../lib/format';
+  import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { TableView } from '../lib/table.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
@@ -18,8 +19,10 @@
 
   interface Props {
     nodes: NodeSnapshot[];
+    /** Rows before it pages. Infinity = uncapped. */
+    maxRows?: number;
   }
-  const { nodes }: Props = $props();
+  const { nodes, maxRows = 10 }: Props = $props();
 
   interface Row {
     key: string;
@@ -103,6 +106,14 @@
     { key: 'wait', value: (r) => r.waiting },
   ]);
 
+  /* $effect.pre, not $effect: it runs BEFORE the DOM is updated, so the first
+     paint already has the configured cap. A plain $effect runs after, which
+     would render the constructor's default once and then reflow — visible as a
+     flash of the wrong number of rows on load. */
+  $effect.pre(() => {
+    view.pageSize = maxRows;
+  });
+
   const shown = $derived(view.slice(rows));
 
   const COLUMNS: ColumnDef[] = [
@@ -173,28 +184,8 @@
       </table>
     </div>
 
-    {#if rows.length > view.pageSize}
-      <!-- Shown only when it does something. A pager under a six-row table is
-           chrome that says "there is more" when there is not. -->
-      <nav class="pager" aria-label="Models pages">
-        <!-- The RANGE, not the page number: the question is "how much am I not
-             looking at", and "11–20 of 288" answers it where "page 2 of 29"
-             makes you do arithmetic. -->
-        <span class="dim">{view.range(rows.length)}</span>
-        <span class="controls">
-          <button
-            class="page"
-            disabled={view.current(rows.length) === 0}
-            onclick={() => view.go(-1, rows.length)}
-          >prev</button>
-          <button
-            class="page"
-            disabled={view.current(rows.length) >= view.pageCount(rows.length) - 1}
-            onclick={() => view.go(1, rows.length)}
-          >next</button>
-        </span>
-      </nav>
-    {/if}
+    <Pager {view} total={rows.length} label="Models pages" />
+
   {:else}
     <p class="empty">
       No models registered. Check <code>LLAMA_ROUTER_URLS</code> on the node stack.
@@ -272,29 +263,6 @@
   /* Row hover. Cheap, and it is what makes a wide table navigable: with the
      identity columns on the left and the numbers on the right, the eye needs
      something to hold the line across the gap between them. */
-  .pager {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 11px;
-    padding-top: 8px;
-  }
-
-  .controls { display: inline-flex; gap: 4px; }
-
-  .page {
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 2px 8px;
-    border-radius: var(--radius);
-    border: 1px solid var(--rule);
-    color: var(--ink-muted);
-  }
-  .page:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-muted); }
-  .page:disabled { opacity: 0.4; cursor: default; }
-
   tbody tr:hover {
     background: var(--panel-raised);
   }

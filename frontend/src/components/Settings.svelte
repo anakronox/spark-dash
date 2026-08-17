@@ -29,7 +29,7 @@
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
-  import { ZONES, ZONE_LABEL } from '../lib/layout.svelte';
+  import { PAGED_SECTIONS, ROW_CHOICES, ZONES, ZONE_LABEL } from '../lib/layout.svelte';
 
   interface Props {
     theme: Theme;
@@ -243,8 +243,10 @@
            Hiding is the one that has to live here: a hidden section renders
            nothing, so this panel is the only place it can be found again. -->
       <p class="note dim">
-        Placement and visibility. Order and collapse stay on the sections
-        themselves. Full-width sections form a band above the two columns, which
+        Placement, row cap and visibility. Order and collapse stay on the
+        sections themselves. The row cap is what a section shows before it
+        pages — it puts a ceiling on how tall a section can grow as nodes are
+        added, so one long table cannot set the height of the whole column. Full-width sections form a band above the two columns, which
         fill independently — so a short section can sit under another short one
         whatever the other column is doing. Below 1100px the columns stack and
         everything is full width regardless, because a half-width table is
@@ -272,6 +274,27 @@
                   layout.inZone(ZONES[(ZONES.indexOf(zone) + 1) % ZONES.length]).length,
                 )}
             >{zone}</button>
+            <!-- Row cap. A select rather than another cycling button: seven
+                 choices would take six clicks to walk back one, and unlike
+                 placement there is no equivalent control on the section itself
+                 to learn it from.
+                 Only for sections that are a list of rows — History is a
+                 chart, where a row cap would be a setting that does nothing. -->
+            {#if PAGED_SECTIONS.has(id)}
+              <select
+                class="mini rows"
+                disabled={hidden}
+                aria-label={`${layout.label(id)} rows before paging`}
+                value={layout.rowChoice(id)}
+                onchange={(e) => layout.setRows(id, Number(e.currentTarget.value))}
+              >
+                {#each ROW_CHOICES as n (n)}
+                  <option value={n}>{n === 0 ? 'all' : `${n} rows`}</option>
+                {/each}
+              </select>
+            {:else}
+              <span class="mini placeholder" aria-hidden="true">—</span>
+            {/if}
             <button
               class="mini"
               aria-pressed={!hidden}
@@ -608,7 +631,31 @@
      they are different questions and a shared right edge made them read as one
      control with two halves. */
   .mini.w { margin-left: auto; }
-  .mini.w + .mini { margin-left: 0; }
+  .mini.w + .mini,
+  .mini.w + .rows,
+  .mini.w + .placeholder,
+  .rows + .mini,
+  .placeholder + .mini { margin-left: 0; }
+
+  /* Matches the mini buttons rather than the browser default, which is a
+     chunky control that would tower over the row it sits in. */
+  .rows {
+    appearance: none;
+    padding-right: 6px;
+    cursor: pointer;
+  }
+
+  .rows:disabled { opacity: 0.4; cursor: default; }
+
+  /* Holds the column for a section that has no row cap, so the hide button
+     stays in the same place down the list instead of jumping left on the one
+     row that is a chart. */
+  .placeholder {
+    border-color: transparent;
+    color: var(--ink-muted);
+    opacity: 0.4;
+    cursor: default;
+  }
 
   .reset { margin-left: 0; align-self: flex-start; margin-top: 4px; }
 

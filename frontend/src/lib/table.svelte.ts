@@ -34,6 +34,16 @@ export interface SortControl {
   ariaSort(key: string): 'ascending' | 'descending' | 'none';
 }
 
+/** What a pager needs from a table view. Row-type-free for the same reason as
+ *  SortControl. */
+export interface PageControl {
+  readonly pageSize: number;
+  range(total: number): string;
+  current(total: number): number;
+  pageCount(total: number): number;
+  go(delta: number, total: number): void;
+}
+
 /** A sortable column: the id TableView knows it by, and how it's headed.
  *
  * Declaring both together is what stops a header sorting by the column beside
@@ -126,9 +136,23 @@ export class TableView<T> {
     return Math.min(this.page, this.pageCount(total) - 1);
   }
 
+  /** Index of the first row on the current page.
+   *
+   * The finiteness guard is not defensive padding. An uncapped table sets
+   * `pageSize` to Infinity, and the first page then starts at
+   * `0 * Infinity`, which is NaN — and `slice(NaN, NaN)` returns NOTHING.
+   * "Show me every row" rendering an empty table is the worst possible way for
+   * that to fail, and it is one multiplication away at all times.
+   */
+  #start(total: number): number {
+    if (!Number.isFinite(this.pageSize)) return 0;
+    return this.current(total) * this.pageSize;
+  }
+
   slice(rows: T[]): T[] {
     const sorted = this.sorted(rows);
-    const start = this.current(sorted.length) * this.pageSize;
+    if (!Number.isFinite(this.pageSize)) return sorted;
+    const start = this.#start(sorted.length);
     return sorted.slice(start, start + this.pageSize);
   }
 
@@ -136,7 +160,7 @@ export class TableView<T> {
    *  question being answered is "how much am I not looking at". */
   range(total: number): string {
     if (!total) return '0';
-    const start = this.current(total) * this.pageSize;
+    const start = this.#start(total);
     return `${start + 1}–${Math.min(start + this.pageSize, total)} of ${total}`;
   }
 

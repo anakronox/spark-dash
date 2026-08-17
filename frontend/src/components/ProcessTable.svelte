@@ -11,6 +11,7 @@
    * process, which is a deliberate non-goal, not an oversight.
    */
   import { gib, ratioPct } from '../lib/format';
+  import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { TableView } from '../lib/table.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
@@ -19,8 +20,10 @@
 
   interface Props {
     nodes: NodeSnapshot[];
+    /** Rows before it pages. Infinity = uncapped. */
+    maxRows?: number;
   }
-  const { nodes }: Props = $props();
+  const { nodes, maxRows = 10 }: Props = $props();
 
   interface Row {
     key: string;
@@ -82,7 +85,12 @@
     { key: 'share', value: (r) => r.sharePct },
   ]);
 
-  const shown = $derived(view.sorted(rows));
+  // Before paint — see ModelsTable.
+  $effect.pre(() => {
+    view.pageSize = maxRows;
+  });
+
+  const shown = $derived(view.slice(rows));
 
   const COLUMNS: ColumnDef[] = [
     { key: 'name', label: 'process' },
@@ -197,6 +205,8 @@
         </tbody>
       </table>
     </div>
+
+    <Pager {view} total={rows.length} label="GPU process pages" />
   {:else}
     <p class="empty">No processes are holding GPU memory.</p>
   {/if}

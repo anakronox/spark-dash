@@ -11,6 +11,7 @@
    * statement of what actually happened.
    */
   import { num } from '../lib/format';
+  import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { TableView } from '../lib/table.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
@@ -18,8 +19,12 @@
 
   interface Props {
     nodes: NodeSnapshot[];
+    /** Rows before each of the two tables pages. Infinity = uncapped.
+     *  Applied per table, not shared: they answer different questions and an
+     *  RDMA port list is not competing with an interface list for the cap. */
+    maxRows?: number;
   }
-  const { nodes }: Props = $props();
+  const { nodes, maxRows = 8 }: Props = $props();
 
   interface IfaceRow {
     key: string;
@@ -165,6 +170,12 @@
     { key: 'drop', value: (r) => r.dropped },
   ]);
 
+  // Before paint — see ModelsTable.
+  $effect.pre(() => {
+    rdmaView.pageSize = maxRows;
+    ifaceView.pageSize = maxRows;
+  });
+
   const RDMA_COLUMNS: ColumnDef[] = [
     { key: 'port', label: 'rdma port' },
     { key: 'state', label: 'state' },
@@ -187,8 +198,8 @@
     { key: 'drop', label: 'drop', right: true },
   ];
 
-  const rdmaShown = $derived(rdmaView.sorted(rdma));
-  const ifacesShown = $derived(ifaceView.sorted(interfaces));
+  const rdmaShown = $derived(rdmaView.slice(rdma));
+  const ifacesShown = $derived(ifaceView.slice(interfaces));
 </script>
 
 <section class="panel">
@@ -240,6 +251,8 @@
         </tbody>
       </table>
     </div>
+
+    <Pager view={rdmaView} total={rdma.length} label="RDMA port pages" />
   {/if}
 
   {#if interfaces.length}
@@ -274,6 +287,8 @@
         </tbody>
       </table>
     </div>
+
+    <Pager view={ifaceView} total={interfaces.length} label="Interface pages" />
   {:else if failures.length}
     <div class="empty">
       <p>The network collector failed:</p>

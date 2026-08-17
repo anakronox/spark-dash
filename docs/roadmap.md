@@ -969,10 +969,9 @@ Widening the page also exposed that these tables do not have enough columns to
 fill 1491px however they are sized. That is not a CSS problem; it is the
 tables being under-specified for the space now available.
 
-- [~] **M1. Sorting AND pagination. Sorting shipped everywhere 2026-08-17;
-  pagination is still Models-only.** `lib/table.svelte.ts` (`TableView`) plus
-  sortable headers and a pager; Models is capped at 10 rows showing
-  "1–10 of 36".
+- [x] **M1. Sorting AND pagination — shipped everywhere 2026-08-17**, with the
+  row cap exposed as a per-section setting. `lib/table.svelte.ts`
+  (`TableView`), `SortButton.svelte` and `Pager.svelte`.
 
   **Sorting now covers all 32 columns across the four tables** — Models, GPU
   processes, and Network's RDMA and interface tables. The header control was
@@ -1014,14 +1013,35 @@ tables being under-specified for the space now available.
     going away can shrink the table while you are on its last page, and being
     stranded on an empty one reads as broken data.
 
-  Still open for PAGINATION specifically: page size (10 is a guess), whether it
-  should persist per table in settings, and whether sort state should survive a
-  reload. Deliberately not rolled out with the sorting — a page limit changes a
-  section's height, and the two-column layout was just arranged around the
-  heights these sections currently have.
+  **The row cap is a setting, because the page size was never one number.**
+  "10 is a guess" was the open question; the answer is that it depends on the
+  section and on the monitor. Settings → Sections carries a per-section cap
+  (5 / 8 / 10 / 15 / 25 / 50 / all), defaulting to 10 — except Network, which
+  defaults to 8 because it draws TWO tables and the cap applies to each, so 8
+  there is 16 rows of section against 10 for a table that draws one.
+
+  **It was requested as a layout fix and it is one.** With two columns that
+  fill independently, a column's height is the sum of its sections, so one
+  unbounded table sets how far you scroll. Capping puts a ceiling on that: at
+  four nodes it took GPU processes from 661px to 337px and Network from 1104px
+  to 556px, which is what makes two sections of similar size actually sit
+  level beside each other.
+
+  **`all` is a real option and it broke the arithmetic.** Uncapped means
+  `pageSize = Infinity`, and the first row index is then `0 * Infinity` — NaN —
+  which makes `slice(NaN, NaN)` return NOTHING. "Show me every row" rendering
+  an empty table is the worst available failure and it is one multiplication
+  away, so `#start` guards finiteness in one place rather than at each call.
 
   Model activity is a chronological timeline with no columns, so it has nothing
-  to sort. Its equivalent is the time-window control it already has.
+  to sort — its `TableView` is constructed with an empty column list and used
+  only for paging, which keeps the page clamping and the range wording
+  identical to the tables. Its sort equivalent is the time window it already
+  has.
+
+  Still open: whether sort state should survive a reload. Currently it does
+  not, and the argument for leaving it that way is that a sort is a question
+  you asked once, where a row cap is a preference.
 
 - [ ] **M1b. Original sorting note.** Clearly worth it. "Which model is actually serving" is a
   sort by tok/s, and today it is a scroll. Client-side, since the data is
@@ -1112,11 +1132,10 @@ tables being under-specified for the space now available.
     server-side: the backend is deliberately stateless, and a column set tuned
     for a 34" monitor is not the one you want on a phone.
 
-**Ordering:** M1 first — it is the cheapest and helps most at today's row
-counts; sorting is done, pagination remains. M2 second, and worth designing as
-card-click rather than filter boxes. M4 after M2 — it is the same "show me
-less" impulse, and M2's node filter may satisfy enough of it to change what M4
-needs to be. M3 last, as a deliberate editorial pass rather than a feature, and
+**Ordering:** M1 is done — sorting, pagination and the row cap. M2 next, and
+worth designing as card-click rather than filter boxes. M4 after M2 — it is the
+same "show me less" impulse, and M2's node filter may satisfy enough of it to
+change what M4 needs to be. M3 last, as a deliberate editorial pass rather than a feature, and
 it should be settled BEFORE M4 ships: deciding what everyone sees is a
 different question from letting one person hide part of it, and doing them in
 the wrong order means curating a column set around what people have already
