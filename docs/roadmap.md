@@ -839,6 +839,54 @@ have to double as a debugging session.
   silently ignoring it would drop a node to standalone and break capacity
   arithmetic in the dangerous direction.
 
+### K — Compact node cards, and a grid
+
+**The problem, measured on a real 3-node render 2026-08-17.** Each node card is
+**147px** tall in a 907px viewport. The cards are a vertical stack, so:
+
+| nodes | card block | vs one viewport |
+|---|---|---|
+| 3 | 441px | half the screen before anything else |
+| 8 | 1176px | everything else below the fold |
+| 16 | 2352px | 2.6 screens of cards |
+| 32 | 4704px | 5 screens |
+
+Users in the wild run clusters of 32. At that size the current layout is not
+merely untidy, it stops being a dashboard — you cannot see the fleet and a
+chart at the same time, which is the whole point of the page.
+
+The full card is right for one to three nodes and it should stay the default at
+that size. This is about what happens past that.
+
+- [ ] **K1.** A compact card carrying only what you scan for: node name, status
+  and the **shared memory band**. That band is the one reading that is
+  GB10-specific and cannot be inferred from anything else on the page — models,
+  other GPU work and system all draw from one pool, so it is the fleet's real
+  capacity signal. Everything else on the card (clock, temp, power, CPU, mem %,
+  throughput, pressure) is detail, not scan material.
+- [ ] **K2.** Hover reveals the rest. The chart tooltip added on 2026-08-16 is
+  the pattern to copy: it costs no layout, cannot reflow the page, and it kept
+  the readings that the History chips gave up. The same trade applies here —
+  compact by default, complete on demand.
+- [ ] **K3.** Grid layout, so cards flow in columns rather than stacking. This
+  is where the actual saving is: 32 compact cards in a 4-column grid is one
+  screen instead of five.
+- [ ] **K4.** Decide how the mode is chosen. Automatic past N nodes is
+  tempting, but a layout that reorganises itself when a node joins is
+  disorienting — and node 4 arriving is exactly when someone is watching. Prefer
+  an explicit toggle that PERSISTS (localStorage, as the metric selection and
+  section order already do), defaulting to compact above a threshold on first
+  run only.
+
+**Watch the accent colours.** Node identity is carried by `--series-1..3`,
+which is three slots. A grid of 32 needs identity to come from the name and
+position, not hue — the categorical palette caps at 8 by design and must not be
+cycled (see the dataviz notes in `app.css`).
+
+**Related:** the same pressure applies to the tables below (processes, models,
+network) — 32 nodes multiplies every row count. K only fixes the cards; the
+tables are a separate question, probably filtering rather than compaction.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
