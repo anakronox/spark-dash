@@ -1606,16 +1606,23 @@ changed nothing on the page. A control that does nothing is broken.
 It also threw away a reading. "No throughput in this window" MEANS nothing was
 serving, which is exactly the kind of thing this panel exists to tell you; an
 absent chart cannot say it and an empty one can. A selected metric now always
-gets a frame once loaded, stating why it is empty — still keyed on the entry
-EXISTING rather than on its length, so a metric mid-fetch is held back instead
-of flashing an empty frame before its data lands.
+gets a chart once loaded — still keyed on the entry EXISTING rather than on its
+length, so a metric mid-fetch is held back instead of flashing an empty frame
+before its data lands.
 
-The placeholder holds the plot's exact height, so a metric going empty on a
-refresh does not resize the grid around it. Its ResizeObserver moved from
-`onMount` to an effect keyed on the host element for the same reason: the plot
-is now replaced by a placeholder and back, so the observed node comes and goes,
-and an observer attached once at mount would end up watching a detached node and
-leave the chart at its guessed initial width.
+**An EMPTY CHART, not a message where a chart should be.** The first attempt put
+"No samples in this range" in a dashed box, which is a different kind of object
+in a grid of plots. An empty chart is the consistent answer and the more useful
+one: the axes are doing real work with no line on them, because they say what
+the scale is — an empty 0-300W plot reads as "nothing drew power" rather than as
+a panel that failed. uPlot needs at least one y series to lay a plot out, so an
+empty metric gets one made of nulls, and it borrows its time axis from a metric
+that did return data so the grid's axes all agree.
+
+MetricChart's ResizeObserver moved from `onMount` to an effect keyed on the host
+element while this was in flux: the plot element came and went, and an observer
+attached once at mount would end up watching a detached node and leave the chart
+at its guessed initial width.
 
 Verified with the four-node rig: all four legend colours are drawn on the
 canvas (sampled pixels, not assumed); solo, shift-add and restore each change

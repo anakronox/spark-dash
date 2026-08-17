@@ -133,6 +133,19 @@
   const isActive = (id: string) => active === null || active.includes(id);
   const shownNodes = $derived(plotted.filter(isActive));
 
+  /** The time axis of whichever metric did return data.
+   *
+   * Lent to any metric that came back empty so its chart still spans the same
+   * window as its neighbours. Without it an empty chart has no x domain, and
+   * uPlot would draw it over a different (or absent) time range — a grid of
+   * small multiples whose axes disagree is worse than one with a gap in it. */
+  const fallbackX = $derived(drawable.map((m) => data[m.key]).find((d) => d.x.length)?.x ?? []);
+
+  /** True when ANY selected metric has samples. When none do there is nothing
+   *  to put an axis against, and the panel says so once rather than eight
+   *  times. */
+  const anyData = $derived(fallbackX.length > 0);
+
   /** One dataset per chart, filtered to the visible nodes.
    *
    * Filtering here rather than inside the chart keeps the slot map — and so
@@ -145,7 +158,10 @@
       const keep = d.names.map((n, i) => [n, i] as const).filter(([n]) => isActive(n));
       return {
         metric,
-        x: d.x,
+        // An empty metric borrows the window from one that isn't, so its axes
+        // match the charts beside it and it reads as "nothing happened here"
+        // rather than as a broken frame.
+        x: d.x.length ? d.x : fallbackX,
         names: keep.map(([n]) => n),
         columns: keep.map(([, i]) => d.columns[i]),
       };
@@ -356,7 +372,7 @@
 
   {#if error}
     <p class="error">Couldn't load history: {error}</p>
-  {:else if !charts.length}
+  {:else if !charts.length || !anyData}
     <p class="empty dim">
       {loading ? 'Loading…' : 'No data in this range.'}
     </p>

@@ -86,7 +86,7 @@
     if (!host) return;
     chart?.destroy();
     chart = null;
-    if (!x.length || !columns.length) return;
+    if (!x.length) return;
 
     const t = chartTheme();
     const fixed = ceiling;
@@ -143,14 +143,22 @@
           values: (_u, splits) => splits.map((v) => `${fmt(v)}${metric.unit}`),
         },
       ],
+      /* A metric with no samples still gets its axes, gridlines and time span
+         — an EMPTY CHART, not a message where a chart should be. The axes are
+         doing real work even with no line on them: they say what the scale is,
+         and an empty 0-300W plot reads as "nothing drew power" rather than as a
+         panel that failed. uPlot needs at least one y series to lay a plot out,
+         so an empty metric gets one made of nulls. */
       series: [
         {},
-        ...names.map((name) => ({
-          label: name,
-          stroke: nodeColor(slots.get(name)),
-          width: 2,
-          points: { show: false },
-        })),
+        ...(names.length
+          ? names.map((name) => ({
+              label: name,
+              stroke: nodeColor(slots.get(name)),
+              width: 2,
+              points: { show: false },
+            }))
+          : [{ label: '', stroke: 'transparent', points: { show: false } }]),
       ],
     };
 
@@ -158,7 +166,8 @@
   }
 
   function alignedData(): uPlot.AlignedData {
-    return [x, ...columns] as unknown as uPlot.AlignedData;
+    const cols = columns.length ? columns : [new Array(x.length).fill(null)];
+    return [x, ...cols] as unknown as uPlot.AlignedData;
   }
 
   /* What forces a rebuild rather than new numbers in the same shape. Series
@@ -216,16 +225,6 @@
     {/if}
   </figcaption>
 
-  {#if !x.length}
-    <!-- LOADED AND EMPTY, which is not the same as absent. A metric with no
-         samples used to be dropped from the grid entirely, so its chip toggled
-         nothing and the reader was left wondering whether the control worked.
-         It also threw away a reading: no throughput in the window means nothing
-         was serving, and only a frame that is present can say so. -->
-    <p class="blank dim" style:height="{height}px">No samples in this range.</p>
-  {:else if !names.length}
-    <p class="blank dim" style:height="{height}px">No samples for the selected nodes.</p>
-  {:else}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="wrap"
@@ -234,7 +233,7 @@
   >
     <div class="host" bind:this={host}></div>
 
-    {#if hover && pointerHere}
+    {#if hover && pointerHere && names.length}
       <div
         class="tip"
         class:flip={hover.left > width / 2}
@@ -254,7 +253,6 @@
       </div>
     {/if}
   </div>
-  {/if}
 </figure>
 
 <style>
@@ -289,19 +287,6 @@
   .wrap {
     position: relative;
     width: 100%;
-  }
-
-  /* Holds exactly the plot's height, so a metric going empty on a refresh does
-     not resize the grid around it. */
-  .blank {
-    display: flex;
-    align-items: center;
-    margin: 0;
-    font-size: 11px;
-    border: 1px dashed var(--rule);
-    border-radius: var(--radius);
-    padding: 0 10px;
-    box-sizing: border-box;
   }
 
   .host {
