@@ -497,7 +497,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pydantic-settings" },
     { name = "spark-dash-common" },
-    { name = "uvicorn", extra = ["standard"] },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -509,7 +509,7 @@ requires-dist = [
     { name = "psutil", specifier = ">=6.1" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "spark-dash-common", editable = "common" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "uvicorn", specifier = ">=0.32" },
 ]
 
 [[package]]

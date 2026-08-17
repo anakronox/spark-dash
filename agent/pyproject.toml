@@ -6,7 +6,14 @@ requires-python = ">=3.12"
 dependencies = [
     "spark-dash-common",
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.32",
+    # NOT [standard]. That extra pulls uvloop, httptools, watchfiles,
+    # websockets and python-dotenv — machinery for a busy web service, on an
+    # agent that serves three read-only GETs. uvicorn falls back to asyncio and
+    # h11 without it, which is slower per request and irrelevant here: the
+    # dashboard polls /snapshot every 2s and Prometheus scrapes /metrics every
+    # 15s. On a GB10 every megabyte this holds is a megabyte a model cannot
+    # have, so the trade runs the other way from a normal deployment.
+    "uvicorn>=0.32",
     "pydantic-settings>=2.6",
     "prometheus-client>=0.21",
     "psutil>=6.1",

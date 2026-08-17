@@ -96,6 +96,21 @@ services:
       - /etc/hostname:/host/etc/hostname:ro
 
     environment:
+      # GLIBC ARENAS, CAPPED. Left alone, glibc opens a malloc arena per thread
+      # (up to 8 x cores) and each one keeps its own freed memory rather than
+      # returning it — so a threaded Python service holds far more RSS than it
+      # is using. This agent runs 10 threads on a 20-core Grace, which is the
+      # shape that behaviour punishes most.
+      #
+      # 2 rather than 1: a single arena serialises every allocation across
+      # threads, and the collectors do run concurrently. Two keeps the
+      # contention negligible while cutting the per-thread hoarding.
+      #
+      # This matters here in a way it would not on a normal server. The GB10
+      # has ONE memory pool — there is no separate VRAM — so every megabyte the
+      # monitoring agent holds is a megabyte a model cannot have.
+      - MALLOC_ARENA_MAX=2
+
       # Optional. Left unset, the agent uses the HOST's hostname, read from
       # the mounted procfs — so this file deploys unchanged to every GX10 and
       # one stack repo serves the whole cluster. Set it only if a node's
