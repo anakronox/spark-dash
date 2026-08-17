@@ -56,8 +56,13 @@ def test_no_endpoints_yields_empty_list():
     assert VllmCollector([]).collect() == []
 
 
-def test_unreachable_instance_is_skipped_not_fatal():
-    """One vLLM down must not hide the others."""
+def test_unreachable_instance_is_reported_not_dropped():
+    """A configured endpoint that does not answer must still be reported.
+
+    It used to return None and vanish, which made a typo'd port invisible: the
+    node reported no vLLM, which is indistinguishable from a node that runs no
+    vLLM. Silence is the failure this whole area exists to catch.
+    """
 
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused")
@@ -66,7 +71,30 @@ def test_unreachable_instance_is_skipped_not_fatal():
     result = collector._collect_one(
         httpx.Client(transport=httpx.MockTransport(handler)), "http://down:8000/metrics"
     )
-    assert result is None
+    assert result is not None
+    assert result.reachable is False
+    # Labelled with the address, since nothing answered to name itself — that
+    # is what lets the reader go and check the endpoint.
+    assert result.server == "down:8000"
+    assert result.model == "down:8000"
+
+
+def test_one_instance_down_does_not_hide_the_others():
+    """The original guarantee, kept: a failure is contained to its own entry."""
+    body = "# TYPE vllm:num_requests_running gauge\nvllm:num_requests_running 2.0\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "down" in str(request.url):
+            raise httpx.ConnectError("refused")
+        return httpx.Response(200, text=body)
+
+    collector = VllmCollector(["http://down:8000/metrics", "http://up:8000/metrics"])
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    results = [
+        collector._collect_one(client, u)
+        for u in ["http://down:8000/metrics", "http://up:8000/metrics"]
+    ]
+    assert [r.reachable for r in results] == [False, True]
 
 
 def test_falls_back_to_url_when_model_label_missing():

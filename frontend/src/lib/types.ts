@@ -123,6 +123,10 @@ export interface LlamaRouterMetrics {
 export interface VllmMetrics {
   model: string;
   /** host:port. Nothing fronts a vLLM instance, so this is its own endpoint. */
+  /** False when the configured endpoint did not answer. Reported rather
+   *  than omitted: an instance dropped from the list is indistinguishable
+   *  from a node that runs no vLLM. */
+  reachable: boolean;
   server: string;
   requests_running: number;
   requests_waiting: number;

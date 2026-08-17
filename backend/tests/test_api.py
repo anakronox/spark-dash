@@ -279,6 +279,73 @@ def test_node_exporter_queries_exclude_the_monitoring_vm():
         assert 'job="node-exporter"' in HISTORY_QUERIES[key], key
 
 
+def test_health_flags_a_configured_endpoint_that_is_not_answering():
+    """A node can be reachable and still report nothing about a router because
+    the port in cluster.yml is wrong. Every measured part is healthy, so the
+    node looks fine — which is why it has to be said out loud."""
+    from datetime import UTC, datetime
+
+    from spark_dash_backend.app import _unreachable_endpoints
+    from spark_dash_common.models import (
+        ClusterSnapshot,
+        LlamaRouterMetrics,
+        NodeSnapshot,
+        Runtimes,
+        VllmMetrics,
+    )
+
+    snap = ClusterSnapshot(
+        ts=datetime.now(UTC),
+        nodes=[
+            NodeSnapshot(
+                node_id="spark2",
+                ts=datetime.now(UTC),
+                up=True,
+                runtimes=Runtimes(
+                    llama_cpp=[
+                        LlamaRouterMetrics(endpoint="http://h:8001", reachable=True),
+                        LlamaRouterMetrics(endpoint="http://h:8002", reachable=False),
+                    ],
+                    vllm=[VllmMetrics(model="h:8000", server="h:8000", reachable=False)],
+                ),
+            )
+        ],
+    )
+    assert _unreachable_endpoints(snap) == [
+        "spark2 · llama.cpp · http://h:8002",
+        "spark2 · vllm · h:8000",
+    ]
+
+
+def test_unreachable_endpoints_ignores_a_node_that_is_down():
+    """On a down node every endpoint is unreachable. Listing each one buries
+    the single fact that matters under a list of its consequences."""
+    from datetime import UTC, datetime
+
+    from spark_dash_backend.app import _unreachable_endpoints
+    from spark_dash_common.models import (
+        ClusterSnapshot,
+        LlamaRouterMetrics,
+        NodeSnapshot,
+        Runtimes,
+    )
+
+    snap = ClusterSnapshot(
+        ts=datetime.now(UTC),
+        nodes=[
+            NodeSnapshot(
+                node_id="spark3",
+                ts=datetime.now(UTC),
+                up=False,
+                runtimes=Runtimes(
+                    llama_cpp=[LlamaRouterMetrics(endpoint="http://h:8001", reachable=False)]
+                ),
+            )
+        ],
+    )
+    assert _unreachable_endpoints(snap) == []
+
+
 def test_health_flags_the_down_node(client):
     """The fixture has gx10-2 down, so 1-of-2 reachable must read as degraded.
     Rounding a partial outage up to "ok" is how a dead node goes unnoticed."""

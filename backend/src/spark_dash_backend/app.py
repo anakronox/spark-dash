@@ -674,6 +674,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif nodes_up is None:
             problems.append("could not reach any node to check")
 
+        # CONFIGURED BUT SILENT. A node can be perfectly reachable and still be
+        # reporting nothing about a router, because the port in cluster.yml is
+        # wrong. Every part being measured is healthy, so the node looks fine —
+        # which is exactly why this has to be said out loud rather than left to
+        # be noticed.
+        #
+        # Read off the snapshot the agent already sends: it knows, because it
+        # is the thing that tried and failed to reach the endpoint.
+        unreachable = _unreachable_endpoints(snapshot)
+        if unreachable:
+            shown = ", ".join(unreachable[:4])
+            more = f" (+{len(unreachable) - 4} more)" if len(unreachable) > 4 else ""
+            problems.append(f"configured endpoint not answering: {shown}{more}")
+
         return {
             "status": "degraded" if problems else "ok",
             "problems": problems,
@@ -698,6 +712,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _mount_frontend(app, settings)
     return app
+
+
+def _unreachable_endpoints(snapshot) -> list[str]:
+    """Configured inference endpoints that did not answer, as `node · endpoint`.
+
+    The agent reports reachability per endpoint because it is the thing that
+    tried; this only reads it. Only nodes that are UP are considered — on a
+    node that is down every endpoint is unreachable, and repeating that for
+    each one buries the single fact that matters ("the node is down") under a
+    list of consequences.
+    """
+    if snapshot is None:
+        return []
+    out: list[str] = []
+    for node in snapshot.nodes:
+        if not node.up:
+            continue
+        for router in node.runtimes.llama_cpp:
+            if not router.reachable:
+                out.append(f"{node.node_id} · llama.cpp · {router.endpoint}")
+        for instance in node.runtimes.vllm:
+            if not instance.reachable:
+                out.append(f"{node.node_id} · vllm · {instance.server}")
+    return out
 
 
 def _sanitize_label(value: str) -> str:

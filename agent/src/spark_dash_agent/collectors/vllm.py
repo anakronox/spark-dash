@@ -85,7 +85,20 @@ class VllmCollector(Collector[list[VllmMetrics]]):
             values, model_name = parse_vllm_metrics(resp.text)
         except Exception:  # noqa: BLE001 — one instance down shouldn't hide the rest
             log.debug("vllm scrape failed for %s", url, exc_info=True)
-            return None
+            # REPORTED, NOT DROPPED. Returning None here made a typo'd port
+            # invisible: the node reported no vLLM, which reads exactly like a
+            # node that runs no vLLM. Silence is the failure this area exists
+            # to catch, so a configured endpoint that did not answer comes back
+            # as an entry saying so.
+            #
+            # `model` carries the endpoint because nothing answered to name
+            # itself, and a row labelled with the address is what lets the
+            # reader go and check it.
+            return VllmMetrics(
+                model=_host_port(url),
+                server=_host_port(url),
+                reachable=False,
+            )
 
         prompt = values.get(_M_PROMPT_TOKENS, 0.0)
         generation = values.get(_M_GENERATION_TOKENS, 0.0)

@@ -134,6 +134,32 @@
       .map((n) => [n.node_id, n.unmonitored_runtimes] as [string, string[]]),
   );
 
+  /* Configured endpoints that did not answer.
+   *
+   * The MIRROR of `unmonitored`: that one catches a server running with
+   * nothing collecting it, this catches a collector configured against a
+   * server that is not there. A typo'd port, a container renamed, an endpoint
+   * retired in fact but not in config.
+   *
+   * Both are silences, and this is the one that looks healthiest — every part
+   * being measured is fine, so the node reads as good while reporting nothing
+   * about a router.
+   *
+   * Only nodes that are UP: on a down node every endpoint is unreachable, and
+   * listing each one buries the fact that matters under its consequences. */
+  const unreachable = $derived.by<{ node: string; runtime: string; endpoint: string }[]>(() =>
+    nodes
+      .filter((n) => n.up)
+      .flatMap((n) => [
+        ...n.runtimes.llama_cpp
+          .filter((r) => !r.reachable)
+          .map((r) => ({ node: n.node_id, runtime: 'llama.cpp', endpoint: r.endpoint })),
+        ...n.runtimes.vllm
+          .filter((v) => !v.reachable)
+          .map((v) => ({ node: n.node_id, runtime: 'vllm', endpoint: v.server })),
+      ]),
+  );
+
   const cluster = $derived.by(() => {
     let tokensPerSec = 0;
     let up = 0;
@@ -238,6 +264,20 @@
         <span class="dim">on {node}</span>
       {/each}
       <span class="dim">— no throughput, queue depth or cache metrics for these.</span>
+    </p>
+  {/if}
+
+  {#if unreachable.length}
+    <!-- Beside `unmonitored` rather than in a panel, for the same reason: it
+         reports something ABSENT, and a panel for absent data is a place
+         nobody looks. -->
+    <p class="notice" data-tone="warning">
+      Configured but not answering:
+      {#each unreachable as u, i (u.node + u.endpoint)}
+        {i > 0 ? ' · ' : ''}<span class="num">{u.endpoint}</span>
+        <span class="dim">{u.runtime} on {u.node}</span>
+      {/each}
+      <span class="dim">— check the port in cluster.yml, or whether the server is running.</span>
     </p>
   {/if}
 

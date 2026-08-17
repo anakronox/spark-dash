@@ -338,6 +338,18 @@ class VllmMetrics(BaseModel):
     """One vLLM instance, scraped from its native /metrics endpoint."""
 
     model: str
+    reachable: bool = Field(
+        default=True,
+        description="False when the configured endpoint did not answer.\n\n"
+        "An unreachable instance used to be dropped from the list entirely, "
+        "which made a typo'd port INVISIBLE: the node reported no vLLM, which "
+        "is indistinguishable from a node that runs no vLLM. Silence is the "
+        "failure mode this whole area exists to catch, so a configured "
+        "endpoint that does not answer is reported as such rather than "
+        "omitted. `model` carries the endpoint in that case, since nothing "
+        "answered to name itself.",
+    )
+
     server: str = Field(
         default="",
         description="host:port this instance is served from. vLLM has no router "

@@ -200,6 +200,47 @@ def test_build_info_reports_unknown_rather_than_vanishing():
     assert 'sparkdash_agent_build_info{build="unknown",node="gx10-1"} 1.0' in text
 
 
+def test_endpoint_reachable_exports_healthy_endpoints_too():
+    """The series must EXIST for a working endpoint, not only a broken one.
+
+    If it appeared only on failure, `absent()` could not tell "not configured"
+    from "not answering" — two conditions needing different alerts. 1 =
+    answering, 0 = configured and silent.
+    """
+    text = render(
+        make_snapshot(
+            runtimes=Runtimes(
+                llama_cpp=[
+                    LlamaRouterMetrics(endpoint="http://h:8001", name="prod"),
+                    LlamaRouterMetrics(
+                        endpoint="http://h:8002", name="lab", reachable=False
+                    ),
+                ],
+                vllm=[VllmMetrics(model="h:8000", server="h:8000", reachable=False)],
+            )
+        )
+    )
+    assert (
+        'sparkdash_endpoint_reachable{endpoint="http://h:8001",node="gx10-1",'
+        'runtime="llama.cpp"} 1.0' in text
+    )
+    assert (
+        'sparkdash_endpoint_reachable{endpoint="http://h:8002",node="gx10-1",'
+        'runtime="llama.cpp"} 0.0' in text
+    )
+    assert (
+        'sparkdash_endpoint_reachable{endpoint="h:8000",node="gx10-1",'
+        'runtime="vllm"} 0.0' in text
+    )
+
+
+def test_endpoint_reachable_absent_when_nothing_is_configured():
+    """A node serving no inference emits no series at all, so `absent()` keeps
+    meaning "nothing is configured here"."""
+    text = render(make_snapshot(runtimes=Runtimes()))
+    assert "sparkdash_endpoint_reachable" not in text
+
+
 def test_processes_are_exported_aggregated_never_per_pid():
     """PIDs churn on every model swap, so a pid label would grow cardinality
     without bound and never reuse a series. Aggregating by workload identity

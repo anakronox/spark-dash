@@ -110,6 +110,39 @@ def _node_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
             unmonitored.add_metric([node, runtime], 1.0)
         yield unmonitored
 
+    # The mirror image of the metric above, and the more common mistake.
+    # `unmonitored_runtime` catches a server running that nothing collects;
+    # this catches a collector configured against a server that is not there —
+    # a typo'd port, a container renamed, an endpoint retired in fact but not
+    # in config.
+    #
+    # Exported for the same reason: config that is wrong is silent, and a
+    # silence is exactly what nobody notices. As a gauge it is alertable and it
+    # is historical, so "when did spark2's router stop answering" has an answer
+    # after the fact rather than only while someone is looking.
+    #
+    # 1 = answering, 0 = configured and silent. That way the series EXISTS for
+    # every configured endpoint, so `absent()` still means "not configured"
+    # rather than "not answering" — two conditions that need different alerts.
+    endpoints = _g(
+        "endpoint_reachable",
+        "1 when a configured inference endpoint answered, 0 when it did not",
+        ["node", "runtime", "endpoint"],
+    )
+    seen = False
+    for router in snap.runtimes.llama_cpp:
+        endpoints.add_metric(
+            [node, "llama.cpp", router.endpoint], 1.0 if router.reachable else 0.0
+        )
+        seen = True
+    for instance in snap.runtimes.vllm:
+        endpoints.add_metric(
+            [node, "vllm", instance.server], 1.0 if instance.reachable else 0.0
+        )
+        seen = True
+    if seen:
+        yield endpoints
+
 
 def _gpu_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
     gpu = snap.gpu
