@@ -89,6 +89,23 @@
     return [...byKey.values()];
   });
 
+  /* Identity slot per node, counted across the WHOLE page in render order.
+   *
+   * Was derived from the cluster index plus the member index, which collides:
+   * a two-member cluster at index 1 takes slots 1 and 2, and the next cluster
+   * — index 2 — takes slot 2 as well. Two nodes, one colour, and the more
+   * clusters you have the likelier it gets.
+   *
+   * A flat running count cannot collide, and it keeps the property that
+   * matters: colour follows the node, not its position, because the order it
+   * counts is stable for a given cluster layout. */
+  const slotOf = $derived.by(() => {
+    const m = new Map<string, number>();
+    let next = 0;
+    for (const c of clusters) for (const n of c.nodes) m.set(n.node_id, next++);
+    return m;
+  });
+
   /* Agent builds across the cluster.
    *
    * Silent when uniform, visible when they diverge. A node left on an older
@@ -267,7 +284,7 @@
          way, each grid would contain exactly one card and the cards would span
          the full width no matter how small they got. -->
     <div class="node-grid" class:compact={layout.compactCards}>
-    {#each clusters as cluster, ci (cluster.key)}
+    {#each clusters as cluster (cluster.key)}
       {#if cluster.name}
         <!-- A frame only where clustering is real. Clustered nodes pool memory,
              so their combined free space is a capacity number in its own
@@ -292,15 +309,15 @@
             />
           {/if}
           <div class="nodes">
-            {#each cluster.nodes as node, i (node.node_id)}
-              <NodeCard {node} slot={ci + i} compact={layout.compactCards} />
+            {#each cluster.nodes as node (node.node_id)}
+              <NodeCard {node} slot={slotOf.get(node.node_id) ?? 0} compact={layout.compactCards} />
             {/each}
           </div>
         </section>
       {:else}
         <div class="nodes">
           {#each cluster.nodes as node (node.node_id)}
-            <NodeCard {node} slot={ci} compact={layout.compactCards} />
+            <NodeCard {node} slot={slotOf.get(node.node_id) ?? 0} compact={layout.compactCards} />
           {/each}
         </div>
       {/if}
@@ -504,12 +521,29 @@
     gap: 12px;
   }
 
+  /* POWER-OF-TWO COLUMN COUNTS: 1, 2, 4 — never 3.
+     Clusters scale in powers of two, so a 3-wide grid is the one that wastes a
+     row: four nodes become 3 + 1 and the second row is mostly empty. Snapping
+     to 1/2/4 keeps a power-of-two fleet filling every row exactly.
+     Fixed counts rather than auto-fill for the same reason — auto-fill picks
+     "as many as fit", which is 3 at this container width. */
   .node-grid.compact {
-    /* auto-fill, not auto-fit: with one or two nodes, auto-fit would stretch
-       them across the whole row and give back exactly the horizontal space
-       compact mode exists to reclaim. */
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  @media (min-width: 600px) {
+    .node-grid.compact {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* The shell caps at 1180px, so the grid is never wider than 1140 and four
+     columns land at ~276px each. */
+  @media (min-width: 1160px) {
+    .node-grid.compact {
+      grid-template-columns: repeat(4, 1fr);
+    }
   }
 
   /* DIRECT children only. These are the standalone wrappers — one per node,
@@ -529,9 +563,24 @@
     grid-column: 1 / -1;
   }
 
-  /* Its members then grid among themselves, inside the frame. */
+  /* Its members then grid among themselves, inside the frame, on the same
+     power-of-two counts — a pooled cluster is exactly where sizes are powers
+     of two. Slightly narrower than the outer grid because of the frame's own
+     padding. */
   .node-grid.compact .cluster .nodes {
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 600px) {
+    .node-grid.compact .cluster .nodes {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1160px) {
+    .node-grid.compact .cluster .nodes {
+      grid-template-columns: repeat(4, 1fr);
+    }
   }
 
   .nodes {

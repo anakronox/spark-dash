@@ -1022,10 +1022,18 @@ that size. This is about what happens past that.
   covering part of a row would say something untrue about which nodes are
   grouped.
 
-  `auto-fill` rather than `auto-fit`: with one or two nodes, `auto-fit` would
-  stretch them across the whole row and hand back exactly the horizontal space
-  this exists to reclaim. Verified reflow: 3 columns at 1140px, 2 at 800px,
-  1 at 400px.
+  **Column counts snap to powers of two — 1, 2, 4, never 3.** Clusters scale in
+  powers of two, so a 3-wide grid is precisely the one that wastes a row: four
+  nodes become 3 + 1 and the second row is nearly empty. Fixed counts rather
+  than `auto-fill`, because "as many as fit" is 3 at this container width.
+
+  The shell caps at 1180px, so the grid never exceeds 1140 and four columns
+  land at 276px each. The memory band's legend wraps to two lines at that
+  width, which costs ~37px of card height — still a clear win, since four nodes
+  go from two rows (~204px) to one (133px).
+
+  Verified with four nodes: one row, 276px cards, and only 1/2/4 rules exist in
+  the stylesheet.
 - [x] **K4.** Settled and shipped 2026-08-17: an explicit Full/Compact toggle
   in settings, persisted to `spark-dash.compact-cards.v1`, defaulting to Full.
 
@@ -1055,10 +1063,22 @@ that size. This is about what happens past that.
 **Still open: K2** (hover reveals the rest). Until it lands, the only route
 back to clock, temperature and power is toggling to Full.
 
-**Watch the accent colours.** Node identity is carried by `--series-1..3`,
-which is three slots. A grid of 32 needs identity to come from the name and
-position, not hue — the categorical palette caps at 8 by design and must not be
-cycled (see the dataviz notes in `app.css`).
+**Accent colours — fixed 2026-08-17, and it was already broken.** Node
+identity used `--series-${slot % 3 + 1}`, which cycles at the FOURTH node: a
+four-node cluster gave two nodes the same hue, which is colour that has stopped
+identifying anything. Found the moment 4-wide rows were tested.
+
+Now `--chart-1..8` — the same palette extended, whose first three ARE the old
+node hues (so one to three nodes are unchanged), validated as a categorical set
+for CVD separation against every theme's surface. **Past eight, no colour at
+all**: the card takes a neutral rule and identity rides on the node name, which
+is on every card anyway. Generating a ninth hue or wrapping around would both
+reintroduce the collision.
+
+The slot itself was also wrong. It came from the cluster index plus the member
+index, so a two-member cluster at index 1 took slots 1 and 2 and the next
+cluster — index 2 — took slot 2 as well. Now a flat running count across the
+whole page, which cannot collide.
 
 **Related:** the same pressure applies to the tables below (processes, models,
 network) — 32 nodes multiplies every row count. K only fixes the cards; the
