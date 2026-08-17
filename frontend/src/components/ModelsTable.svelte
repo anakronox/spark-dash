@@ -170,14 +170,14 @@
               <!-- Throughput and cache exist only while a model is resident.
                    A zero would be indistinguishable from a loaded-but-idle
                    model, so absent data stays absent. -->
-              <td class="r num">{row.state === 'active' ? num(row.tokensPerSec, 1) : '—'}</td>
-              <td class="r num">
+              <td class="r num toks">{row.state === 'active' ? num(row.tokensPerSec, 1) : '—'}</td>
+              <td class="r num pct">
                 {row.state === 'active' && row.kvCachePct != null
                   ? `${num(row.kvCachePct)}%`
                   : '—'}
               </td>
-              <td class="r num">{row.state === 'active' ? row.running : '—'}</td>
-              <td class="r num">{row.state === 'active' ? row.waiting : '—'}</td>
+              <td class="r num queue">{row.state === 'active' ? row.running : '—'}</td>
+              <td class="r num queue">{row.state === 'active' ? row.waiting : '—'}</td>
             </tr>
           {/each}
         </tbody>
@@ -275,6 +275,21 @@
 
   .r {
     text-align: right;
+  }
+
+  /* Reserved widths — see NetworkPanel. These columns are the most volatile on
+     the page: they swing between an em dash and a live reading every time a
+     model wakes or sleeps, which is a width change on every transition. */
+  .toks {
+    min-width: calc(7ch + 24px);
+  }
+
+  .pct {
+    min-width: calc(5ch + 24px);
+  }
+
+  .queue {
+    min-width: calc(4ch + 24px);
   }
 
   .state {

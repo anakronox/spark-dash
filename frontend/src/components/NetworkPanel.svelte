@@ -240,12 +240,16 @@
               <td class="dim">{p.linkLayer || '—'}</td>
               <!-- Blank while down: the driver reports a placeholder rate
                    there, and showing it would read as a negotiation fault. -->
-              <td class="rate">{p.rate || '—'}</td>
+              <!-- Capped and ellipsised, with the full string on hover. The
+                   RATE is the diagnosis; the trailing "(4X EDR)" is
+                   supplementary, and letting the longest variant of it set a
+                   160px column is what pushed this table past its container. -->
+              <td class="rate" title={p.rate || undefined}>{p.rate || '—'}</td>
               <td class="dim">{p.iface || '—'}</td>
               <td class="dim">{p.node}</td>
-              <td class="r num">{bits(p.rx)}</td>
-              <td class="r num">{bits(p.tx)}</td>
-              <td class="r num" class:bad={p.errors > 0}>{p.errors}</td>
+              <td class="r num rate-col">{bits(p.rx)}</td>
+              <td class="r num rate-col">{bits(p.tx)}</td>
+              <td class="r num errs" class:bad={p.errors > 0}>{p.errors}</td>
             </tr>
           {/each}
         </tbody>
@@ -277,11 +281,11 @@
                 </span>
               </td>
               <td class="dim">{i.node}</td>
-              <td class="r num dim">{speed(i.speedMbps)}</td>
-              <td class="r num">{bits(i.rx)}</td>
-              <td class="r num">{bits(i.tx)}</td>
-              <td class="r num" class:bad={i.errors > 0}>{i.errors}</td>
-              <td class="r num" class:bad={i.dropped > 0}>{i.dropped}</td>
+              <td class="r num dim linkspeed">{speed(i.speedMbps)}</td>
+              <td class="r num rate-col">{bits(i.rx)}</td>
+              <td class="r num rate-col">{bits(i.tx)}</td>
+              <td class="r num errs" class:bad={i.errors > 0}>{i.errors}</td>
+              <td class="r num errs" class:bad={i.dropped > 0}>{i.dropped}</td>
             </tr>
           {/each}
         </tbody>
@@ -414,10 +418,53 @@
     color: var(--ink-muted);
   }
 
+  /* RESERVED WIDTHS, so a rising number cannot resize its own column.
+     Throughput is the whole problem: `bits()` returns anything from "0 b/s" to
+     "200.00 Gb/s", and measured live the rx column swung 66px to 81px as
+     traffic moved. That 14px pushed the table from 813px to 825px inside an
+     813px box, so the horizontal scrollbar appeared and disappeared — and auto
+     table layout redistributed the difference, wobbling every OTHER column by
+     2-4px at the same time. One volatile column shifts the whole row.
+
+     `ch` is exact here because these cells are monospace with tabular figures,
+     so one `ch` is one digit at any zoom or font stack.
+
+     THE `+ 24px` IS NOT PADDING FOR ERROR — it is the cell's own padding.
+     These cells are `border-box`, so a bare `min-width: 11ch` reserves 11
+     characters INCLUDING the 5px/12px padding, leaving about 7.7ch for the
+     number. The first attempt at this fix did exactly that and the columns
+     went on resizing, because the reservation was narrower than the content it
+     was meant to cover. The padding has to be added back explicitly.
+
+     11ch covers "200.00 Gb/s" — the widest reading a 200Gb link can produce,
+     and the widest `bits()` emits below terabit. Sized to the HARDWARE rather
+     than to the formatter's theoretical maximum, because every character
+     reserved here is a character taken from the interface name beside it. */
+  .rate-col {
+    min-width: calc(11ch + 24px);
+  }
+
+  /* Counters. Six digits is a million errors — past that the column may grow
+     once and stay grown, which is fine: the point is that it cannot oscillate
+     between two widths on a live feed. */
+  .errs {
+    min-width: calc(6ch + 24px);
+  }
+
+  /* "100G", "10G" or an em dash. */
+  .linkspeed {
+    min-width: calc(5ch + 24px);
+  }
+
   /* Verbatim from the driver — the string itself is the diagnosis when a link
-     comes up at the wrong speed. */
+     comes up at the wrong speed. Truncated for WIDTH only, never for content:
+     the full value is on the cell's title, and the rate leads the string so
+     what gets clipped is the parenthetical, not the number. */
   .rate {
     color: var(--ink-2);
+    max-width: 13ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .bad {

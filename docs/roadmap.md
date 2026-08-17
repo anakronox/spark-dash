@@ -1370,6 +1370,44 @@ A grid with no explicit `grid-template-columns` is the same bug wearing a
 disguise: the implicit track is `auto`, which sizes to content. `.sections` and
 `.zone` now state `minmax(0, 1fr)` rather than leaving it implicit.
 
+**Part two: the same bug one level down, inside the tables.** Fixing the grid
+left the Network card still shifting, because auto TABLE layout sizes columns
+to content for exactly the same reason. Measured over 45s of live data:
+
+    rx   66 → 81px   (Δ14)      table width 813 → 825 in an 813px box
+    tx   59 → 73px   (Δ14)      → horizontal scrollbar appearing and vanishing
+
+`bits()` returns anything from "0 b/s" to "200.00 Gb/s", so throughput is the
+one genuinely volatile width on the page. Two columns swinging 14px dragged
+every OTHER column 2-9px with them as auto layout redistributed the difference,
+and pushed the table across its container so the scrollbar flickered.
+
+The fix is to reserve, per column, the widest string that column can produce —
+`min-width` in `ch`, which is exact because these cells are monospace with
+tabular figures. Sized to the HARDWARE, not the formatter: 11ch covers
+"200.00 Gb/s" and every character reserved is one taken from the interface name
+beside it.
+
+**`ch` alone was wrong and the first attempt shipped nothing.** These cells are
+`border-box`, so `min-width: 11ch` reserves eleven characters INCLUDING the
+5px/12px padding — about 7.7ch of actual room, narrower than the content it was
+meant to cover, so the columns went on resizing. It has to be
+`calc(11ch + 24px)`. Verify a reservation is doing anything by checking that the
+column's rendered width EQUALS its min-width; if the column is wider, content
+is still in charge.
+
+Result: every column delta 0 across all four tables over 50s, table widths
+constant, no scrollbar flicker, CLS 0.0012 — and that remainder is sub-pixel,
+with the reported sources showing dx=0 dy=0.
+
+**One table still scrolls, deliberately.** The RDMA table is 837px of genuine
+content in an 813px column at this width — nine columns, several of them
+identifiers. It scrolls those 24px STABLY, which is a different thing from the
+flicker: it does not change with the data. Shrinking it further would mean
+truncating `rdma port` or `interface`, and those are identity, not decoration.
+The `negotiated` column is truncated instead (13ch, full value on hover), since
+its rate leads the string and only the trailing "(4X EDR)" is clipped.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

@@ -166,7 +166,7 @@
                 {/if}
               </td>
               <td class="dim">{row.node}</td>
-              <td class="r num dim">{row.pid}</td>
+              <td class="r num dim pid">{row.pid}</td>
               <td class="r num compute">
                 {#if row.smPct > 0}
                   <span class="sm">{row.smPct.toFixed(0)}%</span>
@@ -188,7 +188,7 @@
                   </span>
                 {/if}
               </td>
-              <td class="r num">{gib(row.bytes)}</td>
+              <td class="r num mem">{gib(row.bytes)}</td>
               <td class="share">
                 <!-- An inline bar rather than a separate chart: the number and
                      its magnitude belong in the same glance. -->
@@ -312,12 +312,27 @@
   /* Compute sits beside memory rather than in its own panel: the question
      "who is competing" is only meaningful next to "who is resident". */
   .compute {
-    min-width: 96px;
+    /* Raised from 96px: this column carries an OPTIONAL second line (enc/dec),
+       so its content appears and disappears with the workload. Measured
+       114-120px in practice, and anything under that lets the column resize. */
+    min-width: 120px;
   }
 
   .sm {
     color: var(--series-3);
     font-weight: 500;
+  }
+
+  /* Reserved widths — see NetworkPanel for the full reasoning. A column that
+     resizes as its number grows drags every other column with it under auto
+     table layout. `.compute` above already reserves the SM column. */
+  .pid {
+    min-width: calc(8ch + 24px);
+  }
+
+  /* "107.5" — GiB to one decimal, room for a four-digit pool. */
+  .mem {
+    min-width: calc(6ch + 24px);
   }
 
   .codec {
