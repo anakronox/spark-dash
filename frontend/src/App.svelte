@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Alerts from './components/Alerts.svelte';
   import AlertHistory from './components/AlertHistory.svelte';
+  import Settings from './components/Settings.svelte';
   import Section from './components/Section.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
@@ -11,7 +12,7 @@
   import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
   import { Layout } from './lib/layout.svelte';
-  import { THEMES, Theme } from './lib/theme.svelte';
+  import { Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { AlertFeed } from './lib/alerts.svelte';
   import { gib, num } from './lib/format';
@@ -20,6 +21,7 @@
   const feed = new LiveFeed();
   const alertFeed = new AlertFeed();
   let historyOpen = $state(false);
+  let settingsOpen = $state(false);
   const layout = new Layout();
   const theme = new Theme();
 
@@ -153,17 +155,17 @@
         {/if}
       </button>
 
-      <label class="sr-only" for="theme">Theme</label>
-      <select
-        id="theme"
-        class="theme"
-        value={theme.current}
-        onchange={(e) => theme.set(e.currentTarget.value as never)}
+      <!-- The theme picker used to be a <select> here. It moved into settings:
+           the header is the most valuable strip on the page, and a control you
+           touch twice a year should not hold a permanent seat in it. -->
+      <button
+        class="settings-trigger"
+        aria-label="Open settings"
+        onclick={() => (settingsOpen = true)}
       >
-        {#each THEMES as t (t.id)}
-          <option value={t.id}>{t.label}</option>
-        {/each}
-      </select>
+        <span aria-hidden="true">⚙</span>
+        <span class="label">settings</span>
+      </button>
     </div>
   </header>
 
@@ -183,6 +185,7 @@
        reading numbers. Renders nothing when all is quiet. -->
   <Alerts feed={alertFeed} />
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
+  <Settings {theme} {layout} open={settingsOpen} onclose={() => (settingsOpen = false)} />
 
   {#if unmonitored.length}
     <!-- Sits with the other cross-cutting notices rather than in a panel: it
@@ -348,30 +351,31 @@
     gap: 14px;
   }
 
-  .theme {
-    font: inherit;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    background: transparent;
-    border: 1px solid var(--rule);
-    padding: 2px 4px;
+
+
+  /* Matches .alerts-trigger beside it — two buttons that open two panels
+     should not look like different kinds of control. */
+  .settings-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    padding: 3px 8px;
     border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    color: var(--ink-muted);
   }
 
-  .theme:hover {
+  .settings-trigger:hover {
     color: var(--ink);
+    border-color: var(--ink-muted);
   }
 
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
+  .settings-trigger .label {
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
+
 
   .summary {
     display: flex;

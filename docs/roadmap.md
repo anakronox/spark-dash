@@ -869,11 +869,27 @@ K adds a fifth (compact cards) and the problem gets worse from there.
 completely different per tier and lumping them together is how the wrong thing
 gets built:
 
-- [ ] **L1 — client-only. No server involvement, no risk.** Theme, section
-  order, metric selection, history range, compact cards (K), and future layout
-  preferences. These already exist and already persist; L1 is purely about
-  giving them one discoverable home and a consistent way to reset them. This is
-  the bulk of the value and should ship first, alone if necessary.
+- [x] **L1 — client-only. No server involvement, no risk.** Shipped
+  2026-08-17. `Settings.svelte`, a right-anchored fly-out reusing
+  `AlertHistory`'s shell so the two panels behave identically rather than each
+  being hand-rolled: `<dialog>` + `showModal()` for focus trapping, Escape,
+  backdrop and focus restore.
+
+  Holds theme, section order and collapse state, plus a plain statement that
+  preferences live in this browser only — which is worth saying rather than
+  leaving to be discovered, since there is no account to sync them to.
+
+  The theme `<select>` left the header for it. The header is the most valuable
+  strip on the page and a control touched twice a year should not hold a
+  permanent seat there.
+
+  **What deliberately did NOT move:** the History metric chips and range
+  buttons. Controls that sit beside the thing they affect belong there — moving
+  them here would trade discoverability for a round trip. A settings panel is
+  where homeless options live, not a place to collect every control.
+
+  Still to add here as they land: compact cards (K), and a home for anything
+  new that has no natural place on the page.
 - [ ] **L2 — server state that cannot reach outward.** Silences already live
   here and are already written from the UI (G), which set the test worth
   reusing: a silence *"cannot repoint an agent, load a model or touch a
