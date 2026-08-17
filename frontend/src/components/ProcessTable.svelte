@@ -11,9 +11,11 @@
    * process, which is a deliberate non-goal, not an oversight.
    */
   import { gib, ratioPct } from '../lib/format';
+  import ColumnMenu from './ColumnMenu.svelte';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
-  import { TableView } from '../lib/table.svelte';
+  import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
+  import { ColumnView } from '../lib/columns.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
   import { LLM_RUNTIMES } from '../lib/types';
   import type { NodeSnapshot } from '../lib/types';
@@ -93,7 +95,7 @@
   const shown = $derived(view.slice(rows));
 
   const COLUMNS: ColumnDef[] = [
-    { key: 'name', label: 'process' },
+    { key: 'name', label: 'process', required: true },
     { key: 'runtime', label: 'runtime' },
     { key: 'model', label: 'model' },
     { key: 'node', label: 'node' },
@@ -102,6 +104,12 @@
     { key: 'mem', label: 'gpu mem', right: true },
     { key: 'share', label: 'share of pool', cls: 'share' },
   ];
+
+  const cols = new ColumnView('processes', COLUMNS);
+
+  // Sorting by a column you just switched off would leave the rows in an order
+  // nothing on screen explains.
+  $effect(() => dropSortWhenHidden(view, (k) => cols.isVisible(k)));
 
   const totals = $derived.by(() => {
     let llm = 0;
@@ -114,12 +122,79 @@
   });
 </script>
 
+{#snippet cell(c: ColumnDef, row: Row)}
+  {#if c.key === 'name'}
+    <td class="name">{row.name}</td>
+  {:else if c.key === 'runtime'}
+    <td class="runtimecol">
+      {#if row.runtime}
+        <span class="runtime" data-kind={LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}>
+          {row.runtime}
+        </span>
+      {:else}
+        <span class="dim">unlabelled</span>
+      {/if}
+    </td>
+  {:else if c.key === 'model'}
+    <!-- A router parent legitimately has no model: it serves all of them and
+         holds only its own overhead. An em dash says that plainly rather than
+         implying missing data. -->
+    <td class="modelcol" title={row.model || undefined}>
+      {#if row.model}
+        <span class="model">{row.model}</span>
+      {:else}
+        <span class="dim">—</span>
+      {/if}
+    </td>
+  {:else if c.key === 'node'}
+    <td class="dim">{row.node}</td>
+  {:else if c.key === 'pid'}
+    <td class="r num dim pid">{row.pid}</td>
+  {:else if c.key === 'sm'}
+    <td class="r num compute">
+      {#if row.smPct > 0}
+        <span class="sm">{row.smPct.toFixed(0)}%</span>
+      {:else}
+        <!-- Absent from NVML's samples means idle, so this is a reading rather
+             than missing data. Dimmed rather than blank: a resident-but-idle
+             model is the interesting case, and a gap would read as
+             "unknown". -->
+        <span class="dim">0%</span>
+      {/if}
+      {#if row.encPct > 0 || row.decPct > 0}
+        <!-- Encoder/decoder are separate fixed-function blocks, so this work is
+             NOT competing for SM. Shown small and apart so it explains a busy
+             GPU without implying contention that isn't there. -->
+        <span class="codec dim" title="NVENC / NVDEC — separate from SM">
+          {row.encPct > 0 ? `enc ${row.encPct.toFixed(0)}%` : ''}
+          {row.decPct > 0 ? `dec ${row.decPct.toFixed(0)}%` : ''}
+        </span>
+      {/if}
+    </td>
+  {:else if c.key === 'mem'}
+    <td class="r num mem">{gib(row.bytes)}</td>
+  {:else if c.key === 'share'}
+    <td class="share">
+      <!-- An inline bar rather than a separate chart: the number and its
+           magnitude belong in the same glance. -->
+      <span class="bar-track">
+        <span
+          class="bar"
+          style:width={`${Math.max(row.sharePct, 0.4)}%`}
+          data-kind={row.runtime && LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}
+        ></span>
+      </span>
+    </td>
+  {/if}
+{/snippet}
+
 <section class="panel">
   <header>
     <h2 class="eyebrow">GPU processes</h2>
     <span class="dim count">
       {gib(totals.llm)} GiB models · {gib(totals.other)} GiB other
     </span>
+    <ColumnMenu groups={[{ view: cols }]} of="GPU processes" />
   </header>
 
   {#if rows.length}
@@ -127,7 +202,7 @@
       <table>
         <thead>
           <tr>
-            {#each COLUMNS as c (c.key)}
+            {#each cols.visible() as c (c.key)}
               <th
                 scope="col"
                 class:r={c.right}
@@ -142,64 +217,15 @@
         <tbody>
           {#each shown as row (row.key)}
             <tr>
-              <td class="name">{row.name}</td>
-              <td class="runtimecol">
-                {#if row.runtime}
-                  <span
-                    class="runtime"
-                    data-kind={LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}
-                  >
-                    {row.runtime}
-                  </span>
-                {:else}
-                  <span class="dim">unlabelled</span>
-                {/if}
-              </td>
-              <td class="modelcol" title={row.model || undefined}>
-                <!-- A router parent legitimately has no model: it serves all of
-                     them and holds only its own overhead. An em dash says that
-                     plainly rather than implying missing data. -->
-                {#if row.model}
-                  <span class="model">{row.model}</span>
-                {:else}
-                  <span class="dim">—</span>
-                {/if}
-              </td>
-              <td class="dim">{row.node}</td>
-              <td class="r num dim pid">{row.pid}</td>
-              <td class="r num compute">
-                {#if row.smPct > 0}
-                  <span class="sm">{row.smPct.toFixed(0)}%</span>
-                {:else}
-                  <!-- Absent from NVML's samples means idle, so this is a
-                       reading rather than missing data. Dimmed rather than
-                       blank: a resident-but-idle model is the interesting
-                       case, and a gap would read as "unknown". -->
-                  <span class="dim">0%</span>
-                {/if}
-                {#if row.encPct > 0 || row.decPct > 0}
-                  <!-- Encoder/decoder are separate fixed-function blocks, so
-                       this work is NOT competing for SM. Shown small and apart
-                       so it explains a busy GPU without implying contention
-                       that isn't there. -->
-                  <span class="codec dim" title="NVENC / NVDEC — separate from SM">
-                    {row.encPct > 0 ? `enc ${row.encPct.toFixed(0)}%` : ''}
-                    {row.decPct > 0 ? `dec ${row.decPct.toFixed(0)}%` : ''}
-                  </span>
-                {/if}
-              </td>
-              <td class="r num mem">{gib(row.bytes)}</td>
-              <td class="share">
-                <!-- An inline bar rather than a separate chart: the number and
-                     its magnitude belong in the same glance. -->
-                <span class="bar-track">
-                  <span
-                    class="bar"
-                    style:width={`${Math.max(row.sharePct, 0.4)}%`}
-                    data-kind={row.runtime && LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}
-                  ></span>
-                </span>
-              </td>
+              <!-- Cells are rendered from the SAME list as the headers above.
+                   Hand-written <td>s in fixed order were the alternative, and
+                   if that list and this one ever disagreed every value would
+                   shift into the neighbouring column — which looks like
+                   corrupted data rather than a broken table, and is therefore
+                   worse than a crash. One source, no drift. -->
+              {#each cols.visible() as c (c.key)}
+                {@render cell(c, row)}
+              {/each}
             </tr>
           {/each}
         </tbody>

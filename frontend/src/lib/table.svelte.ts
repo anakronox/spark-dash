@@ -57,6 +57,28 @@ export interface ColumnDef {
   right?: boolean;
   /** Extra class for the header cell, where a column needs its own width. */
   cls?: string;
+  /** Identity — cannot be switched off. A table of numbers with no idea which
+   *  node or process they belong to is unreadable. */
+  required?: boolean;
+  /** Carries an alert. Switched off it comes back on its own the moment it has
+   *  something to say — see ColumnView.force. */
+  signal?: boolean;
+}
+
+/** Drop the sort when the column it sorts by is no longer on screen.
+ *
+ * An invisible sort applied to a visible table reads as the DATA being wrong:
+ * the rows are in an order nothing on screen explains. Falling back to the
+ * table's own order is the one arrangement that always makes sense.
+ *
+ * A plain function rather than an $effect so the reasoning lives in one place;
+ * call it from inside an $effect at each table.
+ */
+export function dropSortWhenHidden(
+  view: { sortKey: string | null },
+  isVisible: (key: string) => boolean,
+) {
+  if (view.sortKey && !isVisible(view.sortKey)) view.sortKey = null;
 }
 
 export interface ColumnSort<T> {

@@ -17,6 +17,8 @@
  * which is the only place it can be found again.
  */
 
+import { columnStore } from './columns.svelte';
+
 const STORAGE_KEY = 'spark-dash.section-order.v1';
 const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
@@ -469,6 +471,11 @@ export class Layout {
     this.hidden = [];
     this.placement = {};
     this.rows = {};
+    /* Switched-off columns go too. Same unrecoverability rule as hidden
+       sections: anything that can remove a thing from the page must have one
+       control that puts everything back, or a reader who forgets what they hid
+       is stuck with a table they cannot explain. */
+    columnStore.reset();
     this.setCompactCards(false);
     this.#savePlacement();
     try {
@@ -504,6 +511,7 @@ export class Layout {
       this.hidden.length === 0 &&
       Object.keys(this.placement).length === 0 &&
       Object.keys(this.rows).length === 0 &&
+      !columnStore.customised &&
       !this.compactCards
     );
   }

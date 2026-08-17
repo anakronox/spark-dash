@@ -1079,9 +1079,10 @@ tables being under-specified for the space now available.
   Revisit only if two users genuinely need different columns for different
   jobs, which is not the case for one operator and a homelab.
 
-- [ ] **M4. Column visibility, controlled from the card.** Requested
-  2026-08-17, and designed 2026-08-17 with the interaction settled: a control on
-  each card, not a page in settings.
+- [x] **M4. Column visibility, controlled from the card — shipped 2026-08-17.**
+  Designed and built the same day; a control on each card, not a page in
+  settings. `lib/columns.svelte.ts` (`ColumnView`, `columnStore`) and
+  `components/ColumnMenu.svelte`.
 
   **Columns, not rows — and the distinction is the first design decision.**
   What this does is show and hide the COLUMNS of a table. Filtering the ROWS
@@ -1151,9 +1152,28 @@ tables being under-specified for the space now available.
     Full/Compact: a page that rearranges itself unprompted is disorienting, and
     the person who wants fewer columns can say so once.
 
-  Watch for, when building: hiding a column changes the table's total width, so
-  re-check it against the reservations in N — a deliberate one-time change on a
-  click is fine, but it must not reintroduce a width that oscillates.
+  **What shipped, against the plan.** All of it, and the design held up. Two
+  notes from building it:
+
+  - **The checkbox reflects the CHOICE, not the state.** A forced-back `drop`
+    column shows an unchecked box with "shown — not zero" beside it, rather than
+    silently re-checking itself. A switch that flips itself is a switch you
+    cannot trust, and the reader needs to be able to see both what they asked
+    for and what is overriding it.
+  - **Dismissal tests need a real element as the event target.** Clicking
+    "outside" by dispatching on `window` left the menu open and looked like a
+    bug in the handler; with a real element it closed correctly. The handler is
+    now an explicit `instanceof Node` check rather than a cast, because
+    `contains()` given a non-Node is not reliably falsy and the failure mode is
+    a menu that will not close.
+
+  Verified: hiding two columns leaves every row with exactly as many cells as
+  there are headers, and the values stay under the right ones — `node` still
+  reads `gx10-a` and `sm` still reads `0%` after two removals. Hiding the sorted
+  column drops the sort. `err` (all zeros) hides; `drop` (36 on `enP7s7`) refuses
+  to stay hidden. Reset restores all eight columns and clears the key. Column
+  widths stay constant afterwards, so N's reservations are intact — the one-time
+  change on a click is the only movement.
 
 **Ordering:** M1 is done — sorting, pagination and the row cap. M2 next, and
 worth designing as card-click rather than filter boxes. M4 after M2 — it is the

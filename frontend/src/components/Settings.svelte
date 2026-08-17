@@ -244,7 +244,9 @@
            nothing, so this panel is the only place it can be found again. -->
       <p class="note dim">
         Placement, row cap and visibility. Order and collapse stay on the
-        sections themselves. The row cap is what a section shows before it
+        sections themselves, and so does the choice of which COLUMNS a table
+        shows — that control lives in each card's top-right corner, next to the
+        data it affects. Reset below clears it along with everything here. The row cap is what a section shows before it
         pages — it puts a ceiling on how tall a section can grow as nodes are
         added, so one long table cannot set the height of the whole column. Full-width sections form a band above the two columns, which
         fill independently — so a short section can sit under another short one

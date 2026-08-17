@@ -12,8 +12,10 @@
    */
   import { MODEL_GLYPH, num } from '../lib/format';
   import Pager from './Pager.svelte';
+  import ColumnMenu from './ColumnMenu.svelte';
   import SortButton from './SortButton.svelte';
-  import { TableView } from '../lib/table.svelte';
+  import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
+  import { ColumnView } from '../lib/columns.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
   import type { NodeSnapshot, ModelState } from '../lib/types';
 
@@ -117,7 +119,7 @@
   const shown = $derived(view.slice(rows));
 
   const COLUMNS: ColumnDef[] = [
-    { key: 'model', label: 'model' },
+    { key: 'model', label: 'model', required: true },
     { key: 'state', label: 'state' },
     { key: 'node', label: 'node' },
     { key: 'server', label: 'server:port' },
@@ -126,6 +128,10 @@
     { key: 'run', label: 'run', right: true },
     { key: 'wait', label: 'wait', right: true },
   ];
+
+  const cols = new ColumnView('models', COLUMNS);
+
+  $effect(() => dropSortWhenHidden(view, (k) => cols.isVisible(k)));
 
   const summary = $derived.by(() => {
     const counts = new Map<ModelState, number>();
@@ -137,10 +143,41 @@
   });
 </script>
 
+{#snippet cell(c: ColumnDef, row: Row)}
+  {#if c.key === 'model'}
+    <td class="model">{row.model}</td>
+  {:else if c.key === 'state'}
+    <td>
+      <span class="state" data-state={row.state} title={row.rawStatus}>
+        <span aria-hidden="true">{MODEL_GLYPH[row.state]}</span>
+        {row.state}
+      </span>
+    </td>
+  {:else if c.key === 'node'}
+    <td class="dim">{row.node}</td>
+  {:else if c.key === 'server'}
+    <td class="dim">{row.server}</td>
+  {:else if c.key === 'tok'}
+    <!-- Throughput and cache exist only while a model is resident. A zero would
+         be indistinguishable from a loaded-but-idle model, so absent data stays
+         absent. -->
+    <td class="r num toks">{row.state === 'active' ? num(row.tokensPerSec, 1) : '—'}</td>
+  {:else if c.key === 'kv'}
+    <td class="r num pct">
+      {row.state === 'active' && row.kvCachePct != null ? `${num(row.kvCachePct)}%` : '—'}
+    </td>
+  {:else if c.key === 'run'}
+    <td class="r num queue">{row.state === 'active' ? row.running : '—'}</td>
+  {:else if c.key === 'wait'}
+    <td class="r num queue">{row.state === 'active' ? row.waiting : '—'}</td>
+  {/if}
+{/snippet}
+
 <section class="panel">
   <header>
     <h2 class="eyebrow">Models</h2>
     <span class="dim count">{summary || 'none registered'}</span>
+    <ColumnMenu groups={[{ view: cols }]} of="Models" />
   </header>
 
   {#if rows.length}
@@ -148,7 +185,7 @@
       <table>
         <thead>
           <tr>
-            {#each COLUMNS as c (c.key)}
+            {#each cols.visible() as c (c.key)}
               <th scope="col" class:r={c.right} aria-sort={view.ariaSort(c.key)}>
                 <SortButton {view} id={c.key} label={c.label} />
               </th>
@@ -158,26 +195,11 @@
         <tbody>
           {#each shown as row (row.key)}
             <tr class:idle={row.state === 'unloaded'}>
-              <td class="model">{row.model}</td>
-              <td>
-                <span class="state" data-state={row.state} title={row.rawStatus}>
-                  <span aria-hidden="true">{MODEL_GLYPH[row.state]}</span>
-                  {row.state}
-                </span>
-              </td>
-              <td class="dim">{row.node}</td>
-              <td class="dim">{row.server}</td>
-              <!-- Throughput and cache exist only while a model is resident.
-                   A zero would be indistinguishable from a loaded-but-idle
-                   model, so absent data stays absent. -->
-              <td class="r num toks">{row.state === 'active' ? num(row.tokensPerSec, 1) : '—'}</td>
-              <td class="r num pct">
-                {row.state === 'active' && row.kvCachePct != null
-                  ? `${num(row.kvCachePct)}%`
-                  : '—'}
-              </td>
-              <td class="r num queue">{row.state === 'active' ? row.running : '—'}</td>
-              <td class="r num queue">{row.state === 'active' ? row.waiting : '—'}</td>
+              <!-- Same list as the headers — see ProcessTable for why that
+                   matters more than it looks. -->
+              {#each cols.visible() as c (c.key)}
+                {@render cell(c, row)}
+              {/each}
             </tr>
           {/each}
         </tbody>

@@ -11,9 +11,11 @@
    * statement of what actually happened.
    */
   import { num } from '../lib/format';
+  import ColumnMenu from './ColumnMenu.svelte';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
-  import { TableView } from '../lib/table.svelte';
+  import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
+  import { ColumnView } from '../lib/columns.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
   import type { NodeSnapshot } from '../lib/types';
 
@@ -189,7 +191,7 @@
   });
 
   const RDMA_COLUMNS: ColumnDef[] = [
-    { key: 'port', label: 'rdma port' },
+    { key: 'port', label: 'rdma port', required: true },
     { key: 'state', label: 'state' },
     { key: 'link', label: 'link' },
     // "rate", not "negotiated": the longer word was setting this column's
@@ -199,22 +201,96 @@
     { key: 'node', label: 'node' },
     { key: 'rx', label: 'rx', right: true },
     { key: 'tx', label: 'tx', right: true },
-    { key: 'err', label: 'err', right: true },
+    { key: 'err', label: 'err', right: true, signal: true },
   ];
 
   const IFACE_COLUMNS: ColumnDef[] = [
-    { key: 'name', label: 'interface' },
+    { key: 'name', label: 'interface', required: true },
     { key: 'node', label: 'node' },
     { key: 'link', label: 'link', right: true },
     { key: 'rx', label: 'rx', right: true },
     { key: 'tx', label: 'tx', right: true },
-    { key: 'err', label: 'err', right: true },
-    { key: 'drop', label: 'drop', right: true },
+    { key: 'err', label: 'err', right: true, signal: true },
+    { key: 'drop', label: 'drop', right: true, signal: true },
   ];
+
+  const rdmaCols = new ColumnView('network.rdma', RDMA_COLUMNS);
+  const ifaceCols = new ColumnView('network.ifaces', IFACE_COLUMNS);
+
+  /* Signal columns that currently have something to say.
+   *
+   * `err` and `drop` read zero every day, which is exactly why someone
+   * switches them off — and their first non-zero value is the thing they needed
+   * to know. Hiding a stat on a monitoring dashboard is hiding a signal, so the
+   * signal wins: the column comes back on its own, and the menu says why. */
+  const rdmaTripped = $derived(rdma.some((p) => p.errors > 0) ? ['err'] : []);
+  const ifaceTripped = $derived([
+    ...(interfaces.some((i) => i.errors > 0) ? ['err'] : []),
+    ...(interfaces.some((i) => i.dropped > 0) ? ['drop'] : []),
+  ]);
+
+  $effect(() => rdmaCols.force(rdmaTripped));
+  $effect(() => ifaceCols.force(ifaceTripped));
+
+  $effect(() => dropSortWhenHidden(rdmaView, (k) => rdmaCols.isVisible(k)));
+  $effect(() => dropSortWhenHidden(ifaceView, (k) => ifaceCols.isVisible(k)));
 
   const rdmaShown = $derived(rdmaView.slice(rdma));
   const ifacesShown = $derived(ifaceView.slice(interfaces));
 </script>
+
+{#snippet rdmaCell(c: ColumnDef, p: RdmaRow)}
+  {#if c.key === 'port'}
+    <td class="name">{p.device}:{p.port}</td>
+  {:else if c.key === 'state'}
+    <td>
+      <span class="state" data-active={p.active}>
+        <span aria-hidden="true">{p.active ? '●' : '○'}</span>
+        {p.state || 'unknown'}
+      </span>
+    </td>
+  {:else if c.key === 'link'}
+    <!-- RoCE vs InfiniBand: same sysfs tree, different fabric. -->
+    <td class="dim">{p.linkLayer || '—'}</td>
+  {:else if c.key === 'rate'}
+    <!-- Blank while down: the driver reports a placeholder rate there, and
+         showing it would read as a negotiation fault. -->
+    <td class="rate" title={p.rate || undefined}>{p.rate ? shortRate(p.rate) : '—'}</td>
+  {:else if c.key === 'iface'}
+    <td class="dim">{p.iface || '—'}</td>
+  {:else if c.key === 'node'}
+    <td class="dim">{p.node}</td>
+  {:else if c.key === 'rx'}
+    <td class="r num rate-col">{bits(p.rx)}</td>
+  {:else if c.key === 'tx'}
+    <td class="r num rate-col">{bits(p.tx)}</td>
+  {:else if c.key === 'err'}
+    <td class="r num errs" class:bad={p.errors > 0}>{p.errors}</td>
+  {/if}
+{/snippet}
+
+{#snippet ifaceCell(c: ColumnDef, i: IfaceRow)}
+  {#if c.key === 'name'}
+    <td class="name">
+      <span class="state" data-active={i.up}>
+        <span aria-hidden="true">{i.up ? '●' : '○'}</span>
+        {i.name}
+      </span>
+    </td>
+  {:else if c.key === 'node'}
+    <td class="dim">{i.node}</td>
+  {:else if c.key === 'link'}
+    <td class="r num dim linkspeed">{speed(i.speedMbps)}</td>
+  {:else if c.key === 'rx'}
+    <td class="r num rate-col">{bits(i.rx)}</td>
+  {:else if c.key === 'tx'}
+    <td class="r num rate-col">{bits(i.tx)}</td>
+  {:else if c.key === 'err'}
+    <td class="r num errs" class:bad={i.errors > 0}>{i.errors}</td>
+  {:else if c.key === 'drop'}
+    <td class="r num errs" class:bad={i.dropped > 0}>{i.dropped}</td>
+  {/if}
+{/snippet}
 
 <section class="panel">
   <header>
@@ -226,6 +302,15 @@
         · {rdma.length} RDMA
       {/if}
     </span>
+    <!-- ONE control for a card that draws two tables, with the groups named.
+         Two buttons would mean two corners on one card. -->
+    <ColumnMenu
+      of="Network"
+      groups={[
+        { label: 'RDMA ports', view: rdmaCols },
+        { label: 'Interfaces', view: ifaceCols },
+      ]}
+    />
   </header>
 
   {#if rdma.length}
@@ -233,7 +318,7 @@
       <table>
         <thead>
           <tr>
-            {#each RDMA_COLUMNS as c (c.key)}
+            {#each rdmaCols.visible() as c (c.key)}
               <th scope="col" class:r={c.right} aria-sort={rdmaView.ariaSort(c.key)}>
                 <SortButton view={rdmaView} id={c.key} label={c.label} />
               </th>
@@ -243,27 +328,10 @@
         <tbody>
           {#each rdmaShown as p (p.key)}
             <tr class:down={!p.active}>
-              <td class="name">{p.device}:{p.port}</td>
-              <td>
-                <span class="state" data-active={p.active}>
-                  <span aria-hidden="true">{p.active ? '●' : '○'}</span>
-                  {p.state || 'unknown'}
-                </span>
-              </td>
-              <!-- RoCE vs InfiniBand: same sysfs tree, different fabric. -->
-              <td class="dim">{p.linkLayer || '—'}</td>
-              <!-- Blank while down: the driver reports a placeholder rate
-                   there, and showing it would read as a negotiation fault. -->
-              <!-- Capped and ellipsised, with the full string on hover. The
-                   RATE is the diagnosis; the trailing "(4X EDR)" is
-                   supplementary, and letting the longest variant of it set a
-                   160px column is what pushed this table past its container. -->
-              <td class="rate" title={p.rate || undefined}>{p.rate ? shortRate(p.rate) : '—'}</td>
-              <td class="dim">{p.iface || '—'}</td>
-              <td class="dim">{p.node}</td>
-              <td class="r num rate-col">{bits(p.rx)}</td>
-              <td class="r num rate-col">{bits(p.tx)}</td>
-              <td class="r num errs" class:bad={p.errors > 0}>{p.errors}</td>
+              <!-- Same list as the headers — see ProcessTable. -->
+              {#each rdmaCols.visible() as c (c.key)}
+                {@render rdmaCell(c, p)}
+              {/each}
             </tr>
           {/each}
         </tbody>
@@ -278,7 +346,7 @@
       <table>
         <thead>
           <tr>
-            {#each IFACE_COLUMNS as c (c.key)}
+            {#each ifaceCols.visible() as c (c.key)}
               <th scope="col" class:r={c.right} aria-sort={ifaceView.ariaSort(c.key)}>
                 <SortButton view={ifaceView} id={c.key} label={c.label} />
               </th>
@@ -288,18 +356,9 @@
         <tbody>
           {#each ifacesShown as i (i.key)}
             <tr class:down={!i.up}>
-              <td class="name">
-                <span class="state" data-active={i.up}>
-                  <span aria-hidden="true">{i.up ? '●' : '○'}</span>
-                  {i.name}
-                </span>
-              </td>
-              <td class="dim">{i.node}</td>
-              <td class="r num dim linkspeed">{speed(i.speedMbps)}</td>
-              <td class="r num rate-col">{bits(i.rx)}</td>
-              <td class="r num rate-col">{bits(i.tx)}</td>
-              <td class="r num errs" class:bad={i.errors > 0}>{i.errors}</td>
-              <td class="r num errs" class:bad={i.dropped > 0}>{i.dropped}</td>
+              {#each ifaceCols.visible() as c (c.key)}
+                {@render ifaceCell(c, i)}
+              {/each}
             </tr>
           {/each}
         </tbody>
