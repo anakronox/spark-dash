@@ -667,6 +667,14 @@ outweigh the convenience:
 Most of the value here is not editing anyway; it is closing the loop between
 what is configured and what is actually happening.
 
+**Refined 2026-08-17 — see workstream L.** "Read-only" is a claim about NODE
+DATA, not about the dashboard's own preferences. Theme, layout, section order
+and metric selection are client-side and involve no server write at all;
+silencing (G) already writes and was justified by being a narrow primitive.
+What stays ruled out here is specifically L3: writing cluster membership and
+runtime endpoints through the tunnel-published surface, which is where the
+request-forgery argument above actually bites.
+
 - [ ] **F6.** Cluster panel: each node, its cluster, its configured runtimes, and
   **whether the agent has actually fetched that config, with a timestamp**.
   Answers "did my edit reach spark3?", which today needs an SSH session.
@@ -838,6 +846,74 @@ have to double as a debugging session.
   `group:` is still read in `cluster.yml` with a loud warning, because
   silently ignoring it would drop a node to standalone and break capacity
   arithmetic in the dangerous direction.
+
+### L — A settings fly-out
+
+**The distinction that makes this coherent:** "read-only" was always a claim
+about NODE DATA — the dashboard observes the cluster, it does not drive it.
+Configuring the DASHBOARD is a different thing entirely, and conflating the two
+is why settings are currently scattered with no home.
+
+They are genuinely scattered today. Four independent `localStorage` keys, each
+owned by whatever component happened to need it, each with its own UI:
+
+    spark-dash.theme.v1           a <select> in the header
+    spark-dash.section-order.v1   drag handles on each section
+    spark-dash.trend-metrics.v1   chips inside the History panel
+    (history range)               buttons inside the History panel
+
+Nothing tells you these are settings, that they persist, or where to find them.
+K adds a fifth (compact cards) and the problem gets worse from there.
+
+**Tier the scope by what it WRITES**, because the security argument is
+completely different per tier and lumping them together is how the wrong thing
+gets built:
+
+- [ ] **L1 — client-only. No server involvement, no risk.** Theme, section
+  order, metric selection, history range, compact cards (K), and future layout
+  preferences. These already exist and already persist; L1 is purely about
+  giving them one discoverable home and a consistent way to reset them. This is
+  the bulk of the value and should ship first, alone if necessary.
+- [ ] **L2 — server state that cannot reach outward.** Silences already live
+  here and are already written from the UI (G), which set the test worth
+  reusing: a silence *"cannot repoint an agent, load a model or touch a
+  process"*. Any candidate for L2 has to pass that same sentence.
+- [ ] **L3 — cluster membership and runtime endpoints. NOT free, and F ruled
+  it out for reasons that still hold.** The dashboard is the only service
+  published through the Cloudflare tunnel, and the agent polls whatever appears
+  in `llama_routers` — so a write path there is a request-forgery primitive
+  aimed at the LAN, reachable from the internet edge. Adding a node through the
+  UI is the single most useful setting and the single most dangerous one.
+
+**L3 needs an answer, not a form.** Options, roughly in order of preference:
+
+  1. **Read-only display of `cluster.yml` plus a copy-to-clipboard snippet.**
+     Covers most of the real need — "what is configured, and what do I paste to
+     add a node" — with no write path at all. This is F6/F9 already.
+  2. **Write, but constrain the value space.** Ports from an allowlist, hosts
+     matched against RFC1918, no free-text URLs. Turns an arbitrary-URL
+     primitive into a much narrower one.
+  3. **Write, but not through the tunnel.** Bind the mutating endpoints to the
+     LAN interface only, so the published surface stays read-only. Costs a
+     second listener and some compose work; keeps the security property intact
+     rather than trading it away.
+
+  Decide this before building L3. The other tiers do not depend on it.
+
+**Alert thresholds are a trap, and the uncertainty about them is correct.**
+Workstream A's whole finding was that hardcoded thresholds were wrong and the
+right values come FROM THE HARDWARE — NVML's slowdown point, the CPU's critical
+trip. A UI that lets someone type 80°C re-introduces exactly the bug that made
+`GpuTemperatureCritical` unable to fire. If thresholds become editable at all,
+they should be offsets from the derived value ("warn 6°C before slowdown"), not
+absolutes — and the derived number must stay visible beside the field.
+
+**Reuse the fly-out shell.** `AlertHistory.svelte` is already a right-anchored
+`<dialog>` + `showModal()`, which gets focus trapping, Escape, the backdrop and
+focus restore from the platform. Settings should be the same component family,
+not a second hand-rolled overlay — and possibly literally the same shell with
+tabs, since "alerts" and "settings" are both things you open, act on and
+dismiss.
 
 ### K — Compact node cards, and a grid
 
