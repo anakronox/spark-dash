@@ -263,3 +263,66 @@ nodes:
             parse_cluster("nodes:\n  - id: a\n    host: h\n    group: old\n    cluster: new\n")
         )
         assert nodes["a"].cluster == "new"
+
+
+class TestClusterConfigEndpoint:
+    """Read-only display of what the dashboard is set up to watch.
+
+    Most of the value people want from a config UI is "what is configured, and
+    does it match what I deployed" — which needs no write path, and therefore
+    none of the security cost that writing cluster membership through a
+    tunnel-published surface would carry (roadmap L3).
+    """
+
+    def test_lists_every_configured_node_with_its_runtimes(self, tmp_path, monkeypatch):
+        cfg = tmp_path / "cluster.yml"
+        cfg.write_text("""
+nodes:
+  - id: a
+    host: 10.0.0.1
+    cluster: alpha
+    runtimes:
+      llama_routers:
+        - port: 8001
+          scrape_metrics: true
+      vllm: [8120]
+  - id: b
+    host: 10.0.0.2
+""")
+        from fastapi.testclient import TestClient
+        from spark_dash_backend.app import create_app
+        from spark_dash_backend.config import Settings
+
+        monkeypatch.setenv("CLUSTER_CONFIG", str(cfg))
+        monkeypatch.setenv("SPARK_NODES", "")
+        with TestClient(create_app(Settings())) as client:
+            body = client.get("/api/cluster/config").json()
+
+        assert [n["node_id"] for n in body["nodes"]] == ["a", "b"]
+        a = body["nodes"][0]
+        assert a["cluster"] == "alpha"
+        assert a["runtimes"]["llama_routers"][0]["scrape_metrics"] is True
+        # Ports come back alongside the resolved urls: the UI edits ports, so
+        # handing it one saves it parsing a url apart to get there.
+        assert a["runtimes"]["vllm"] == [
+            {"url": "http://10.0.0.1:8120/metrics", "port": 8120}
+        ]
+        assert a["runtimes"]["llama_routers"][0]["port"] == 8001
+        assert body["nodes"][1]["cluster"] is None
+
+    def test_reports_the_source_so_a_stale_env_is_visible(self, tmp_path, monkeypatch):
+        """SPARK_NODES is silently ignored once cluster.yml lists a node, which
+        looks identical to an edit that did not take. Naming the source is how
+        the UI can say which file is actually in charge."""
+        cfg = tmp_path / "cluster.yml"
+        cfg.write_text("nodes:\n  - id: a\n    host: 10.0.0.1\n")
+        from fastapi.testclient import TestClient
+        from spark_dash_backend.app import create_app
+        from spark_dash_backend.config import Settings
+
+        monkeypatch.setenv("CLUSTER_CONFIG", str(cfg))
+        monkeypatch.setenv("SPARK_NODES", "stale=10.9.9.9")
+        with TestClient(create_app(Settings())) as client:
+            body = client.get("/api/cluster/config").json()
+        assert body["source"] == "cluster.yml"
+        assert body["path"].endswith("cluster.yml")

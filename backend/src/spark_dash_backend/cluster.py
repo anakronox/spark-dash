@@ -20,6 +20,7 @@ instead of one, and it is what made the old per-node `.env` unavoidable.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -196,6 +197,156 @@ def parse_cluster(text: str) -> list[ClusterNode]:
         )
 
     return out
+
+
+PRIVATE_HOST_HINT = (
+    "hosts must be private (RFC1918, loopback, link-local) or a hostname; "
+    "public IP literals are refused"
+)
+
+
+def _host_is_acceptable(host: str) -> bool:
+    """Reject public IP literals, allow private ones and hostnames.
+
+    NOT the primary control — the dashboard sits behind OAuth at the tunnel
+    edge, and this is defence in depth behind it. But the agent polls whatever
+    ends up in `llama_routers`, so a config write is a request-forgery
+    primitive aimed at the LAN, and narrowing the value space costs nothing:
+    every real deployment of this points at private addresses anyway.
+
+    Hostnames are allowed because they cannot be judged without resolving them,
+    and resolution here would be a different (and worse) kind of trust.
+    """
+    import ipaddress
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return bool(host) and " " not in host  # a hostname
+    return ip.is_private or ip.is_loopback or ip.is_link_local
+
+
+def validate_cluster(nodes: list[ClusterNode]) -> None:
+    """Raise ClusterConfigError if this could not safely be written.
+
+    Checked here rather than at the API boundary so every writer gets the same
+    rules, including any future one.
+    """
+    seen: set[str] = set()
+    for n in nodes:
+        if not n.node_id.strip():
+            raise ClusterConfigError("every node needs an id")
+        if n.node_id in seen:
+            raise ClusterConfigError(f"duplicate node id {n.node_id!r}")
+        seen.add(n.node_id)
+        if not n.host.strip():
+            raise ClusterConfigError(f"node {n.node_id!r} needs a host")
+        if not _host_is_acceptable(n.host):
+            raise ClusterConfigError(f"node {n.node_id!r}: {PRIVATE_HOST_HINT}")
+        for port in (n.agent_port, n.node_exporter_port):
+            if not 1 <= port <= 65535:
+                raise ClusterConfigError(f"node {n.node_id!r}: port {port} out of range")
+
+
+def dump_cluster(nodes: list[ClusterNode]) -> str:
+    """Render the cluster back to YAML.
+
+    PORTS, NOT URLS. A runtime on the node's own host is written as a port, so
+    changing a node's address stays one edit — and it is what keeps a UI write
+    from being able to name an arbitrary URL at all. A runtime that genuinely
+    lives elsewhere keeps its explicit url.
+
+    COMMENTS DO NOT SURVIVE. This serialises the parsed model, so any hand
+    written notes in the file are lost the first time the dashboard writes it.
+    Said in the header rather than discovered, with a pointer to the example
+    file that carries the documentation.
+    """
+    out: list[dict] = []
+    for n in nodes:
+        entry: dict = {"id": n.node_id, "host": n.host}
+        if n.cluster:
+            entry["cluster"] = n.cluster
+        if n.agent_port != 9500:
+            entry["agent_port"] = n.agent_port
+        if n.node_exporter_port != 9100:
+            entry["node_exporter_port"] = n.node_exporter_port
+
+        runtimes: dict = {}
+        routers = []
+        for r in n.runtimes.llama_routers:
+            port = _own_port(r.url, n.host)
+            item: dict = {"port": port} if port else {"url": r.url}
+            if r.scrape_metrics:
+                item["scrape_metrics"] = True
+            routers.append(item)
+        if routers:
+            runtimes["llama_routers"] = routers
+        vllm = [_own_port(u, n.host, "/metrics") or u for u in n.runtimes.vllm]
+        if vllm:
+            runtimes["vllm"] = vllm
+        if runtimes:
+            entry["runtimes"] = runtimes
+        out.append(entry)
+
+    body = yaml.safe_dump({"nodes": out}, default_flow_style=False, sort_keys=False)
+    return (
+        "# The cluster — nodes and what each one serves.\n"
+        "#\n"
+        "# MANAGED BY THE DASHBOARD. Written whenever the cluster is edited in\n"
+        "# settings, which means hand-written comments here are NOT preserved.\n"
+        "# The documented reference, with every option explained, is\n"
+        "# central/cluster.yml.example in the repo.\n"
+        "#\n"
+        "# Editing this file by hand still works and is picked up on the\n"
+        "# backend's next read; the dashboard re-reads before it writes, so a\n"
+        "# hand edit is not silently clobbered.\n"
+        f"{body}"
+    )
+
+
+def _own_port(url: str, host: str, suffix: str = "") -> int | None:
+    """The port, if this url is just `http://<this node>:<port><suffix>`."""
+    prefix = f"http://{host}:"
+    if not url.startswith(prefix):
+        return None
+    rest = url[len(prefix) :]
+    if suffix:
+        if not rest.endswith(suffix):
+            return None
+        rest = rest[: -len(suffix)]
+    return int(rest) if rest.isdigit() else None
+
+
+def write_cluster(path: Path, nodes: list[ClusterNode]) -> None:
+    """Validate and write atomically.
+
+    Temp file in the SAME directory then os.replace, because the container
+    mounts the parent as a directory and a rename is resolved on next access —
+    a partial write would otherwise be read as a truncated cluster and take
+    every node dark. The same reason the mount is a directory and not a file.
+    """
+    import os
+    import tempfile
+
+    validate_cluster(nodes)
+    text = dump_cluster(nodes)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Re-parse what we are about to write. Writing something we cannot read
+    # back would be the one unrecoverable outcome here.
+    parse_cluster(text)
+
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".cluster.", suffix=".yml")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def load_cluster(path: Path) -> list[ClusterNode]:

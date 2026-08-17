@@ -20,11 +20,20 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 from spark_dash_common.models import ClusterSnapshot
 
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
-from spark_dash_backend.cluster import ClusterConfigError, load_cluster
+from spark_dash_backend.cluster import (
+    ClusterConfigError,
+    ClusterNode,
+    NodeRuntimes,
+    RouterConfig,
+    _own_port,
+    load_cluster,
+    write_cluster,
+)
 from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory
 from spark_dash_backend.poller import LivePoller
@@ -47,6 +56,25 @@ HEALTH_SNAPSHOT_MAX_AGE_S = 30.0
 #: over the 15s scrape interval so a single missed scrape is not an alarm, and
 #: under the 5m staleness horizon at which the probe series vanishes entirely.
 DATA_STALE_AFTER_S = 120.0
+
+class RouterWrite(BaseModel):
+    port: int = Field(ge=1, le=65535)
+    scrape_metrics: bool = False
+
+
+class NodeWrite(BaseModel):
+    node_id: str
+    host: str
+    cluster: str | None = None
+    agent_port: int = Field(default=9500, ge=1, le=65535)
+    node_exporter_port: int = Field(default=9100, ge=1, le=65535)
+    llama_routers: list[RouterWrite] = Field(default_factory=list)
+    vllm: list[int] = Field(default_factory=list)
+
+
+class ClusterWrite(BaseModel):
+    nodes: list[NodeWrite]
+
 
 MAX_SILENCE_HOURS = 24.0
 
@@ -305,6 +333,126 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # if requests feel slow.
             "cold_starts": sum(1 for e in events if e.cold),
         }
+
+    @app.get("/api/cluster/config")
+    async def api_cluster_config() -> dict:
+        """The whole cluster as configured, for display. READ ONLY.
+
+        Answers "what is this dashboard actually set up to watch, and does it
+        match what I think I deployed" without an SSH session — which is most of
+        the value people want from a config UI, and it needs no write path at
+        all. Writing cluster membership from here is a different question with a
+        real security cost attached (roadmap L3): the agent polls whatever
+        appears in `llama_routers`, and this dashboard is the one service
+        published through the tunnel.
+
+        Discloses nothing new. Node addresses are already in /api/nodes, so
+        anyone who can reach this endpoint can already see them.
+
+        `configured` is reported per node against the LIVE inventory, so a node
+        listed here that the poller cannot see reads as a mismatch rather than
+        silently looking fine.
+        """
+        try:
+            cluster = load_cluster(settings.cluster_config)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=500, detail=f"cluster config: {exc}") from exc
+
+        live = {n.node_id for n in inventory.nodes()}
+        return {
+            "source": inventory.source,
+            "path": str(settings.cluster_config),
+            "nodes": [
+                {
+                    "node_id": c.node_id,
+                    "host": c.host,
+                    "cluster": c.cluster,
+                    "agent_port": c.agent_port,
+                    "node_exporter_port": c.node_exporter_port,
+                    "in_inventory": c.node_id in live,
+                    # Ports alongside the resolved urls. The UI edits ports —
+                    # that is what keeps a write from naming an arbitrary URL —
+                    # so handing it the port directly saves it parsing one back
+                    # out, and a runtime that is genuinely elsewhere reports
+                    # port null and is shown read-only.
+                    "runtimes": {
+                        "llama_routers": [
+                            {
+                                "url": r.url,
+                                "scrape_metrics": r.scrape_metrics,
+                                "port": _own_port(r.url, c.host),
+                            }
+                            for r in c.runtimes.llama_routers
+                        ],
+                        "vllm": [
+                            {"url": u, "port": _own_port(u, c.host, "/metrics")}
+                            for u in c.runtimes.vllm
+                        ],
+                    },
+                }
+                for c in cluster
+            ],
+        }
+
+    @app.put("/api/cluster/config")
+    async def api_cluster_config_write(payload: ClusterWrite) -> dict:
+        """Replace the cluster definition.
+
+        WHY THIS IS A WRITE AND THE REST IS NOT. "Read-only" is a property of
+        AGENT DATA — the dashboard observes nodes and never drives them. The
+        cluster file is the dashboard's own configuration, and editing it here
+        is the same kind of act as silencing an alert: it changes what this
+        service watches, not what any node does.
+
+        The narrowing that makes it safe enough: runtimes are given as PORTS,
+        resolved against the node's own host, so a write cannot name an
+        arbitrary URL. Hosts are checked against private ranges. Neither is the
+        primary control — OAuth at the tunnel edge is — but the agent polls
+        whatever lands in `llama_routers`, so the value space is worth keeping
+        narrow rather than trusting the edge alone.
+
+        Replaces wholesale rather than patching. The UI reads, edits and sends
+        the whole list, so a partial update cannot leave the file describing a
+        cluster nobody asked for.
+        """
+        nodes = [
+            ClusterNode(
+                node_id=n.node_id.strip(),
+                host=n.host.strip(),
+                cluster=(n.cluster or "").strip() or None,
+                agent_port=n.agent_port,
+                node_exporter_port=n.node_exporter_port,
+                runtimes=NodeRuntimes(
+                    llama_routers=[
+                        RouterConfig(
+                            url=f"http://{n.host.strip()}:{r.port}",
+                            scrape_metrics=r.scrape_metrics,
+                        )
+                        for r in n.llama_routers
+                    ],
+                    vllm=[f"http://{n.host.strip()}:{p}/metrics" for p in n.vllm],
+                ),
+            )
+            for n in payload.nodes
+        ]
+
+        try:
+            write_cluster(settings.cluster_config, nodes)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            # Almost always ownership: the mount has to be writable by the
+            # backend's uid. Said plainly so it is not mistaken for a bad edit.
+            raise HTTPException(
+                status_code=500,
+                detail=f"could not write {settings.cluster_config}: {exc}. "
+                "Is the cluster directory writable by the backend's user?",
+            ) from exc
+
+        # The inventory caches on a TTL; drop it so the change is visible at
+        # once rather than up to 30s later, which would read as a failed save.
+        inventory.invalidate()
+        return await api_cluster_config()
 
     @app.get("/api/agent-config")
     async def api_agent_config(node: str) -> dict:

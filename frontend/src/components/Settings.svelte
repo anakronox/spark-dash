@@ -25,6 +25,7 @@
    * reusing it means the two panels behave identically rather than each being
    * subtly hand-rolled.
    */
+  import { fetchWithTimeout } from '../lib/request';
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
@@ -39,10 +40,132 @@
 
   let dialog = $state<HTMLDialogElement | null>(null);
 
+  /* CLUSTER CONFIG — editable.
+   *
+   * "Read-only" is a property of AGENT DATA: the dashboard observes nodes and
+   * never drives them. This file is the dashboard's OWN configuration, and
+   * editing it is the same kind of act as silencing an alert — it changes what
+   * this service watches, not what any node does.
+   *
+   * The narrowing that keeps that cheap: runtimes are edited as PORTS, which
+   * the backend resolves against the node's own host, so a write cannot name
+   * an arbitrary URL. Hosts are validated against private ranges server-side.
+   * Neither is the primary control — OAuth at the tunnel edge is — but the
+   * agent polls whatever lands in `llama_routers`, so the value space is worth
+   * keeping narrow rather than trusting the edge alone.
+   *
+   * A runtime that genuinely lives off-node comes back with `port: null`. Those
+   * are shown but not editable here, because editing one would mean accepting a
+   * free-text URL, which is the thing being avoided.
+   */
+  interface RuntimeRef {
+    url: string;
+    port: number | null;
+    scrape_metrics?: boolean;
+  }
+
+  interface ConfiguredNode {
+    node_id: string;
+    host: string;
+    cluster: string | null;
+    agent_port: number;
+    node_exporter_port: number;
+    in_inventory: boolean;
+    runtimes: { llama_routers: RuntimeRef[]; vllm: RuntimeRef[] };
+  }
+
+  type Cfg = { source: string; path: string; nodes: ConfiguredNode[] };
+
+  let cfg = $state<Cfg | null>(null);
+  let draft = $state<ConfiguredNode[] | null>(null);
+  let cfgError = $state<string | null>(null);
+  let saving = $state(false);
+  let saveError = $state<string | null>(null);
+
+  const dirty = $derived(
+    !!draft && !!cfg && JSON.stringify(draft) !== JSON.stringify(cfg.nodes),
+  );
+
+  const clone = (n: ConfiguredNode[]) => JSON.parse(JSON.stringify(n)) as ConfiguredNode[];
+
+  async function loadConfig() {
+    try {
+      const resp = await fetchWithTimeout('/api/cluster/config');
+      if (!resp.ok) throw new Error((await resp.json())?.detail ?? String(resp.status));
+      cfg = await resp.json();
+      draft = clone(cfg!.nodes);
+      cfgError = null;
+    } catch (err) {
+      // Named plainly. A malformed cluster.yml is the likely cause and the
+      // backend reports it verbatim, which is more useful than "unavailable".
+      cfgError = (err as Error).message;
+      cfg = null;
+      draft = null;
+    }
+  }
+
+  async function save() {
+    if (!draft) return;
+    saving = true;
+    saveError = null;
+    try {
+      const resp = await fetchWithTimeout('/api/cluster/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          nodes: draft.map((n) => ({
+            node_id: n.node_id,
+            host: n.host,
+            cluster: n.cluster || null,
+            agent_port: n.agent_port,
+            node_exporter_port: n.node_exporter_port,
+            // Off-node runtimes have no port and cannot be expressed here;
+            // they are preserved by the backend only if it can resolve them,
+            // so they are filtered rather than sent as nulls.
+            llama_routers: n.runtimes.llama_routers
+              .filter((r) => r.port != null)
+              .map((r) => ({ port: r.port, scrape_metrics: !!r.scrape_metrics })),
+            vllm: n.runtimes.vllm.filter((v) => v.port != null).map((v) => v.port),
+          })),
+        }),
+      });
+      const body = await resp.json();
+      if (!resp.ok) throw new Error(body?.detail ?? String(resp.status));
+      // Adopt what the server actually wrote, not what we sent — the two differ
+      // if anything was normalised, and showing our own draft back would hide
+      // that.
+      cfg = body;
+      draft = clone(body.nodes);
+    } catch (err) {
+      saveError = (err as Error).message;
+    } finally {
+      saving = false;
+    }
+  }
+
+  function addNode() {
+    draft = [
+      ...(draft ?? []),
+      {
+        node_id: '',
+        host: '',
+        cluster: null,
+        agent_port: 9500,
+        node_exporter_port: 9100,
+        in_inventory: false,
+        runtimes: { llama_routers: [], vllm: [] },
+      },
+    ];
+  }
+
   $effect(() => {
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    else if (!open && dialog.open) dialog.close();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      // Fetched on open only. It changes when someone edits a file on the VM,
+      // not on a timer, so polling it would be pure waste.
+      loadConfig();
+    } else if (!open && dialog.open) dialog.close();
   });
 </script>
 
@@ -117,6 +240,130 @@
         disabled={layout.isDefault}
         onclick={() => layout.reset()}
       >Reset sections</button>
+    </section>
+
+    <!-- Cluster -->
+    <section class="block">
+      <h3 class="eyebrow dim">Cluster</h3>
+      {#if cfgError}
+        <p class="note" data-tone="warning">Couldn't read the cluster config: {cfgError}</p>
+      {:else if !draft}
+        <p class="note dim">Loading…</p>
+      {:else}
+        <p class="note dim">
+          Stored in <code>{cfg?.path}</code> on the monitoring VM. Adding a node
+          here is all that is needed — the node's own stack carries nothing
+          cluster-specific and asks for this on a timer.
+        </p>
+
+        {#each draft as n, i (i)}
+          <div class="node">
+            <div class="node-head">
+              <input
+                class="in id"
+                placeholder="node-id"
+                aria-label="Node id"
+                bind:value={n.node_id}
+              />
+              {#if !n.in_inventory && cfg?.nodes.some((c) => c.node_id === n.node_id)}
+                <!-- Configured but not polled. Silent otherwise, and exactly
+                     what a typo in the host produces. -->
+                <span class="tag warn">not polled</span>
+              {/if}
+              <button
+                class="mini"
+                aria-label={`Remove ${n.node_id || 'node'}`}
+                onclick={() => (draft = draft!.filter((_, j) => j !== i))}
+              >remove</button>
+            </div>
+
+            <div class="fields">
+              <label>host
+                <input class="in" placeholder="192.168.50.61" bind:value={n.host} />
+              </label>
+              <label>cluster
+                <!-- A NAME, never a count: "pair" stops being true at three
+                     nodes. Blank means standalone. -->
+                <input class="in" placeholder="(standalone)" bind:value={n.cluster} />
+              </label>
+              <label>agent port
+                <input class="in num" type="number" min="1" max="65535" bind:value={n.agent_port} />
+              </label>
+            </div>
+
+            <div class="rt">
+              <span class="eyebrow dim">llama.cpp routers</span>
+              {#each n.runtimes.llama_routers as r, ri (ri)}
+                <div class="rt-row">
+                  {#if r.port == null}
+                    <span class="dim">{r.url}</span>
+                    <span class="tag">off-node</span>
+                  {:else}
+                    <input class="in num" type="number" min="1" max="65535" aria-label="Router port" bind:value={r.port} />
+                    <label class="check">
+                      <input type="checkbox" bind:checked={r.scrape_metrics} />
+                      <!-- Opt-in per router: this is what permits
+                           /metrics?model=, which yields tokens/sec but wakes a
+                           sleeping model on an autoload router. -->
+                      metrics
+                    </label>
+                  {/if}
+                  <button
+                    class="mini"
+                    aria-label="Remove router"
+                    onclick={() => (n.runtimes.llama_routers = n.runtimes.llama_routers.filter((_, j) => j !== ri))}
+                  >×</button>
+                </div>
+              {/each}
+              <button
+                class="mini add"
+                onclick={() => (n.runtimes.llama_routers = [...n.runtimes.llama_routers, { url: '', port: 8001, scrape_metrics: false }])}
+              >+ router</button>
+            </div>
+
+            <div class="rt">
+              <span class="eyebrow dim">vLLM</span>
+              {#each n.runtimes.vllm as v, vi (vi)}
+                <div class="rt-row">
+                  {#if v.port == null}
+                    <span class="dim">{v.url}</span>
+                    <span class="tag">off-node</span>
+                  {:else}
+                    <input class="in num" type="number" min="1" max="65535" aria-label="vLLM port" bind:value={v.port} />
+                  {/if}
+                  <button
+                    class="mini"
+                    aria-label="Remove vLLM endpoint"
+                    onclick={() => (n.runtimes.vllm = n.runtimes.vllm.filter((_, j) => j !== vi))}
+                  >×</button>
+                </div>
+              {/each}
+              <button
+                class="mini add"
+                onclick={() => (n.runtimes.vllm = [...n.runtimes.vllm, { url: '', port: 8120 }])}
+              >+ vLLM</button>
+            </div>
+          </div>
+        {/each}
+
+        <div class="actions">
+          <button class="mini add" onclick={addNode}>+ node</button>
+          <button class="mini" disabled={!dirty || saving} onclick={() => (draft = clone(cfg!.nodes))}>Revert</button>
+          <button class="mini save" disabled={!dirty || saving} onclick={save}>
+            {saving ? 'Saving…' : 'Save cluster'}
+          </button>
+        </div>
+        {#if saveError}
+          <!-- Verbatim from the backend: it is the validator talking, and
+               "node 'a': hosts must be private" is far more actionable than a
+               generic failure. -->
+          <p class="note" data-tone="warning">{saveError}</p>
+        {/if}
+        <p class="note dim">
+          Saving rewrites the file, so comments in it are not preserved. The
+          documented reference is <code>central/cluster.yml.example</code>.
+        </p>
+      {/if}
     </section>
 
     <!-- Where this lives -->
@@ -222,6 +469,76 @@
   }
 
   .name { font-weight: 500; }
+
+  .node {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+  }
+
+  .node-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+
+  .tag {
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    color: var(--ink-muted);
+  }
+
+
+  .note[data-tone='warning'] { color: var(--warning); }
+  code { font-size: 10px; }
+
+  .tag.warn { color: var(--warning); border-color: var(--warning); }
+
+  .fields { display: flex; flex-wrap: wrap; gap: 8px; }
+  .fields label,
+  .rt {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--ink-muted);
+  }
+
+  .in {
+    font: inherit;
+    font-size: 11px;
+    color: var(--ink);
+    background: var(--page);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 3px 6px;
+    min-width: 0;
+    width: 100%;
+  }
+  .in:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+  .in.id { font-weight: 500; max-width: 140px; }
+  .in.num { max-width: 84px; }
+
+  .rt { gap: 4px; margin-top: 4px; }
+  .rt-row { display: flex; align-items: center; gap: 6px; }
+
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: var(--ink-muted);
+    flex-direction: row;
+  }
+
+  .add { margin-left: 0; align-self: flex-start; }
+
+  .actions { display: flex; gap: 6px; margin-top: 4px; }
+  .actions .mini { margin-left: 0; }
+  .save { color: var(--ink); border-color: var(--ink-muted); }
 
   /* A hidden row stays legible rather than being greyed to the edge of
      readability — this is the only place it can be switched back on, so it

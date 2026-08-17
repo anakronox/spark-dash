@@ -352,6 +352,15 @@ class Inventory:
             self._loaded_at = now
         return self._nodes
 
+    def invalidate(self) -> None:
+        """Force the next `nodes()` to re-read.
+
+        The TTL exists so a busy dashboard is not stat-ing a file every poll.
+        After the config is edited that caching becomes a lie: the save looks
+        like it failed for up to the TTL, and the user edits again.
+        """
+        self._loaded_at = 0.0
+
     def sync_prometheus_targets(self) -> bool:
         """Render the current inventory into Prometheus's target directory."""
         if self._prometheus_targets_dir is None:

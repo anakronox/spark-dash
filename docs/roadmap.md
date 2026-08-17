@@ -894,12 +894,40 @@ gets built:
   here and are already written from the UI (G), which set the test worth
   reusing: a silence *"cannot repoint an agent, load a model or touch a
   process"*. Any candidate for L2 has to pass that same sentence.
-- [ ] **L3 — cluster membership and runtime endpoints. NOT free, and F ruled
-  it out for reasons that still hold.** The dashboard is the only service
-  published through the Cloudflare tunnel, and the agent polls whatever appears
-  in `llama_routers` — so a write path there is a request-forgery primitive
-  aimed at the LAN, reachable from the internet edge. Adding a node through the
-  UI is the single most useful setting and the single most dangerous one.
+- [x] **L3 — cluster membership, editable. Shipped 2026-08-17**, overriding
+  F's blanket read-only stance. The distinction that settles it: "read-only" is
+  a property of AGENT DATA — the dashboard observes nodes and never drives
+  them. `cluster.yml` is the dashboard's OWN configuration, and editing it is
+  the same kind of act as silencing an alert (G): it changes what this service
+  watches, not what any node does.
+
+  The concern was never "editable"; it was that the agent polls whatever
+  appears in `llama_routers`, making an unconstrained write a request-forgery
+  primitive aimed at the LAN. That is addressed by narrowing the value space
+  rather than by refusing the feature:
+
+  - **The UI edits PORTS, never URLs.** The backend resolves them against the
+    node's own host, so a write cannot name an arbitrary address. This is the
+    documented normal form anyway — the `port:` shorthand is what keeps a
+    node's address appearing exactly once.
+  - **Hosts are validated server-side** against RFC1918, loopback and
+    link-local; public IP literals are refused. Hostnames pass, because judging
+    one means resolving it and that is a worse kind of trust.
+  - **Off-node runtimes** (an explicit `url:` pointing elsewhere) are shown but
+    not editable, since editing one would mean accepting free text.
+
+  Neither check is the primary control — OAuth at the tunnel edge is — but they
+  cost nothing and mean the edge is not the only thing standing there.
+
+  Writes are atomic (temp file in the same directory, then `os.replace`) and
+  the result is re-parsed before it lands, because a half-written cluster file
+  would take every node dark. The inventory cache is invalidated on save, so
+  the change shows immediately rather than looking like it failed for up to the
+  30s TTL.
+
+  **Known cost:** the file is serialised from the parsed model, so hand-written
+  comments do not survive a UI save. Stated in the file's own header and in the
+  panel, with `cluster.yml.example` named as the documented reference.
 
 **L3 needs an answer, not a form.** Options, roughly in order of preference:
 
