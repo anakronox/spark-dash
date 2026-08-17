@@ -583,19 +583,19 @@
      Fixed counts rather than auto-fill for the same reason — auto-fill picks
      "as many as fit", which is 3 at this container width. */
   .node-grid.compact {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
 
   @media (min-width: 600px) {
     .node-grid.compact {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
   @media (min-width: 1160px) {
     .node-grid.compact {
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
 
@@ -605,7 +605,7 @@
      show. */
   @media (min-width: 2320px) {
     .node-grid.compact {
-      grid-template-columns: repeat(8, 1fr);
+      grid-template-columns: repeat(8, minmax(0, 1fr));
     }
   }
 
@@ -631,24 +631,24 @@
      of two. Slightly narrower than the outer grid because of the frame's own
      padding. */
   .node-grid.compact .cluster .nodes {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   @media (min-width: 600px) {
     .node-grid.compact .cluster .nodes {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
   @media (min-width: 1160px) {
     .node-grid.compact .cluster .nodes {
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
 
   @media (min-width: 2320px) {
     .node-grid.compact .cluster .nodes {
-      grid-template-columns: repeat(8, 1fr);
+      grid-template-columns: repeat(8, minmax(0, 1fr));
     }
   }
 
@@ -658,7 +658,7 @@
     /* One column until there's genuinely room for two — the memory band needs
        width to stay readable, and squeezing three narrow bands side by side
        would defeat the comparison it exists to enable. */
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   @media (min-width: 900px) {
@@ -761,6 +761,10 @@
   .sections {
     display: grid;
     gap: 16px;
+    /* Stated rather than left implicit. Without a template the implicit track
+       is `auto`, which sizes to CONTENT — so a table that wants more room
+       widens the track instead of scrolling inside it. See .cols. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   /* A zone is a plain vertical stack, and that is the whole point: each fills
@@ -771,6 +775,8 @@
     display: grid;
     gap: 16px;
     align-content: start;
+    /* Same reason as .sections — an implicit `auto` track sizes to content. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .cols {
@@ -780,13 +786,31 @@
        two zones stack, which keeps every section full width — a half-width
        table on a laptop is unreadable, and honouring the arrangement there
        would be obeying the letter of it against the point. */
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
 
+  /* minmax(0, 1fr), NEVER a bare 1fr — this is the whole of the dashboard's
+     layout shift, and it is not obvious.
+
+     `1fr` is shorthand for `minmax(auto, 1fr)`, and that `auto` minimum means a
+     track REFUSES to be narrower than its content's minimum. These columns hold
+     wide data tables, so the minimum is large and variable: measured live, the
+     two "equal halves" were 813.273px and 769.727px, the left having taken 43px
+     from the right simply by containing wider tables.
+
+     The shift follows from the variability. Every time a live value gains a
+     digit — "2.9 GiB models" becoming "107.5 GiB models" — the content's
+     minimum width changes, the track resizes, and BOTH columns move
+     horizontally. That fires on every frame that changes a number's length,
+     which on a monitoring dashboard is continuous.
+
+     A 0 minimum makes the tracks exactly equal and immovable. Content that
+     genuinely does not fit then scrolls inside its own `.scroll` box, which is
+     what that box is for. */
   @media (min-width: 1100px) {
     .cols {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 

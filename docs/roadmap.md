@@ -1333,6 +1333,43 @@ Half/full arrangements migrate on first load — full stays full, halves
 alternate into the two columns in their existing order. Keyboard: up/down
 within a column, left/right between zones.
 
+**Layout shift — fixed 2026-08-17, and the cause was `1fr`.**
+
+Measured before: **CLS 0.1488 across 91 entries**. Every shift was HORIZONTAL,
+which is the clue — a dashboard that jitters sideways is not being pushed by
+content arriving, it is being resized by it.
+
+`1fr` is shorthand for `minmax(auto, 1fr)`, and that `auto` minimum means a
+track refuses to be narrower than its content's minimum. These tracks hold wide
+data tables, so the minimum is both large and VARIABLE. Measured live, the two
+"equal halves" were **813.273px and 769.727px** — the left had taken 43px from
+the right purely by containing wider tables. Every time a live value gained a
+digit ("2.9 GiB models" becoming "107.5 GiB models"), the content minimum
+changed, the track resized, and both columns moved.
+
+Capping the track minimum at 0 — `minmax(0, 1fr)` — makes the tracks exactly
+equal and immovable; content that genuinely does not fit scrolls inside its own
+`.scroll` box, which is what that box is for. Applied to `.cols`, `.zone`,
+`.sections`, both node grids and the timeline's row template.
+
+Two things worth knowing for next time:
+
+- **The propagation is blocked at EITHER end and both were applied.** Tested
+  directly: with `.cols` on a bare `1fr` and `.zone` on its implicit `auto`
+  track, a 1400px-wide table blows both tracks out to 1402px and the whole page
+  scrolls sideways. Fixing either one alone holds it at 791.5px. Both are set
+  because a section nested differently in future would reintroduce the path.
+- **`overflow-x: auto` on the inner `.scroll` box did NOT stop it.** That is the
+  intuition to discard — the table's width still reached the grid tracks, so
+  the fix has to be on the track, not on the scroller.
+
+After: **CLS 0**, confirmed from `performance.getEntriesByType('layout-shift')`
+being empty rather than only from an observer.
+
+A grid with no explicit `grid-template-columns` is the same bug wearing a
+disguise: the implicit track is `auto`, which sizes to content. `.sections` and
+`.zone` now state `minmax(0, 1fr)` rather than leaving it implicit.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

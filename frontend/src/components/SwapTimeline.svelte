@@ -252,7 +252,7 @@
 
   li {
     display: grid;
-    grid-template-columns: 72px 10px 1fr auto;
+    grid-template-columns: 72px 10px minmax(0, 1fr) auto;
     align-items: baseline;
     gap: 10px;
     padding: 5px 0;
@@ -323,7 +323,7 @@
 
   @media (max-width: 640px) {
     li {
-      grid-template-columns: 62px 10px 1fr;
+      grid-template-columns: 62px 10px minmax(0, 1fr);
     }
     .where {
       grid-column: 3;
