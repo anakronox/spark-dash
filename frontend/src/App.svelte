@@ -17,6 +17,7 @@
   import { Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { AlertFeed } from './lib/alerts.svelte';
+  import { fetchWithTimeout } from './lib/request';
   import { gib, num } from './lib/format';
   import type { NodeSnapshot, ProcessInfo } from './lib/types';
 
@@ -160,6 +161,52 @@
       ]),
   );
 
+  /* G3: configured but long gone.
+   *
+   * Takes over exactly where the alert gives up. InferenceTargetScrapeFailing
+   * resolves after 24h on the assumption the endpoint was retired — reasonable,
+   * since an alert that cannot be cleared is one you learn to ignore — but
+   * "stops nagging" must not become "is forgotten". At 24h this becomes the
+   * record instead.
+   *
+   * Polled slowly: this changes on the scale of someone tearing down a stack,
+   * not on the scale of a scrape. */
+  let absent = $state<{ job: string; instance: string; node: string | null; down_for_s: number | null }[]>([]);
+  let retiring = $state<string | null>(null);
+
+  async function loadAbsent() {
+    try {
+      const resp = await fetchWithTimeout('/api/targets/absent');
+      if (!resp.ok) return;
+      absent = (await resp.json()).targets ?? [];
+    } catch {
+      // Leave the last known list. A blip here must not make a dead target
+      // look resolved.
+    }
+  }
+
+  async function retire(t: { job: string; instance: string }) {
+    retiring = t.instance;
+    try {
+      const resp = await fetchWithTimeout(
+        `/api/targets/absent?job=${encodeURIComponent(t.job)}&instance=${encodeURIComponent(t.instance)}`,
+        { method: 'DELETE' },
+      );
+      if (resp.ok) absent = absent.filter((a) => a.instance !== t.instance);
+    } finally {
+      retiring = null;
+    }
+  }
+
+  onMount(() => {
+    loadAbsent();
+    const timer = setInterval(loadAbsent, 5 * 60_000);
+    return () => clearInterval(timer);
+  });
+
+  const downFor = (s: number | null) =>
+    s === null ? 'never seen up' : s >= 172800 ? `${Math.round(s / 86400)}d` : `${Math.round(s / 3600)}h`;
+
   const cluster = $derived.by(() => {
     let tokensPerSec = 0;
     let up = 0;
@@ -264,6 +311,28 @@
         <span class="dim">on {node}</span>
       {/each}
       <span class="dim">— no throughput, queue depth or cache metrics for these.</span>
+    </p>
+  {/if}
+
+  {#if absent.length}
+    <!-- Named as what it IS and what it is not: a target down this long is
+         either broken or retired, and nothing observable tells them apart.
+         Saying so is more useful than picking one and being wrong. -->
+    <p class="notice" data-tone="warning">
+      Configured but absent:
+      {#each absent as t (t.instance)}
+        <span class="num">{t.instance}</span>
+        <span class="dim">{t.job}{t.node ? ` on ${t.node}` : ''} · down {downFor(t.down_for_s)}</span>
+        {#if t.job === 'vllm'}
+          <!-- Removal only, and only for inference. Hardware still exists, so
+               being able to delete an environmental target would let someone
+               permanently blind the dashboard to a real failure. -->
+          <button class="retire" disabled={retiring === t.instance} onclick={() => retire(t)}>
+            {retiring === t.instance ? 'removing…' : 'retire'}
+          </button>
+        {/if}
+      {/each}
+      <span class="dim">— either broken or deliberately gone; nothing here can tell which.</span>
     </p>
   {/if}
 
@@ -705,6 +774,27 @@
     .nodes {
       grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
     }
+  }
+
+  .retire {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 1px 7px;
+    margin-left: 4px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+
+  .retire:hover:not(:disabled) {
+    color: var(--ink);
+    border-color: var(--ink-muted);
+  }
+
+  .retire:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .notice {

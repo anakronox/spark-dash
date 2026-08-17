@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import psutil
 from spark_dash_common.health import assess
 from spark_dash_common.models import (
+    ConfigStatus,
     LlamaRouterMetrics,
     ModelState,
     NodeSnapshot,
@@ -247,6 +248,21 @@ class SnapshotBuilder:
         self._vllm = VllmCollector(runtimes.vllm)
         self._applied = runtimes
 
+    def _config_status(self) -> ConfigStatus:
+        """Where this node's runtimes came from, as wall-clock time.
+
+        RemoteConfig works in monotonic time — correct for scheduling, since it
+        cannot jump when the clock is stepped, and useless for display. The
+        offset is computed here rather than stored so a clock correction shows
+        up immediately instead of being baked in at fetch time.
+        """
+        source, last_ok = self._remote.status(time.monotonic())
+        fetched_at = None
+        if last_ok is not None:
+            age_s = max(0.0, time.monotonic() - last_ok)
+            fetched_at = datetime.now(UTC) - timedelta(seconds=age_s)
+        return ConfigStatus(source=source, fetched_at=fetched_at)
+
     def _temp_bands(self) -> tuple[TempThresholds, TempThresholds]:
         """GPU and CPU temperature bands, in precedence order.
 
@@ -350,6 +366,7 @@ class SnapshotBuilder:
             health=health,
             health_reasons=reasons,
             unmonitored_runtimes=unmonitored,
+            config=self._config_status(),
             temp_bands=TempBands(
                 gpu_warning_c=gpu_bands.warning_c,
                 gpu_critical_c=gpu_bands.critical_c,

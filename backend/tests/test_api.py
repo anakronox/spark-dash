@@ -346,6 +346,38 @@ def test_unreachable_endpoints_ignores_a_node_that_is_down():
     assert _unreachable_endpoints(snap) == []
 
 
+def test_authority_ignores_scheme_path_and_trailing_slash():
+    """Prometheus names an instance host:port; the config holds a URL.
+    Comparing whole strings would make retire a silent no-op — the button
+    appears to work and the target comes straight back."""
+    from spark_dash_backend.app import _authority
+
+    assert _authority("http://192.168.50.61:8120/metrics") == "192.168.50.61:8120"
+    assert _authority("http://192.168.50.61:8120/") == "192.168.50.61:8120"
+    assert _authority("192.168.50.61:8120") == "192.168.50.61:8120"
+
+
+def test_retire_refuses_infrastructure_targets(client):
+    """The line is environmental vs scraped. Hardware still exists, so being
+    able to delete those alerts would let someone permanently blind the
+    dashboard to a real failure."""
+    resp = client.delete(
+        "/api/targets/absent",
+        params={"job": "node-exporter", "instance": "192.168.50.61:9100"},
+    )
+    assert resp.status_code == 400
+    assert "only inference targets" in resp.json()["detail"]
+
+
+def test_retire_reports_not_found_rather_than_silently_succeeding(client):
+    """A retire that matched nothing must say so. Reporting success would leave
+    the reader believing a dead target was gone when it is still configured."""
+    resp = client.delete(
+        "/api/targets/absent", params={"job": "vllm", "instance": "10.0.0.1:9999"}
+    )
+    assert resp.status_code == 404
+
+
 def test_health_flags_the_down_node(client):
     """The fixture has gx10-2 down, so 1-of-2 reachable must read as degraded.
     Rounding a partial outage up to "ok" is how a dead node goes unnoticed."""

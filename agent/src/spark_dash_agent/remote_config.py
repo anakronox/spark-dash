@@ -82,12 +82,35 @@ class RemoteConfig:
         #: Distinct from having runtimes: a configured node may legitimately
         #: serve nothing, and that must override env rather than fall back.
         self._configured = False
+        #: When the next refresh is due. Advanced on FAILURE too, deliberately,
+        #: so a dead backend is retried on the TTL rather than on every tick.
         self._fetched_at = 0.0
+        #: When central last actually ANSWERED, or None. Separate from the
+        #: field above because that one moves on failure — reporting it as the
+        #: fetch time would tell a reader their edit had arrived when the last
+        #: thing that happened was a timeout. This is what F6 surfaces.
+        self._last_ok: float | None = None
         self._logged_absent = False
 
     @property
     def enabled(self) -> bool:
         return bool(self._url and self._node_id)
+
+    def status(self, now: float) -> tuple[str, float | None]:
+        """Where this node's runtimes came from, and when central last answered.
+
+        Answers "did my edit reach spark3?" without an SSH session. The source
+        matters as much as the timestamp: a node falling back to `env` is not
+        being managed centrally at all, which is a different problem from one
+        whose last fetch is stale.
+        """
+        if not self.enabled:
+            return "env", None
+        if self._last_ok is None:
+            # Asked and never answered — still env, but for a reason worth
+            # distinguishing from "never configured to ask".
+            return "unreachable", None
+        return ("central" if self._configured else "env"), self._last_ok
 
     def current(self, now: float) -> RuntimeConfig | None:
         """This node's central runtimes, or None if central has no opinion.
@@ -118,6 +141,7 @@ class RemoteConfig:
             return
 
         self._fetched_at = now
+        self._last_ok = now
         configured = bool(payload.get("configured"))
 
         if not configured:

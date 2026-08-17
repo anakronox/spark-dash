@@ -326,3 +326,72 @@ nodes:
             body = client.get("/api/cluster/config").json()
         assert body["source"] == "cluster.yml"
         assert body["path"].endswith("cluster.yml")
+
+
+class TestCopyYamlRoundTrip:
+    """The block the dashboard offers for pasting must actually load.
+
+    F9's generator emits YAML by hand in the frontend, where nothing type-checks
+    it against the loader. Its first version put `llama_routers:` and `vllm:` at
+    node level instead of under `runtimes:`, and used `- port: N` for vLLM where
+    the schema wants a bare number. That parses as valid YAML and loads as a
+    node with NO runtimes — so pasting it would look like it worked and then
+    silently collect nothing, which is the exact failure this area exists to
+    prevent.
+
+    This pins the shape the generator has to produce. If the schema moves, this
+    fails and the generator gets fixed with it.
+    """
+
+    def test_generated_block_loads_with_its_runtimes_intact(self, tmp_path):
+        # Byte-for-byte what Settings.svelte's yamlFor() emits.
+        generated = "\n".join(
+            [
+                "- id: spark2",
+                "  host: 192.168.50.62",
+                "  cluster: alpha",
+                "  agent_port: 9501",
+                "  runtimes:",
+                "    llama_routers:",
+                "      - port: 8001",
+                "        scrape_metrics: true",
+                "      - port: 8108",
+                "    vllm:",
+                "      - 8120",
+            ]
+        )
+        path = tmp_path / "cluster.yml"
+        path.write_text(f"nodes:\n{generated}\n")
+
+        nodes = load_cluster(path)
+        assert len(nodes) == 1
+        node = nodes[0]
+        assert node.node_id == "spark2"
+        assert node.cluster == "alpha"
+        assert node.agent_port == 9501
+        # The point of the test: the runtimes survived the round trip.
+        # RouterConfig holds the RESOLVED url, so the ports are asserted
+        # through it rather than as a field.
+        assert [r.url for r in node.runtimes.llama_routers] == [
+            "http://192.168.50.62:8001",
+            "http://192.168.50.62:8108",
+        ]
+        assert [r.scrape_metrics for r in node.runtimes.llama_routers] == [True, False]
+        assert len(node.runtimes.vllm) == 1
+        assert "8120" in node.runtimes.vllm[0]
+
+    def test_the_shape_that_used_to_be_generated_loads_with_nothing(self, tmp_path):
+        """Proof the old output was silently wrong rather than an error."""
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n"
+            "- id: spark2\n"
+            "  host: 192.168.50.62\n"
+            "  llama_routers:\n"
+            "    - port: 8001\n"
+            "  vllm:\n"
+            "    - port: 8120\n"
+        )
+        node = load_cluster(path)[0]
+        assert node.runtimes.llama_routers == []
+        assert node.runtimes.vllm == []

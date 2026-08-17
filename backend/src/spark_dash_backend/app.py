@@ -13,7 +13,9 @@ mixing them would make the live view as laggy as the scrape interval.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 import time
+from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
@@ -38,8 +40,11 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory
 from spark_dash_backend.poller import LivePoller
 from spark_dash_backend.prometheus import (
+    ABSENT_AFTER_S,
     HISTORY_QUERIES,
     NODE_FILTERABLE,
+    TARGET_LAST_UP,
+    TARGETS_DOWN,
     PrometheusClient,
     PrometheusError,
     rate_window,
@@ -330,6 +335,134 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ],
         }
 
+    @app.get("/api/targets/absent")
+    async def api_absent_targets() -> dict:
+        """Scrape targets that are configured but have been gone a long time.
+
+        THE INVERSE OF F8. That reports a server running with nothing collecting
+        it; this reports a collector pointed at a server that is not there.
+
+        Deliberately takes over exactly where the alert gives up.
+        `InferenceTargetScrapeFailing` resolves after 24h on the assumption the
+        endpoint was retired — a reasonable default, since an alert that cannot
+        be cleared is one you learn to ignore. But "stops nagging" must not mean
+        "is forgotten", so at 24h this becomes the record instead.
+
+        It reports what it CANNOT tell, which is the honest answer: a target
+        down this long is either broken or retired, and nothing observable
+        distinguishes them. Both are a container that is not there.
+        """
+        try:
+            down = await prom.query(TARGETS_DOWN)
+            last_up = await prom.query(TARGET_LAST_UP)
+        except PrometheusError as exc:
+            raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
+
+        def key(labels: dict) -> tuple[str, str]:
+            return labels.get("job", ""), labels.get("instance", "")
+
+        ages = {
+            key(s.labels): s.points[-1][1] for s in last_up if s.points
+        }
+
+        out = []
+        for series in down:
+            job, instance = key(series.labels)
+            # Absent from `ages` means never up in the window — the typo'd port
+            # that has never once worked, which is the case a PromQL join would
+            # have silently dropped.
+            age_s = ages.get((job, instance))
+            if age_s is not None and age_s < ABSENT_AFTER_S:
+                continue
+            out.append(
+                {
+                    "job": job,
+                    "instance": instance,
+                    "node": series.labels.get("node"),
+                    "down_for_s": age_s,
+                }
+            )
+        out.sort(key=lambda t: (t["job"], t["instance"]))
+        return {"targets": out, "absent_after_s": ABSENT_AFTER_S}
+
+    @app.delete("/api/targets/absent")
+    async def api_retire_target(job: str, instance: str) -> dict:
+        """Remove a retired inference endpoint from cluster.yml.
+
+        REMOVAL ONLY, and only for INFERENCE endpoints. The line is
+        environmental vs. scraped and it is not arbitrary: a GPU temperature or
+        a memory-pressure alert has no "retire" concept — the hardware still
+        exists, and being able to delete those would let someone permanently
+        blind the dashboard to a real failure. An inference endpoint is
+        configuration, so it can genuinely cease to exist.
+
+        Silencing is the wrong tool for something never coming back: it hides
+        the alert while leaving the dead target in config, so scrapes keep
+        failing and the alert returns the moment the silence expires. What is
+        wanted is for the target to stop existing.
+
+        Writes the same file the settings panel writes, through the same
+        validate-and-replace path, so this cannot produce a config the editor
+        would have rejected.
+        """
+        if job != "vllm":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"only inference targets can be retired, not {job!r}. "
+                    "Infrastructure targets describe hardware that still "
+                    "exists; removing them would hide a real failure."
+                ),
+            )
+
+        try:
+            cluster = load_cluster(settings.cluster_config)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=500, detail=f"cluster config: {exc}") from exc
+
+        # Rebuilt, not mutated. ClusterNode and NodeRuntimes are frozen
+        # dataclasses — deliberately, since the config is a value — so a stray
+        # in-place edit cannot half-apply and leave the loaded cluster
+        # disagreeing with the file.
+        #
+        # `vllm` is a list of resolved URL strings; `llama_routers` holds
+        # RouterConfig objects. Assuming both were the same shape is what made
+        # the first attempt at this a 500.
+        removed: list[str] = []
+        rebuilt = []
+        for node in cluster:
+            keep = []
+            for url in node.runtimes.vllm:
+                # `instance` is host:port as Prometheus knows it; the config
+                # holds a URL. Compare on the authority so a trailing /metrics
+                # or a scheme difference cannot cause a silent no-op — the
+                # failure being a button that looks like it worked.
+                if _authority(url) == instance:
+                    removed.append(f"{node.node_id}:{url}")
+                else:
+                    keep.append(url)
+            rebuilt.append(
+                replace(node, runtimes=replace(node.runtimes, vllm=keep))
+                if len(keep) != len(node.runtimes.vllm)
+                else node
+            )
+        cluster = rebuilt
+
+        if not removed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no configured vllm endpoint matches {instance!r}",
+            )
+
+        try:
+            write_cluster(settings.cluster_config, cluster)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=f"cluster config: {exc}") from exc
+
+        inventory.invalidate()
+        log.info("retired inference target %s (%s)", instance, ", ".join(removed))
+        return {"retired": removed}
+
     @app.get("/api/models/timeline")
     async def api_model_timeline(
         minutes: int = Query(360, ge=5, le=60 * 24 * 7),
@@ -381,6 +514,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=500, detail=f"cluster config: {exc}") from exc
 
         live = {n.node_id for n in inventory.nodes()}
+
+        # WHETHER THE EDIT LANDED. The agent reports where its runtimes came
+        # from and when central last answered, so this endpoint can say "spark3
+        # is still on env" or "spark3 last fetched 4 minutes ago" instead of
+        # leaving the reader to infer it from whether metrics changed — which
+        # was an SSH session every time.
+        snap = poller.latest
+        fetched = {
+            n.node_id: {
+                "config_source": n.config.source,
+                "config_fetched_at": (
+                    n.config.fetched_at.isoformat() if n.config.fetched_at else None
+                ),
+            }
+            for n in (snap.nodes if snap else [])
+        }
+
         return {
             "source": inventory.source,
             "path": str(settings.cluster_config),
@@ -392,6 +542,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "agent_port": c.agent_port,
                     "node_exporter_port": c.node_exporter_port,
                     "in_inventory": c.node_id in live,
+                    **fetched.get(c.node_id, {"config_source": None, "config_fetched_at": None}),
                     # Ports alongside the resolved urls. The UI edits ports —
                     # that is what keeps a write from naming an arbitrary URL —
                     # so handing it the port directly saves it parsing one back
@@ -712,6 +863,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _mount_frontend(app, settings)
     return app
+
+
+def _authority(url: str) -> str:
+    """host:port from a URL, which is how Prometheus names an instance.
+
+    Compared on the authority rather than the whole string so a trailing
+    `/metrics`, a scheme difference or a stray slash cannot turn a retire into
+    a silent no-op — the failure mode being that the button appears to work and
+    the target comes straight back.
+    """
+    parsed = urlparse(url if "//" in url else f"//{url}")
+    return parsed.netloc or url
 
 
 def _unreachable_endpoints(snapshot) -> list[str]:

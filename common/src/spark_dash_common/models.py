@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -393,6 +394,36 @@ class TempBands(BaseModel):
     cpu_source: str = "fallback"
 
 
+class ConfigStatus(BaseModel):
+    """Where a node's runtime config came from, and when it last arrived.
+
+    Answers "did my edit reach spark3?" without an SSH session — the question
+    that made every central-config change a two-step guess.
+
+    The SOURCE matters as much as the timestamp. A node on `env` is not being
+    managed centrally at all, which is a different fault from one whose last
+    successful fetch is an hour old, and both are different from a node that
+    has been asking and never got an answer.
+    """
+
+    source: Literal["central", "env", "unreachable"] = Field(
+        default="env",
+        description="central = cluster.yml on the monitoring VM is in charge. "
+        "env = this node is falling back to its own environment variables, "
+        "either because it is absent from cluster.yml or because it was never "
+        "pointed at a backend. unreachable = it is asking and getting no "
+        "answer, so it is running on env by accident rather than by design.",
+    )
+
+    fetched_at: datetime | None = Field(
+        default=None,
+        description="When central last ANSWERED — not when it was last asked. "
+        "The agent retries on a TTL whether or not the last attempt worked, so "
+        "reporting the attempt would tell a reader their edit had arrived when "
+        "the last thing that happened was a timeout.",
+    )
+
+
 class NodeSnapshot(BaseModel):
     """Everything the dashboard shows for one node at one instant."""
 
@@ -456,6 +487,14 @@ class NodeSnapshot(BaseModel):
     network: list[NetworkInterface] = Field(default_factory=list)
     rdma: list[RdmaPort] = Field(default_factory=list)
     runtimes: Runtimes = Field(default_factory=Runtimes)
+
+    config: ConfigStatus = Field(
+        default_factory=ConfigStatus,
+        description="Where this node's runtimes came from and when. Lets the "
+        "dashboard answer whether a central edit has actually reached the "
+        "node, rather than leaving it to be inferred from whether the metrics "
+        "changed.",
+    )
 
     errors: dict[str, str] = Field(
         default_factory=dict,

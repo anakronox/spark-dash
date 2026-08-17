@@ -500,69 +500,45 @@ cannot clear is one you learn to ignore**, which is worse than no alert.
   OAuth terminates at the tunnel edge. Closing that needs the
   `Cf-Access-Authenticated-User-Email` header, which is the same work as the
   Phase 3 JWT item.
-- [ ] **G3.** Detect *configured but absent*: the inverse of F8. A target that
-  has been down long enough is either broken or retired, and the dashboard
-  should say which it cannot tell.
-- [x] **G0. Inference alerts age out after 24h** (2026-08-16). Brian's
-  suggestion, and it turned out to solve most of what G4 was for with **no UI
-  write at all** — it is a rule change, not a feature.
+- [x] **G3. Shipped 2026-08-18.** `/api/targets/absent` and a dashboard notice
+  for targets configured but long gone.
 
-  `PrometheusTargetScrapeFailing` is split in two along the same
-  environmental/scraped line:
+  **It takes over exactly where the alert gives up.**
+  `InferenceTargetScrapeFailing` resolves after 24h on the assumption the
+  endpoint was retired, which is right — an alert that cannot be cleared is one
+  you learn to ignore. But "stops nagging" must not become "is forgotten", so
+  the threshold here is the same 24h, deliberately.
 
-  - **Infrastructure** (`job!~"vllm"`) never ages out. The hardware still
-    exists, so a target that stays down is a fault however long it lasts.
-  - **Inference** (`job="vllm"`) resolves after 24h of continuous failure,
-    via `max_over_time(up[24h]) == 1` — the same idiom `NetworkLinkDown` uses
-    to stop never-cabled ports alerting forever.
+  It reports what it CANNOT tell, which is the honest answer: a target down
+  this long is either broken or deliberately gone, and nothing observable
+  distinguishes them.
 
-  **The tradeoff is real and was accepted deliberately:** a genuine crash ages
-  out too. Nothing can distinguish "torn down on purpose" from "died and nobody
-  noticed" — both are a container that is not there. What keeps it from being
-  silent is that **the fact outlives the alert**: G3 should keep reporting a
-  configured-but-absent target, so it stops nagging without being forgotten.
-  That makes G3 a dependency of this being safe, not an optional extra.
+  **`timestamp()` must go INSIDE the subquery.** Applied outside, over
+  `last_over_time`, it reports the time of the EVALUATION rather than of the
+  sample — every target came back "last up 0 seconds ago", including one that
+  was genuinely 32.5h down. The join is done in Python rather than PromQL
+  because a target that has NEVER been up yields no series at all, and a PromQL
+  join would silently drop exactly the typo'd port this exists to surface.
 
-- [ ] **G4.** **Retire a scrape target from the UI — removal only.**
-  Still wanted for the case where you want the target *gone* rather than
-  quiet — an aged-out alert leaves a dead entry in config that keeps failing
-  scrapes and re-fires if the endpoint briefly returns. But G0 removes the
-  urgency.
+- [x] **G4. Shipped 2026-08-18.** `DELETE /api/targets/absent`, offered as a
+  "retire" button on the notice above, writing through the same
+  validate-and-replace path the settings editor uses.
 
-  Silencing is the wrong tool for something never coming back. It hides the
-  alert while leaving the dead target in config, so scrapes keep failing and
-  the alert returns the moment the silence expires. What is wanted is for the
-  target to stop existing.
+  **Removal only, and inference only.** The line is environmental vs. scraped
+  and it is not arbitrary: a GPU temperature or memory-pressure alert has no
+  "retire" concept — the hardware still exists, and being able to delete those
+  would let someone permanently blind the dashboard to a real failure. The
+  endpoint refuses any job but `vllm` and says why.
 
-  **The line is environmental vs. scraped, and it is not arbitrary.** A GPU
-  temperature or memory-pressure alert has no "retire" concept — the hardware
-  still exists, and being able to delete those alerts would let someone
-  permanently blind the dashboard to a real failure. An inference endpoint is
-  configuration: it can genuinely be decommissioned. Only scrape targets are
-  removable; environmental rules never are.
+  Matching is on the AUTHORITY, not the whole URL: Prometheus names an instance
+  `host:port` while the config holds a URL, so comparing strings would make
+  retire a silent no-op — the button appears to work and the target comes
+  straight back.
 
-  **Removal is safe where add and edit are not**, which is the asymmetry that
-  makes this workable at all. The objection to config writes was
-  request-forgery — adding a URL makes the agent fetch it. Removal cannot
-  introduce a fetch destination or repoint anything; its worst case is that
-  monitoring stops for something, the same class as a silence and no worse.
-  **So: remove from the UI, add and edit in config.**
-
-  **Blocked on where the config lives.** `targets/vllm.yml` is tracked in git,
-  so a UI that removes an entry either edits a tracked file — recreating the
-  repo-versus-live drift that cost most of 2026-08-16 — or needs git
-  credentials in the backend. Neither is acceptable.
-
-  The fix is the pattern already used for `.env`: **live config on the host,
-  template in git.** `cluster.yml` (F1) should live gitignored,
-  gitignored and backend-owned, with an example committed. The backend then
-  renders *all* scrape targets from it — `vllm.yml` becomes generated like
-  `agents.yml` and `node-exporters.yml` already are — and UI removal is a
-  normal write to a file the backend owns, with no git involved.
-
-  **So G4 depends on F1**, and F1 should place `cluster.yml` somewhere
-  gitignored rather than git-tracked, for exactly this reason. It lives in
-  `central/cluster/`.
+  Rebuilt rather than mutated, because `ClusterNode` and `NodeRuntimes` are
+  frozen dataclasses. Two mistakes on the way to that: `node.vllm` does not
+  exist (it is `node.runtimes.vllm`), and `llama_routers` holds objects while
+  `vllm` holds plain URL strings — assuming both were the same shape was a 500.
 
 ### F — One server-side cluster config
 
@@ -662,9 +638,9 @@ nodes:
   the moment it restarts. A node listed **with no runtimes** still overrides
   env — that is an opinion, and it is how removing a router centrally takes
   effect on a node with a stale `.env`.
-- [ ] **F5.** Validation: a typo'd port in a central file silently breaks one
-  node's model reporting. `/health` should flag nodes whose config names
-  endpoints they cannot reach.
+- [x] **F5. Shipped 2026-08-18.** `/health` names nodes whose configured
+  endpoints did not answer, read off the snapshot the agent already sends —
+  it is the thing that tried and failed, so it already knew.
 
   A neighbouring case worth folding in: an env var that is now ignored. The
   compose file no longer requires `SPARK_NODES`, and `cluster.yml` wins
@@ -706,12 +682,36 @@ What stays ruled out here is specifically L3: writing cluster membership and
 runtime endpoints through the tunnel-published surface, which is where the
 request-forgery argument above actually bites.
 
-- [ ] **F6.** Cluster panel: each node, its cluster, its configured runtimes, and
-  **whether the agent has actually fetched that config, with a timestamp**.
-  Answers "did my edit reach spark3?", which today needs an SSH session.
-- [ ] **F7.** Surface F5's reachability check per endpoint, so a typo'd port
-  reads as `spark2 · llama_routers · :8002 — no response` instead of failing
-  silently.
+- [x] **F6. Shipped 2026-08-18.** The settings cluster panel tags each node
+  with where its runtimes came from and when central last answered it.
+
+  **Three states, not two.** `central` (managed, with an age), `env` (absent
+  from cluster.yml, so on env by DESIGN) and `unreachable` (asking, getting
+  silence, so on env by ACCIDENT). The last two look identical from the
+  outside and want completely different responses.
+
+  The timestamp is the last SUCCESS, never the last attempt. `RemoteConfig`
+  advances its retry clock on failure too — correct, so a dead backend is
+  retried on the TTL rather than every tick — and reporting THAT would have
+  told the reader their edit had landed when the last thing that happened was
+  a timeout.
+- [x] **F7. Shipped 2026-08-18.** A dashboard notice beside the unmonitored
+  one, and `sparkdash_endpoint_reachable{node,runtime,endpoint}` so the gap is
+  alertable and historical rather than only visible while someone is looking.
+
+  **The agent already knew and nobody was listening.** `LlamaRouterMetrics`
+  has carried `reachable` for ages and nothing consumed it — not the backend,
+  not the UI. vLLM was worse: an unreachable instance returned None and was
+  dropped from the list, so a typo'd vLLM port was indistinguishable from a
+  node that runs no vLLM.
+
+  1 = answering, 0 = configured and silent, and the series exists for healthy
+  endpoints too — otherwise `absent()` could not tell "not configured" from
+  "not answering".
+
+  Down nodes are excluded from both this and F5: every endpoint on a down node
+  is unreachable, and listing each one buries the single fact that matters
+  under a list of its consequences.
 - [x] **F8.** **Gap detection: inference servers observed but not configured.**
   **Done 2026-08-16, and it needed none of F1–F5** — the agent's snapshot
   already carries both halves, so this works against the current `.env` setup
@@ -734,9 +734,26 @@ request-forgery argument above actually bites.
   configured endpoints of that type. That catches the completely-unmonitored
   case, which is the one that matters, and avoids false positives from a
   single instance spawning several engine processes.
-- [ ] **F9.** Copy-YAML affordance for an unconfigured server: generate the
-  block to paste into `cluster.yml`. Most of the convenience of editing with
-  no write path.
+- [x] **F9. Shipped 2026-08-18.** A "copy yaml" control per node in the
+  settings cluster panel, generating the block to paste into `cluster.yml`.
+  Most of the convenience of editing with no write path.
+
+  **The generator was wrong and looked right.** Its first version emitted
+  `llama_routers:` and `vllm:` at node level rather than under `runtimes:`, and
+  `- port: N` for vLLM where the schema wants a bare number. That is valid YAML
+  which loads as a node with NO runtimes — so pasting it would have appeared to
+  work and then silently collected nothing, produced by the very tool meant to
+  prevent that. Caught by round-tripping the output through the real loader,
+  which is now a test that fails if the schema and the generator drift apart.
+
+  **The clipboard is the shortcut, not the feature.** `navigator.clipboard`
+  needs a SECURE CONTEXT and this dashboard is served over plain http on a LAN
+  address, so the API is not merely permission-gated there — it is undefined.
+  A button whose only behaviour was to copy would have worked perfectly on
+  localhost and done nothing at all on the real deployment. Verified:
+  `isSecureContext` is true on 127.0.0.1 and false on
+  `http://192.168.50.156:8080`. The block is shown and pre-selected, which
+  always works; the copy is attempted quietly alongside.
 
 If editing is ever wanted, the honest form is to split the surface — writes
 refused for requests arriving through the tunnel — and have the backend commit

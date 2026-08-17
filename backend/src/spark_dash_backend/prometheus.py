@@ -184,6 +184,33 @@ NODE_FILTERABLE: frozenset[str] = frozenset(
 )
 
 
+#: How long a target must be down before the dashboard treats it as
+#: "configured but absent" rather than "currently failing".
+#:
+#: 24h to match InferenceTargetScrapeFailing's age-out exactly. That alert
+#: stops firing at 24h on the assumption the endpoint was retired; this is the
+#: thing that must take over at precisely that moment, or the fact would stop
+#: nagging AND be forgotten — which is the failure the age-out was allowed on
+#: the promise of avoiding.
+ABSENT_AFTER_S = 24 * 3600
+
+#: Currently failing to scrape.
+TARGETS_DOWN = "up == 0"
+
+#: Seconds since each target was last seen up.
+#:
+#: `timestamp()` goes INSIDE the subquery deliberately. Applied outside — over
+#: `last_over_time` — it reports the time of the EVALUATION rather than of the
+#: sample, so every target came back as "last up 0 seconds ago" including ones
+#: that had been down for days. Measured, not assumed: it read 0.0h for a
+#: target that was genuinely 32.5h down.
+#:
+#: A target that has never been up in the window yields no series at all, which
+#: is why the join happens in Python — a never-up target is exactly the typo'd
+#: port this feature exists to surface, and a PromQL join would drop it.
+TARGET_LAST_UP = "time() - max_over_time(timestamp(up == 1)[30d:10m])"
+
+
 def rate_window(step: str) -> str:
     """A rate window matched to the step the chart is drawn at.
 

@@ -132,3 +132,68 @@ class TestResilience:
 
         rc.current(now=1061.0)
         assert calls["n"] == 2, "and must refresh once the TTL has passed"
+
+
+def _install(monkeypatch, handler):
+    """Same shape as the `patched` fixture, but with a caller-supplied handler
+    so a test can change the backend's behaviour mid-run."""
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+
+    def factory(*args, **kwargs):
+        kwargs.setdefault("transport", transport)
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", factory)
+
+
+def test_status_reports_the_last_SUCCESS_not_the_last_attempt(monkeypatch):
+    """`_fetched_at` advances on failure too, so a dead backend is retried on
+    the TTL rather than on every tick. Reporting THAT as the fetch time would
+    tell a reader their edit had arrived when the last thing that happened was
+    a timeout."""
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(200, json=CONFIGURED)
+        raise httpx.ConnectError("backend down")
+
+    _install(monkeypatch, handler)
+    rc = RemoteConfig("http://backend", "spark2", ttl_s=0.0)
+
+    rc.current(100.0)
+    source, first_ok = rc.status(100.0)
+    assert source == "central"
+    assert first_ok == 100.0
+
+    rc.current(200.0)
+    _, after_failure = rc.status(200.0)
+    assert after_failure == first_ok, "a failed fetch moved the 'last answered' time"
+
+
+def test_status_distinguishes_never_answered_from_never_asking(monkeypatch):
+    """A node asking and getting silence runs on env by ACCIDENT. A node never
+    pointed at a backend runs on env by DESIGN. Different faults, and only one
+    of them wants investigating."""
+
+    def dead(request):
+        raise httpx.ConnectError("no route")
+
+    _install(monkeypatch, dead)
+    rc = RemoteConfig("http://backend", "spark2", ttl_s=0.0)
+    rc.current(10.0)
+    assert rc.status(10.0) == ("unreachable", None)
+
+    assert RemoteConfig("", "", ttl_s=0.0).status(0.0) == ("env", None)
+
+
+def test_status_says_env_when_the_node_is_absent_from_cluster_yml(monkeypatch, patched):
+    """Central answered, and its answer was "I don't manage this node"."""
+    patched(ABSENT)
+    rc = RemoteConfig("http://backend", "newcomer", ttl_s=0.0)
+    rc.current(50.0)
+    source, at = rc.status(50.0)
+    assert source == "env"
+    assert at == 50.0
