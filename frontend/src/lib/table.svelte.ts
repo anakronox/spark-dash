@@ -20,6 +20,35 @@
 
 export type SortDir = 'asc' | 'desc';
 
+/** What a header cell needs from a table view in order to sort it.
+ *
+ * Narrower than TableView on purpose: it drops the row type, so SortButton can
+ * be handed the view for a table of processes or of RDMA ports without being
+ * made generic over something it never touches. TableView<T> satisfies it
+ * structurally for every T.
+ */
+export interface SortControl {
+  readonly sortKey: string | null;
+  readonly dir: SortDir;
+  toggle(key: string): void;
+  ariaSort(key: string): 'ascending' | 'descending' | 'none';
+}
+
+/** A sortable column: the id TableView knows it by, and how it's headed.
+ *
+ * Declaring both together is what stops a header sorting by the column beside
+ * it — a failure that reads as the DATA being wrong rather than the header, so
+ * it is worth making structurally impossible rather than merely testing for.
+ */
+export interface ColumnDef {
+  key: string;
+  label: string;
+  /** Numeric column: right-aligned and shrunk to its content. */
+  right?: boolean;
+  /** Extra class for the header cell, where a column needs its own width. */
+  cls?: string;
+}
+
 export interface ColumnSort<T> {
   /** Stable id, also what `aria-sort` is keyed on. */
   key: string;

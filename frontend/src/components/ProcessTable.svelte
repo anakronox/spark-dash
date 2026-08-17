@@ -11,6 +11,9 @@
    * process, which is a deliberate non-goal, not an oversight.
    */
   import { gib, ratioPct } from '../lib/format';
+  import SortButton from './SortButton.svelte';
+  import { TableView } from '../lib/table.svelte';
+  import type { ColumnDef } from '../lib/table.svelte';
   import { LLM_RUNTIMES } from '../lib/types';
   import type { NodeSnapshot } from '../lib/types';
 
@@ -56,6 +59,42 @@
     return out.sort((a, b) => b.bytes - a.bytes);
   });
 
+  /* The table's own order — biggest consumer first — remains the default, and
+     cycling a header past ascending returns to it. That order answers "what is
+     holding the pool", which is why anyone opens this panel.
+
+     `runtime` and `model` are legitimately null (an unlabelled process, a
+     router parent that serves every model and holds only its own overhead).
+     They sort last in both directions: an unknown is not a small value, and
+     letting nulls lead an ascending sort fills the top with rows that have
+     nothing to say. */
+  const view = new TableView<Row>([
+    { key: 'name', value: (r) => r.name },
+    { key: 'runtime', value: (r) => r.runtime },
+    { key: 'model', value: (r) => r.model },
+    { key: 'node', value: (r) => r.node },
+    { key: 'pid', value: (r) => r.pid },
+    { key: 'sm', value: (r) => r.smPct },
+    { key: 'mem', value: (r) => r.bytes },
+    /* Share, not bytes. They only rank alike when every node has the same
+       pool: 8 GiB on a 128 GiB node is a smaller share than 6 GiB on a 64 GiB
+       one, and this column exists to say so. */
+    { key: 'share', value: (r) => r.sharePct },
+  ]);
+
+  const shown = $derived(view.sorted(rows));
+
+  const COLUMNS: ColumnDef[] = [
+    { key: 'name', label: 'process' },
+    { key: 'runtime', label: 'runtime' },
+    { key: 'model', label: 'model' },
+    { key: 'node', label: 'node' },
+    { key: 'pid', label: 'pid', right: true },
+    { key: 'sm', label: 'sm', right: true },
+    { key: 'mem', label: 'gpu mem', right: true },
+    { key: 'share', label: 'share of pool', cls: 'share' },
+  ];
+
   const totals = $derived.by(() => {
     let llm = 0;
     let other = 0;
@@ -80,18 +119,20 @@
       <table>
         <thead>
           <tr>
-            <th scope="col">process</th>
-            <th scope="col">runtime</th>
-            <th scope="col">model</th>
-            <th scope="col">node</th>
-            <th scope="col" class="r">pid</th>
-            <th scope="col" class="r">sm</th>
-            <th scope="col" class="r">gpu mem</th>
-            <th scope="col" class="share">share of pool</th>
+            {#each COLUMNS as c (c.key)}
+              <th
+                scope="col"
+                class:r={c.right}
+                class:share={c.cls === 'share'}
+                aria-sort={view.ariaSort(c.key)}
+              >
+                <SortButton {view} id={c.key} label={c.label} />
+              </th>
+            {/each}
           </tr>
         </thead>
         <tbody>
-          {#each rows as row (row.key)}
+          {#each shown as row (row.key)}
             <tr>
               <td class="name">{row.name}</td>
               <td>

@@ -11,7 +11,9 @@
    * start but holds almost no memory.
    */
   import { MODEL_GLYPH, num } from '../lib/format';
+  import SortButton from './SortButton.svelte';
   import { TableView } from '../lib/table.svelte';
+  import type { ColumnDef } from '../lib/table.svelte';
   import type { NodeSnapshot, ModelState } from '../lib/types';
 
   interface Props {
@@ -103,10 +105,7 @@
 
   const shown = $derived(view.slice(rows));
 
-  /* Header definitions in one place, so the sortable key and the label can
-     never drift apart — the failure would be a header that sorts by the column
-     beside it, which reads as the data being wrong. */
-  const COLUMNS: { key: string; label: string; right?: boolean }[] = [
+  const COLUMNS: ColumnDef[] = [
     { key: 'model', label: 'model' },
     { key: 'state', label: 'state' },
     { key: 'node', label: 'node' },
@@ -140,14 +139,7 @@
           <tr>
             {#each COLUMNS as c (c.key)}
               <th scope="col" class:r={c.right} aria-sort={view.ariaSort(c.key)}>
-                <button
-                  class="sort"
-                  class:active={view.sortKey === c.key}
-                  onclick={() => view.toggle(c.key)}
-                >
-                  {c.label}<span class="arrow" aria-hidden="true"
-                    >{view.sortKey === c.key ? (view.dir === 'asc' ? '▲' : '▼') : ''}</span>
-                </button>
+                <SortButton {view} id={c.key} label={c.label} />
               </th>
             {/each}
           </tr>
@@ -280,24 +272,6 @@
   /* Row hover. Cheap, and it is what makes a wide table navigable: with the
      identity columns on the left and the numbers on the right, the eye needs
      something to hold the line across the gap between them. */
-  /* Header cells become buttons. Kept looking like headers rather than growing
-     borders and backgrounds: the affordance is the cursor and the arrow, and a
-     row of chunky buttons would read as a toolbar sitting on the data. */
-  .sort {
-    font: inherit;
-    color: inherit;
-    letter-spacing: inherit;
-    text-transform: inherit;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-  }
-  .sort:hover { color: var(--ink); }
-  .sort.active { color: var(--ink); }
-
-  .arrow { font-size: 8px; }
-
   .pager {
     display: flex;
     align-items: center;

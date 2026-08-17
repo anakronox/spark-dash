@@ -11,6 +11,9 @@
    * statement of what actually happened.
    */
   import { num } from '../lib/format';
+  import SortButton from './SortButton.svelte';
+  import { TableView } from '../lib/table.svelte';
+  import type { ColumnDef } from '../lib/table.svelte';
   import type { NodeSnapshot } from '../lib/types';
 
   interface Props {
@@ -115,6 +118,77 @@
     if (mbps === null) return '—';
     return mbps >= 1000 ? `${num(mbps / 1000, 0)}G` : `${num(mbps, 0)}M`;
   }
+
+  /** The negotiated rate as a number, for ordering only — the cell still shows
+   *  the driver's own string.
+   *
+   * Sorting the string itself is actively wrong: "100 Gb/sec" sorts BEFORE
+   * "40 Gb/sec" lexically, so the slowest link would head a descending sort.
+   * That is the exact failure this column exists to catch — a ConnectX-7 that
+   * came up at 10 Gb/sec instead of 200 — so a sort that buries it is worse
+   * than no sort at all.
+   *
+   * Unparseable rates sort last rather than as zero: a rate the driver phrased
+   * in a form not seen here is unknown, not slow.
+   */
+  function rateGbps(rate: string): number | null {
+    const m = /([\d.]+)\s*(T|G|M)b/i.exec(rate);
+    if (!m) return null;
+    const value = Number(m[1]);
+    if (!Number.isFinite(value)) return null;
+    const unit = m[2].toUpperCase();
+    return unit === 'T' ? value * 1000 : unit === 'M' ? value / 1000 : value;
+  }
+
+  /* One view per table. Both keep the agent's own order as the default — which
+     is per node, then as the kernel enumerates them — and cycling a header
+     past ascending returns to it. */
+  const rdmaView = new TableView<RdmaRow>([
+    { key: 'port', value: (r) => `${r.device}:${r.port}` },
+    { key: 'state', value: (r) => r.state },
+    { key: 'link', value: (r) => r.linkLayer },
+    { key: 'rate', value: (r) => rateGbps(r.rate) },
+    { key: 'iface', value: (r) => r.iface },
+    { key: 'node', value: (r) => r.node },
+    { key: 'rx', value: (r) => r.rx },
+    { key: 'tx', value: (r) => r.tx },
+    { key: 'err', value: (r) => r.errors },
+  ]);
+
+  const ifaceView = new TableView<IfaceRow>([
+    { key: 'name', value: (r) => r.name },
+    { key: 'node', value: (r) => r.node },
+    { key: 'link', value: (r) => r.speedMbps },
+    { key: 'rx', value: (r) => r.rx },
+    { key: 'tx', value: (r) => r.tx },
+    { key: 'err', value: (r) => r.errors },
+    { key: 'drop', value: (r) => r.dropped },
+  ]);
+
+  const RDMA_COLUMNS: ColumnDef[] = [
+    { key: 'port', label: 'rdma port' },
+    { key: 'state', label: 'state' },
+    { key: 'link', label: 'link' },
+    { key: 'rate', label: 'negotiated' },
+    { key: 'iface', label: 'interface' },
+    { key: 'node', label: 'node' },
+    { key: 'rx', label: 'rx', right: true },
+    { key: 'tx', label: 'tx', right: true },
+    { key: 'err', label: 'err', right: true },
+  ];
+
+  const IFACE_COLUMNS: ColumnDef[] = [
+    { key: 'name', label: 'interface' },
+    { key: 'node', label: 'node' },
+    { key: 'link', label: 'link', right: true },
+    { key: 'rx', label: 'rx', right: true },
+    { key: 'tx', label: 'tx', right: true },
+    { key: 'err', label: 'err', right: true },
+    { key: 'drop', label: 'drop', right: true },
+  ];
+
+  const rdmaShown = $derived(rdmaView.sorted(rdma));
+  const ifacesShown = $derived(ifaceView.sorted(interfaces));
 </script>
 
 <section class="panel">
@@ -134,19 +208,15 @@
       <table>
         <thead>
           <tr>
-            <th scope="col">rdma port</th>
-            <th scope="col">state</th>
-            <th scope="col">link</th>
-            <th scope="col">negotiated</th>
-            <th scope="col">interface</th>
-            <th scope="col">node</th>
-            <th scope="col" class="r">rx</th>
-            <th scope="col" class="r">tx</th>
-            <th scope="col" class="r">err</th>
+            {#each RDMA_COLUMNS as c (c.key)}
+              <th scope="col" class:r={c.right} aria-sort={rdmaView.ariaSort(c.key)}>
+                <SortButton view={rdmaView} id={c.key} label={c.label} />
+              </th>
+            {/each}
           </tr>
         </thead>
         <tbody>
-          {#each rdma as p (p.key)}
+          {#each rdmaShown as p (p.key)}
             <tr class:down={!p.active}>
               <td class="name">{p.device}:{p.port}</td>
               <td>
@@ -177,17 +247,15 @@
       <table>
         <thead>
           <tr>
-            <th scope="col">interface</th>
-            <th scope="col">node</th>
-            <th scope="col" class="r">link</th>
-            <th scope="col" class="r">rx</th>
-            <th scope="col" class="r">tx</th>
-            <th scope="col" class="r">err</th>
-            <th scope="col" class="r">drop</th>
+            {#each IFACE_COLUMNS as c (c.key)}
+              <th scope="col" class:r={c.right} aria-sort={ifaceView.ariaSort(c.key)}>
+                <SortButton view={ifaceView} id={c.key} label={c.label} />
+              </th>
+            {/each}
           </tr>
         </thead>
         <tbody>
-          {#each interfaces as i (i.key)}
+          {#each ifacesShown as i (i.key)}
             <tr class:down={!i.up}>
               <td class="name">
                 <span class="state" data-active={i.up}>

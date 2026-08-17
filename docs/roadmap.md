@@ -969,9 +969,26 @@ Widening the page also exposed that these tables do not have enough columns to
 fill 1491px however they are sized. That is not a CSS problem; it is the
 tables being under-specified for the space now available.
 
-- [~] **M1. Sorting AND pagination — prototyped in the Models table
-  2026-08-17.** `lib/table.svelte.ts` (`TableView`) plus sortable headers and a
-  pager; Models is capped at 10 rows showing "1–10 of 36".
+- [~] **M1. Sorting AND pagination. Sorting shipped everywhere 2026-08-17;
+  pagination is still Models-only.** `lib/table.svelte.ts` (`TableView`) plus
+  sortable headers and a pager; Models is capped at 10 rows showing
+  "1–10 of 36".
+
+  **Sorting now covers all 32 columns across the four tables** — Models, GPU
+  processes, and Network's RDMA and interface tables. The header control was
+  extracted to `SortButton.svelte` when the second table needed it: the markup
+  is trivial, but it carries the interaction contract (descending first, arrow
+  on the active column only, three-state cycle) and four copies of that would
+  become four subtly different tables.
+
+  **The `negotiated` column is the one that needed thought.** Its value is the
+  driver's verbatim string, deliberately — that string IS the diagnosis when a
+  ConnectX-7 comes up at 10 Gb/sec instead of 200. But sorting it as text puts
+  "100 Gb/sec" BEFORE "40 Gb/sec", so a descending sort would bury the
+  degraded link at the bottom: the sort would defeat the exact purpose the
+  column exists for. It sorts on a parsed Gb/s value while still displaying the
+  string, and rates phrased in a form the parser does not recognise sort last
+  rather than as zero — unknown is not slow.
 
   **They belong together, and neither works alone.** Sorting without a page
   limit still renders every row, so the section keeps growing as nodes are
@@ -997,9 +1014,14 @@ tables being under-specified for the space now available.
     going away can shrink the table while you are on its last page, and being
     stranded on an empty one reads as broken data.
 
-  Still to decide before rolling out to Processes, Network and Model activity:
-  page size (10 is a guess), whether it should persist per table in settings,
-  and whether sort state should survive a reload.
+  Still open for PAGINATION specifically: page size (10 is a guess), whether it
+  should persist per table in settings, and whether sort state should survive a
+  reload. Deliberately not rolled out with the sorting — a page limit changes a
+  section's height, and the two-column layout was just arranged around the
+  heights these sections currently have.
+
+  Model activity is a chronological timeline with no columns, so it has nothing
+  to sort. Its equivalent is the time-window control it already has.
 
 - [ ] **M1b. Original sorting note.** Clearly worth it. "Which model is actually serving" is a
   sort by tok/s, and today it is a scroll. Client-side, since the data is
@@ -1037,9 +1059,68 @@ tables being under-specified for the space now available.
   Revisit only if two users genuinely need different columns for different
   jobs, which is not the case for one operator and a homelab.
 
+- [ ] **M4. Hiding stats you don't care about.** Requested 2026-08-17: let a
+  user switch off readings they never look at, so a table or a card shows only
+  what they came for.
+
+  **This is not one feature — "stats" means four different things here**, and
+  three of them already have an answer:
+
+  | What | Today |
+  |---|---|
+  | A whole section | Settings → Sections → hide. Shipped. |
+  | A metric on the History chart | The metric chips on the panel. Shipped. |
+  | A field on a node card | Only the blunt Full/Compact toggle (K1); K2 would put the rest behind hover. |
+  | A column in a table | **Nothing. This is the actual gap.** |
+
+  So M4 is really: per-column visibility in the four tables, plus finishing the
+  node card half through K2. Scoping it that way keeps it from being rebuilt
+  three times over things that already work.
+
+  **It reopens M3, and M3's objection was right.** M3 argued against a column
+  picker: every column earned its place, most carry a comment saying why, and
+  delegating that turns a curated view into an assembly kit. That still holds
+  for what the DEFAULT shows. What has changed is that M3's own escape clause —
+  "revisit only if two users genuinely need different columns" — has now been
+  hit twice, and the settings fly-out (L) removed the other objection by giving
+  persistent view state a home instead of scattering it. M4 is therefore an
+  override on a curated default, never a build-your-own-table: the shipped
+  column set stays the considered one, and hiding is opt-in per browser.
+
+  **The hazard specific to THIS application: hiding a stat is hiding a signal.**
+  This is a monitoring dashboard. `err` and `drop` are exactly the columns
+  someone would switch off because they read zero every day, and they are
+  exactly the columns whose first non-zero value is the thing you needed to
+  know. Do not ship a plain checkbox list. Options, cheapest first:
+  - A hidden column that goes non-zero **unhides itself** and says why. Costs
+    little, and matches the existing behaviour of the page receding when data
+    goes stale.
+  - Or refuse to hide alert-bearing columns at all, and let the rest go.
+
+  Constraints to design in from the start, each one already learned elsewhere
+  in this project:
+  - **Identity columns cannot be hidden.** A table of numbers with no node
+    column is unreadable, and it is the mistake a picker invites.
+  - **Reset has to restore them** — the same failure as hidden sections, where
+    a hidden thing is unrecoverable from the page it is hidden from. That is
+    why hiding lives in settings, and it is why `reset` clears it.
+  - **Hiding the sorted column must drop the sort** back to the table's own
+    order. An invisible sort applied to a visible table reads as the data
+    being wrong, which is the same class of bug as a header that sorts by its
+    neighbour.
+  - **Per browser, like every other view preference** (localStorage), not
+    server-side: the backend is deliberately stateless, and a column set tuned
+    for a 34" monitor is not the one you want on a phone.
+
 **Ordering:** M1 first — it is the cheapest and helps most at today's row
-counts. M2 second, and worth designing as card-click rather than filter boxes.
-M3 last, as a deliberate editorial pass rather than a feature.
+counts; sorting is done, pagination remains. M2 second, and worth designing as
+card-click rather than filter boxes. M4 after M2 — it is the same "show me
+less" impulse, and M2's node filter may satisfy enough of it to change what M4
+needs to be. M3 last, as a deliberate editorial pass rather than a feature, and
+it should be settled BEFORE M4 ships: deciding what everyone sees is a
+different question from letting one person hide part of it, and doing them in
+the wrong order means curating a column set around what people have already
+switched off.
 
 ### K — Compact node cards, and a grid
 
