@@ -23,12 +23,20 @@
 
   --ink: #ffffff;
   --ink-2: #c3c2b7;
-  --ink-muted: #898781;
+  /* 4.85 -> 6.02 against --panel. It technically cleared 4.5, but it carries
+     `.dim`, every table header and most labels on the page, all at 10-12px and
+     some letterspaced uppercase — sizes where the minimum is not enough
+     headroom. Same fix, same reason, as the cyberpunk theme. */
+  --ink-muted: #999892;
 
   /* Categorical slots, validated for CVD separation in both modes. Used for
      node identity and for the memory band's workload classes. */
+  /* These are TEXT as well as strokes: the process table prints runtime names
+     in them (`llama.cpp`, `comfyui`), and alert tags and the swap timeline use
+     them too. So they answer to 4.5, not the 3.0 a chart line would need.
+     Slot 2 was at 4.48 — nudged to 4.60. */
   --series-1: #3987e5; /* blue   — LLM runtimes */
-  --series-2: #d95926; /* orange — other GPU workloads */
+  --series-2: #da5c2b; /* orange — other GPU workloads */
   --series-3: #199e70; /* aqua   — third node */
 
   /* Status palette. Reserved: never reused as a series colour, and never the
@@ -36,7 +44,9 @@
   --good: #0ca30c;
   --warning: #fab219;
   --serious: #ec835a;
-  --critical: #d03b3b;
+  /* 3.62 -> 4.62. Status tokens are text here — StatusPill, Vitals,
+     ConnectionState and the header all colour words with them. */
+  --critical: #d85b5b;
 
   /* Categorical chart slots, for the multi-metric history charts.
      The first three ARE the node hues above — one palette, extended, so a
@@ -48,7 +58,7 @@
      on contrast for three slots, which is discharged by every chart carrying a
      visible title and a named legend entry). */
   --chart-1: #3987e5;
-  --chart-2: #d95926;
+  --chart-2: #da5c2b;
   --chart-3: #199e70;
   --chart-4: #c98500;
   --chart-5: #d55181;
@@ -143,11 +153,37 @@
 
   --ink: #0b0b0b;
   --ink-2: #52514e;
-  --ink-muted: #898781;
+  /* WAS #898781 — the same value as the dark theme, which is the bug. A grey
+     tuned to sit on #1a1a19 reads at 3.50 on #fcfcfb, well under 4.5, and it
+     carries most of the small text on the page. 3.50 -> 4.61. */
+  --ink-muted: #75736e;
 
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
+  /* Darkened for TEXT contrast, not for the chart. The process table prints
+     runtime names in these, so they answer to 4.5:
+       --series-1  4.30 -> 4.60
+       --series-2  3.12 -> 4.63
+       --series-3  2.74 -> 4.62
+     Re-validated as a categorical palette afterwards: still all-pass, and
+     strictly better than before — CVD separation rose (protan 9.1 -> 10.1) and
+     the sub-3:1 contrast warning dropped from three slots to two. */
+  --series-1: #2873cf;
+  --series-2: #ca4714;
+  --series-3: #14835c;
+
+  /* STATUS — light mode never defined these, so it inherited the dark values
+     and painted them on a white panel. That is why yellow was effectively
+     invisible:
+       --good      3.27 -> 4.62
+       --warning   1.79 -> 4.61   (yellow cannot reach 4.5 on white without
+                                   becoming amber; hue is preserved, lightness
+                                   is not negotiable)
+       --serious   2.57 -> 4.63
+       --critical  4.68            already passing, left alone
+     Hue is held in every case; only lightness moves. */
+  --good: #0a860a;
+  --warning: #9a6a03;
+  --serious: #c84917;
+  --critical: #d03b3b;
 
   /* Categorical chart slots, for the multi-metric history charts.
      The first three ARE the node hues above — one palette, extended, so a
@@ -158,9 +194,9 @@
      dataviz validator against this surface (all checks pass; light mode warns
      on contrast for three slots, which is discharged by every chart carrying a
      visible title and a named legend entry). */
-  --chart-1: #2a78d6;
-  --chart-2: #eb6834;
-  --chart-3: #1baf7a;
+  --chart-1: #2873cf;
+  --chart-2: #ca4714;
+  --chart-3: #14835c;
   --chart-4: #eda100;
   --chart-5: #e87ba4;
   --chart-6: #008300;
