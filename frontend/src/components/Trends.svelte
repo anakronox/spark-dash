@@ -112,10 +112,23 @@
     ];
   });
 
-  /** Live nodes with nothing in this window. Named rather than silently
-   *  dropped: a node on a card but absent from the legend is a discrepancy the
-   *  reader will otherwise have to guess at. */
-  const noHistory = $derived(nodeIds.filter((id) => !plotted.includes(id)));
+  /** Every node the legend lists: the inventory, plus anything history knows
+   *  that the inventory does not.
+   *
+   * DERIVING THE LEGEND FROM `plotted` ALONE WAS AN OVER-CORRECTION. It began as
+   * the fix for a real bug — the legend listed live nodes, and clicking one with
+   * no history filtered every series out and blanked the charts. Hiding those
+   * nodes stopped the blanking and also removed the control: on a cluster where
+   * only some nodes have samples, the node toggles simply vanished, which reads
+   * as the feature having been taken away.
+   *
+   * The control belongs on the page. A node that cannot be plotted is listed
+   * and disabled, saying why, rather than hidden — the same call as an `err`
+   * column that comes back when it has something to say, and as naming a node
+   * with no history instead of quietly dropping it. */
+  const legendNodes = $derived([...new Set([...nodeIds, ...plotted])]);
+
+  const hasHistory = (id: string) => plotted.includes(id);
 
   /** The selection, self-healing.
    *
@@ -311,15 +324,20 @@
            one box doing" without a second layout.
            Shown only when there is more than one node: with one node it would
            be a control whose every state looks the same. -->
-      {#if plotted.length > 1}
+      {#if legendNodes.length > 1}
         <span class="legend" role="group" aria-label="Nodes">
-          {#each plotted as id (id)}
-            {@const on = isActive(id)}
+          {#each legendNodes as id (id)}
+            {@const plottable = hasHistory(id)}
+            {@const on = plottable && isActive(id)}
             <button
               class="item"
               class:off={!on}
+              class:absent={!plottable}
+              disabled={!plottable}
               aria-pressed={on}
-              title={`Show only ${id} — shift-click to add`}
+              title={plottable
+                ? `Show only ${id} — shift-click to add`
+                : `${id} has no samples in this range — live, but nothing to plot yet`}
               onclick={(e) => pickNode(id, e.shiftKey)}
             >
               <span class="swatch" style:background={nodeColor(slots.get(id))}></span>
@@ -403,16 +421,7 @@
     </div>
   {/if}
 
-  {#if noHistory.length}
-    <!-- Named rather than silently dropped from the legend. A node with a card
-         above and no entry here is a discrepancy the reader would otherwise
-         have to guess at, and the likely causes — just added, or not being
-         scraped — are worth knowing rather than hiding. -->
-    <p class="note dim">
-      No history in this range for {noHistory.join(', ')} — live, but Prometheus
-      has no samples for {noHistory.length === 1 ? 'it' : 'them'} yet.
-    </p>
-  {/if}
+
 </section>
 
 <style>
@@ -467,6 +476,29 @@
     color: var(--ink-muted);
     opacity: 0.65;
   }
+
+  /* Listed but unplottable: in the cluster, with no samples in this window.
+     NOT struck through — that was the first attempt and it is wrong here. A
+     struck-out node name on a monitoring dashboard reads as dead or removed,
+     which is the opposite of what this means: the node is up, it simply has no
+     history yet. Usually because it was just added.
+     "Off" and "cannot be turned on" still have to be distinguishable, and they
+     are, on the swatch: a deselected node keeps its identity colour, an
+     unplottable one goes neutral. The reason is on the title. */
+  .item.absent {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  .item.absent:hover {
+    background: none;
+    color: var(--ink-muted);
+  }
+
+  .item.absent .swatch {
+    background: var(--rule) !important;
+  }
+
 
   .clear {
     font-size: 10px;
@@ -535,11 +567,6 @@
      carried by one channel alone. */
   .metric .swatch.on {
     background: currentColor;
-  }
-
-  .note {
-    font-size: 10px;
-    margin: 8px 0 0;
   }
 
   /* Small multiples ------------------------------------------------------ */

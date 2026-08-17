@@ -1636,9 +1636,21 @@ Three parts to the fix, and the first is the rule:
   stable, plus any history knows that the inventory does not. A node recently
   removed from the cluster still has samples for the rest of the window and IS
   drawn, so it belongs in the key.
-- **A live node with no history is NAMED**, not silently dropped. A node with a
-  card above and no entry in the legend is a discrepancy the reader would
-  otherwise have to guess at.
+- **A live node with no history is LISTED AND DISABLED**, not dropped. The
+  first fix hid it, which stopped the blanking and also removed the control:
+  with one node plottable the legend fell below its "more than one" threshold
+  and the node toggles vanished entirely, reading as the feature having been
+  taken away. Reported as a regression, and fairly.
+
+  The legend now lists the inventory plus anything history knows, with
+  unplottable nodes disabled and the reason on the title. "Off" and "cannot be
+  turned on" stay distinguishable on the swatch: a deselected node keeps its
+  identity colour, an unplottable one goes neutral.
+
+  Not struck through, which was the first attempt at that distinction — a
+  struck-out node name on a monitoring dashboard reads as dead or removed,
+  the opposite of what it means. The node is up; it just has no history yet,
+  usually because it was only added a moment ago.
 - **A selection that no longer matches anything collapses back to "all".** A
   refresh can retire the very node that was soloed; holding a dead selection
   would blank the panel with no obvious way back.
