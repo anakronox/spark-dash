@@ -240,6 +240,12 @@
       </dl>
     </section>
 
+    <!-- One grid for every node card, so compact mode can flow them into
+         columns. Each standalone node is its own "cluster of one" and so has
+         its own .nodes wrapper — without promoting those wrappers out of the
+         way, each grid would contain exactly one card and the cards would span
+         the full width no matter how small they got. -->
+    <div class="node-grid" class:compact={layout.compactCards}>
     {#each clusters as cluster, ci (cluster.key)}
       {#if cluster.name}
         <!-- A frame only where clustering is real. Clustered nodes pool memory,
@@ -268,6 +274,7 @@
         </div>
       {/if}
     {/each}
+    </div>
 
     <!-- Sections are reorderable and collapsible; both live in localStorage.
          Node cards and the summary stay put — clustering already orders the
@@ -457,6 +464,43 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--ink-2);
+  }
+
+  /* Full mode: unchanged, a column of full-width cards. Compact turns this
+     into the shared grid the cards flow through. */
+  .node-grid {
+    display: grid;
+    gap: 12px;
+  }
+
+  .node-grid.compact {
+    /* auto-fill, not auto-fit: with one or two nodes, auto-fit would stretch
+       them across the whole row and give back exactly the horizontal space
+       compact mode exists to reclaim. */
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    align-items: start;
+  }
+
+  /* DIRECT children only. These are the standalone wrappers — one per node,
+     since a standalone node is a cluster of one — and they stop generating
+     boxes so their cards become items of .node-grid itself. Without the child
+     combinator this also caught the wrappers INSIDE a framed cluster, which
+     promoted those cards into the cluster's own single-column grid and left
+     them full width and stacked. */
+  .node-grid.compact > .nodes {
+    display: contents;
+  }
+
+  /* A framed cluster keeps its frame and spans the full row: the frame means
+     "these pool memory", and one covering part of a row would say something
+     untrue about which nodes are grouped. */
+  .node-grid.compact .cluster {
+    grid-column: 1 / -1;
+  }
+
+  /* Its members then grid among themselves, inside the frame. */
+  .node-grid.compact .cluster .nodes {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   }
 
   .nodes {

@@ -999,9 +999,33 @@ that size. This is about what happens past that.
   the pattern to copy: it costs no layout, cannot reflow the page, and it kept
   the readings that the History chips gave up. The same trade applies here —
   compact by default, complete on demand.
-- [ ] **K3.** Grid layout, so cards flow in columns rather than stacking. This
-  is where the actual saving is: 32 compact cards in a 4-column grid is one
-  screen instead of five.
+- [x] **K3.** Shipped 2026-08-17. Compact mode flows cards through a shared
+  grid (`auto-fill, minmax(300px, 1fr)`), so they stop spanning edge to edge.
+
+  Measured on the 3-node test: the node block went **464px → 117px**, three
+  cards on one row. Vertical saving is ~4x, not the 35% K1 alone gave — the
+  height came from stacking, not from card size.
+
+  **The structural catch.** Every standalone node is its own "cluster of one"
+  and so has its own `.nodes` wrapper. Gridding those wrappers does nothing:
+  each contains exactly one card, which is why compact cards still spanned the
+  full width. The wrappers now use `display: contents` in compact mode so their
+  cards become items of one shared grid.
+
+  Scoped with a CHILD combinator (`> .nodes`). Without it the rule also caught
+  the wrappers inside a framed cluster, promoting those cards into the
+  cluster's own single-column grid and leaving them full width and stacked —
+  which is what the first attempt did.
+
+  A framed cluster spans the full row (`grid-column: 1 / -1`) and grids its
+  members inside the frame. The frame means "these pool memory", and one
+  covering part of a row would say something untrue about which nodes are
+  grouped.
+
+  `auto-fill` rather than `auto-fit`: with one or two nodes, `auto-fit` would
+  stretch them across the whole row and hand back exactly the horizontal space
+  this exists to reclaim. Verified reflow: 3 columns at 1140px, 2 at 800px,
+  1 at 400px.
 - [x] **K4.** Settled and shipped 2026-08-17: an explicit Full/Compact toggle
   in settings, persisted to `spark-dash.compact-cards.v1`, defaulting to Full.
 
@@ -1010,6 +1034,9 @@ that size. This is about what happens past that.
   when a node joins is disorienting, and a node joining is exactly when someone
   is watching it. The person who needs compact turns it on once and it stays
   on. `reset` clears it along with the rest of the layout.
+
+**Still open: K2** (hover reveals the rest). Until it lands, the only route
+back to clock, temperature and power is toggling to Full.
 
 **Watch the accent colours.** Node identity is carried by `--series-1..3`,
 which is three slots. A grid of 32 needs identity to come from the name and
