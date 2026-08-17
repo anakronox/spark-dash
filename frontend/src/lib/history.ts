@@ -128,101 +128,52 @@ export function toColumnar(
   return { x, columns, names };
 }
 
-/** One line on the shared chart. */
-export interface CombinedSeries {
-  /** Legend text: the metric, plus the node when there's more than one. */
-  label: string;
-  metricKey: string;
-  slot: number;
-  unit: string;
-  /** Plotted values, 0-100. */
-  scaled: (number | null)[];
-  /** The real readings, same indices — what the tooltip shows. */
-  raw: (number | null)[];
-  /** What 100% meant for this line.
-   *  - a number: fixed ceiling, shown in the legend
-   *  - null:     scaled to the window's own maximum; the UI flags it
-   *  - undefined: already a percentage, so there's nothing to explain */
-  scaleMax?: number | null;
-}
-
-export interface Combined {
-  x: number[];
-  series: CombinedSeries[];
-}
-
-/** Merge several metrics onto ONE time axis, normalised to a common 0-100.
+/** Snap a series' timestamps onto the query's step grid.
  *
- * Two problems solved together.
+ * WHY THIS SURVIVED THE SPLIT INTO SMALL MULTIPLES. It began as the fix for a
+ * merge: several metrics were combined onto one x axis, and because each is a
+ * separate range query whose backend computes its own `end = time.time()`, the
+ * grids came back offset by milliseconds — 1786875344.312 against .313. A raw
+ * union produced one timestamp per metric per instant, leaving every series
+ * null at all the others' points, which rendered as a completely empty plot.
  *
- * TIMESTAMPS. Metrics are queried with the same range and step, so Prometheus
- * usually returns aligned points — but "usually" isn't good enough: a metric
- * with no data early in the window comes back shorter, and zipping by index
- * would then plot every later value against the wrong instant. The union of
- * all timestamps is taken and missing points are left null, which uPlot draws
- * as a gap rather than interpolating through.
+ * There is no merge any more, so that failure is gone. The snapping is not:
+ * the charts are now read as a GRID, and x domains differing by a fraction of a
+ * step put each plot's gridlines — and the synchronised crosshair — at slightly
+ * different pixels. Snapping is what makes eight small multiples line up column
+ * for column.
  *
- * UNITS. These metrics span %, °C, W, MHz and tok/s. Rendering them against one
- * raw axis is impossible (a 2400MHz clock would flatten everything else into
- * the baseline) and a second y-axis is worse — two scales let a chart imply a
- * correlation by arranging where the lines cross. Normalising to a percentage
- * of a FIXED ceiling keeps one honest axis, and the absolute reading stays
- * available in the tooltip, which is the number you actually act on.
+ * Collisions are folded rather than duplicated: two raw stamps landing on one
+ * grid point keep the later sample, which is the fresher reading.
  */
-export function combine(
-  parts: { metric: MetricSpec; data: { x: number[]; columns: number[][]; names: string[] } }[],
-  { labelNodes, stepSeconds }: { labelNodes: boolean; stepSeconds: number },
-): Combined {
-  /* TIMESTAMPS ARE SNAPPED TO THE STEP GRID BEFORE MERGING.
-   *
-   * Each metric is a separate request and the backend computes its own
-   * `end = time.time()`, so parallel requests come back on grids offset by
-   * milliseconds — 1786875344.312 against 1786875344.313. Taking a raw union
-   * of those produced one timestamp per metric per instant, leaving every
-   * series null at all the others' points. With `points: {show: false}` that
-   * renders as a completely empty plot: the axes and gridlines drawn, no
-   * lines at all. Snapping collapses them back onto one grid. */
+export function snapGrid(
+  x: number[],
+  columns: number[][],
+  stepSeconds: number,
+): { x: number[]; columns: number[][] } {
+  if (!stepSeconds || !x.length) return { x, columns };
   const snap = (ts: number) => Math.round(ts / stepSeconds) * stepSeconds;
 
-  const stamps = new Set<number>();
-  for (const p of parts) for (const ts of p.data.x) stamps.add(snap(ts));
-  const x = [...stamps].sort((a, b) => a - b);
-  const index = new Map(x.map((ts, i) => [ts, i]));
-
-  const series: CombinedSeries[] = [];
-  for (const { metric, data } of parts) {
-    data.columns.forEach((col, ci) => {
-      const raw: (number | null)[] = new Array(x.length).fill(null);
-      for (let i = 0; i < data.x.length; i++) {
-        const at = index.get(snap(data.x[i]));
-        if (at !== undefined) raw[at] = col[i] ?? null;
-      }
-
-      // Percentages are already on the axis; everything else is divided by its
-      // ceiling. Falling back to the observed max keeps a series with no
-      // natural ceiling (throughput) legible rather than invisible.
-      let ceiling = metric.percent ? 100 : (metric.scaleMax ?? 0);
-      let fixed = metric.percent || metric.scaleMax !== undefined;
-      if (!ceiling) {
-        const observed = Math.max(...raw.filter((v): v is number => v != null), 0);
-        ceiling = observed > 0 ? observed : 1;
-        fixed = false;
-      }
-
-      series.push({
-        label: labelNodes && data.names[ci] ? `${metric.label} · ${data.names[ci]}` : metric.label,
-        metricKey: metric.key,
-        slot: metric.slot,
-        unit: metric.unit,
-        raw,
-        scaled: raw.map((v) => (v == null ? null : (v / ceiling) * 100)),
-        // A percentage metric IS the axis, so it carries no ceiling caption:
-        // "100% = 100%" is noise. Non-percent metrics report theirs; a series
-        // with no fixed ceiling reports null and is flagged as relative.
-        scaleMax: metric.percent ? undefined : fixed ? ceiling : null,
-      });
-    });
+  const stamps: number[] = [];
+  const at = new Map<number, number>();
+  for (const ts of x) {
+    const s = snap(ts);
+    if (!at.has(s)) {
+      at.set(s, stamps.length);
+      stamps.push(s);
+    }
+  }
+  if (stamps.length === x.length && stamps.every((s, i) => s === x[i])) {
+    return { x, columns };
   }
 
-  return { x, series };
+  const out = columns.map(() => new Array<number | null>(stamps.length).fill(null));
+  for (let i = 0; i < x.length; i++) {
+    const j = at.get(snap(x[i]))!;
+    for (let c = 0; c < columns.length; c++) {
+      const v = columns[c][i];
+      if (v != null) out[c][j] = v;
+    }
+  }
+  return { x: stamps, columns: out as number[][] };
 }

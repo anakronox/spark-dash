@@ -10,6 +10,7 @@
   import StatusPill from './StatusPill.svelte';
   import Vitals from './Vitals.svelte';
   import { relativeTime } from '../lib/format';
+  import { nodeColorVar } from '../lib/theme';
   import type { NodeSnapshot } from '../lib/types';
 
   interface Props {
@@ -36,27 +37,11 @@
   /* Down nodes are never compacted — see `compact` above. */
   const dense = $derived(compact && node.up);
 
-  /* NODE IDENTITY COLOUR — eight slots, then deliberately none.
-   *
-   * Was `--series-${slot % 3 + 1}`, which cycled at the fourth node and gave
-   * two nodes the same hue. Colour is supposed to follow the entity; once two
-   * entities share one it has stopped identifying anything, and a four-node
-   * cluster is the very first case that hits.
-   *
-   * `--chart-1..8` is the same palette extended — its first three ARE the old
-   * node hues, so one, two and three-node setups are unchanged — and it is
-   * validated as a categorical set for CVD separation against every theme's
-   * surface.
-   *
-   * PAST EIGHT, NO COLOUR. Generating a ninth hue or wrapping around would
-   * both reintroduce the collision this fixes. The card keeps a neutral rule
-   * and identity rides on the node name, which is on every card anyway. That
-   * is the documented rule for this palette: never cycle.
-   */
-  const NODE_HUES = 8;
-  const accent = $derived(
-    slot < NODE_HUES ? `var(--chart-${slot + 1})` : 'var(--rule)',
-  );
+  /* NODE IDENTITY COLOUR — from lib/theme, so the card and the History charts
+     cannot drift apart. They did: this file was fixed to eight slots while
+     `nodeColor()` stayed on three, and the legend then disagreed with the cards
+     from the fourth node on. One definition now. */
+  const accent = $derived(nodeColorVar(slot));
 
   const routerSummary = $derived.by(() => {
     const routers = node.runtimes.llama_cpp;

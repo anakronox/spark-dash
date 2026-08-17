@@ -9,17 +9,44 @@ export function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-/** Node identity colours, in the fixed categorical order.
+/** Node identity colours — eight slots, then deliberately none.
  *
- * Three slots because that's the validated all-pairs limit for colourblind
- * separation — past three, hues start failing the contrast floors against each
- * other. A fourth node reuses slot 1 rather than inventing a hue, which would
- * be indistinguishable under CVD and break the guarantee for every other pair.
+ * Was three, cycling with `--series-${slot % 3 + 1}`, which gave the fourth
+ * node the first node's hue. Colour is supposed to follow the entity; once two
+ * entities share one it has stopped identifying anything, and a four-node
+ * cluster is the very first case that hits. NodeCard fixed that for the cards
+ * and this function did not follow, so the History legend and the cards
+ * disagreed from the fourth node on — the legend called gx10-d blue while its
+ * card did not.
+ *
+ * `--chart-1..8` is the same palette extended: its first three ARE the old node
+ * hues, so one, two and three-node setups are unchanged, and it is validated as
+ * a categorical set for CVD separation against every theme's surface.
+ *
+ * PAST EIGHT, NO COLOUR — a neutral rule, and identity rides on the node name,
+ * which is beside every swatch anyway. Generating a ninth hue or wrapping round
+ * would both reintroduce the collision this exists to prevent. Never cycle.
  */
-export const NODE_SLOTS = 3;
+export const NODE_SLOTS = 8;
 
-export function nodeColor(slot: number): string {
-  return cssVar(`--series-${(slot % NODE_SLOTS) + 1}`);
+export function nodeColor(slot: number | undefined): string {
+  /* An UNKNOWN node takes the neutral, not slot 0.
+   *
+   * Callers reach this as `nodeColor(slots.get(name))`, and a name absent from
+   * the slot map used to fall back to `?? 0` — which silently painted it in the
+   * FIRST node's colour. A history series can legitimately name a node the
+   * current inventory does not: one recently removed from cluster.yml, or
+   * renamed, still has samples in Prometheus for the rest of the window. Two
+   * entities sharing a hue is precisely what this palette exists to prevent, so
+   * an unrecognised one gets no hue at all rather than someone else's. */
+  if (slot === undefined) return cssVar('--rule');
+  return slot < NODE_SLOTS ? cssVar(`--chart-${slot + 1}`) : cssVar('--rule');
+}
+
+/** The same rule as a CSS value, for markup that can use `var()` directly.
+ *  One definition, so a card and a chart cannot drift apart again. */
+export function nodeColorVar(slot: number): string {
+  return slot < NODE_SLOTS ? `var(--chart-${slot + 1})` : 'var(--rule)';
 }
 
 /** Number of categorical slots available to metrics. */

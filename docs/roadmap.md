@@ -1468,9 +1468,12 @@ Result: all four tables fit their column exactly, every column delta 0 over 55s
 of live data, no scrollbars, CLS 0.0003 — and that remainder is sub-pixel, with
 the reported sources showing dx=0 dy=0.
 
-### O — History as small multiples
+### O — History as small multiples — **shipped 2026-08-17**
 
-**Designed 2026-08-17, not yet built.** The History panel was built around one
+Designed and built the same day. `MetricChart.svelte` replaces `CombinedChart`;
+`TrendChart` and `combine()` are deleted. Net −365 lines.
+
+**The problem.** The History panel was built around one
 node and does not survive a cluster. Measured on the four-node test rig, with
 seven metrics selected:
 
@@ -1551,6 +1554,35 @@ Watch for, when building:
   charts at one instant is the entire point; uPlot has `cursor.sync` for it.
 - Eight uPlot instances instead of one — worth measuring before assuming it is
   free, particularly on a 7d range.
+
+**What building it turned up.**
+
+- **An unknown node used to take slot 0's colour.** Callers reach the palette as
+  `nodeColor(slots.get(name))`, and the old `?? 0` fallback silently painted an
+  unrecognised node in the FIRST node's hue. A history series can legitimately
+  name a node the current inventory does not — one removed from `cluster.yml`
+  or renamed still has samples for the rest of the window. `nodeColor` now takes
+  `number | undefined` and gives an unknown node the neutral, which is the same
+  rule as past-eight: no hue beats someone else's hue.
+- **Cursor sync makes every chart render its own tooltip.** Sync fires
+  `setCursor` on all of them, which is what moves the crosshairs together — and
+  meant one hover produced six overlapping boxes. The crosshair belongs on every
+  chart; the numbers belong on the one being pointed at, gated on a local
+  pointerenter.
+- **A fixed 44px y-axis clipped its own numbers**, rendering "3003MHz" as
+  "20MHz". An axis that silently truncates is worse than no axis; the width is
+  now derived from the widest label the metric can print.
+
+Verified with the four-node rig: all four legend colours are drawn on the
+canvas (sampled pixels, not assumed); solo, shift-add and restore each change
+which lines are drawn; a soloed node keeps its own colour rather than
+repainting to slot 0; and a hover on any one chart puts all six tooltips on the
+same instant — checked at three cursor positions and from two different charts.
+
+The test rig's Prometheus only knows the real node, so the multi-node paths were
+exercised by stubbing the history response in the browser. That is a rendering
+test and nothing more: it says the chart draws four nodes correctly, not that
+the backend returns four.
 
 **Deferred: past eight nodes** there are not enough distinguishable colours for
 one line each, and the answer is probably a min/median/max band with the
