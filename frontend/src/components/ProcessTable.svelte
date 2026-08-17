@@ -213,6 +213,28 @@
     font-weight: 500;
   }
 
+  /* Numeric columns shrink to their contents instead of sharing the slack.
+     `width: 1%` with nowrap is the standard way to say "as narrow as the text
+     allows" in an auto-layout table.
+
+     Without it a wider page spreads every column equally, which pushed the
+     numbers so far from the row's identity that tracking one across became
+     unreliable — the exact failure the old 1180px cap was hiding. The slack
+     now lands in the text columns, where longer names and addresses can use
+     it, and the numbers stay in one readable block. */
+  /* Row hover. Cheap, and it is what makes a wide table navigable: with the
+     identity columns on the left and the numbers on the right, the eye needs
+     something to hold the line across the gap between them. */
+  tbody tr:hover {
+    background: var(--panel-raised);
+  }
+
+  th.r,
+  td.r {
+    width: 1%;
+    white-space: nowrap;
+  }
+
   .r {
     text-align: right;
   }
