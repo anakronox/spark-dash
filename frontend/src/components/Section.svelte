@@ -396,8 +396,14 @@
     border-color: var(--ink-muted);
   }
 
+  /* Matches h2.eyebrow, because this IS the card's title — just in its folded
+     state. A collapsed section that renders its name more quietly than the
+     open one would read as a lesser kind of thing rather than the same thing
+     put away. (A span rather than an h2 here: the whole stub is a button, and
+     a heading inside a button is a heading you cannot navigate to.) */
   .stub .eyebrow {
     color: var(--ink);
+    font-weight: 700;
   }
 
   .handle:active {

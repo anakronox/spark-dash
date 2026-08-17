@@ -265,6 +265,26 @@ table {
   color: var(--ink-muted);
 }
 
+/* A panel's own title, as opposed to the labels inside it.
+ *
+ * The eyebrow and a table's `th` had become the SAME declaration — 10px,
+ * weight 500, uppercase, --ink-muted — so "GPU PROCESSES" and the "PROCESS"
+ * column heading two lines below it were indistinguishable, and the card read
+ * as one more row of column labels rather than as a titled thing.
+ *
+ * Weight AND colour, not just weight. At 10px uppercase, 500 to 700 alone is a
+ * subtle shift; lifting the title to full --ink while the column headings stay
+ * muted is what actually establishes which one is the heading.
+ *
+ * Keyed on the h2 rather than a new class because that is already exactly the
+ * distinction being drawn: every card and fly-out title is an h2.eyebrow, and
+ * every label within one is an h3, a span, or carries `dim`.
+ */
+h2.eyebrow {
+  font-weight: 700;
+  color: var(--ink);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--rule);
