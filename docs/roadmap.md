@@ -1598,6 +1598,25 @@ Three parts to the fix, and the first is the rule:
   refresh can retire the very node that was soloed; holding a dead selection
   would blank the panel with no obvious way back.
 
+**Also fixed: a metric with no samples vanished, so its chip did nothing.**
+`drawable` filtered on `data[m.key]?.x.length`, which dropped any metric that
+came back empty — on an idle cluster that is Throughput, and toggling its chip
+changed nothing on the page. A control that does nothing is broken.
+
+It also threw away a reading. "No throughput in this window" MEANS nothing was
+serving, which is exactly the kind of thing this panel exists to tell you; an
+absent chart cannot say it and an empty one can. A selected metric now always
+gets a frame once loaded, stating why it is empty — still keyed on the entry
+EXISTING rather than on its length, so a metric mid-fetch is held back instead
+of flashing an empty frame before its data lands.
+
+The placeholder holds the plot's exact height, so a metric going empty on a
+refresh does not resize the grid around it. Its ResizeObserver moved from
+`onMount` to an effect keyed on the host element for the same reason: the plot
+is now replaced by a placeholder and back, so the observed node comes and goes,
+and an observer attached once at mount would end up watching a detached node and
+leave the chart at its guessed initial width.
+
 Verified with the four-node rig: all four legend colours are drawn on the
 canvas (sampled pixels, not assumed); solo, shift-add and restore each change
 which lines are drawn; a soloed node keeps its own colour rather than

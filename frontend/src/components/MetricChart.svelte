@@ -18,7 +18,7 @@
    */
   import uPlot from 'uplot';
   import 'uplot/dist/uPlot.min.css';
-  import { onMount } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { chartTheme, nodeColor } from '../lib/theme';
   import type { MetricSpec } from '../lib/history';
 
@@ -170,17 +170,23 @@
   );
   let builtShape = '';
 
-  onMount(() => {
+  /* Keyed on `host` rather than run once on mount: the plot is replaced by a
+     placeholder when there is nothing to draw, so the element this observes
+     comes and goes over the component's life. An observer attached once at
+     mount would be watching a node that no longer exists by the time data
+     arrives, and the chart would keep its initial guessed width forever. */
+  $effect(() => {
+    const el = host;
+    if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const next = Math.floor(entries[0].contentRect.width);
       if (next > 0 && next !== width) width = next;
     });
-    if (host) ro.observe(host);
-    return () => {
-      ro.disconnect();
-      chart?.destroy();
-    };
+    ro.observe(el);
+    return () => ro.disconnect();
   });
+
+  onDestroy(() => chart?.destroy());
 
   $effect(() => {
     void x;
@@ -210,6 +216,16 @@
     {/if}
   </figcaption>
 
+  {#if !x.length}
+    <!-- LOADED AND EMPTY, which is not the same as absent. A metric with no
+         samples used to be dropped from the grid entirely, so its chip toggled
+         nothing and the reader was left wondering whether the control worked.
+         It also threw away a reading: no throughput in the window means nothing
+         was serving, and only a frame that is present can say so. -->
+    <p class="blank dim" style:height="{height}px">No samples in this range.</p>
+  {:else if !names.length}
+    <p class="blank dim" style:height="{height}px">No samples for the selected nodes.</p>
+  {:else}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="wrap"
@@ -238,6 +254,7 @@
       </div>
     {/if}
   </div>
+  {/if}
 </figure>
 
 <style>
@@ -272,6 +289,19 @@
   .wrap {
     position: relative;
     width: 100%;
+  }
+
+  /* Holds exactly the plot's height, so a metric going empty on a refresh does
+     not resize the grid around it. */
+  .blank {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    font-size: 11px;
+    border: 1px dashed var(--rule);
+    border-radius: var(--radius);
+    padding: 0 10px;
+    box-sizing: border-box;
   }
 
   .host {

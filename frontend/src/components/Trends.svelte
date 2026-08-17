@@ -77,10 +77,17 @@
      reshuffle as you toggle things on and off. */
   const chosen = $derived(METRICS.filter((m) => selected.includes(m.key)));
 
-  /* Charts that actually have something to draw. A metric still loading, or
-     with no samples in the window, is held back rather than rendered as an
-     empty frame. */
-  const drawable = $derived(chosen.filter((m) => data[m.key]?.x.length));
+  /* Every metric that has LOADED gets a chart, including one that came back
+     empty.
+     It used to be `data[m.key]?.x.length`, which silently dropped a metric with
+     no samples — so selecting Throughput on an idle cluster toggled the chip
+     and changed nothing on the page, which is a control that does nothing.
+     Worse, "no throughput in this window" is itself a reading: it means nothing
+     was serving. An absent chart cannot say that; an empty one can.
+     Still keyed on the entry EXISTING rather than on its length, so a metric
+     mid-fetch is held back instead of flashing an empty frame before its data
+     lands. */
+  const drawable = $derived(chosen.filter((m) => data[m.key]));
 
   /** The nodes the charts can actually draw.
    *
@@ -142,10 +149,7 @@
         names: keep.map(([n]) => n),
         columns: keep.map(([, i]) => d.columns[i]),
       };
-    }).filter((c) => c.names.length),
-    // A chart with no series left after filtering is dropped, not drawn empty.
-    // An empty frame under a caption reads as a broken panel; an absent one
-    // reads as "nothing to show here", which is what it means.
+    }),
   );
 
   /* Up to 4 across, snapping 1 / 2 / 4 — powers of two, the same reasoning as
