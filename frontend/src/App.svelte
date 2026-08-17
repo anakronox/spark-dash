@@ -358,12 +358,30 @@
 
 <style>
   .shell {
-    max-width: 1180px;
+    /* Wide, but not unlimited. 1180px left a third of a 1555px window empty
+       and over 2000px of a 34" ultrawide, which is real estate this page can
+       use: the history chart gets more resolution per pixel of time, and the
+       compact grid fits more nodes per row.
+       Still capped, because the tables are the limit rather than the cards —
+       past roughly this width the columns of a models or process row drift so
+       far apart that tracking one row across them stops being reliable, which
+       is the failure a max-width exists to prevent. */
+    max-width: 2400px;
     margin: 0 auto;
     padding: 20px 20px 48px;
     display: grid;
     gap: 16px;
     transition: opacity 200ms ease;
+  }
+
+  /* More breathing room once the shell is actually using the window. At 20px
+     the content runs almost to the bezel on a wide monitor, which reads as
+     unfinished rather than spacious. */
+  @media (min-width: 1160px) {
+    .shell {
+      padding-left: 32px;
+      padding-right: 32px;
+    }
   }
 
   /* The whole page recedes when data stops arriving — a global, unmissable
@@ -538,11 +556,19 @@
     }
   }
 
-  /* The shell caps at 1180px, so the grid is never wider than 1140 and four
-     columns land at ~276px each. */
   @media (min-width: 1160px) {
     .node-grid.compact {
       grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  /* Eight only where a card still clears ~270px — the width at which the
+     memory band's legend stays readable. Below that, more columns would buy
+     row count at the cost of the one reading the compact card exists to
+     show. */
+  @media (min-width: 2320px) {
+    .node-grid.compact {
+      grid-template-columns: repeat(8, 1fr);
     }
   }
 
@@ -580,6 +606,12 @@
   @media (min-width: 1160px) {
     .node-grid.compact .cluster .nodes {
       grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  @media (min-width: 2320px) {
+    .node-grid.compact .cluster .nodes {
+      grid-template-columns: repeat(8, 1fr);
     }
   }
 
