@@ -29,6 +29,7 @@
 
   let host = $state<HTMLElement | null>(null);
   let grabbed = $state(false);
+  /** Lift, in pixels from where the pointer went down. */
   let offsetY = $state(0);
   let offsetX = $state(0);
   /** Pointer position the current lift is measured from. Shifted on each
@@ -36,8 +37,14 @@
    *  instead of snapping. */
   let anchorY = 0;
   let anchorX = 0;
-  /** True while a swap is awaiting its DOM flush. */
-  let settling = false;
+  /** True while a reorder is awaiting its DOM flush.
+   *
+   * This gates ONLY the reorder decision, never the lift. The previous version
+   * returned out of the whole move handler while settling, so the card stopped
+   * following the pointer during every swap — which is exactly what made
+   * dragging feel unresponsive. The card is now glued to the pointer at all
+   * times and only the decision to reorder waits. */
+  let reordering = false;
 
   const label = $derived(layout.label(id));
   // Counted against what is ON SCREEN. Announcing "3 of 5" when two are
@@ -54,53 +61,104 @@
     return host ? host.getBoundingClientRect().left - offsetX : 0;
   }
 
-  /** The neighbour to trade places with, or null to stay put.
+  /** The slot the POINTER is currently inside, or null.
    *
-   * ONE STEP AT A TIME, ONLY IN THE DIRECTION OF TRAVEL, and comparing this
-   * card's own lifted edge against the neighbour's midpoint rather than asking
-   * where the pointer is.
+   * The pointer, not the card's centre. The handle sits in the page's left
+   * padding, so the card's centre is half a card away from the cursor — asking
+   * where the CENTRE is meant that pointing at a cell did not select it, and
+   * the disagreement between the two made the target oscillate as the
+   * compensation moved the card after each reorder.
    *
-   * All three matter, and together they are what stops the shudder when cards
-   * overlap. A pointer-position test sitting near a boundary answers
-   * differently on consecutive frames, so the order flips back and forth every
-   * time the mouse breathes. Allowing multi-slot jumps makes that worse when
-   * sections differ in height as much as a twelve-row table and a chart do.
-   * And gating on direction means that once a swap has happened, reversing it
-   * requires travelling back across the neighbour's midpoint — real hysteresis,
-   * rather than a boundary the card can sit exactly on.
+   * "Inside the cell" is the snap and the hysteresis at once: the cursor has to
+   * travel fully into another cell to change the target, so there is no
+   * trading places when two edges merely brush. Direction gating and
+   * one-step-at-a-time are unnecessary as a result.
+   *
+   * Multi-cell jumps are allowed. They were the thrash risk before only
+   * because neighbours teleported; with FLIP animating them, dragging across
+   * three positions reads as three tiles gliding aside.
    */
-  /* Which slot the POINTER is over, as one step toward it.
-   *
-   * Was a purely vertical test against the next slot's midpoint, which is
-   * wrong the moment two sections share a row: their tops are equal, so
-   * `self.bottom > next.top + next.height / 2` is already true before the
-   * pointer has moved, and the smallest downward twitch swapped them.
-   *
-   * Hit-testing the pointer against the other slots' own rects is
-   * layout-agnostic — it works down a column, across a row, or in the mixed
-   * grid a half-width section beside a full-width one produces. Self is
-   * skipped because the dragged card is translated under the pointer and would
-   * always match.
-   *
-   * Still ONE STEP AT A TIME and direction-gated. Jumping straight to the
-   * hovered index was what produced twenty swaps in twenty frames; moving one
-   * place per settle keeps the reorder legible and the animation honest.
-   */
-  function neighbour(px: number, py: number): number | null {
+  function targetSlot(px: number, py: number): number | null {
     if (!host?.parentElement) return null;
     const slots = [...host.parentElement.querySelectorAll('[data-slot]')];
-
-    let over = -1;
     for (let i = 0; i < slots.length; i++) {
       if (i === index) continue;
       const r = slots[i].getBoundingClientRect();
-      if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) {
-        over = i;
-        break;
-      }
+      if (px >= r.left && px <= r.right && py >= r.top && py <= r.bottom) return i;
     }
-    if (over === -1) return null;
-    return over > index ? index + 1 : index - 1;
+    return null;
+  }
+
+  /** FLIP the siblings so a reorder reads as tiles making room.
+   *
+   * Without this they teleport into their new cells, which gives no sense of
+   * the layout responding — the single biggest reason the first attempt felt
+   * wrong. The dragged card is excluded: it already carries its own transform
+   * following the pointer, and animating it too would fight that.
+   */
+  /** How long a sibling takes to glide into its new cell. Long enough to read
+   *  as movement, short enough not to be in the way of the next reorder. */
+  const FLIP_MS = 160;
+
+  async function reorderWithFlip(target: number) {
+    const container = host?.parentElement;
+    if (!container) return;
+
+    const cells = () =>
+      [...container.querySelectorAll<HTMLElement>('[data-slot]')].map((el) => ({
+        el,
+        key: el.dataset.slot ?? '',
+        rect: el.getBoundingClientRect(),
+      }));
+
+    const before = new Map(cells().map((c) => [c.key, c.rect]));
+
+    const homeBefore = { x: baseLeft(), y: baseTop() };
+    layout.moveVisible(index, target);
+    await tick();
+    const homeAfter = { x: baseLeft(), y: baseTop() };
+
+    for (const { el, key, rect } of cells()) {
+      if (key === id) continue; // the dragged card owns its own transform
+      const prev = before.get(key);
+      if (!prev) continue;
+      const dx = prev.left - rect.left;
+      const dy = prev.top - rect.top;
+      if (!dx && !dy) continue;
+
+      /* Invert, then play. The play step is triggered by a FORCED REFLOW, not
+         requestAnimationFrame.
+         rAF does not fire in a background tab, so an rAF-driven play left every
+         sibling stuck at its inverted offset — invisible while the tab was
+         hidden, and a visibly broken layout on returning to it. Reading
+         offsetWidth flushes layout synchronously, which is all the browser
+         needs to treat the next assignment as a transition rather than as the
+         same frame. */
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      void el.offsetWidth;
+      el.style.transition = `transform ${FLIP_MS}ms cubic-bezier(0.2, 0, 0, 1)`;
+      el.style.transform = '';
+      /* Clear the inline transition once it has played. Leaving it behind
+         would mean the NEXT card picked up carries a 160ms transform
+         transition, which smooths the lift and is felt as the drag lagging the
+         pointer.
+
+         On a TIMER, not transitionend. That event never fires when the tab is
+         hidden — transitions do not run there — so an event-driven cleanup
+         leaves the style behind exactly in the case nobody is watching, ready
+         to bite on the next drag after the tab is focused again. */
+      setTimeout(() => {
+        el.style.transition = '';
+      }, FLIP_MS + 20);
+    }
+
+    /* Compensate the lift rather than reset it. This card's home just moved,
+       so the lift shrinks by exactly that much and the card stays visually
+       still under the pointer through the reorder. Resetting instead made it
+       jump to its new cell while the pointer stood still. */
+    anchorX += homeAfter.x - homeBefore.x;
+    anchorY += homeAfter.y - homeBefore.y;
   }
 
   /* Move and release are tracked on the WINDOW, not via setPointerCapture on
@@ -132,6 +190,14 @@
     if (event.button !== 0) return;
     event.preventDefault();
 
+    /* Defensive: a FLIP that was interrupted (a second drag started before
+       its transition ended) could leave an inline transition on this card,
+       which would smooth the lift. */
+    if (host) {
+      host.style.transition = '';
+      host.style.transform = '';
+    }
+
     grabbed = true;
     layout.dragging = index;
     anchorY = event.clientY;
@@ -140,51 +206,40 @@
     startTracking();
   }
 
-  async function onPointerMove(event: PointerEvent) {
-    // `settling` holds off re-entry while the swap below awaits a DOM flush;
-    // without it a burst of moves would each act on stale geometry.
-    if (!grabbed || settling) return;
+  function onPointerMove(event: PointerEvent) {
+    if (!grabbed) return;
 
-    /* Measured from where the pointer started, NOT from the element's current
-     * box. getBoundingClientRect() reports the TRANSFORMED rect, so reading it
-     * here fed the lift back into its own input: with the pointer held still,
-     * the offset alternated between the real delta and zero on every frame,
-     * which is the jitter this replaced. */
-    offsetY = event.clientY - anchorY;
+    /* The lift updates on EVERY move, unconditionally. Measured from where the
+       pointer went down, not from the element's current box: a
+       getBoundingClientRect() here reports the TRANSFORMED rect and would feed
+       the lift back into its own input, which is the jitter this replaced. */
     offsetX = event.clientX - anchorX;
-
-    const target = neighbour(event.clientX, event.clientY);
-    if (target === null) return;
-
-    settling = true;
-    const before = baseTop();
-    const beforeX = baseLeft();
-    layout.moveVisible(index, target);
-    // Wait for the reorder to land so the new home can be measured rather
-    // than assumed — sections differ in height, and there is a gap between
-    // them, so the shift is not a number worth guessing at.
-    await tick();
-    const after = baseTop();
-    const afterX = baseLeft();
-
-    /* Compensate rather than reset. The card's home just moved by the
-     * neighbour's height, so the lift shrinks by exactly that much and the
-     * card stays visually still through the swap. Resetting the lift to zero
-     * instead made it jump to its new slot while the pointer stood still,
-     * which is the lurch you see as cards overlap. */
-    anchorY += after - before;
-    anchorX += afterX - beforeX;
     offsetY = event.clientY - anchorY;
-    offsetX = event.clientX - anchorX;
-    settling = false;
+
+    // Only the REORDER waits for its flush. Gating the whole handler on this
+    // is what made the drag stutter.
+    if (reordering) return;
+
+    const target = targetSlot(event.clientX, event.clientY);
+    if (target === null || target === index) return;
+
+    reordering = true;
+    void reorderWithFlip(target).finally(() => {
+      reordering = false;
+      // The pointer has kept moving while that settled; re-sync so the card
+      // does not lag a frame behind by the width of the reorder.
+      offsetX = event.clientX - anchorX;
+      offsetY = event.clientY - anchorY;
+    });
   }
 
   function onPointerUp() {
     if (!grabbed) return;
     grabbed = false;
-    settling = false;
     layout.dragging = null;
     offsetY = 0;
+    offsetX = 0;
+    reordering = false;
     stopTracking();
     // Persisted once, here, rather than on every swap — see Layout#save.
     layout.commit();
@@ -288,6 +343,10 @@
   }
 
   .slot.grabbed {
+    /* Not a pointer target while it is being carried — the cursor should
+       address what is underneath, and the card is following the cursor
+       anyway. */
+    pointer-events: none;
     /* Lifted above its neighbours while moving, so it reads as picked up
        rather than as a gap opening beneath it. */
     z-index: 5;
