@@ -7,6 +7,7 @@
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
   import NetworkPanel from './components/NetworkPanel.svelte';
+  import MemoryBand from './components/MemoryBand.svelte';
   import NodeCard from './components/NodeCard.svelte';
   import ProcessTable from './components/ProcessTable.svelte';
   import SwapTimeline from './components/SwapTimeline.svelte';
@@ -16,7 +17,7 @@
   import { LiveFeed } from './lib/live.svelte';
   import { AlertFeed } from './lib/alerts.svelte';
   import { gib, num } from './lib/format';
-  import type { NodeSnapshot } from './lib/types';
+  import type { NodeSnapshot, ProcessInfo } from './lib/types';
 
   const feed = new LiveFeed();
   const alertFeed = new AlertFeed();
@@ -43,6 +44,10 @@
     nodes: NodeSnapshot[];
     freeBytes: number;
     totalBytes: number;
+    usedBytes: number;
+    /** Every member's processes, so the pooled band can be broken down by
+     *  workload the same way a node's own band is. */
+    processes: ProcessInfo[];
     up: number;
   }
 
@@ -55,14 +60,30 @@
       const key = node.cluster ?? node.node_id;
       let g = byKey.get(key);
       if (!g) {
-        g = { key, name: node.cluster, nodes: [], freeBytes: 0, totalBytes: 0, up: 0 };
+        g = {
+          key,
+          name: node.cluster,
+          nodes: [],
+          freeBytes: 0,
+          totalBytes: 0,
+          usedBytes: 0,
+          processes: [],
+          up: 0,
+        };
         byKey.set(key, g);
       }
       g.nodes.push(node);
       if (node.up) g.up += 1;
       if (node.up && node.memory) {
         g.totalBytes += node.memory.total_bytes;
+        g.usedBytes += node.memory.used_bytes;
         g.freeBytes += Math.max(0, node.memory.total_bytes - node.memory.used_bytes);
+        /* Members' processes concatenated, so the pooled band splits by the
+           same workload classes a single node's does. Only from nodes that are
+           UP: a down member contributes neither capacity nor consumption, and
+           counting its last-known processes would describe memory nobody
+           holds. */
+        g.processes.push(...node.processes);
       }
     }
     return [...byKey.values()];
@@ -255,11 +276,21 @@
         <section class="cluster">
           <header class="cluster-head">
             <h2>{cluster.name}</h2>
-            <span class="dim">
-              {cluster.nodes.length} nodes pooled · <span class="num">{gib(cluster.freeBytes)}</span>
-              GiB free of {gib(cluster.totalBytes)}
-            </span>
+            <span class="dim">{cluster.nodes.length} nodes pooled</span>
           </header>
+          <!-- The pooled band, drawn exactly like a node's own. Honest here
+               precisely because these nodes are clustered: a model can span
+               them, so their combined free space is one number an operator can
+               act on. The same bar across UNCLUSTERED nodes would describe
+               capacity that does not exist, which is why only a framed cluster
+               gets one. -->
+          {#if cluster.totalBytes > 0}
+            <MemoryBand
+              totalBytes={cluster.totalBytes}
+              usedBytes={cluster.usedBytes}
+              processes={cluster.processes}
+            />
+          {/if}
           <div class="nodes">
             {#each cluster.nodes as node, i (node.node_id)}
               <NodeCard {node} slot={ci + i} compact={layout.compactCards} />

@@ -1035,6 +1035,23 @@ that size. This is about what happens past that.
   is watching it. The person who needs compact turns it on once and it stays
   on. `reset` clears it along with the rest of the layout.
 
+- [x] **K5.** Pooled memory band for a framed cluster, shipped 2026-08-17. The
+  cluster's shared pool was a line of text while every node beside it had a
+  bar; it is the same quantity and deserved the same treatment.
+
+  Reuses `MemoryBand` unchanged, summing members' total, used and processes, so
+  the pooled bar splits by the same workload classes — models, other GPU work,
+  system — that a single node's does.
+
+  **Only a framed cluster gets one.** That bar is honest here precisely because
+  these nodes are clustered: a model can span them, so their combined free
+  space is a number an operator can act on. The identical bar drawn across
+  UNCLUSTERED nodes would describe capacity that does not exist, which is the
+  error the `cluster` field exists to prevent.
+
+  Down members contribute nothing — neither capacity nor consumption. Counting
+  a dead node's last-known processes would describe memory nobody is holding.
+
 **Still open: K2** (hover reveals the rest). Until it lands, the only route
 back to clock, temperature and power is toggling to Full.
 
