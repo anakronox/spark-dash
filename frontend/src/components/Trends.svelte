@@ -76,20 +76,18 @@
      approximate and one that's misleading. */
   const relative = $derived(combined.series.filter((s) => s.scaleMax === null));
 
-  /* Hovered sample, reported up from the chart. The chips double as the legend
-     AND the value readout, which is what let the separate legend go: the
-     colour and name are already there, so the live number costs no extra
-     space. Null when the pointer is off the plot — the chips then show the
-     most recent sample instead, so they are never blank. */
-  let cursorIdx = $state<number | null>(null);
-
-  function readingFor(metricKey: string): string | null {
-    const s = combined.series.find((c) => c.metricKey === metricKey);
-    if (!s) return null;
-    const at = cursorIdx ?? s.raw.length - 1;
-    const v = s.raw[at];
-    return v == null ? null : `${v.toFixed(v >= 100 ? 0 : 1)}${s.unit}`;
-  }
+  /* CHIPS ARE LABELS ONLY.
+   *
+   * They used to carry the live value too, which read well with one or two
+   * metrics selected and wrapped onto a second row past that — a control strip
+   * whose height grew as you asked the chart for more, pushing the plot down.
+   *
+   * The absolute readings did not just disappear: the chart now has a floating
+   * tooltip (CombinedChart), which costs no layout and cannot reflow. The five
+   * readings that are current-state rather than history — GPU, clock, temp,
+   * power, CPU — were already on each node's card, and the three that were not
+   * (memory %, throughput, pressure %) have been added there.
+   */
 
   function toggle(key: string) {
     const next = selected.includes(key)
@@ -222,15 +220,6 @@
       >
         <span class="swatch" style:background={on ? metricColor(m.slot) : 'transparent'}></span>
         {m.label}
-        {#if on}
-          {@const reading = readingFor(m.key)}
-          {#if reading}
-            <!-- The absolute value, in its own unit. The plot shows a
-                 normalised percentage, so without this the real reading would
-                 be nowhere on screen. -->
-            <span class="reading num">{reading}</span>
-          {/if}
-        {/if}
       </button>
     {/each}
   </div>
@@ -247,7 +236,6 @@
         x={combined.x}
         series={combined.series}
         theme={themeKey}
-        oncursor={(idx) => (cursorIdx = idx)}
       />
     </div>
 
@@ -337,11 +325,6 @@
     background: var(--panel-raised);
   }
 
-  .reading {
-    color: var(--ink);
-    font-size: 10px;
-    padding-left: 2px;
-  }
 
   .metric .swatch {
     width: 8px;

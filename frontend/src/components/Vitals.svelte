@@ -3,14 +3,25 @@
    * Deliberately one dense row — scanning a row of aligned figures is faster
    * than reading a grid of labelled cards. */
   import { num, pct } from '../lib/format';
-  import type { CpuMetrics, GpuMetrics, PsiMetrics } from '../lib/types';
+  import type { CpuMetrics, GpuMetrics, PsiMetrics, MemoryMetrics } from '../lib/types';
 
   interface Props {
     gpu: GpuMetrics | null;
     cpu: CpuMetrics | null;
     psi: PsiMetrics | null;
+    /* The three readings the History chips used to carry and nothing else did.
+       GPU, clock, temp, power and CPU were already on this strip, so dropping
+       the chip values lost nothing for those — these would have gone dark. */
+    memory: MemoryMetrics | null;
+    tokensPerSec: number;
   }
-  const { gpu, cpu, psi }: Props = $props();
+  const { gpu, cpu, psi, memory, tokensPerSec }: Props = $props();
+
+  const memPct = $derived(
+    memory && memory.total_bytes > 0
+      ? (memory.used_bytes / memory.total_bytes) * 100
+      : null,
+  );
 
   // IDLE is not a fault — it means "not under load, so not evaluated". Only a
   // judgement made under load is worth colouring.
@@ -51,7 +62,20 @@
     <dd class="num">{gpu?.power_w != null ? `${num(gpu.power_w)}W` : '—'}</dd>
   </div>
   <div class="v"><dt>cpu</dt><dd class="num">{cpu ? pct(cpu.util_pct) : '—'}</dd></div>
-  <div class="v"><dt>pressure</dt><dd data-tone={psiTone}>{psi?.state ?? '—'}</dd></div>
+  <div class="v"><dt>mem</dt><dd class="num">{memPct != null ? pct(memPct) : '—'}</dd></div>
+  <div class="v">
+    <dt>tok/s</dt>
+    <dd class="num">{tokensPerSec > 0 ? tokensPerSec.toFixed(1) : '—'}</dd>
+  </div>
+  <div class="v">
+    <dt>pressure</dt>
+    <!-- The state carries the tone; the number is what the History chart plots,
+         and reading "LOW" against a rising line was the gap. -->
+    <dd data-tone={psiTone}>
+      {psi?.state ?? '—'}
+      <span class="state num">{psi ? `${psi.some_avg10.toFixed(0)}%` : ''}</span>
+    </dd>
+  </div>
 </dl>
 
 <style>

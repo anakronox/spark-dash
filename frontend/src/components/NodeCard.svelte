@@ -35,6 +35,15 @@
     if (node.runtimes.vllm.length) parts.push(`${node.runtimes.vllm.length} vllm`);
     return parts.join(' · ');
   });
+
+  /* Per-node throughput. The headline figure at the top of the page is the
+     cluster sum, which answers a different question — "is anything serving?"
+     rather than "is THIS box serving?" — and on a multi-node cluster the two
+     diverge completely. Summed the same way App does it. */
+  const nodeTokensPerSec = $derived(
+    (node.runtimes?.llama_cpp ?? []).reduce((a, r) => a + r.tokens_per_sec, 0) +
+      (node.runtimes?.vllm ?? []).reduce((a, v) => a + v.tokens_per_sec, 0),
+  );
 </script>
 
 <article class="node panel" class:down={!node.up} style:--accent={accent}>
@@ -55,7 +64,13 @@
       usedBytes={node.memory.used_bytes}
       processes={node.processes}
     />
-    <Vitals gpu={node.gpu} cpu={node.cpu} psi={node.psi} />
+    <Vitals
+      gpu={node.gpu}
+      cpu={node.cpu}
+      psi={node.psi}
+      memory={node.memory}
+      tokensPerSec={nodeTokensPerSec}
+    />
   {:else}
     <p class="offline">
       No data. Last seen {relativeTime(node.ts)}.
