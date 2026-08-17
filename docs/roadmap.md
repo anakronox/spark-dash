@@ -1079,58 +1079,81 @@ tables being under-specified for the space now available.
   Revisit only if two users genuinely need different columns for different
   jobs, which is not the case for one operator and a homelab.
 
-- [ ] **M4. Hiding stats you don't care about.** Requested 2026-08-17: let a
-  user switch off readings they never look at, so a table or a card shows only
-  what they came for.
+- [ ] **M4. Column visibility, controlled from the card.** Requested
+  2026-08-17, and designed 2026-08-17 with the interaction settled: a control on
+  each card, not a page in settings.
 
-  **This is not one feature — "stats" means four different things here**, and
-  three of them already have an answer:
-
-  | What | Today |
-  |---|---|
-  | A whole section | Settings → Sections → hide. Shipped. |
-  | A metric on the History chart | The metric chips on the panel. Shipped. |
-  | A field on a node card | Only the blunt Full/Compact toggle (K1); K2 would put the rest behind hover. |
-  | A column in a table | **Nothing. This is the actual gap.** |
-
-  So M4 is really: per-column visibility in the four tables, plus finishing the
-  node card half through K2. Scoping it that way keeps it from being rebuilt
-  three times over things that already work.
+  **Columns, not rows — and the distinction is the first design decision.**
+  What this does is show and hide the COLUMNS of a table. Filtering the ROWS
+  ("only gx10-b") is M2, and it hangs off clicking a node card. Both will
+  exist, which is why the funnel glyph is NOT used here: a funnel conventionally
+  means row filtering, and spending it on columns would leave M2 without its
+  obvious icon. This takes a columns/table glyph; the funnel stays reserved.
 
   **It reopens M3, and M3's objection was right.** M3 argued against a column
   picker: every column earned its place, most carry a comment saying why, and
   delegating that turns a curated view into an assembly kit. That still holds
-  for what the DEFAULT shows. What has changed is that M3's own escape clause —
-  "revisit only if two users genuinely need different columns" — has now been
-  hit twice, and the settings fly-out (L) removed the other objection by giving
-  persistent view state a home instead of scattering it. M4 is therefore an
-  override on a curated default, never a build-your-own-table: the shipped
-  column set stays the considered one, and hiding is opt-in per browser.
+  for what the DEFAULT shows. What changed is that M3's own escape clause —
+  "revisit only if two users genuinely need different columns" — has been hit
+  twice. So M4 is an override on a curated default, never a build-your-own
+  table: the shipped column set stays the considered one, and hiding is opt-in
+  per browser.
 
-  **The hazard specific to THIS application: hiding a stat is hiding a signal.**
-  This is a monitoring dashboard. `err` and `drop` are exactly the columns
-  someone would switch off because they read zero every day, and they are
-  exactly the columns whose first non-zero value is the thing you needed to
-  know. Do not ship a plain checkbox list. Options, cheapest first:
-  - A hidden column that goes non-zero **unhides itself** and says why. Costs
-    little, and matches the existing behaviour of the page receding when data
-    goes stale.
-  - Or refuse to hide alert-bearing columns at all, and let the rest go.
+  **Three of the five cards get it.** GPU processes, Models, Network. History
+  already HAS this feature — its metric chips are column selection for a chart,
+  and a second mechanism for one idea would be worse than none. Model activity
+  is a timeline rather than a table, with one hideable field (`node · router`),
+  which probably does not justify a control.
 
-  Constraints to design in from the start, each one already learned elsewhere
-  in this project:
-  - **Identity columns cannot be hidden.** A table of numbers with no node
-    column is unreadable, and it is the mistake a picker invites.
-  - **Reset has to restore them** — the same failure as hidden sections, where
-    a hidden thing is unrecoverable from the page it is hidden from. That is
-    why hiding lives in settings, and it is why `reset` clears it.
-  - **Hiding the sorted column must drop the sort** back to the table's own
-    order. An invisible sort applied to a visible table reads as the data
-    being wrong, which is the same class of bug as a header that sorts by its
-    neighbour.
-  - **Per browser, like every other view preference** (localStorage), not
-    server-side: the backend is deliberately stateless, and a column set tuned
+  Settled:
+
+  - **A columns glyph in the card header's far right, hover-revealed** like the
+    drag handle — but STAYING visible whenever something is hidden. Every card's
+    top-right already carries a count or a button group, so the control sits
+    after them, and the page keeps reading as an instrument panel rather than a
+    toolbar. The persistent-when-active rule is not decoration: a missing column
+    with no visible cause reads as the backend having broken.
+  - **Network gets ONE menu with two labelled groups** (RDMA ports,
+    Interfaces), because it is one card with two tables. One button per card is
+    the rule.
+  - **A hidden alert-bearing column unhides itself when it goes non-zero**, and
+    says why. `err` and `drop` read zero every day, which is exactly why someone
+    switches them off, and their first non-zero value is the thing they needed
+    to know. This is a monitoring dashboard: hiding a stat is hiding a signal,
+    and the resolution is that the signal wins. Consistent with the page already
+    receding when data goes stale.
+
+  **The hazard that decides the implementation.** Every `<td>` is hand-written
+  in fixed order. Hiding a column means the header list and the cell list must
+  agree, and if they ever disagree EVERY VALUE SHIFTS INTO THE WRONG COLUMN —
+  which looks like corrupted data rather than a broken UI, and is therefore
+  worse than a crash. So the rows become data-driven: one `{#snippet}` per
+  column, keyed by the same `ColumnDef` that drives the header, so order and
+  visibility have exactly one source. That refactor across four tables and ~32
+  columns is the bulk of the work, and it is the reason this is not a small
+  change. It is the same failure `ColumnDef` already exists to prevent for sort
+  keys, one step further on.
+
+  Rules to build in from the start, each already learned elsewhere here:
+
+  - **Identity columns cannot be hidden** — `ColumnDef` gains `required`. A
+    table of numbers with no `node` column is unreadable, and it is precisely
+    the mistake a picker invites.
+  - **Hiding the sorted column drops the sort** back to the table's own order.
+    An invisible sort on a visible table reads as the data being wrong — the
+    same class of bug as a header that sorts by its neighbour.
+  - **`reset` restores everything**, the same unrecoverability lesson as hidden
+    sections: a thing hidden from the page it is hidden from has no way back.
+  - **Per browser** (`spark-dash.section-columns.v1`), like every other view
+    preference. The backend is deliberately stateless, and a column set tuned
     for a 34" monitor is not the one you want on a phone.
+  - **No automatic hiding at narrow widths.** Same reasoning as K4's
+    Full/Compact: a page that rearranges itself unprompted is disorienting, and
+    the person who wants fewer columns can say so once.
+
+  Watch for, when building: hiding a column changes the table's total width, so
+  re-check it against the reservations in N — a deliberate one-time change on a
+  click is fine, but it must not reintroduce a width that oscillates.
 
 **Ordering:** M1 is done — sorting, pagination and the row cap. M2 next, and
 worth designing as card-click rather than filter boxes. M4 after M2 — it is the
