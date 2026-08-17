@@ -959,6 +959,56 @@ not a second hand-rolled overlay — and possibly literally the same shell with
 tabs, since "alerts" and "settings" are both things you open, act on and
 dismiss.
 
+### M — Making the tables usable at scale
+
+**Measured 2026-08-17, at four nodes:** the models table already carries **36
+rows, of which 32 are `unloaded`** — noise you scroll past to find the four
+that are doing anything. Same ratio at 32 nodes is ~288 rows.
+
+Widening the page also exposed that these tables do not have enough columns to
+fill 1491px however they are sized. That is not a CSS problem; it is the
+tables being under-specified for the space now available.
+
+- [ ] **M1. Sorting.** Clearly worth it. "Which model is actually serving" is a
+  sort by tok/s, and today it is a scroll. Client-side, since the data is
+  already in the page.
+
+  **Must keep a DEFAULT sort that is the current order.** Each table's order is
+  deliberate — models group by node then router, processes lead with the
+  biggest consumer — and a sort control that cannot return to it would destroy
+  reasoning the tables were built around.
+
+- [ ] **M2. Filtering, but as one interaction rather than a widget per
+  section.** The high-value filter is by node, and the page already has a
+  natural control for it: the node cards. Clicking one to scope every table to
+  that node beats four separate filter boxes, and it is the interaction people
+  already expect from a card that represents a thing.
+
+  The other filter that pays immediately is hiding `unloaded` models — 32 of 36
+  rows today. Probably a toggle rather than a general predicate.
+
+- [ ] **M3. More columns, chosen — NOT a column picker.** This is where I would
+  push back on the original suggestion.
+
+  Configurable columns are the move you make when you cannot decide what
+  matters. Every column in these tables earned its place and most carry a
+  comment explaining why; handing that decision to each user turns a curated
+  view into an assembly kit, adds persistent state to maintain, and means no
+  two people see the same dashboard when comparing notes.
+
+  The legitimate kernel is real though: there IS room now, and data the agent
+  already collects is not shown. The answer is to decide what else is worth a
+  column and show it to everyone — per-process SM% is already collected, model
+  size and last-used would help ranking, per-node throughput exists. Pick, do
+  not delegate.
+
+  Revisit only if two users genuinely need different columns for different
+  jobs, which is not the case for one operator and a homelab.
+
+**Ordering:** M1 first — it is the cheapest and helps most at today's row
+counts. M2 second, and worth designing as card-click rather than filter boxes.
+M3 last, as a deliberate editorial pass rather than a feature.
+
 ### K — Compact node cards, and a grid
 
 **The problem, measured on a real 3-node render 2026-08-17.** Each node card is
