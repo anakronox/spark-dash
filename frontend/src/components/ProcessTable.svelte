@@ -143,7 +143,7 @@
           {#each shown as row (row.key)}
             <tr>
               <td class="name">{row.name}</td>
-              <td>
+              <td class="runtimecol">
                 {#if row.runtime}
                   <span
                     class="runtime"
@@ -155,7 +155,7 @@
                   <span class="dim">unlabelled</span>
                 {/if}
               </td>
-              <td>
+              <td class="modelcol" title={row.model || undefined}>
                 <!-- A router parent legitimately has no model: it serves all of
                      them and holds only its own overhead. An em dash says that
                      plainly rather than implying missing data. -->
@@ -328,6 +328,24 @@
      table layout. `.compute` above already reserves the SM column. */
   .pid {
     min-width: calc(8ch + 24px);
+  }
+
+  /* Bounded, not just reserved. These two columns are sized by the widest value
+     currently on the page, and unlike a number that is a set of ROWS that comes
+     and goes — a transcode starting or a model unloading changes which strings
+     are present, so the column resizes and drags `share of pool` 27px with it.
+     A floor stops the common case shrinking it; a ceiling with ellipsis stops
+     an unusually long name expanding it. The full name is on the cell's
+     title. */
+  .runtimecol {
+    min-width: calc(10ch + 24px);
+  }
+
+  .modelcol {
+    min-width: calc(12ch + 24px);
+    max-width: calc(18ch + 24px);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* "107.5" — GiB to one decimal, room for a four-digit pool. */

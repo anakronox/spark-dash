@@ -1396,17 +1396,34 @@ meant to cover, so the columns went on resizing. It has to be
 column's rendered width EQUALS its min-width; if the column is wider, content
 is still in charge.
 
-Result: every column delta 0 across all four tables over 50s, table widths
-constant, no scrollbar flicker, CLS 0.0012 — and that remainder is sub-pixel,
-with the reported sources showing dx=0 dy=0.
+**Text columns need a ceiling, not just a floor.** A reservation fixes a column
+whose VALUE changes; it does nothing for one whose set of ROWS changes. GPU
+processes kept moving 27px after the numbers were pinned, because a transcode
+starting or a model unloading changes which strings are present, and the column
+is sized by the widest one currently on the page. `runtime` and `model` take a
+floor and a ceiling with ellipsis, full name on the title.
 
-**One table still scrolls, deliberately.** The RDMA table is 837px of genuine
-content in an 813px column at this width — nine columns, several of them
-identifiers. It scrolls those 24px STABLY, which is a different thing from the
-flicker: it does not change with the data. Shrinking it further would mean
-truncating `rdma port` or `interface`, and those are identity, not decoration.
-The `negotiated` column is truncated instead (13ch, full value on hover), since
-its rate leads the string and only the trailing "(4X EDR)" is clipped.
+**Getting the RDMA table to fit, rather than to scroll stably.** It was 837px of
+content in an 813px column — nine columns, several of them identifiers. Three
+changes closed the gap without touching an identifier:
+
+- `negotiated` → `rate` as a header. The longer word was setting the column's
+  width by itself: the header, not the content, was the binding constraint, so
+  abbreviating the value alone saved nothing. Worth checking which of the two
+  actually binds before optimising either.
+- The value drops its trailing "(4X EDR)" and shortens "/sec" to "/s" — the
+  latter also settling an inconsistency inside this panel, where rx and tx
+  already read "kb/s" from `bits()`. The driver's unabridged string is on the
+  title. 97px → 81px, with no ellipsis needed because the string is now short
+  rather than clipped.
+- `err`/`drop` reserve 5 digits instead of 6, the last 7px. Cheap because this
+  is a number read as "is it zero", not digit by digit; past 99,999 the column
+  grows once and stays, which is a one-way trip rather than the oscillation the
+  reservation exists to prevent.
+
+Result: all four tables fit their column exactly, every column delta 0 over 55s
+of live data, no scrollbars, CLS 0.0003 — and that remainder is sub-pixel, with
+the reported sources showing dx=0 dy=0.
 
 ### J — Single-host profile (everything on one GB10)
 

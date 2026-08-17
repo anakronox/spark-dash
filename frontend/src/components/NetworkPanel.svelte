@@ -119,6 +119,18 @@
     return `${num(b, 0)} b/s`;
   }
 
+  /** The driver's rate, abbreviated for the cell. Full string on the title.
+   *
+   * Both rules are anchored so they can only touch what they name — the unit,
+   * and a parenthetical at the very end. A rate phrased in some form this does
+   * not recognise passes through untouched rather than mangled, which is the
+   * property that matters for a string whose whole job is to report what
+   * actually happened.
+   */
+  function shortRate(rate: string): string {
+    return rate.replace(/\/sec\b/gi, '/s').replace(/\s*\([^)]*\)\s*$/, '');
+  }
+
   function speed(mbps: number | null): string {
     if (mbps === null) return '—';
     return mbps >= 1000 ? `${num(mbps / 1000, 0)}G` : `${num(mbps, 0)}M`;
@@ -180,7 +192,9 @@
     { key: 'port', label: 'rdma port' },
     { key: 'state', label: 'state' },
     { key: 'link', label: 'link' },
-    { key: 'rate', label: 'negotiated' },
+    // "rate", not "negotiated": the longer word was setting this column's
+    // width all by itself, and the value beneath it is self-evidently a rate.
+    { key: 'rate', label: 'rate' },
     { key: 'iface', label: 'interface' },
     { key: 'node', label: 'node' },
     { key: 'rx', label: 'rx', right: true },
@@ -244,7 +258,7 @@
                    RATE is the diagnosis; the trailing "(4X EDR)" is
                    supplementary, and letting the longest variant of it set a
                    160px column is what pushed this table past its container. -->
-              <td class="rate" title={p.rate || undefined}>{p.rate || '—'}</td>
+              <td class="rate" title={p.rate || undefined}>{p.rate ? shortRate(p.rate) : '—'}</td>
               <td class="dim">{p.iface || '—'}</td>
               <td class="dim">{p.node}</td>
               <td class="r num rate-col">{bits(p.rx)}</td>
@@ -444,11 +458,14 @@
     min-width: calc(11ch + 24px);
   }
 
-  /* Counters. Six digits is a million errors — past that the column may grow
-     once and stay grown, which is fine: the point is that it cannot oscillate
-     between two widths on a live feed. */
+  /* Counters. Five digits, which is the last 7px the RDMA table needed to stop
+     overflowing its column at half width — and a cheap 7px, because this is a
+     number read as "is it zero", not one read digit by digit. Past 99,999 the
+     column grows once and stays grown. That is not the failure this reservation
+     guards against: the point is that it cannot OSCILLATE between two widths on
+     a live feed, and an error count crossing 100k is a one-way trip. */
   .errs {
-    min-width: calc(6ch + 24px);
+    min-width: calc(5ch + 24px);
   }
 
   /* "100G", "10G" or an em dash. */
@@ -460,11 +477,11 @@
      comes up at the wrong speed. Truncated for WIDTH only, never for content:
      the full value is on the cell's title, and the rate leads the string so
      what gets clipped is the parenthetical, not the number. */
+  /* No max-width or ellipsis any more: `shortRate` bounds the string itself, so
+     the column is sized by content that is already short rather than by a cap
+     that clips a longer one. "200 Gb/s" is the widest it can be. */
   .rate {
     color: var(--ink-2);
-    max-width: 13ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   .bad {
