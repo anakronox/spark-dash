@@ -1573,6 +1573,31 @@ Watch for, when building:
   "20MHz". An axis that silently truncates is worse than no axis; the width is
   now derived from the widest label the metric can print.
 
+**Fixed straight after shipping: clicking a node blanked every chart.** The
+legend was built from `nodeIds` — the LIVE inventory — while the lines come from
+Prometheus, and those two sets are not the same thing. Selecting a node with no
+history filtered every series out, leaving each chart a caption with no plot,
+which reads as the panel having broken rather than as an empty selection.
+
+Found in the test rig, where the fake agents are live-polled but never scraped,
+so the legend offered four nodes and history knew only `sparky`. It is not a rig
+artefact though: a node just added to `cluster.yml`, or scraped for less than the
+window, does exactly the same thing in production.
+
+Three parts to the fix, and the first is the rule:
+
+- **The legend is the key to the LINES, so it lists the lines** — the nodes
+  actually present in the loaded history, in inventory order so colours stay
+  stable, plus any history knows that the inventory does not. A node recently
+  removed from the cluster still has samples for the rest of the window and IS
+  drawn, so it belongs in the key.
+- **A live node with no history is NAMED**, not silently dropped. A node with a
+  card above and no entry in the legend is a discrepancy the reader would
+  otherwise have to guess at.
+- **A selection that no longer matches anything collapses back to "all".** A
+  refresh can retire the very node that was soloed; holding a dead selection
+  would blank the panel with no obvious way back.
+
 Verified with the four-node rig: all four legend colours are drawn on the
 canvas (sampled pixels, not assumed); solo, shift-add and restore each change
 which lines are drawn; a soloed node keeps its own colour rather than

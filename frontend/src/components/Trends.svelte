@@ -77,13 +77,54 @@
      reshuffle as you toggle things on and off. */
   const chosen = $derived(METRICS.filter((m) => selected.includes(m.key)));
 
-  const isActive = (id: string) => activeNodes === null || activeNodes.includes(id);
-  const shownNodes = $derived(nodeIds.filter(isActive));
-
   /* Charts that actually have something to draw. A metric still loading, or
      with no samples in the window, is held back rather than rendered as an
      empty frame. */
   const drawable = $derived(chosen.filter((m) => data[m.key]?.x.length));
+
+  /** The nodes the charts can actually draw.
+   *
+   * THE LEGEND IS THE KEY TO THE LINES, SO IT LISTS THE LINES. It used to list
+   * `nodeIds` — the LIVE inventory — while the lines come from Prometheus, and
+   * those two sets are not the same. Clicking a node with no history then
+   * filtered every series out and left each chart as a caption with no plot,
+   * which reads as the panel having broken. A node can be live with no history
+   * for perfectly ordinary reasons: just added to `cluster.yml`, or being
+   * scraped for less than the window.
+   *
+   * Inventory order first so colours stay stable, then anything history knows
+   * that the inventory does not — a node recently removed still has samples for
+   * the rest of the window, and it IS drawn, so it belongs in the key.
+   */
+  const plotted = $derived.by(() => {
+    const seen = new Set<string>();
+    for (const m of drawable) for (const n of data[m.key].names) seen.add(n);
+    return [
+      ...nodeIds.filter((id) => seen.has(id)),
+      ...[...seen].filter((n) => !nodeIds.includes(n)).sort(),
+    ];
+  });
+
+  /** Live nodes with nothing in this window. Named rather than silently
+   *  dropped: a node on a card but absent from the legend is a discrepancy the
+   *  reader will otherwise have to guess at. */
+  const noHistory = $derived(nodeIds.filter((id) => !plotted.includes(id)));
+
+  /** The selection, self-healing.
+   *
+   * A refresh can retire the very node that was soloed — it drops out of the
+   * window, or leaves the cluster. Holding a selection that matches nothing
+   * would blank the panel with no way back except a control the reader cannot
+   * see the point of, so a selection that no longer names anything plottable
+   * collapses back to "all". */
+  const active = $derived.by(() => {
+    if (!activeNodes) return null;
+    const kept = activeNodes.filter((n) => plotted.includes(n));
+    return kept.length ? kept : null;
+  });
+
+  const isActive = (id: string) => active === null || active.includes(id);
+  const shownNodes = $derived(plotted.filter(isActive));
 
   /** One dataset per chart, filtered to the visible nodes.
    *
@@ -101,7 +142,10 @@
         names: keep.map(([n]) => n),
         columns: keep.map(([, i]) => d.columns[i]),
       };
-    }),
+    }).filter((c) => c.names.length),
+    // A chart with no series left after filtering is dropped, not drawn empty.
+    // An empty frame under a caption reads as a broken panel; an absent one
+    // reads as "nothing to show here", which is what it means.
   );
 
   /* Up to 4 across, snapping 1 / 2 / 4 — powers of two, the same reasoning as
@@ -119,15 +163,17 @@
    * choice — the same rule the metric chips already have. */
   function pickNode(id: string, additive: boolean) {
     if (additive) {
-      const current = activeNodes ?? [...nodeIds];
+      const current = active ?? [...plotted];
       const next = current.includes(id)
         ? current.filter((n) => n !== id)
         : [...current, id];
       activeNodes = next.length ? next : null;
-      if (activeNodes && activeNodes.length === nodeIds.length) activeNodes = null;
+      // Everything selected IS "all" — kept as null so the count and the
+      // "show all" control do not linger over a selection of everything.
+      if (activeNodes && activeNodes.length === plotted.length) activeNodes = null;
       return;
     }
-    const soloed = activeNodes?.length === 1 && activeNodes[0] === id;
+    const soloed = active?.length === 1 && active[0] === id;
     activeNodes = soloed ? null : [id];
   }
 
@@ -245,9 +291,9 @@
            one box doing" without a second layout.
            Shown only when there is more than one node: with one node it would
            be a control whose every state looks the same. -->
-      {#if nodeIds.length > 1}
+      {#if plotted.length > 1}
         <span class="legend" role="group" aria-label="Nodes">
-          {#each nodeIds as id (id)}
+          {#each plotted as id (id)}
             {@const on = isActive(id)}
             <button
               class="item"
@@ -260,9 +306,9 @@
               {id}
             </button>
           {/each}
-          {#if activeNodes}
+          {#if active}
             <button class="clear" onclick={() => (activeNodes = null)}>
-              {shownNodes.length} of {nodeIds.length} · show all
+              {shownNodes.length} of {plotted.length} · show all
             </button>
           {/if}
         </span>
@@ -329,6 +375,17 @@
         />
       {/each}
     </div>
+  {/if}
+
+  {#if noHistory.length}
+    <!-- Named rather than silently dropped from the legend. A node with a card
+         above and no entry here is a discrepancy the reader would otherwise
+         have to guess at, and the likely causes — just added, or not being
+         scraped — are worth knowing rather than hiding. -->
+    <p class="note dim">
+      No history in this range for {noHistory.join(', ')} — live, but Prometheus
+      has no samples for {noHistory.length === 1 ? 'it' : 'them'} yet.
+    </p>
   {/if}
 </section>
 
@@ -445,6 +502,11 @@
     height: 8px;
     border-radius: 2px;
     border: 1px solid var(--rule);
+  }
+
+  .note {
+    font-size: 10px;
+    margin: 8px 0 0;
   }
 
   /* Small multiples ------------------------------------------------------ */
