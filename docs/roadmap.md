@@ -2253,9 +2253,22 @@ has no `PULL_POLICY`, so after pulling this change a stack tracking a registry
 `:latest` silently stops fetching new builds — the exact stale-image failure
 the old hardcoded value existed to prevent, and it reports success while doing
 it. **Add `PULL_POLICY=always` to every live `.env` that points at a registry.**
-Stacks pinned to a sha are unaffected. Note the two can disagree: at the time
-of writing, central's `.env` pinned `6af6689` while the running container was
-still on `:latest` from an earlier deploy.
+Stacks pinned to a sha are unaffected — but **neither of ours is**, and the
+first version of this note said otherwise. Corrected 2026-08-18.
+
+Both live stacks track `forgejo.indielab.tech/brian/spark-dash-{agent,backend}:latest`
+with no `PULL_POLICY`, so both stop updating the moment the new compose reaches
+them. The earlier claim that they pinned shas came from reading
+`/docker/spark-dash-stack-{central,node}/.env` — archived directories that
+still exist, still parse, and are wired to nothing. The `.env` that counts is
+the one Dockhand deploys, `/docker/hawser/<stack>/.env`; confirm with
+
+    docker inspect <container> \
+      --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}'
+
+which answers in hawser's own namespace (`/data/stacks/<stack>`). A stale copy
+of a config file is worse than a missing one: it answers the question
+confidently and wrongly.
 
 **H1 gates publication; the rest is polish.** `forgejo.indielab.tech` is the
 *default image* in both compose files, not just documentation — so an
