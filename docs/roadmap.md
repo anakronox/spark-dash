@@ -2122,13 +2122,29 @@ within 2 days of 2026-08-18.**
   right now that is silent by design — the previous snapshot keeps being served,
   which is correct behaviour and invisible.
 
-- [ ] **R4.** Re-measure the agent footprint over a full day. P's numbers
+- [x] **R4.** Re-measure the agent footprint over a full day. P's numbers
   (81.3 MiB `docker stats`, 90.4 MB RSS) predate Q's background refresh thread
   and its per-collect `ThreadPoolExecutor`s. First reading after deploy was
   71.2 MiB, which looks fine — but the container was two minutes old, and P
   exists because glibc arenas grow with thread count over time. Threads on the
   hot path are exactly the thing that section measured, so confirm rather than
   assume.
+
+  **Measured 2026-08-19 after 15.5h uptime. No regression — slightly better.**
+
+  | | P baseline | after Q |
+  |---|---|---|
+  | `docker stats` | 81.3 MiB | **75.9 MiB** |
+  | process RSS | 90.4 MB | **87.2 MB** |
+  | threads | — | 5 |
+  | CPU | — | 0.33% |
+
+  Fifteen hours is the part that matters: P exists because glibc arenas grow
+  with thread count over time, so a two-minute reading proved nothing. Five
+  threads after that long also rules out a leak — Q's background refresh thread
+  and its per-collect `ThreadPoolExecutor`s are created and torn down per
+  cycle, and a leak would show as thousands, not five. `MALLOC_ARENA_MAX=2`
+  from P is still doing its job.
 
 Deferred, recorded so they are not rediscovered:
 
