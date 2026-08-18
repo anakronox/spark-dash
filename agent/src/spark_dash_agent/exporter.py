@@ -90,8 +90,9 @@ class CollectionStatsCollector:
 
         stalled = _g(
             "agent_collection_stalled",
-            "1 while a collection is running and the served snapshot has aged "
-            "past twice its TTL.",
+            "1 while a collection is running and what is being served has aged "
+            "past the TTL plus the grace period -- i.e. readers are now getting "
+            "stale data rather than waiting briefly for fresh.",
             ["node"],
         )
         stalled.add_metric(node, 1.0 if s.stalled else 0.0)

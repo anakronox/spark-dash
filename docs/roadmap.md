@@ -2059,12 +2059,28 @@ accept and never answer cost **0.75s with the budget against 2.02s without**
 it, and the concurrency test shows four slow routers costing about one
 router's time rather than four.
 
-**Not yet verified on hardware.** Everything above is the test suite and local
-verification; the incident itself was on sparky, which this session could not
-reach. What to watch after deploying: `sparkdash_agent_collect_duration_seconds`
-during a model autoload should show collection taking seconds while
-`scrape_duration_seconds` stays flat in the tens of milliseconds. That split is
-the whole fix, and it is the thing to confirm.
+**Verified on sparky, 2026-08-18**, by reproducing the fault rather than
+waiting for it. A socket bound on the node accepted connections and never
+answered — which is what a router does while it loads a model, and why no
+connect timeout ever fired — and old and new agents were pointed at it in turn,
+same box, same fault, alongside the untouched production stack:
+
+| | old agent | new agent |
+|---|---|---|
+| `/snapshot` latency | 4.08 – 7.15s | **0.25s** |
+
+4.1s is already past the backend's 3.0s poll timeout, so that column IS the node
+dropping off the dashboard. Note this was with **two routers and zero models**;
+the real incident had three models on one router, which is where ≥10s came from.
+
+On the new agent the split the fix is supposed to produce is visible directly:
+collection cost **2.10s** while `/snapshot` answered in **0.25s** — the grace
+period exactly. Against the real healthy routers, collection is 93ms and the
+served snapshot is 1.4ms old, so the grace period keeps the normal case fresh
+rather than trading it away.
+
+Also confirmed there: `collection_stalled` stayed 0 throughout, correctly —
+2.1s collection with a 0.44s snapshot age is slow-but-working, not a stall.
 
 ### J — Single-host profile (everything on one GB10)
 
