@@ -491,3 +491,36 @@ def test_saving_the_cluster_rewrites_prometheus_targets(tmp_path):
     inv.sync_prometheus_targets()
     # ...and stops being a scrape target.
     assert "8120" not in (targets / "vllm.yml").read_text()
+
+
+def test_a_target_file_it_cannot_write_is_reported_not_just_logged(tmp_path):
+    """This failed for an entire deploy on a leftover root-owned file the
+    backend's uid could not overwrite, and the only trace was one WARNING.
+
+    The consequence is not cosmetic: Prometheus keeps whatever targets it had,
+    so a node added is never scraped and a retired one is scraped forever. A
+    dashboard whose whole purpose is surfacing config that is quietly wrong
+    must not hide its own.
+    """
+    import os
+
+    from spark_dash_backend.inventory import (
+        TARGET_WRITE_FAILURES,
+        Node,
+        write_prometheus_targets,
+    )
+
+    targets = tmp_path / "targets"
+    targets.mkdir()
+    blocked = targets / "agents.yml"
+    blocked.write_text("# pre-existing\n")
+    blocked.chmod(0o444)
+
+    nodes = [Node(node_id="sparky", host="192.168.50.61")]
+    try:
+        write_prometheus_targets(nodes, targets, source="cluster.yml")
+    finally:
+        blocked.chmod(0o644)
+
+    if os.geteuid() != 0:  # root ignores the mode bits
+        assert any("agents.yml" in f for f in TARGET_WRITE_FAILURES)

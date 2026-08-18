@@ -310,6 +310,12 @@ def _generated_header(source: str) -> str:
     )
 
 
+#: Filled by the last `write_prometheus_targets` call — target files it could
+#: not write. Surfaced in /health, because a silent failure here means
+#: Prometheus is scraping a cluster that no longer matches the config.
+TARGET_WRITE_FAILURES: list[str] = []
+
+
 def write_prometheus_targets(
     nodes: list[Node],
     targets_dir: Path,
@@ -336,6 +342,7 @@ def write_prometheus_targets(
         files["vllm.yml"] = render_vllm_file_sd(cluster_nodes, header=header)
 
     changed = False
+    failures: list[str] = []
     for name, content in files.items():
         path = targets_dir / name
         try:
@@ -344,11 +351,21 @@ def write_prometheus_targets(
             path.write_text(content)
             changed = True
             log.info("wrote %s (%d node(s))", path, len(nodes))
-        except OSError:
-            # Not fatal: the live view still works, and Prometheus keeps
-            # whatever targets it already had.
+        except OSError as exc:
+            # Not fatal for the live view, which polls the agents directly. It
+            # IS fatal for Prometheus, which keeps whatever targets it had —
+            # so a node added here is never scraped and a retired one is
+            # scraped forever, both silently.
+            #
+            # Recorded, not just logged. This failed for a whole deploy on a
+            # leftover root-owned file that the backend's uid could not
+            # overwrite, and the only trace was one WARNING in a log nobody
+            # reads. A dashboard whose entire purpose is to surface config that
+            # is quietly wrong should not hide its own.
+            failures.append(f"{path.name}: {type(exc).__name__}")
             log.warning("could not write %s — is the volume writable?", path, exc_info=True)
 
+    TARGET_WRITE_FAILURES[:] = failures
     return changed
 
 

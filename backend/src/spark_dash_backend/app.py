@@ -37,7 +37,7 @@ from spark_dash_backend.cluster import (
     write_cluster,
 )
 from spark_dash_backend.config import Settings
-from spark_dash_backend.inventory import Inventory
+from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
 from spark_dash_backend.poller import LivePoller
 from spark_dash_backend.prometheus import (
     ABSENT_AFTER_S,
@@ -836,6 +836,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             problems.append(f"{len(nodes) - nodes_up} of {len(nodes)} node(s) unreachable")
         elif nodes_up is None:
             problems.append("could not reach any node to check")
+
+        # The dashboard's own config, quietly wrong. If these files cannot be
+        # written, Prometheus goes on scraping the cluster as it was — a node
+        # added is never scraped, a node retired is scraped forever — and the
+        # only other trace is a WARNING at startup.
+        if TARGET_WRITE_FAILURES:
+            problems.append(
+                "could not write Prometheus targets: " + ", ".join(TARGET_WRITE_FAILURES)
+            )
 
         # CONFIGURED BUT SILENT. A node can be perfectly reachable and still be
         # reporting nothing about a router, because the port in cluster.yml is

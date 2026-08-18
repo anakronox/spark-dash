@@ -70,7 +70,7 @@ scrape_configs:
   # instance.
   - job_name: vllm
     file_sd_configs:
-      - files: [/etc/prometheus/targets/vllm.yml]
+      - files: [/etc/prometheus/targets/generated/vllm.yml]
         refresh_interval: 30s
 
   # Prometheus scraping itself — cheap, and it's how you notice the monitoring
