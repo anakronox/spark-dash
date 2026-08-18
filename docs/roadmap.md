@@ -2089,19 +2089,32 @@ within 2 days of 2026-08-18.**
 
 #### Loose ends from Q
 
-- [ ] **R1.** Reproduce or disprove "no nodes loaded". Q fixed the stall, but
+- [x] **R1.** Reproduce or disprove "no nodes loaded". Q fixed the stall, but
   never explained the empty state actually reported. On reading, it should not
   be reachable: `live.svelte.ts:87` deliberately keeps the last snapshot on
   disconnect (`state = this.snapshot ? 'reconnecting' : 'offline'`), and
   `fetch_node` synthesises an `up=false` node rather than omitting one — a
   missing tile is easy to overlook, a red one is not.
 
-  So either there is a third path (a page load landing inside the stall, or a
-  frame that genuinely carried an empty node list), or the reported wording was
-  the "Waiting for the first frame…" notice and there is nothing to fix. Stop
-  the agent, watch the dashboard, and settle it. **This is the only part of the
-  original bug report still unaccounted for**, and leaving it open means not
-  knowing whether Q was the whole answer.
+  **Settled 2026-08-18: disproved.** The agent was stopped on sparky for 75s
+  with the dashboard open in a browser, and watched.
+
+  A down node does not disappear. The card stays and turns red — `critical
+  unreachable`, `no runtimes`, `No data. Last seen now. ConnectError: All
+  connection attempts failed` — with `NODES UP` reading `0/1` in red. Reloading
+  the page *during* the outage renders the same red card, not an empty page: a
+  refused connection errors instantly, so the first frame arrives immediately.
+
+  So the reported wording was almost certainly that state rather than an empty
+  node list. The card itself says "no runtimes", the header says `0/1`, and the
+  Models panel says "No models registered" — any of which reads as "no nodes
+  loaded" in recollection. During a *stall* rather than a stop, a page load
+  would additionally sit on "Waiting for the first frame…" for up to the
+  backend's 3s node timeout, since a stalled connection is accepted rather than
+  refused.
+
+  Q was the whole answer. Nothing further to fix here — but the investigation
+  turned up R8.
 
 - [ ] **R2.** Alert on collection *failing*, not just aging. Q4 exports five
   metrics and `AgentSnapshotStale` consumes one. A rising
@@ -2125,6 +2138,36 @@ Deferred, recorded so they are not rediscovered:
   doc or a check rather than code.
 - **R5.** The Q4 metrics live only in Prometheus. A node card showing
   "collection 2.1s" would put the slow path where a reader is already looking.
+
+- [ ] **R8.** An EMPTY but valid `cluster.yml` silently drops every node, while
+  an INVALID one correctly keeps the previous inventory. Found 2026-08-18 while
+  disproving R1; backwards from the intent stated in the comment right above
+  the code.
+
+  `Inventory._load()` guards the cluster path with a truthiness check:
+
+      try:
+          cluster = load_cluster(self._cluster_config)
+      except ClusterConfigError:
+          return self._nodes          # typo -> keep serving. Correct.
+      if cluster:                     # <- empty list falls THROUGH
+          ...
+      self._cluster = []              # and past here the file is "not in play"
+
+  A file that parses to no nodes is not an error, so it falls past this into the
+  `SPARK_NODES` env path and then the targets file, and can return `[]` — every
+  node gone from the dashboard. A typo is survivable; emptying the file is not.
+
+  Not what happened in the Q incident (`cluster.yml` writes go through
+  `os.replace` from a temp file in the same directory, so a torn read is
+  impossible). It is a hand-editing trap, which makes it **this week's problem
+  specifically**: adding nodes 2 and 3 means editing that file, and commenting
+  every node out mid-edit blanks the dashboard rather than holding the last good
+  config.
+
+  Fix is to treat "parsed, but no nodes" as the same class of event as a parse
+  error when a cluster file is configured: keep the previous inventory and say
+  so loudly. Deliberately emptying the cluster is not a thing anyone does.
 
 #### Multi-node readiness — do BEFORE the hardware arrives
 
