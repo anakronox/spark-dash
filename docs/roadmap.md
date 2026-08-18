@@ -2469,6 +2469,75 @@ the single best distress signal the agent produces. Both are pure display with
 no new failure modes. S3's chart is equally cheap; S3 as a *card* is the only
 item here with real design work in it, and it can wait for a reason to exist.
 
+### T — Model load/unload times on the Models card
+
+Planned 2026-08-19, out of the Cydonia incident: the question that morning was
+"why is this taking so long", and nothing on the dashboard could answer it.
+
+**Read the accuracy ceiling first, because it shapes everything else.**
+
+Load duration has to come from *observed* state transitions. The agent's
+one-hot `sparkdash_llama_model_state{node,router,model,state}` series already
+records every transition and `timeline.py` already reconstructs them — but it
+is scraped every 15s, so:
+
+- A Cydonia-class load (tens of seconds) measures to ±15s. Useful.
+- A 5s load is usually **invisible**: no sample lands while `state="loading"`,
+  and the transition reads `unloaded → active` with nothing in between.
+
+So this reports "about 75s", never "74.3s", and short loads legitimately show
+nothing. Present it as approximate or it will be read as precise.
+
+**The router cannot do better, checked 2026-08-19.** `/v1/models` carries a
+`created` field, which looks like exactly the timestamp needed. It is not:
+llama.cpp fills it with the response time, and all three models on the
+production router returned `created` equal to `now` on the same request. There
+is no load-start timestamp to be had, so the scrape interval is the floor.
+
+- [ ] **T1. Model size, parameters and quantisation — available now, discarded
+  now.** Do this one first; it is what makes T2 interpretable.
+
+  `/v1/models` already returns a `meta` block the agent parses past:
+
+      "meta": { "n_params": 23572403200, "size": 16756101120,
+                "ftype": "Q5_K - Medium", "n_ctx": 131072, ... }
+
+  That is 23.6B parameters, **15.6 GiB resident**, Q5_K, 128K context — and
+  `RouterModel` keeps none of it. It carries name, state, raw_status, slots,
+  kv, tok/s, running and waiting: everything about the model's *activity* and
+  nothing about the model.
+
+  This is the correlate the whole item is for. A 15.6 GiB model taking 90s to
+  load is ~175 MB/s, which is a **disk** answer rather than a mystery. Without
+  size beside it, a load time is a number you cannot reason about.
+
+  Free to collect: parse it in `_discover_models`, from a response already
+  being fetched. No new request, and nothing that can wake a model.
+
+  Size also earns its place independently — it is the per-model half of the
+  unified-memory question that `MemoryBand` answers only in aggregate.
+
+- [ ] **T2. Load and unload durations, derived from the state series.**
+
+  `ModelEvent` already carries `ts, node, router, model, from_state, to_state,
+  label, cold` and no duration. `extract_events` already walks the one-hot
+  series grouped by `(node, router, model)`, so pairing an entry into `loading`
+  with the following `loading → active` is local to code that exists.
+
+  Surface via `/api/models/timeline`, which already fetches exactly these
+  series — add a per-model summary to its response (last load duration, last
+  unload, cold-start count) rather than a second endpoint and a second query.
+  The Models card then consumes one endpoint on the cadence `SwapTimeline`
+  already uses.
+
+  **Keep it out of the agent.** Durations are historical and the agent is
+  deliberately stateless about history; deriving them centrally also means they
+  survive an agent restart and reach back as far as retention, which is the
+  same reasoning that put the timeline in Prometheus rather than in a table.
+
+**Order: T1, then T2.** T1 is a live snapshot field with no new request and no
+history involved, and it is the column that makes T2's number mean something.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
