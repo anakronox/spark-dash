@@ -1938,6 +1938,86 @@ command as a cross-check, and worth re-measuring first: at 81 MiB the agent is
 now smaller than `llama-lab-router` (187 MiB) and a fifth of `backrest`
 (486 MiB), so the case for spending that risk has weakened.
 
+### Q — The agent goes dark while a model loads
+
+**Reported 2026-08-18**, after a Hermes group-chat agent autoloaded Cydonia on
+a router that was already serving Qwen: the sparky node dropped off the
+dashboard entirely, the Cydonia card sat in a loading state for a long time,
+and it recovered on its own.
+
+**Measured, not inferred.** `scrape_duration_seconds{job="spark-dash-agent"}`
+across the incident window:
+
+| time (UTC) | scrape duration |
+|---|---|
+| 00:45:30 | 0.066s |
+| 00:46:00 | **10.000s** |
+| 00:46:30 | **10.000s** |
+| 00:47:00 | 2.63s |
+| 00:47:30 | 3.06s |
+| 00:48:00 | 0.045s |
+
+10.000s is Prometheus's scrape timeout exactly, so the true stall is "at least
+ten seconds", not ten. The agent did **not** restart — a restart gives
+connection-refused and resets counters; this is a read timeout against a
+process that is up and not answering. Five such episodes in 48h, 36 down
+scrapes, the two longest lasting 3 and 7 minutes.
+
+**The 2.63s and 3.06s samples are the reason it looked so much worse on the
+dashboard than in Prometheus.** `agent_timeout_s` is 3.0s, so the backend's
+live poll was still timing out through the whole recovery tail, after
+Prometheus had already gone green. The node keeps reading as unreachable for
+as long as collection stays above 3s.
+
+**Root cause, in two parts.**
+
+1. `SnapshotCache.get()` holds its lock across `self._builder.build()`
+   (`agent/src/spark_dash_agent/app.py`). There is no serve-stale-while-
+   refreshing path, so every reader — Prometheus, the backend's live poll,
+   anything else — waits for the *full* collection rather than getting the
+   0.75s-old snapshot that is already in hand and would be perfectly good.
+
+2. `build()` does its runtime HTTP **sequentially**, and the timeouts are
+   per-request rather than per-build. Per router that is `/v1/models`, one
+   `/metrics?model=` per active model, and `/props` — at 2s each, across two
+   routers with three models on one of them, worst case is ~20s. httpx applies
+   the 2s to connect and read separately, so a router whose accept backlog is
+   full during a load can burn 4s on a single call. The arithmetic matches the
+   observed ≥10s comfortably.
+
+The per-request timeout is the part that scales wrong: every router, model and
+vLLM endpoint added extends the worst-case stall linearly, and C (multi-node)
+multiplies the number of agents this can happen to.
+
+- [ ] **Q1.** Serve the cached snapshot immediately and refresh in the
+  background (single-flight, so a burst still collapses onto one collection).
+  A reader then never waits on collection at all. Only the very first call
+  after start has nothing to serve.
+- [ ] **Q2.** Give `build()` a total deadline, not just per-request timeouts,
+  so the worst case is bounded by a constant instead of by how many runtimes
+  the node happens to serve. A collector past the deadline reports as
+  unreachable for that tick, which is what it already does on timeout.
+- [ ] **Q3.** Collect routers (and vLLM endpoints) concurrently. Bounds the
+  wall time at roughly one slow endpoint rather than their sum, and is what
+  makes Q2's deadline generous rather than tight.
+- [ ] **Q4.** Expose collection duration as a metric. This incident was only
+  legible because Prometheus records `scrape_duration_seconds` for its own
+  scrape; the agent has no view of how long its own collection takes, so the
+  slow path is invisible until a scrape fails.
+
+**Not a fix: raising `agent_timeout_s`.** It would paper over the symptom, cost
+live-view latency on every genuinely dead node, and still fail once a node
+serves enough runtimes. With Q1 the agent answers in microseconds and 3s is
+generous.
+
+**Unverified: the exact empty state the dashboard showed.** `live.svelte.ts`
+does not clear `snapshot` on disconnect (`state = this.snapshot ?
+'reconnecting' : 'offline'`), so the expected behaviour is a stale view rather
+than an empty one, and `fetch_node` synthesises an `up=false` node rather than
+omitting it. Reproducing "no nodes loaded" needs either a page load during the
+stall or a frame that genuinely carried an empty node list. Worth pinning down
+before assuming Q1–Q3 fully cover what was seen.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
