@@ -421,11 +421,48 @@ pieces that already exist:
 
   Colour follows the metric, never its position: verified in-browser that
   removing the first metric leaves every other line's colour unchanged.
-- [ ] **E5.** Event annotations on those charts — model swaps, alert episodes,
-  agent build changes. Both event sources already exist (`/api/models/timeline`
-  and `/api/alerts/history`); this only draws them on the axis they already
-  share. A dip then arrives with its candidate explanation attached instead of
-  requiring three views and mental alignment.
+- [x] **E5. Shipped 2026-08-18.** `/api/annotations` and a marks layer on the
+  history charts, with an `events` toggle carrying the count.
+
+  **The filtering IS the feature, so it lives in one place.** One request, not
+  three: the charts get a list of instants and do not decide what deserves to
+  be one. Measured on a real 7-day window, drawing everything is 173 events on
+  a ~390px chart — one every 2.3px, which is not an annotation layer but a wash
+  that hides the data underneath it.
+
+  The filter asks which events could plausibly EXPLAIN a change in the line. It
+  is not a density cap chosen to fit:
+  - alerts that FIRED — a pending-only episode means a mistuned rule, not an
+    event on the hardware
+  - COLD model starts — a warm sleep/wake costs almost nothing; a cold start
+    reads weights back off disk and is what shows up as a latency spike
+  - DEPLOYS, from the first appearance of each `sparkdash_agent_build_info`
+    build label. A metric that changes shape right after the agent was replaced
+    is a different story from one that changed on its own, and it is the first
+    thing to rule out.
+
+  A build whose first sample sits at the window start was already running and
+  did not deploy inside it — otherwise every chart gets a phantom marker on its
+  left edge, every time.
+
+  **Marks are drawn BENEATH the series** (`drawClear`, not `draw`), recessive,
+  and told apart by dash. Only alerts take a status colour, because that
+  palette is reserved for exactly this and so cannot collide with node identity
+  from `--chart-N`; a deploy is not a warning and must not borrow one. Hovering
+  names the event in the existing tooltip, which is the whole point — the dip
+  and its candidate cause in one glance instead of three views and mental
+  alignment.
+
+  **It exposed a real bug in alert episodes.** The first 7-day render drew a
+  solid red band: 21 marks, all `InferenceTargetScrapeFailing`, spaced exactly
+  one step apart. Not 21 incidents — ONE, re-detected at every sample.
+  `DEFAULT_GAP_TOLERANCE_S` was 150s, about 2.5 evaluation intervals at a 60s
+  step, and a gap cannot be smaller than the sampling resolution: at any step
+  above 150s every sample looks like the start of a new episode.
+  `fetch_episodes` documented that constraint in its own docstring and never
+  enforced it. The tolerance now scales with the step, taking that window from
+  34 marks to 14 with nothing repeated — and fixing the alert history view at
+  coarse steps, where the same fragmentation was latent.
 - [ ] **E6.** Cluster outlier detection, once nodes 2 and 3 land: same model,
   three nodes, one slower. Needs per-node comparison rather than aggregates,
   and the `cluster` label (C1) is what keeps "compare within the pooled
