@@ -2082,6 +2082,82 @@ rather than trading it away.
 Also confirmed there: `collection_stalled` stayed 0 throughout, correctly —
 2.1s collection with a 0.44s snapshot age is slow-but-working, not a stall.
 
+### R — Closing out Q, and getting ready for nodes 2 and 3
+
+Two threads, and the second one has a date on it: **the hardware is expected
+within 2 days of 2026-08-18.**
+
+#### Loose ends from Q
+
+- [ ] **R1.** Reproduce or disprove "no nodes loaded". Q fixed the stall, but
+  never explained the empty state actually reported. On reading, it should not
+  be reachable: `live.svelte.ts:87` deliberately keeps the last snapshot on
+  disconnect (`state = this.snapshot ? 'reconnecting' : 'offline'`), and
+  `fetch_node` synthesises an `up=false` node rather than omitting one — a
+  missing tile is easy to overlook, a red one is not.
+
+  So either there is a third path (a page load landing inside the stall, or a
+  frame that genuinely carried an empty node list), or the reported wording was
+  the "Waiting for the first frame…" notice and there is nothing to fix. Stop
+  the agent, watch the dashboard, and settle it. **This is the only part of the
+  original bug report still unaccounted for**, and leaving it open means not
+  knowing whether Q was the whole answer.
+
+- [ ] **R2.** Alert on collection *failing*, not just aging. Q4 exports five
+  metrics and `AgentSnapshotStale` consumes one. A rising
+  `sparkdash_agent_collect_failures_total` means `build()` is raising, and
+  right now that is silent by design — the previous snapshot keeps being served,
+  which is correct behaviour and invisible.
+
+- [ ] **R4.** Re-measure the agent footprint over a full day. P's numbers
+  (81.3 MiB `docker stats`, 90.4 MB RSS) predate Q's background refresh thread
+  and its per-collect `ThreadPoolExecutor`s. First reading after deploy was
+  71.2 MiB, which looks fine — but the container was two minutes old, and P
+  exists because glibc arenas grow with thread count over time. Threads on the
+  hot path are exactly the thing that section measured, so confirm rather than
+  assume.
+
+Deferred, recorded so they are not rediscovered:
+
+- **R3.** Nothing compares deployment *intent* to *reality*. Both stacks ran
+  `:latest` while their `.env` pinned a sha, unnoticed for some time. `/health`
+  reports what is running; nothing reports what was meant to run. Possibly a
+  doc or a check rather than code.
+- **R5.** The Q4 metrics live only in Prometheus. A node card showing
+  "collection 2.1s" would put the slow path where a reader is already looking.
+
+#### Multi-node readiness — do BEFORE the hardware arrives
+
+The multi-node paths have only ever run against fakes and a stubbed history
+response. The difference between nodes 2 and 3 joining quietly and costing a
+debugging session is whether these are exercised first.
+
+- [ ] **R6.** Dry-run a second node on existing hardware. Q's verification
+  already proved the technique: a second agent container on a spare port, with
+  its own `NODE_ID`, added to `cluster.yml` for real. That exercises the whole
+  chain — inventory, generated Prometheus targets, scrape, node cards, the
+  chart legend and solo toggles, `AgentBuildSkew` — on real infrastructure
+  rather than fixtures, with no new hardware.
+
+  Removing it afterwards exercises the retire path (F/G) as well, which is
+  worth having rehearsed before doing it in anger.
+
+- [ ] **R7.** **Append new nodes to `cluster.yml`; do not sort it.** Found
+  2026-08-18 while planning. `nodeSlots()` is
+  `new Map(nodeIds.map((id, i) => [id, i]))` — the slot is the node's POSITION
+  in the ordered list, while the docstring above it says colour follows the
+  node and not its position. Both are true of *filtering*, which is what that
+  comment was written about, and neither is true of *insertion*: a node added
+  anywhere but the end shifts every slot after it, so `gx10-2` landing before
+  `sparky` alphabetically repaints the node you have been reading by colour for
+  months.
+
+  Decide which it should be. Appending is free and works today; keying the slot
+  to a stable identity (hash of node id, or an explicit `slot:` in
+  `cluster.yml`) survives any ordering. The palette itself is fine either way —
+  8 slots, and `nodeColorVar` degrades to `var(--rule)` past that, so three
+  nodes is comfortable.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
