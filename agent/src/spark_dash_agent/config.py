@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # blank on a node that serves only vLLM.
     llama_router_urls: str = ""
     llama_router_timeout_s: float = 2.0
+
+    # Wall-clock allowance for ALL runtime HTTP in one snapshot, shared across
+    # routers and vLLM endpoints. Per-request timeouts bound one call; without
+    # this, a node's worst-case collection grew with every runtime it served.
+    # Requests past the allowance are skipped and report as unreachable for
+    # that tick, which is what an endpoint that cannot answer in time is.
+    runtime_collect_budget_s: float = 5.0
     # Routers where per-model `/metrics?model=` requests are permitted.
     # EMPTY BY DEFAULT — that request loads the model on an autoload router, so
     # it is opt-in per router rather than a global switch. Waking a 12B model

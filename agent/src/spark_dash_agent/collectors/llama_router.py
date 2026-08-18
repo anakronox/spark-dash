@@ -21,7 +21,9 @@ Response shapes confirmed against llama.cpp b10380.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 import httpx
@@ -33,7 +35,7 @@ from spark_dash_common.models import (
     RouterModel,
 )
 
-from spark_dash_agent.collectors.base import Collector
+from spark_dash_agent.collectors.base import Budget, Collector
 
 log = logging.getLogger(__name__)
 
@@ -84,11 +86,17 @@ class RateTracker:
 
     def __init__(self) -> None:
         self._previous: dict[str, tuple[float, float]] = {}
+        # Routers are collected concurrently. Keys are namespaced per router so
+        # two threads never touch the same one, which makes this lock belt and
+        # braces — but a read-modify-write on shared state in a monitoring
+        # agent should not rest on an argument about key disjointness.
+        self._lock = threading.Lock()
 
     def rate(self, key: str, value: float, now: float | None = None) -> float:
         now = time.monotonic() if now is None else now
-        prev = self._previous.get(key)
-        self._previous[key] = (now, value)
+        with self._lock:
+            prev = self._previous.get(key)
+            self._previous[key] = (now, value)
 
         if prev is None:
             return 0.0
@@ -104,8 +112,9 @@ class RateTracker:
         Without this, a model that slept and later woke would compute its first
         rate against a stale sample from minutes ago.
         """
-        for key in set(self._previous) - keep_keys:
-            del self._previous[key]
+        with self._lock:
+            for key in set(self._previous) - keep_keys:
+                del self._previous[key]
 
 
 def parse_model_metrics(text: str) -> dict[str, float]:
@@ -167,11 +176,13 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         base_urls: list[str],
         *,
         timeout: float = 2.0,
+        budget_s: float = 5.0,
         metrics_allowlist: list[str] | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._base_urls = [u.rstrip("/") for u in base_urls if u]
         self._timeout = timeout
+        self._budget_s = budget_s
 
         # Per-router opt-in for `/metrics?model=` requests, EMPTY BY DEFAULT.
         #
@@ -230,33 +241,58 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         if not self._base_urls:
             return []
 
-        out: list[LlamaRouterMetrics] = []
-        live_rate_keys: set[str] = set()
+        # Routers are polled CONCURRENTLY, and that is a correctness fix rather
+        # than a speed-up. Sequentially, one router stalling — which is what a
+        # router does while it loads a model — added its full timeout budget to
+        # every other router's, so the worst case grew with the number of
+        # runtimes the node served. Concurrently it is bounded by the slowest
+        # single router no matter how many there are.
+        #
+        # `map` preserves input order, so the snapshot's router order stays
+        # the configured order rather than a race result.
+        # One budget for the whole collection, shared across router threads:
+        # the point is to bound the SNAPSHOT, so routers spend from a common
+        # allowance rather than each getting its own.
+        budget = Budget(self._budget_s)
 
         with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
-            for base_url in self._base_urls:
-                result = self._collect_router(client, base_url)
-                out.append(result)
-                live_rate_keys |= {
-                    f"{base_url}:{m.name}:{suffix}"
-                    for m in result.active_models
-                    for suffix in ("predicted", "prompt")
-                }
+            if len(self._base_urls) == 1:
+                # No pool for the common case; also keeps single-router tests
+                # on the calling thread.
+                out = [self._collect_router(client, self._base_urls[0], budget)]
+            else:
+                with ThreadPoolExecutor(
+                    max_workers=len(self._base_urls), thread_name_prefix="llama-router"
+                ) as pool:
+                    out = list(
+                        pool.map(
+                            lambda u: self._collect_router(client, u, budget),
+                            self._base_urls,
+                        )
+                    )
 
+        live_rate_keys = {
+            f"{base_url}:{m.name}:{suffix}"
+            for base_url, result in zip(self._base_urls, out, strict=True)
+            for m in result.active_models
+            for suffix in ("predicted", "prompt")
+        }
         self._rates.forget(live_rate_keys)
         return out
 
-    def _collect_router(self, client: httpx.Client, base_url: str) -> LlamaRouterMetrics:
-        models = self._discover_models(client, base_url)
+    def _collect_router(
+        self, client: httpx.Client, base_url: str, budget: Budget
+    ) -> LlamaRouterMetrics:
+        models = self._discover_models(client, base_url, budget)
         if models is None:
             # One router being down must not hide the others.
             return LlamaRouterMetrics(endpoint=base_url, name=_label_for(base_url), reachable=False)
 
         for model in models:
             if model.state in SCRAPEABLE_STATES:
-                self._enrich_active_model(client, base_url, model)
+                self._enrich_active_model(client, base_url, model, budget)
 
-        props = self._fetch_props(client, base_url)
+        props = self._fetch_props(client, base_url, budget)
         return LlamaRouterMetrics(
             endpoint=base_url,
             name=_label_for(base_url),
@@ -267,7 +303,7 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             tokens_per_sec=sum(m.tokens_per_sec or 0.0 for m in models),
         )
 
-    def _fetch_props(self, client: httpx.Client, base_url: str) -> dict:
+    def _fetch_props(self, client: httpx.Client, base_url: str, budget: Budget) -> dict:
         """Router-level properties: `max_instances` (`--models-max`) and whether
         autoload is on.
 
@@ -275,8 +311,10 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         call — without a `model` parameter this describes the router itself and
         cannot wake anything.
         """
+        if budget.spent:
+            return {}
         try:
-            resp = client.get(f"{base_url}/props")
+            resp = client.get(f"{base_url}/props", timeout=budget.timeout(self._timeout))
             resp.raise_for_status()
             payload = resp.json()
         except Exception:  # noqa: BLE001 — optional enrichment
@@ -284,13 +322,21 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             return {}
         return payload if isinstance(payload, dict) else {}
 
-    def _discover_models(self, client: httpx.Client, base_url: str) -> list[RouterModel] | None:
+    def _discover_models(
+        self, client: httpx.Client, base_url: str, budget: Budget
+    ) -> list[RouterModel] | None:
         """List every registered model and its state, without triggering a load.
 
         `/v1/models` takes no `model` parameter, so it cannot autoload.
         """
+        if budget.spent:
+            # Out of time before we even asked: unreachable for this tick, which
+            # is what a router that cannot answer in the allowance amounts to.
+            return None
         try:
-            resp = client.get(f"{base_url}/v1/models")
+            resp = client.get(
+                f"{base_url}/v1/models", timeout=budget.timeout(self._timeout)
+            )
             resp.raise_for_status()
             payload = resp.json()
         except Exception:  # noqa: BLE001 — router absent or not in router mode
@@ -309,7 +355,9 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             models.append(RouterModel(name=str(name), state=state, raw_status=raw))
         return models
 
-    def _enrich_active_model(self, client: httpx.Client, base_url: str, model: RouterModel) -> None:
+    def _enrich_active_model(
+        self, client: httpx.Client, base_url: str, model: RouterModel, budget: Budget
+    ) -> None:
         """Fetch metrics for an ACTIVE model on an allowlisted router.
 
         TWO independent conditions must both hold before this issues a request:
@@ -326,8 +374,14 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         if model.name not in self._busy_models:
             return
 
+        if budget.spent:
+            return
         try:
-            resp = client.get(f"{base_url}/metrics", params={"model": model.name})
+            resp = client.get(
+                f"{base_url}/metrics",
+                params={"model": model.name},
+                timeout=budget.timeout(self._timeout),
+            )
             resp.raise_for_status()
             metrics = parse_model_metrics(resp.text)
         except Exception:  # noqa: BLE001 — model may have slept mid-scrape

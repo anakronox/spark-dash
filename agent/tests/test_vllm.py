@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from spark_dash_agent.collectors.base import Budget
 from spark_dash_agent.collectors.vllm import VllmCollector, parse_vllm_metrics
 
 BODY = """# HELP vllm:num_requests_running Running requests
@@ -44,7 +45,7 @@ def test_collect_converts_kv_cache_fraction_to_percent():
     collector = VllmCollector(["http://vllm:8000/metrics"], timeout=1.0)
     collector._endpoints = ["http://vllm:8000/metrics"]
     result = collector._collect_one(
-        httpx.Client(transport=transport_for()), "http://vllm:8000/metrics"
+        httpx.Client(transport=transport_for()), "http://vllm:8000/metrics", Budget(5.0)
     )
     assert result is not None
     assert result.kv_cache_pct == pytest.approx(63.0)
@@ -69,7 +70,9 @@ def test_unreachable_instance_is_reported_not_dropped():
 
     collector = VllmCollector(["http://down:8000/metrics"])
     result = collector._collect_one(
-        httpx.Client(transport=httpx.MockTransport(handler)), "http://down:8000/metrics"
+        httpx.Client(transport=httpx.MockTransport(handler)),
+        "http://down:8000/metrics",
+        Budget(5.0),
     )
     assert result is not None
     assert result.reachable is False
@@ -91,7 +94,7 @@ def test_one_instance_down_does_not_hide_the_others():
     collector = VllmCollector(["http://down:8000/metrics", "http://up:8000/metrics"])
     client = httpx.Client(transport=httpx.MockTransport(handler))
     results = [
-        collector._collect_one(client, u)
+        collector._collect_one(client, u, Budget(5.0))
         for u in ["http://down:8000/metrics", "http://up:8000/metrics"]
     ]
     assert [r.reachable for r in results] == [False, True]
@@ -101,7 +104,7 @@ def test_falls_back_to_url_when_model_label_missing():
     body = "# TYPE vllm:num_requests_running gauge\nvllm:num_requests_running 2.0\n"
     collector = VllmCollector(["http://vllm:8000/metrics"])
     result = collector._collect_one(
-        httpx.Client(transport=transport_for(body)), "http://vllm:8000/metrics"
+        httpx.Client(transport=transport_for(body)), "http://vllm:8000/metrics", Budget(5.0)
     )
     assert result is not None
     assert result.model == "http://vllm:8000/metrics"

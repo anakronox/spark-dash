@@ -198,9 +198,12 @@ class SnapshotBuilder:
         self._llama = LlamaRouterCollector(
             settings.llama_router_endpoints,
             timeout=settings.llama_router_timeout_s,
+            budget_s=settings.runtime_collect_budget_s,
             metrics_allowlist=settings.llama_metrics_allowlist,
         )
-        self._vllm = VllmCollector(settings.vllm_endpoints)
+        self._vllm = VllmCollector(
+            settings.vllm_endpoints, budget_s=settings.runtime_collect_budget_s
+        )
 
         # Central config, if a backend is configured. Built after the
         # collectors so the env-derived ones above are the starting point and
@@ -243,9 +246,12 @@ class SnapshotBuilder:
         self._llama = LlamaRouterCollector(
             runtimes.llama_routers,
             timeout=self._settings.llama_router_timeout_s,
+            budget_s=self._settings.runtime_collect_budget_s,
             metrics_allowlist=runtimes.metrics_allowlist,
         )
-        self._vllm = VllmCollector(runtimes.vllm)
+        self._vllm = VllmCollector(
+            runtimes.vllm, budget_s=self._settings.runtime_collect_budget_s
+        )
         self._applied = runtimes
 
     def _config_status(self) -> ConfigStatus:

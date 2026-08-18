@@ -1989,18 +1989,18 @@ The per-request timeout is the part that scales wrong: every router, model and
 vLLM endpoint added extends the worst-case stall linearly, and C (multi-node)
 multiplies the number of agents this can happen to.
 
-- [ ] **Q1.** Serve the cached snapshot immediately and refresh in the
+- [x] **Q1.** Serve the cached snapshot immediately and refresh in the
   background (single-flight, so a burst still collapses onto one collection).
   A reader then never waits on collection at all. Only the very first call
   after start has nothing to serve.
-- [ ] **Q2.** Give `build()` a total deadline, not just per-request timeouts,
+- [x] **Q2.** Give `build()` a total deadline, not just per-request timeouts,
   so the worst case is bounded by a constant instead of by how many runtimes
   the node happens to serve. A collector past the deadline reports as
   unreachable for that tick, which is what it already does on timeout.
-- [ ] **Q3.** Collect routers (and vLLM endpoints) concurrently. Bounds the
+- [x] **Q3.** Collect routers (and vLLM endpoints) concurrently. Bounds the
   wall time at roughly one slow endpoint rather than their sum, and is what
   makes Q2's deadline generous rather than tight.
-- [ ] **Q4.** Expose collection duration as a metric. This incident was only
+- [x] **Q4.** Expose collection duration as a metric. This incident was only
   legible because Prometheus records `scrape_duration_seconds` for its own
   scrape; the agent has no view of how long its own collection takes, so the
   slow path is invisible until a scrape fails.
@@ -2017,6 +2017,54 @@ than an empty one, and `fetch_node` synthesises an `up=false` node rather than
 omitting it. Reproducing "no nodes loaded" needs either a page load during the
 stall or a frame that genuinely carried an empty node list. Worth pinning down
 before assuming Q1–Q3 fully cover what was seen.
+
+**Shipped 2026-08-18.** Four things the build turned up that the diagnosis had
+not:
+
+- **A burst did not merely persist the stall, it amplified it.** Running the
+  new tests against the old cache, twenty concurrent readers produced
+  **twenty-one sequential collections** — every waiter acquired the lock, found
+  the snapshot stale again (it had been stale when it started queuing), and
+  collected afresh. So the failure got worse exactly as more consumers arrived,
+  which is the opposite of what the TTL was there to do.
+
+- **Stale-while-revalidate on its own was the wrong fix**, and building it
+  showed why. If a stale snapshot is always returned immediately, then
+  Prometheus — usually the only caller, scraping every 15s — records data
+  collected 15s before the timestamp it is stored under. A systematic
+  one-interval lag across all history is too high a price for stall immunity.
+  `get()` therefore waits a short grace period (0.25s) for the refresh before
+  giving up and serving what it has: collection is ~80ms when the routers
+  answer, so the normal case stays exact, and a stalled one is served stale
+  well inside the backend's 3s and Prometheus's 10s.
+
+- **Q1 silently removed an alarm, so Q5 was needed to put it back.** A stalled
+  agent used to fail its scrape, so `up` went 0 and `NodeAgentDown` fired. The
+  agent now answers through a stall — which is the fix — and that made the
+  symptom invisible. Freshness has to be *reported* now rather than inferred
+  from the scrape succeeding.
+
+- **`httpx.MockTransport` ignores timeouts**, so the first budget test passed
+  5.01s against a 1s budget and looked like a bug in the budget. It was a bug
+  in the test. Replaced with two that can actually fail: one asserting the
+  timeout httpx was *handed* (`request.extensions["timeout"]`), and one against
+  a real socket that accepts and never writes — which is what a router loading
+  a model actually does, and why a connect timeout never fired.
+
+- [x] **Q5.** `AgentSnapshotStale` — alerts on
+  `sparkdash_agent_snapshot_age_seconds > 30` for 2m. Validated with promtool.
+
+**Measured after the change**, on the collectors themselves: four routers that
+accept and never answer cost **0.75s with the budget against 2.02s without**
+it, and the concurrency test shows four slow routers costing about one
+router's time rather than four.
+
+**Not yet verified on hardware.** Everything above is the test suite and local
+verification; the incident itself was on sparky, which this session could not
+reach. What to watch after deploying: `sparkdash_agent_collect_duration_seconds`
+during a model autoload should show collection taking seconds while
+`scrape_duration_seconds` stays flat in the tens of milliseconds. That split is
+the whole fix, and it is the thing to confirm.
 
 ### J — Single-host profile (everything on one GB10)
 

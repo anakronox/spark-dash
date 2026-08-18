@@ -31,6 +31,31 @@ groups:
             down, or just its agent container. Check `docker ps` on the node —
             if node-exporter is still up, it's the agent.
 
+      - alert: AgentSnapshotStale
+        expr: sparkdash_agent_snapshot_age_seconds > 30
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent on {{ $labels.node }} is serving stale data"
+          description: >-
+            The agent is answering, but the snapshot it returns was collected
+            over 30s ago — so its metrics are real and its timestamps are not.
+            Almost always a runtime endpoint that accepts connections and then
+            does not answer, which is what a llama.cpp router does while it
+            loads a model.
+
+            THIS RULE EXISTS BECAUSE NodeAgentDown NO LONGER COVERS IT. Before
+            the agent served stale data through a stall, collection blocked and
+            the scrape failed, so `up` went 0 and NodeAgentDown fired. The agent
+            now answers immediately no matter how slow collection is — which is
+            the fix — and that made the old symptom invisible. Freshness has to
+            be reported rather than inferred from the scrape working.
+
+            Check `sparkdash_agent_collect_duration_seconds` for how long
+            collection is taking, and `sparkdash_agent_collect_failures_total`
+            for whether it is failing outright rather than merely slow.
+
       - alert: NodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 5m

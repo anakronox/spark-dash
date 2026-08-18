@@ -10,8 +10,13 @@ thing that breaks the box.
 Payload fixtures are taken verbatim from llama.cpp b10380 on the GX10.
 """
 
+import socket
+import threading
+import time
+
 import httpx
 import pytest
+from spark_dash_agent.collectors.base import Budget
 from spark_dash_agent.collectors.llama_router import (
     LlamaRouterCollector,
     RateTracker,
@@ -477,3 +482,136 @@ def test_scrapeable_states_contains_only_active():
     from spark_dash_common.models import SCRAPEABLE_STATES
 
     assert frozenset({ModelState.ACTIVE}) == SCRAPEABLE_STATES
+
+class TestCollectionIsBounded:
+    """Q2/Q3, 2026-08-18.
+
+    A router that is loading a model does not refuse connections — it accepts
+    them and then does not answer. Sequential collection turned that into a
+    stall that grew with every runtime the node served: two routers at three
+    requests each, 2s apiece, is a 12s worst case from a "2 second timeout".
+    Collection then outlived Prometheus's 10s scrape timeout and the backend's
+    3s poll timeout, and the node vanished from the dashboard.
+    """
+
+    @staticmethod
+    def _slow_transport(delay_s: float) -> httpx.MockTransport:
+        def handler(request: httpx.Request) -> httpx.Response:
+            time.sleep(delay_s)
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"data": [model_entry("m", "loaded")]})
+            if request.url.path == "/props":
+                return httpx.Response(200, json=PROPS_BODY)
+            return httpx.Response(200, text=METRICS_BODY)
+
+        return httpx.MockTransport(handler)
+
+    def test_routers_are_polled_concurrently(self):
+        """Four slow routers must cost about one router's time, not four.
+
+        This is the property that stops the worst case scaling with the
+        cluster: C adds nodes, and each node may add routers."""
+        delay = 0.25
+        urls = [f"http://r{i}:8080" for i in range(4)]
+        collector = LlamaRouterCollector(urls, transport=self._slow_transport(delay))
+
+        started = time.monotonic()
+        result = collector.collect()
+        elapsed = time.monotonic() - started
+
+        assert len(result) == 4
+        sequential = delay * 2 * 4  # /v1/models + /props per router, at minimum
+        assert elapsed < sequential * 0.6, (
+            f"{elapsed:.2f}s for 4 routers looks sequential (>= {sequential:.2f}s)"
+        )
+
+    def test_router_order_survives_concurrency(self):
+        """The snapshot's router order must be the CONFIGURED order, not
+        whichever thread finished first — otherwise the dashboard's rows
+        reshuffle between ticks for no reason the reader can see."""
+        urls = [f"http://r{i}:8080" for i in range(4)]
+        collector = LlamaRouterCollector(urls, transport=self._slow_transport(0.02))
+        assert [r.endpoint for r in collector.collect()] == urls
+
+    def test_the_budget_shrinks_the_timeout_ACTUALLY_SENT(self):
+        """Deterministic proof of the mechanism.
+
+        httpx records the effective timeout on each request, so this asserts
+        what the collector asked the network for rather than how long a fake
+        happened to take. A 0.4s budget must not issue 2s requests."""
+        seen: list[float] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.extensions["timeout"]["read"])
+            return httpx.Response(200, json={"data": []})
+
+        LlamaRouterCollector(
+            ["http://r0:8080", "http://r1:8080"],
+            timeout=2.0,
+            budget_s=0.4,
+            transport=httpx.MockTransport(handler),
+        ).collect()
+
+        assert seen, "no requests were issued"
+        assert max(seen) <= 0.4, f"a request asked for {max(seen)}s against a 0.4s budget"
+
+    def test_the_budget_bounds_a_router_that_never_answers(self):
+        """The real shape of the failure, against a real socket.
+
+        A router loading a model does not refuse the connection — it accepts
+        and goes quiet, which is why a connect timeout never fired and the read
+        timeout was the one that mattered. This binds a socket that accepts and
+        never writes, which is that behaviour exactly.
+        """
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.bind(("127.0.0.1", 0))
+        server.listen(8)
+        port = server.getsockname()[1]
+        accepted = []
+
+        def accept_and_go_quiet():
+            while True:
+                try:
+                    accepted.append(server.accept()[0])
+                except OSError:
+                    return
+
+        threading.Thread(target=accept_and_go_quiet, daemon=True).start()
+        try:
+            collector = LlamaRouterCollector(
+                [f"http://127.0.0.1:{port}"] * 4,
+                timeout=2.0,
+                budget_s=0.75,
+                transport=None,
+            )
+            started = time.monotonic()
+            result = collector.collect()
+            elapsed = time.monotonic() - started
+        finally:
+            server.close()
+            for conn in accepted:
+                conn.close()
+
+        # Measured: 0.75s with the budget, 2.02s without it (the routers run
+        # concurrently either way, so unbounded costs one full read timeout).
+        # The threshold sits between those, not next to the failing value.
+        assert elapsed < 1.5, f"collection took {elapsed:.2f}s against a 0.75s budget"
+        assert all(not r.reachable for r in result), (
+            "a router that could not answer within the budget is unreachable "
+            "for this tick, not silently dropped"
+        )
+
+    def test_a_spent_budget_skips_the_request_entirely(self):
+        """Once the allowance is gone, no new request is even issued — the
+        cheap half of the guarantee, and the one that keeps a node with many
+        runtimes from queueing work it has no time for."""
+        budget = Budget(0.0)
+        assert budget.spent
+        assert budget.timeout(2.0) == 0.0
+
+    def test_the_budget_shrinks_a_request_timeout_to_what_is_left(self):
+        budget = Budget(0.5)
+        assert budget.timeout(2.0) == pytest.approx(0.5, abs=0.05)
+        assert budget.timeout(0.1) == pytest.approx(0.1, abs=0.01), (
+            "a request asking for less than remains keeps its own ceiling"
+        )

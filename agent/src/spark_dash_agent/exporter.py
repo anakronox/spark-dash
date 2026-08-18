@@ -49,6 +49,71 @@ class SnapshotMetricsCollector:
         yield from _runtime_metrics(snap, node)
 
 
+class CollectionStatsCollector:
+    """How long the agent takes to collect, and how stale what it serves is.
+
+    Added after an incident that was only legible because Prometheus records
+    `scrape_duration_seconds` for its own scrape. The agent had no view of its
+    own collection time, so a router stalling it looked, from outside, exactly
+    like an agent that had died — and only once the stall exceeded the scrape
+    timeout did anything get recorded at all. These three make the slow path
+    visible while it is still merely slow.
+
+    Note `snapshot_age_seconds` is what `up` cannot tell you now that readers
+    are served stale data rather than blocked: a scrape always succeeds, so
+    freshness has to be reported rather than inferred from the scrape working.
+    """
+
+    def __init__(self, get_stats, node_id: str) -> None:
+        self._get_stats = get_stats
+        self._node_id = node_id
+
+    def collect(self) -> Iterable[GaugeMetricFamily]:
+        s = self._get_stats()
+        node = [self._node_id]
+
+        duration = _g(
+            "agent_collect_duration_seconds",
+            "Wall time of the agent's most recent snapshot collection.",
+            ["node"],
+        )
+        duration.add_metric(node, s.collect_duration_s)
+        yield duration
+
+        age = _g(
+            "agent_snapshot_age_seconds",
+            "Age of the snapshot currently being served.",
+            ["node"],
+        )
+        age.add_metric(node, s.snapshot_age_s)
+        yield age
+
+        stalled = _g(
+            "agent_collection_stalled",
+            "1 while a collection is running and the served snapshot has aged "
+            "past twice its TTL.",
+            ["node"],
+        )
+        stalled.add_metric(node, 1.0 if s.stalled else 0.0)
+        yield stalled
+
+        failures = _g(
+            "agent_collect_failures_total",
+            "Snapshot collections that raised. The previous snapshot is kept.",
+            ["node"],
+        )
+        failures.add_metric(node, float(s.failures))
+        yield failures
+
+        collections = _g(
+            "agent_collections_total",
+            "Snapshot collections that completed.",
+            ["node"],
+        )
+        collections.add_metric(node, float(s.collections))
+        yield collections
+
+
 def _g(name: str, doc: str, labels: list[str] | None = None) -> GaugeMetricFamily:
     return GaugeMetricFamily(f"{_NS}_{name}", doc, labels=labels or [])
 

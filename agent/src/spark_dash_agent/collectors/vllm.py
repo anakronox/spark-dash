@@ -12,12 +12,13 @@ Unlike llama.cpp router mode, there is no autoload hazard here: scraping vLLM's
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from prometheus_client.parser import text_string_to_metric_families
 from spark_dash_common.models import VllmMetrics
 
-from spark_dash_agent.collectors.base import Collector
+from spark_dash_agent.collectors.base import Budget, Collector
 from spark_dash_agent.collectors.llama_router import RateTracker
 
 log = logging.getLogger(__name__)
@@ -61,26 +62,43 @@ def parse_vllm_metrics(text: str) -> tuple[dict[str, float], str | None]:
 class VllmCollector(Collector[list[VllmMetrics]]):
     name = "vllm"
 
-    def __init__(self, endpoints: list[str], *, timeout: float = 2.0) -> None:
+    def __init__(
+        self, endpoints: list[str], *, timeout: float = 2.0, budget_s: float = 5.0
+    ) -> None:
         self._endpoints = endpoints
         self._timeout = timeout
+        self._budget_s = budget_s
         self._rates = RateTracker()
 
     def collect(self) -> list[VllmMetrics]:
         if not self._endpoints:
             return []
 
-        out: list[VllmMetrics] = []
+        # Concurrent for the same reason as the llama routers: sequentially,
+        # each unresponsive endpoint added its whole timeout to the snapshot's
+        # critical path, so the worst case scaled with how much the node ran.
+        budget = Budget(self._budget_s)
         with httpx.Client(timeout=self._timeout) as client:
-            for url in self._endpoints:
-                metrics = self._collect_one(client, url)
-                if metrics is not None:
-                    out.append(metrics)
-        return out
+            if len(self._endpoints) == 1:
+                results = [self._collect_one(client, self._endpoints[0], budget)]
+            else:
+                with ThreadPoolExecutor(
+                    max_workers=len(self._endpoints), thread_name_prefix="vllm"
+                ) as pool:
+                    results = list(
+                        pool.map(
+                            lambda u: self._collect_one(client, u, budget), self._endpoints
+                        )
+                    )
+        return [m for m in results if m is not None]
 
-    def _collect_one(self, client: httpx.Client, url: str) -> VllmMetrics | None:
+    def _collect_one(
+        self, client: httpx.Client, url: str, budget: Budget
+    ) -> VllmMetrics | None:
         try:
-            resp = client.get(url)
+            if budget.spent:
+                raise TimeoutError("collection budget spent before this endpoint")
+            resp = client.get(url, timeout=budget.timeout(self._timeout))
             resp.raise_for_status()
             values, model_name = parse_vllm_metrics(resp.text)
         except Exception:  # noqa: BLE001 — one instance down shouldn't hide the rest
