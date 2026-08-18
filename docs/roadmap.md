@@ -1152,14 +1152,34 @@ tables being under-specified for the space now available.
   not, and the argument for leaving it that way is that a sort is a question
   you asked once, where a row cap is a preference.
 
-- [ ] **M1b. Original sorting note.** Clearly worth it. "Which model is actually serving" is a
-  sort by tok/s, and today it is a scroll. Client-side, since the data is
-  already in the page.
+- [x] **M1b. Closed 2026-08-18 — satisfied by M1, and partly overtaken by it.**
+  This was the ORIGINAL sorting note, written before M1 was scoped; M1 then
+  shipped the same thing more broadly. Kept as a record rather than deleted,
+  because the constraint it insisted on is the one worth remembering.
 
-  **Must keep a DEFAULT sort that is the current order.** Each table's order is
-  deliberate — models group by node then router, processes lead with the
-  biggest consumer — and a sort control that cannot return to it would destroy
-  reasoning the tables were built around.
+  Every requirement is met: `tok/s` is sortable in the Models table, sorting is
+  client-side, and the third click of the cycle returns to the table's own
+  deliberate order. Verified live — `aria-sort` cycles descending, ascending,
+  none, and the row order comes back identical.
+
+  **Its premise is now stale in a good way.** M1b says the default groups
+  "by node then router", so finding what is serving needs a sort. That order
+  changed: the table now leads with ACTIVE — "what's serving right now is what
+  you came to see" — so the question M1b was written to answer is answered by
+  the default, with no sort at all. Sorting by tok/s remains available for
+  ranking among several that ARE serving.
+
+  **One thing genuinely unverified, and it cannot be faked.** With the cluster
+  idle every `tok/s` cell is `—`, so a sort on that column cannot reorder
+  anything; nulls sort last in both directions by design. The sort MACHINERY
+  was verified across all 32 columns with real value deltas when M1 shipped, but
+  the specific "rank the busy models" outcome needs live inference traffic to
+  demonstrate. Worth a glance the next time something is actually generating
+  tokens.
+
+  Note an active model legitimately reports no throughput: the agent only
+  scrapes models NVML reports as busy, so an active-but-idle one is left alone
+  and its tok/s is absent rather than zero. That is the behaviour, not a gap.
 
 - [ ] **M2. Filtering, but as one interaction rather than a widget per
   section.** The high-value filter is by node, and the page already has a
