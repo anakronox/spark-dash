@@ -129,7 +129,14 @@ fi
 build_and_push() {
   local name="$1" dockerfile="$2" env_var="$3"
   local base
-  if [[ -n "$REGISTRY" && -n "$OWNER" ]]; then base="${REGISTRY}/${OWNER}/${name}"; else base="$name"; fi
+  # A local build is named for what will RUN it, not for where it isn't going.
+  # The compose files default to the bare name, so --no-push must produce that
+  # exact tag or a fresh clone builds an image its own stack cannot see.
+  if [[ $PUSH -eq 1 && -n "$REGISTRY" && -n "$OWNER" ]]; then
+    base="${REGISTRY}/${OWNER}/${name}"
+  else
+    base="$name"
+  fi
 
   echo
   echo "── ${name} ─────────────────────────────────────"
@@ -147,10 +154,9 @@ build_and_push() {
   docker build -f "$dockerfile" --build-arg "BUILD_VERSION=${TAG}" "${tags[@]}" .
 
   if [[ $PUSH -eq 0 ]]; then
-    echo "${c_ok}built${c_off} ${base}:${TAG} ${c_dim}(not pushed)${c_off}"
-    echo "${c_warn}NOTE${c_off} the stacks set pull_policy: always, so a plain 'up -d'"
-    echo "will fetch the REGISTRY's :latest and ignore this local build. To run"
-    echo "it, pin it: ${env_var}=${base}:${TAG}"
+    echo "${c_ok}built${c_off} ${base}:${TAG} ${c_dim}(and :latest, not pushed)${c_off}"
+    echo "${c_dim}this is the stacks' default image, so 'up -d' runs it as-is,${c_off}"
+    echo "${c_dim}provided ${env_var} and PULL_POLICY are unset in .env.${c_off}"
     prune_old_tags "$base"
     return
   fi
@@ -219,8 +225,8 @@ esac
 
 echo
 if [[ $PUSH -eq 0 ]]; then
-  echo "Built locally. The image exists only on this host's docker daemon —"
-  echo "reference it by the tag above in a stack that does not pull."
+  echo "Built locally. The image exists only on this host's docker daemon, which"
+  echo "is all the stacks need: they default to this name and do not pull."
 else
   echo "Nothing pulls images on a schedule, so publishing changes nothing until"
   echo "you deploy. Pin the tag above in the stack's .env, then either commit"

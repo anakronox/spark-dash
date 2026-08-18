@@ -2002,11 +2002,47 @@ a fresh clone with no edits, and every host-specific value lives in a
 gitignored file with a committed `.example` beside it. What remains is a short
 list of MY values sitting in tracked files where a placeholder belongs:
 
-- [ ] **H1.** `central/.env.example` and `node/.env.example` — carry
-  `forgejo.indielab.tech` as the registry and `192.168.50.x` addresses
-  (`BACKEND_URL`, `ALERTMANAGER_EXTERNAL_URL`). Replace with placeholders
-  obvious enough that leaving one unedited fails loudly rather than quietly
-  pointing at somebody else's LAN.
+- [x] **H1a.** Six functional lines carry MY values. Measured 2026-08-18 —
+  the raw grep finds 118 hits of `192.168.50.x` and 15 of the hostname, but
+  everything else is commented out (`SPARK_NODES=`, `LLAMA_ROUTER_URLS=`,
+  `LLAMA_METRICS_ROUTERS=`) or a docstring example (`inventory.py`). Those read
+  as examples and stay:
+
+  | File | Line | Value |
+  |---|---|---|
+  | `central/compose.yaml` | 113 | default image |
+  | `node/compose.yaml` | 54 | default image |
+  | `central/.env.example` | 61 | `BACKEND_IMAGE=` |
+  | `node/.env.example` | 38 | `AGENT_IMAGE=` |
+  | `central/.env.example` | 90 | `ALERTMANAGER_EXTERNAL_URL=` |
+  | `node/.env.example` | 47 | `BACKEND_URL=` |
+
+  The two addresses become placeholders obvious enough that leaving one
+  unedited fails loudly rather than quietly pointing at somebody else's LAN.
+  The four image lines are H1b, because a string swap alone makes them worse.
+
+- [x] **H1b.** `pull_policy: always` has to become
+  `pull_policy: ${PULL_POLICY:-missing}` in the same change. This is the part
+  H1 originally missed.
+
+  `pull_policy: always` is set on our two services and is correct for a
+  floating tag in a registry — Compose's default `missing` would use any
+  locally-present image forever and report a no-op deploy as success. But the
+  compose comment already records the collision:
+
+  > `publish-images.sh --no-push` builds an image this will then ignore,
+  > because it always prefers the registry.
+
+  That is exactly the stranger's path: clone, build, `up -d`. And swapping the
+  default to an unqualified name like `spark-dash-agent:latest` **makes it
+  worse** — `always` resolves that to `docker.io/library/spark-dash-agent`, so
+  instead of failing against an unreachable LAN registry it reaches Docker Hub
+  and either errors or pulls an unrelated image squatting the name. Trading an
+  unreachable-registry failure for a supply-chain one is not a fix.
+
+  With `${PULL_POLICY:-missing}`, a fresh clone uses the image it just built
+  and never contacts a registry; `.env` sets `PULL_POLICY=always` for the
+  registry path, preserving today's measured behaviour verbatim.
 - [x] **H2.** `scripts/publish-images.sh` no longer hardcodes a registry.
   `REGISTRY` and `OWNER` now default to whatever the clone's own `origin`
   remote points at, so a fork publishes to its own registry with no
@@ -2016,17 +2052,89 @@ list of MY values sitting in tracked files where a placeholder belongs:
   Also gained `--no-push` (build with no registry or login at all, which is
   what an evaluator needs), `--tag`, `--no-latest` and `--help`. Documented in
   [deployment.md](deployment.md#building-and-shipping-images).
-- [ ] **H3.** Sweep the READMEs for `/docker/spark-dash-homegrown` and
-  `192.168.50.x` used as *instruction* rather than *example*. Most are
-  illustrative and fine; the distinction is whether a reader would paste it.
-- [ ] **H4.** A quickstart that a stranger can follow end to end, which is the
+- [x] **H3.** Sweep the READMEs for `/docker/spark-dash-homegrown` and
+  `192.168.50.x` used as *instruction* rather than *example*. The distinction
+  is whether a reader would paste it.
+
+  Counted 2026-08-18: 8 hits of the path, and the original guess that "most are
+  illustrative" was wrong. Five are instruction-shaped — `REPO=/docker/...` as a
+  pasteable shell assignment in `central/README.md:32`, `central/README.md:438`
+  and `node/README.md:23,80`, plus `cd /docker/spark-dash-homegrown/central` at
+  `central/README.md:45`. Prose mentions (`central/README.md:406`,
+  `node/README.md:66`, `docs/deployment.md:265`) are fine as-is.
+
+  The fix is to make `REPO` a variable the reader sets once, rather than a path
+  they inherit — the surrounding scripts already read `$REPO`.
+- [x] **H4.** A quickstart that a stranger can follow end to end, which is the
   real test of whether H1–H3 are done — the current READMEs assume the reader
-  is me.
+  is me. Top-level `README.md` is currently a title and a `## Docs` index, so
+  there is no wrong-shaped page to fight; the quickstart is new writing.
+
+  It has to be walked, not just written: clone into a path that is *not*
+  `/docker/spark-dash-homegrown`, with no `.env` files and no registry login,
+  and follow it literally. Anything that only works because of local state is
+  the bug H4 exists to catch.
+
+- [x] **H5.** Add a `LICENSE`. There isn't one, which was not previously noted
+  anywhere in this section. Without it the default is all-rights-reserved: a
+  public repo would be readable but not legally usable, which defeats the point
+  of publishing it. This is a real gate, not polish.
+
+**Shipped 2026-08-18, and walked rather than asserted.** The H4 test was run
+for real on the monitoring VM: the working tree was extracted to `/tmp/h4walk`
+(deliberately not `/docker/spark-dash-homegrown`), `git init` + an `origin`
+pointing at `https://github.com/someone/...` to imitate a stranger's clone, no
+`.env`, no `docker login`. Results:
+
+- `publish-images.sh backend --no-push` ignored that GitHub origin and produced
+  `spark-dash-backend:latest` + a sha tag — the fix at work; before it, the
+  origin would have named the image `github.com/someone/spark-dash-backend`.
+- `docker compose config` in both stacks resolved to
+  `spark-dash-{backend,agent}:latest` with `pull_policy: missing`, and with
+  `PULL_POLICY=always` + a registry image set, to `always`. Both paths verified
+  against real Compose, not reasoned about.
+- Exactly one `CHANGE_ME` per stack: `ALERTMANAGER_EXTERNAL_URL` in central,
+  `BACKEND_URL` in node. Placeholders use `.invalid`, which RFC 2606 guarantees
+  will never resolve, so an unedited one fails loudly.
+
+**Not verified: `docker compose up -d` from that clean clone.** The VM was
+running production at the time and `container_name` is fixed in the compose
+files, so bringing a second copy up would have collided with the live stack.
+Everything up to that line is walked; that line is what production already runs
+daily.
+
+**MIGRATION, applies to THIS deployment.** `pull_policy` is now
+`${PULL_POLICY:-missing}` rather than a hardcoded `always`. An existing `.env`
+has no `PULL_POLICY`, so after pulling this change a stack tracking a registry
+`:latest` silently stops fetching new builds — the exact stale-image failure
+the old hardcoded value existed to prevent, and it reports success while doing
+it. **Add `PULL_POLICY=always` to every live `.env` that points at a registry.**
+Stacks pinned to a sha are unaffected. Note the two can disagree: at the time
+of writing, central's `.env` pinned `6af6689` while the running container was
+still on `:latest` from an earlier deploy.
 
 **H1 gates publication; the rest is polish.** `forgejo.indielab.tech` is the
 *default image* in both compose files, not just documentation — so an
 unconfigured clone pulls from a registry the user cannot reach. That has to be
 a local-build default before anyone else runs this. The other items can follow.
+
+**Scope: de-personalization, NOT hardware abstraction. Decided 2026-08-18.**
+"Genericize" could have meant making the GB10 constants configurable — the
+unified-memory pressure bands, the measured trip temperatures, the 2411MHz
+real clock target, the 8-slot node palette. It explicitly does not.
+
+Those constants are correct *because* of the hardware. The memory bands only
+mean anything where there is no separate VRAM; the trip points are hardcoded
+precisely because NVML reports `N/A` for them. Turning them into settings would
+convert measured, defensible reasoning into configuration nobody else has any
+way to fill in correctly — and a repo that says "this is a GB10/DGX Spark
+dashboard, here is why each threshold is what it is" is worth more than a
+generic one that has forgotten why. Running elsewhere is [J](#j--single-host-profile-everything-on-one-gb10)'s
+job, and stays there.
+
+So `sparky`, `gx10-1`, `spark2` and the RFC1918 addresses in *commented* lines
+and docstrings all stay. They read as examples, and the H3 test — would a
+reader paste this? — says no.
 
 **Git history is kept as-is. Decided 2026-08-16.** The hostname appears in 9
 historical commits, and rewriting them was considered and rejected:

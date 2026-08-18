@@ -262,7 +262,7 @@ the commit, and pinned by tag in each stack's `.env`. Four steps, in order:
 
 ```bash
 # 1. On a host of the TARGET architecture, from a clone of this repo
-cd /docker/spark-dash-homegrown && git pull
+cd "$REPO" && git pull        # $REPO = wherever you cloned this
 
 # 2. Build and push. Prints the tag to pin.
 ./scripts/publish-images.sh agent       # on a GX10   (arm64)

@@ -20,16 +20,16 @@ directory to create, no `DATA_ROOT`, and nothing relative to get wrong. The
    # Clones if absent, updates if already there: `git clone` onto an existing
    # directory fails, and it's easy to miss that error and then build from a
    # stale checkout.
-   REPO=/docker/spark-dash-homegrown
-   git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" \
-     || git -C "$REPO" pull
+   REPO=/docker/spark-dash-homegrown   # your choice of path
+   SRC=<the URL you cloned this from>
+   git clone "$SRC" "$REPO" || git -C "$REPO" pull
    cd "$REPO"
 
-   docker login forgejo.indielab.tech      # Forgejo token with package write
+   docker login <registry>                 # only if deploying FROM a registry
    ./scripts/publish-images.sh agent
    ```
 
-2. **Each node needs `docker login forgejo.indielab.tech`** if the package is
+2. **Each node needs `docker login <registry>`** if the package is
    private, so it can pull.
 
 ## Configure
@@ -77,8 +77,9 @@ The main repo — needed for `publish-images.sh` and the validation scripts —
 follows the usual convention:
 
 ```bash
-REPO=/docker/spark-dash-homegrown
-git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" || git -C "$REPO" pull
+REPO=/docker/spark-dash-homegrown   # your choice of path
+SRC=<the URL you cloned this from>
+git clone "$SRC" "$REPO" || git -C "$REPO" pull
 ```
 
 ## Verify
@@ -119,7 +120,7 @@ Anything listed only on the left is new — copy it across from `.env.example`.
 
 ```bash
 # In .env — the tag publish-images.sh printed
-AGENT_IMAGE=forgejo.indielab.tech/brian/spark-dash-agent:255e10e
+AGENT_IMAGE=<registry>/<owner>/spark-dash-agent:255e10e
 ```
 
 ```bash

@@ -7,6 +7,76 @@ them.
 
 Currently 1 node, growing to 3.
 
+## Quickstart
+
+Everything runs in Docker; nothing is installed on the base OS. There are two
+stacks — `central/` on a monitoring host, and `node/` on each GB10 you want to
+watch. They are deliberately not the same machine
+([why](docs/deployment.md#why-not-on-a-gx10)).
+
+You need Docker with Compose v2 on both, plus the NVIDIA Container Toolkit on
+each node — the agent reads NVML. **No registry account and no `docker login`:
+the images are built on the hosts that run them.**
+
+### 1. Monitoring host
+
+```bash
+git clone <this repo's URL> spark-dash && cd spark-dash
+./scripts/publish-images.sh backend --no-push   # builds spark-dash-backend:latest
+
+cd central
+cp .env.example .env
+$EDITOR .env                    # one value to change: ALERTMANAGER_EXTERNAL_URL
+
+mkdir -p cluster prometheus targets alertmanager secrets
+cp cluster.yml.example cluster/cluster.yml
+$EDITOR cluster/cluster.yml     # your nodes: id, host, and what each one serves
+
+# Required, not tidiness. Docker creates missing bind-mount sources owned by
+# root and both containers run non-root; skip this and Prometheus crash-loops
+# with a message that reads like a Prometheus bug.
+sudo chown 65534:65534 prometheus alertmanager
+sudo chown 10002:10002 targets
+
+docker compose up -d
+```
+
+The dashboard is on `:8080`.
+
+### 2. Each GB10 node
+
+Build on the node itself — it is arm64, which avoids cross-building entirely:
+
+```bash
+git clone <this repo's URL> spark-dash && cd spark-dash
+./scripts/publish-images.sh agent --no-push     # builds spark-dash-agent:latest
+
+cd node
+cp .env.example .env
+$EDITOR .env                    # one value to change: BACKEND_URL
+docker compose up -d
+```
+
+`BACKEND_URL` is genuinely the only edit, and the same `.env` then deploys
+unchanged to every node: the agent takes its id from the host's hostname, and
+takes which routers and vLLM endpoints to watch from `cluster.yml` on the
+monitoring host rather than from its own config.
+
+### 3. Check it
+
+```bash
+curl -s <monitoring-host>:8080/health | jq '{status, problems}'
+```
+
+`ok` with an empty `problems` means every node in `cluster.yml` is being
+scraped. A node listed there but not yet running its agent appears in
+`problems`, which is the intended way to notice a half-finished deploy.
+
+Deploying from a registry instead of building on each host is the maintainer
+path — see [building and shipping
+images](docs/deployment.md#building-and-shipping-images). It needs
+`PULL_POLICY=always` in each `.env`, for reasons the compose files spell out.
+
 ## Docs
 
 - [Requirements](docs/requirements.md) — goals, current stack, functional/
@@ -23,6 +93,10 @@ Currently 1 node, growing to 3.
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
   stays untouched) and the per-node/central Compose service breakdown.
 
-Project tracking (issues/milestones) mirrors the roadmap on the
-[Forgejo project](https://forgejo.indielab.tech/brian/spark-dash-homegrown).
+[docs/roadmap.md](docs/roadmap.md) is the authoritative task list. Issue
+tracking mirrors it on a LAN-internal Forgejo instance that is not reachable
+from outside the network, so the roadmap file is the copy to read.
 
+## License
+
+[MIT](LICENSE).

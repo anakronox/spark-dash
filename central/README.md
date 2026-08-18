@@ -29,11 +29,12 @@ the monitoring VM so the architecture matches:
 # Clones if absent, updates if already there: `git clone` onto an existing
 # directory fails, and it's easy to miss that error and then build from a
 # stale checkout.
-REPO=/docker/spark-dash-homegrown
-git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" || git -C "$REPO" pull
+REPO=/docker/spark-dash-homegrown   # your choice of path; used throughout
+SRC=<the URL you cloned this from>
+git clone "$SRC" "$REPO" || git -C "$REPO" pull
 cd "$REPO"
 
-docker login forgejo.indielab.tech      # Forgejo token with package write
+docker login <registry>                 # only if deploying FROM a registry
 ./scripts/publish-images.sh backend
 ```
 
@@ -42,7 +43,7 @@ docker login forgejo.indielab.tech      # Forgejo token with package write
 Everything below is relative to this directory — `cd` here first:
 
 ```bash
-cd /docker/spark-dash-homegrown/central
+cd "$REPO/central"
 
 # Required: .env is not tracked, so a fresh clone has no config.
 cp .env.example .env
@@ -124,7 +125,7 @@ docker exec sparkdash-prometheus grep -c AgentBuildSkew /etc/prometheus/config/a
 
 ```bash
 # In .env — the tag publish-images.sh printed
-BACKEND_IMAGE=forgejo.indielab.tech/brian/spark-dash-backend:9c2b41f
+BACKEND_IMAGE=<registry>/<owner>/spark-dash-backend:9c2b41f
 ```
 
 ```bash
@@ -174,7 +175,7 @@ To lock the internal services down further, set `PROM_BIND=127.0.0.1` and
 `ALERTMANAGER_BIND=127.0.0.1` and reach them over SSH:
 
 ```bash
-ssh -L 9090:localhost:9090 -L 9093:localhost:9093 brian@192.168.50.156
+ssh -L 9090:localhost:9090 -L 9093:localhost:9093 you@<monitoring-host>
 ```
 
 ## Alerting
@@ -435,8 +436,9 @@ The main repo — needed for `publish-images.sh` and the validation scripts —
 follows the usual convention:
 
 ```bash
-REPO=/docker/spark-dash-homegrown
-git clone https://forgejo.indielab.tech/brian/spark-dash-homegrown.git "$REPO" || git -C "$REPO" pull
+REPO=/docker/spark-dash-homegrown   # your choice of path; used throughout
+SRC=<the URL you cloned this from>
+git clone "$SRC" "$REPO" || git -C "$REPO" pull
 ```
 
 ### Two target directories

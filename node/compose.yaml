@@ -51,23 +51,26 @@ services:
       - sparkdash
 
   spark-dash-agent:
-    image: ${AGENT_IMAGE:-forgejo.indielab.tech/brian/spark-dash-agent:latest}
-    # :latest is the norm; pinning is the exception (see .env.example).
+    image: ${AGENT_IMAGE:-spark-dash-agent:latest}
+    # Default is the name `publish-images.sh --no-push` gives a local build, so
+    # a fresh clone runs build then `up -d` with no registry involved at all.
+    # Point AGENT_IMAGE at a registry to deploy from one instead; :latest is the
+    # norm there and pinning is the exception (see .env.example).
     #
-    # pull_policy MATTERS with a floating tag. Compose's default is `missing`:
-    # if ANY image with this tag already exists locally it is used and the
-    # registry is never contacted — so a node would keep running whatever it
-    # first pulled, forever, and a deploy would report success having changed
-    # nothing. Measured, not assumed.
+    # pull_policy MATTERS with a floating tag, and the correct value is
+    # DIFFERENT for those two paths — which is why it is a variable.
     #
-    # Set only on OUR image. A blanket `--pull always` would also re-pull the
-    # pinned third-party images, so a transient registry blip would fail a
-    # deploy that only needed to move our own container.
+    # `missing` (used here, and Compose's own default) takes any image with
+    # this tag that already exists locally and never contacts a registry. That
+    # is exactly right for a local build, and exactly wrong for a registry
+    # :latest: a node would keep running whatever it first pulled, forever, and
+    # a deploy would report success having changed nothing. Measured, not
+    # assumed — so registry deployments set PULL_POLICY=always in .env.
     #
-    # Consequence worth knowing: `publish-images.sh --no-push` builds an image
-    # this will then ignore, because it always prefers the registry. Pin that
-    # build's sha to run it.
-    pull_policy: always
+    # Set it here, on OUR image, and not globally: `--pull always` would also
+    # re-pull the pinned third-party images, so a transient registry blip would
+    # fail a deploy that only needed to move our own container.
+    pull_policy: ${PULL_POLICY:-missing}
     container_name: sparkdash-agent
     restart: unless-stopped
 
