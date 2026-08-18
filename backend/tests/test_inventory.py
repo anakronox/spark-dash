@@ -334,6 +334,60 @@ class TestClusterConfigIsTheSourceOfTruth:
         inv = Inventory(cluster_config=cluster, nodes_env="envnode=10.0.0.9")
         assert [n.node_id for n in inv.nodes(now=0.0)] == ["envnode"]
 
+    def test_a_HAND_EDIT_re_renders_prometheus_targets(self, tmp_path):
+        """Found by the R6 dry-run, 2026-08-19.
+
+        `sync_prometheus_targets` ran at startup, on retire, and on a settings
+        save — and nowhere else. So adding a node by editing cluster.yml, which
+        is how the README teaches it and what that file's own header says works,
+        produced a node that appeared on the dashboard within the 30s inventory
+        TTL and was never scraped.
+
+        The dashboard looked completely correct while live view and history
+        disagreed, which is the worst shape a monitoring bug can take. Rendering
+        was never broken; only the trigger was missing, which is why restarting
+        the backend "fixed" it and made the gap easy to miss.
+        """
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text(CLUSTER)
+        out = tmp_path / "targets"
+        out.mkdir()
+
+        inv = Inventory(cluster_config=cluster, prometheus_targets_dir=out)
+        inv.sync_prometheus_targets()
+        assert "10.9.9.9" not in (out / "agents.yml").read_text()
+
+        # A node appended by hand — no API call, no restart.
+        cluster.write_text(
+            CLUSTER.rstrip("\n") + "\n  - id: added-by-hand\n    host: 10.9.9.9\n"
+        )
+        inv.invalidate()
+
+        # Past the TTL, so nodes() actually re-reads.
+        assert "added-by-hand" in [n.node_id for n in inv.nodes(now=9999.0)]
+        assert "10.9.9.9" in (out / "agents.yml").read_text(), (
+            "the node reached the live view but never became a scrape target"
+        )
+
+    def test_an_unchanged_reload_does_not_rewrite_targets(self, tmp_path):
+        """The TTL expires every 30s forever. Re-rendering on each expiry would
+        rewrite both target files continuously, and Prometheus watches that
+        directory."""
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text(CLUSTER)
+        out = tmp_path / "targets"
+        out.mkdir()
+
+        inv = Inventory(cluster_config=cluster, prometheus_targets_dir=out)
+        inv.sync_prometheus_targets()
+        before = (out / "agents.yml").stat().st_mtime_ns
+
+        for tick in (9999.0, 19999.0, 29999.0):
+            inv.invalidate()
+            inv.nodes(now=tick)
+
+        assert (out / "agents.yml").stat().st_mtime_ns == before
+
     def test_prometheus_targets_are_rendered_from_it(self, tmp_path):
         """The whole inversion only holds if Prometheus consumes this file too;
         otherwise the node list exists twice again and can drift."""

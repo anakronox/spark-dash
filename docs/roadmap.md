@@ -2191,7 +2191,7 @@ The multi-node paths have only ever run against fakes and a stubbed history
 response. The difference between nodes 2 and 3 joining quietly and costing a
 debugging session is whether these are exercised first.
 
-- [ ] **R6.** Dry-run a second node on existing hardware. Q's verification
+- [x] **R6.** Dry-run a second node on existing hardware. Q's verification
   already proved the technique: a second agent container on a spare port, with
   its own `NODE_ID`, added to `cluster.yml` for real. That exercises the whole
   chain — inventory, generated Prometheus targets, scrape, node cards, the
@@ -2262,6 +2262,55 @@ debugging session is whether these are exercised first.
   **Untestable for now:** the frontend has no test framework (no vitest), so
   this rests on `svelte-check` and reasoning. R6's dry-run is what will actually
   exercise it, which is another reason to do R6 before the hardware.
+
+  **Run 2026-08-19, and it paid for itself immediately.** A second agent
+  (`NODE_ID=r6-dryrun`, sparky:9501, deliberately the older `effea27` build)
+  appended to `cluster.yml`, then removed through the settings UI. Prometheus's
+  admin API was enabled for the duration so the test series could be purged
+  afterwards, and removed again.
+
+  What worked, now exercised against two real nodes rather than fakes:
+
+  - Two node cards, distinct colours, `NODES UP 2/2`.
+  - The build-skew banner naming both builds, and `AgentBuildSkew` going
+    `pending` with 1 active alert — a positive test of a load-bearing rule that
+    had probably never fired in anger. (`for: 30m`, so it was never going to
+    reach `firing` in the window.)
+  - The **chart legend with two nodes**, and the solo toggle: clicking
+    `r6-dryrun` dimmed `sparky`, showed a `1 of 2 · show all` control, and
+    scoped every chart to the one node. This is the path O shipped and that had
+    only ever run against a stubbed history response.
+  - The unmonitored-runtimes banner correctly reporting llama.cpp on the new
+    node.
+  - The settings-save path re-rendering targets with no restart, and leaving
+    sparky's config byte-identical to the pre-test backup.
+
+  **What it found: R9.**
+
+- [x] **R9.** A HAND EDIT of `cluster.yml` never re-rendered Prometheus's
+  targets. `sync_prometheus_targets()` ran at startup, on retire, and on a
+  settings save — nowhere else. So the node appeared on the dashboard within
+  the 30s inventory TTL and was *never scraped*: live view and history
+  disagreed, silently, while the dashboard looked entirely correct.
+
+  This is how the README teaches adding a node, and `cluster.yml`'s own
+  generated header claims it: *"Editing this file by hand still works and is
+  picked up on the backend's next read."* True of the live view, false of
+  Prometheus — the file documents the gap.
+
+  Rendering was never broken; only the trigger was missing, which is why
+  restarting the backend "fixed" it and made this easy to miss. Confirmed both
+  ways during the dry-run: no targets after the edit, correct targets
+  immediately after a restart.
+
+  Fixed in `Inventory.nodes()` — when a reload produces a different list, the
+  targets are re-rendered there, so every present and future path that changes
+  the node list is covered by construction rather than by remembering. Guarded
+  against re-entrancy, because `sync_prometheus_targets()` calls `nodes()` and
+  would otherwise turn its own write into a no-op and return False.
+
+  **Directly relevant to this week:** adding nodes 2 and 3 by hand would have
+  produced two nodes visible on the dashboard with no history and no alerting.
 
 ### J — Single-host profile (everything on one GB10)
 

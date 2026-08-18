@@ -390,6 +390,9 @@ class Inventory:
         self._agent_port = agent_port
         self._node_exporter_port = node_exporter_port
         self._ttl_s = ttl_s
+        #: True while sync_prometheus_targets is refreshing, so the reload-driven
+        #: auto-sync does not pre-empt the write it is about to do itself.
+        self._syncing = False
 
         self._nodes: list[Node] = []
         #: The cluster file's own entries, kept because `Node` deliberately
@@ -407,9 +410,60 @@ class Inventory:
     def nodes(self, now: float | None = None) -> list[Node]:
         now = time.monotonic() if now is None else now
         if not self._nodes or (now - self._loaded_at) >= self._ttl_s:
+            previous = self._nodes
             self._nodes = self._load()
             self._loaded_at = now
+            if self._nodes != previous and not self._syncing:
+                # A HAND EDIT of cluster.yml reaches the live view through this
+                # reload, and used to reach Prometheus through nothing at all.
+                # `sync_prometheus_targets` ran only at startup, on retire, and
+                # on a settings save — so adding a node by editing the file (the
+                # way the README teaches, and the way cluster.yml's own header
+                # says works) produced a node that appeared on the dashboard and
+                # was never scraped. Live view and history disagreed, silently,
+                # and the dashboard looked entirely correct while it happened.
+                #
+                # Found by the R6 dry-run, 2026-08-19. Rendering was never the
+                # problem; only the trigger was missing, which is why a restart
+                # "fixed" it and made the gap easy to miss.
+                #
+                # Syncing HERE rather than at each call site means every future
+                # path that changes the node list is covered by construction.
+                #
+                # Skipped while an explicit `sync_prometheus_targets` is in
+                # flight: that one calls `nodes()` to refresh the cache before
+                # writing, and letting this fire there would make its own write
+                # a no-op and flip its return value to False.
+                self._sync_targets_after_reload(previous)
         return self._nodes
+
+    def _sync_targets_after_reload(self, previous: list[Node]) -> None:
+        """Re-render Prometheus targets after the node list changed.
+
+        Separate from `sync_prometheus_targets` because that one calls `nodes()`
+        to refresh the cache first, and calling it from inside `nodes()` would
+        recurse. Here the cache is already current by definition.
+        """
+        if self._prometheus_targets_dir is None:
+            return
+        try:
+            write_prometheus_targets(
+                self._nodes,
+                self._prometheus_targets_dir,
+                source=self.source,
+                cluster_nodes=self._cluster,
+            )
+        except Exception:  # noqa: BLE001 — a failed render must not break polling
+            # TARGET_WRITE_FAILURES already surfaces this in /health; the live
+            # view working while history quietly stops is exactly the failure
+            # this method exists to prevent, so it is reported, not raised.
+            log.exception("could not re-render Prometheus targets after a config change")
+            return
+        log.info(
+            "cluster changed on disk (%d -> %d nodes); Prometheus targets re-rendered",
+            len(previous),
+            len(self._nodes),
+        )
 
     def invalidate(self) -> None:
         """Force the next `nodes()` to re-read.
@@ -426,7 +480,11 @@ class Inventory:
             return False
         # `nodes()` first: it refreshes the cache that `_cluster` is filled
         # from, so asking in the other order would render last cycle's vLLM.
-        rendered = self.nodes()
+        self._syncing = True
+        try:
+            rendered = self.nodes()
+        finally:
+            self._syncing = False
         return write_prometheus_targets(
             rendered,
             self._prometheus_targets_dir,
