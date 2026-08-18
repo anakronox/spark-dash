@@ -453,6 +453,39 @@ class Inventory:
                     self._cluster_config,
                 )
                 return self._nodes
+            if not cluster and self._nodes and self._cluster_config.exists():
+                # PRESENT BUT EMPTY is not the same as ABSENT, and `load_cluster`
+                # returns [] for both. Absent means "this deployment has not
+                # migrated off SPARK_NODES yet", and falling through to the env
+                # is exactly right. Present-but-empty means the file was emptied
+                # or every node was commented out — mid-edit, almost always —
+                # and falling through drops every node from the dashboard.
+                #
+                # Same reasoning as the ClusterConfigError branch above, which
+                # already refuses to drop the cluster over a typo. A typo was
+                # survivable and emptying the file was not, which is backwards.
+                #
+                # Gated on `self._nodes` because an empty file means two
+                # different things depending on when you find it. On a COLD
+                # start it means "created but not filled in yet" — the
+                # not-migrated case, where falling through to SPARK_NODES is the
+                # documented behaviour and is tested. Only once nodes have
+                # actually been served does an empty file mean something was
+                # lost.
+                #
+                # The cost is that removing the LAST node needs a restart to
+                # take effect, which is why this logs at error rather than
+                # silently.
+                log.error(
+                    "cluster config at %s parsed but lists no nodes; keeping the "
+                    "previous inventory of %d. If you meant to empty the cluster, "
+                    "restart the backend; otherwise you probably have every node "
+                    "commented out.",
+                    self._cluster_config,
+                    len(self._nodes),
+                )
+                return self._nodes
+
             if cluster:
                 # Kept alongside, because `Node` drops the runtimes and those
                 # are what the vLLM scrape targets are rendered from.

@@ -2139,7 +2139,7 @@ Deferred, recorded so they are not rediscovered:
 - **R5.** The Q4 metrics live only in Prometheus. A node card showing
   "collection 2.1s" would put the slow path where a reader is already looking.
 
-- [ ] **R8.** An EMPTY but valid `cluster.yml` silently drops every node, while
+- [x] **R8.** An EMPTY but valid `cluster.yml` silently drops every node, while
   an INVALID one correctly keeps the previous inventory. Found 2026-08-18 while
   disproving R1; backwards from the intent stated in the comment right above
   the code.
@@ -2169,6 +2169,22 @@ Deferred, recorded so they are not rediscovered:
   error when a cluster file is configured: keep the previous inventory and say
   so loudly. Deliberately emptying the cluster is not a thing anyone does.
 
+  **Fixed 2026-08-18, and the fix needed narrowing twice.**
+
+  First attempt guarded on "file exists but yields no nodes" and broke
+  `test_empty_cluster_file_falls_through`, which pins a real behaviour: an
+  empty file on a COLD start means "created but not filled in yet", and
+  `SPARK_NODES` must still work. Empty means two different things depending on
+  whether any node has been served yet, so the guard is gated on `self._nodes`
+  as well.
+
+  Then the new test passed against the unfixed code — worse than no test. Two
+  reasons, both worth remembering: a fully-commented file parses to `[]` rather
+  than raising, so it never reached the error branch; and `invalidate()` sets
+  `_loaded_at = 0.0` while `nodes()` re-reads only past `ttl_s` (30s), so
+  `nodes(now=1.0)` served the cache and never re-read at all. With `now=9999.0`
+  it fails correctly against the old code — `assert [] == ['sparky', 'sparky2']`.
+
 #### Multi-node readiness — do BEFORE the hardware arrives
 
 The multi-node paths have only ever run against fakes and a stubbed history
@@ -2195,11 +2211,26 @@ debugging session is whether these are exercised first.
   `sparky` alphabetically repaints the node you have been reading by colour for
   months.
 
+  **Correction, 2026-08-18:** the above cites the wrong function.
+  `nodeSlots()` in `theme.ts` is **dead code** — exported, never called. The
+  live assignment is `slotOf` in `App.svelte:104`, a flat running count over
+  the GROUPED node list:
+
+      for (const c of clusters) for (const n of c.nodes) m.set(n.node_id, next++);
+
+  Its own comment is honest about the limit — "the order it counts is stable
+  *for a given cluster layout*" — and nodes 2 and 3 change the cluster layout.
+  Per [[deployment-setup]] the plan is one standalone GX10 plus a dual-node
+  cluster, so if that cluster renders before the standalone, sparky moves from
+  slot 0 to slot 2 and changes colour.
+
   Decide which it should be. Appending is free and works today; keying the slot
   to a stable identity (hash of node id, or an explicit `slot:` in
   `cluster.yml`) survives any ordering. The palette itself is fine either way —
   8 slots, and `nodeColorVar` degrades to `var(--rule)` past that, so three
-  nodes is comfortable.
+  nodes is comfortable. Delete `nodeSlots()` either way: two functions claiming
+  to answer the same question, one of them unreachable and disagreeing with the
+  other, is how the next person gets this wrong.
 
 ### J — Single-host profile (everything on one GB10)
 

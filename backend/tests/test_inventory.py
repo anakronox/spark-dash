@@ -294,6 +294,46 @@ class TestClusterConfigIsTheSourceOfTruth:
         inv = Inventory(cluster_config=cluster, nodes_env="envnode=10.0.0.9")
         assert [n.node_id for n in inv.nodes(now=0.0)] == ["envnode"]
 
+    def test_emptying_a_LIVE_cluster_file_keeps_the_previous_nodes(self, tmp_path):
+        """The hand-editing trap, found 2026-08-18 while disproving R1.
+
+        A typo in this file was already survivable — ClusterConfigError keeps
+        the previous inventory rather than dropping the cluster. Emptying it was
+        not: an empty file is valid YAML, so it fell through to the env and
+        targets paths and could return nothing at all, blanking every node.
+
+        A typo being safer than a blank line is backwards, and it matters most
+        exactly when someone is hand-editing this file to ADD nodes.
+        """
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text(CLUSTER)
+        inv = Inventory(cluster_config=cluster)
+        before = [n.node_id for n in inv.nodes(now=0.0)]
+        assert before, "precondition: the cluster file served some nodes"
+
+        # Every node commented out — exactly what a mid-edit save looks like.
+        # Parses fine and yields [], which is the whole problem.
+        cluster.write_text("# nodes:\n#   - id: gx10-1\n")
+        inv.invalidate()
+
+        # `now` must clear the TTL or nodes() serves the cache and never
+        # re-reads — which made the first version of this test pass against the
+        # unfixed code, measuring nothing at all.
+        assert [n.node_id for n in inv.nodes(now=9999.0)] == before
+
+    def test_but_an_empty_file_on_a_COLD_start_still_falls_through(self, tmp_path):
+        """The distinction the fix turns on, and the first version got wrong.
+
+        An empty file means two different things depending on when you find it.
+        Before any node has been served it means "created but not filled in
+        yet" — the not-migrated case, where SPARK_NODES must still work. Only
+        once nodes HAVE been served does empty mean something was lost.
+        """
+        cluster = tmp_path / "cluster.yml"
+        cluster.write_text("")
+        inv = Inventory(cluster_config=cluster, nodes_env="envnode=10.0.0.9")
+        assert [n.node_id for n in inv.nodes(now=0.0)] == ["envnode"]
+
     def test_prometheus_targets_are_rendered_from_it(self, tmp_path):
         """The whole inversion only holds if Prometheus consumes this file too;
         otherwise the node list exists twice again and can drift."""
