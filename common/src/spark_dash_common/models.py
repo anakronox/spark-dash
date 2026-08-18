@@ -71,6 +71,34 @@ class GpuMetrics(BaseModel):
     )
 
 
+class DiskMetrics(BaseModel):
+    """Root filesystem capacity. ROOT ONLY, and deliberately so.
+
+    Model weights live here — 894 GB of them on the first GX10, on a 3.6 TB
+    root — so this is the disk that actually fills, and the one whose filling
+    stops inference rather than merely losing logs.
+
+    `used_bytes` is `total - available`, NOT `total - free`. The two differ by
+    the filesystem's reserved blocks, and `available` is the basis
+    `NodeDiskLow` and `NodeDiskCritical` alert on. A card and an alert
+    disagreeing about what "full" means is worse than showing neither.
+
+    Never enumerates mounts. `statvfs` on a stale NFS mount blocks forever, and
+    these nodes mount a NAS; walking every filesystem would put an unbounded
+    hang back into snapshot collection, which is exactly what Q removed.
+    """
+
+    total_bytes: int = Field(ge=0)
+    available_bytes: int = Field(ge=0)
+    used_bytes: int = Field(ge=0)
+
+    @property
+    def used_pct(self) -> float:
+        """Percent full, on the same basis as the alerts: used / (used + avail)."""
+        denom = self.used_bytes + self.available_bytes
+        return 100.0 * self.used_bytes / denom if denom else 0.0
+
+
 class MemoryMetrics(BaseModel):
     """System memory.
 
@@ -481,6 +509,7 @@ class NodeSnapshot(BaseModel):
 
     gpu: GpuMetrics | None = None
     memory: MemoryMetrics | None = None
+    disk: DiskMetrics | None = None
     psi: PsiMetrics | None = None
     cpu: CpuMetrics | None = None
     processes: list[ProcessInfo] = Field(default_factory=list)

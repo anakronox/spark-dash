@@ -123,6 +123,7 @@
           cpu={node.cpu}
           psi={node.psi}
           memory={node.memory}
+          disk={node.disk}
           tokensPerSec={nodeTokensPerSec}
         />
       </div>
@@ -132,6 +133,7 @@
         cpu={node.cpu}
         psi={node.psi}
         memory={node.memory}
+        disk={node.disk}
         tokensPerSec={nodeTokensPerSec}
       />
     {/if}

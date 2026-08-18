@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # distinction is the whole point.
     hostname_path: Path = Path("/host/etc/hostname")
 
+    #: Where the HOST's root filesystem is bind-mounted. Not "/", which
+    #: inside the container is the image's own overlay — a different disk
+    #: entirely, and one that would look plausible while being wrong.
+    root_path: Path = Path("/host/root")
+
     host: str = "0.0.0.0"  # noqa: S104 — container-internal; published per compose
     port: int = 9500
 

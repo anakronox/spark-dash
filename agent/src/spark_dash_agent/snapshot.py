@@ -27,6 +27,7 @@ from spark_dash_common.models import (
 from spark_dash_common.thresholds import TempThresholds
 
 from spark_dash_agent.collectors.cpu import CpuCollector, read_critical_trip_c
+from spark_dash_agent.collectors.disk import DiskCollector
 from spark_dash_agent.collectors.gpu import GpuCollector
 from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.collectors.memory import MemoryCollector, detect_unified_memory
@@ -214,6 +215,7 @@ class SnapshotBuilder:
             ttl_s=settings.cluster_config_ttl_s,
         )
         self._applied: RuntimeConfig | None = None
+        self._disk = DiskCollector(settings.root_path)
         self._network = NetworkCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
 
@@ -311,6 +313,7 @@ class SnapshotBuilder:
                 errors["gpu_processes"] = f"{type(exc).__name__}: {exc}"
 
         memory = self._memory_collector().safe_collect(errors)
+        disk = self._disk.safe_collect(errors)
         psi = self._psi.safe_collect(errors)
         cpu = self._cpu.safe_collect(errors)
         network = self._network.safe_collect(errors) or []
@@ -383,6 +386,7 @@ class SnapshotBuilder:
             ),
             gpu=gpu,
             memory=memory,
+            disk=disk,
             psi=psi,
             cpu=cpu,
             processes=processes,

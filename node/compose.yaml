@@ -97,6 +97,17 @@ services:
       # returns the CONTAINER's hostname even through a bind-mounted /proc,
       # which is Docker's container id by default.
       - /etc/hostname:/host/etc/hostname:ro
+      # The host's root filesystem, for disk capacity. Statting "/" from inside
+      # would measure the image's own overlay — a different disk, plausible and
+      # wrong.
+      #
+      # DELIBERATELY NOT `rslave`, which node-exporter above does use. rslave
+      # propagates the host's submounts into the container, including the NAS at
+      # /Volumes/AI. `statvfs` on a stale NFS mount blocks uninterruptibly, and
+      # snapshot collection is the one place that must never hang — see Q. A
+      # plain bind exposes the root filesystem and nothing beneath it, which
+      # makes that failure impossible rather than merely unlikely.
+      - /:/host/root:ro
 
     environment:
       # GLIBC ARENAS, CAPPED. Left alone, glibc opens a malloc arena per thread

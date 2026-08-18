@@ -41,6 +41,7 @@ class SnapshotMetricsCollector:
         yield from _node_metrics(snap, node)
         yield from _gpu_metrics(snap, node)
         yield from _memory_metrics(snap, node)
+        yield from _disk_metrics(snap, node)
         yield from _psi_metrics(snap, node)
         yield from _cpu_metrics(snap, node)
         yield from _temp_band_metrics(snap, node)
@@ -276,6 +277,27 @@ def _memory_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily
     unified = _g("memory_unified", "1 when CPU and GPU share one coherent pool", ["node"])
     unified.add_metric([node], 1.0 if mem.unified else 0.0)
     yield unified
+
+
+def _disk_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
+    """Root filesystem only — see DiskCollector for why it is not every mount.
+
+    node-exporter already publishes `node_filesystem_*` for every filesystem and
+    the disk ALERTS run off that. These exist so the number on the node card and
+    the number in history come from one source, rather than agreeing by
+    coincidence until the day they don't.
+    """
+    disk = snap.disk
+    if disk is None:
+        return
+    for name, doc, value in (
+        ("disk_total_bytes", "Root filesystem size.", disk.total_bytes),
+        ("disk_available_bytes", "Root filesystem space available.", disk.available_bytes),
+        ("disk_used_bytes", "Root filesystem used (total - available).", disk.used_bytes),
+    ):
+        g = _g(name, doc, ["node"])
+        g.add_metric([node], float(value))
+        yield g
 
 
 def _psi_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:

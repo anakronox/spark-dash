@@ -520,6 +520,32 @@ groups:
             Projected from the last 6 hours of growth, so a one-off write won't
             trigger it. Model weights and ComfyUI outputs are the usual cause.
 
+      # A WARNING TIER beneath NodeDiskLow's critical floor. 90% full is when
+      # someone should go and look; 95% is when writes are about to start
+      # failing, and that one stays critical.
+      #
+      # Same `avail / size` basis as its sibling and as the node card's
+      # Used/Total, deliberately: three places describing "how full" with two
+      # definitions is how a dashboard and an alert come to disagree.
+      #
+      # Model weights are why this matters here. /models sits on the LOCAL root
+      # — 894 GB on a 3.6 TB filesystem when this was written, not on the NAS
+      # the mount names suggest — so this is the disk whose filling stops
+      # inference rather than merely losing logs.
+      - alert: NodeDiskWarning
+        expr: >-
+          node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}
+          / node_filesystem_size_bytes < 0.10
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} is over 90% full"
+          description: >-
+            Still room, but not much, and model weights are the usual reason it
+            moved. `for: 30m` because a build or a model download can cross 90%
+            briefly and come back on its own; sustained is the signal.
+
       # A floor as well as a trend: a disk that fills slowly enough to evade
       # predict_linear still eventually fills.
       - alert: NodeDiskLow

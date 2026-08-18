@@ -2386,7 +2386,7 @@ cheap, and it makes the work display and judgement rather than plumbing.
      trouble right now" signal available, and it is being thrown away at the
      last step.
 
-- [ ] **S3. Disk used vs free.**
+- [x] **S3. Disk used vs free.** — shipped 2026-08-19
 
   Also already in Prometheus — `node_filesystem_avail_bytes` /
   `node_filesystem_size_bytes`, per node, per mountpoint. No collection needed.
@@ -2417,6 +2417,51 @@ cheap, and it makes the work display and judgement rather than plumbing.
     Separately, a *stale* NFS mount breaks model loading entirely and nothing
     watches for that at all; capacity is not the failure mode worth fearing
     there.
+
+  **Shipped as Used/Total on the node card, plus a 90% warning tier.**
+
+  Two design decisions worth keeping:
+
+  **The agent could not see the host root at all.** It mounts `/proc`, `/sys`
+  and `/etc/hostname` and nothing else, so `statvfs("/")` inside the container
+  measures the image's own overlay — a different disk, plausible-looking and
+  entirely wrong. Fixed with `- /:/host/root:ro` in `node/compose.yaml`.
+
+  **Deliberately NOT `rslave`**, which the node-exporter service beside it does
+  use. `rslave` propagates the host's submounts into the container, including
+  the NAS at `/Volumes/AI`. `statvfs` on a stale NFS mount does not fail, it
+  blocks uninterruptibly — and snapshot collection is the one path that must
+  never hang ([Q](#q--the-agent-goes-dark-while-a-model-loads)). A plain bind
+  exposes the root filesystem and nothing beneath it, which makes that failure
+  impossible rather than merely unlikely. The collector reinforces it: one
+  `statvfs`, one path, never an enumeration, and there is a test asserting
+  exactly that.
+
+  Cached at 60s. Disk fills over hours while the snapshot is built every couple
+  of seconds, so the TTL bounds how often a filesystem is touched at all.
+
+  **One definition of "full", in three places.** `used = total - available`,
+  not `total - free`; the gap is the filesystem's reserved blocks. `available`
+  is what `NodeDiskLow` already alerts on, so the card, the new
+  `NodeDiskWarning`, and the existing critical all measure the same thing. A
+  dashboard reading a few points lower than the alert about to fire is worse
+  than no dashboard.
+
+  `NodeDiskWarning` is a warning TIER at 90% for 30m, beneath the existing 95%
+  critical rather than replacing it — 90% is when to go and look, 95% is when
+  writes start failing. `for: 30m` because a model download can cross 90%
+  briefly and come back. Currently sparky `/` is 62.7% and the VM `/` 16.3%, so
+  it will not fire on arrival. Validated with promtool: 32 rules.
+
+  Unit choice: **GiB, not auto-scaled to TiB**, per `format.ts`'s stated rule
+  that one fixed unit beats unit-checking before two numbers can be compared —
+  which is the case that matters once three nodes' disks sit side by side. The
+  tone carries "should I care" (warning at 90, critical at 95, matching the
+  alert tiers exactly), so the digits never need reading closely.
+
+  **Deploying this needs the node stack recreated, not just a new image** — the
+  bind mount is new. Until then the collector logs which mount is missing and
+  the reading is absent rather than wrong.
 
 **Suggested order: S1, then S2.3 (`psi_memory_full`), then the rest.** S1
 gives meaning to a number already on screen. `psi_memory_full` is two lines for

@@ -26,6 +26,13 @@ export interface MemoryMetrics {
   unified: boolean;
 }
 
+export interface DiskMetrics {
+  total_bytes: number;
+  available_bytes: number;
+  /** total - available, matching what the disk alerts measure. */
+  used_bytes: number;
+}
+
 export interface PsiMetrics {
   some_avg10: number;
   some_avg60: number;
@@ -162,6 +169,7 @@ export interface NodeSnapshot {
   unmonitored_runtimes: string[];
   gpu: GpuMetrics | null;
   memory: MemoryMetrics | null;
+  disk: DiskMetrics | null;
   psi: PsiMetrics | null;
   cpu: CpuMetrics | null;
   processes: ProcessInfo[];
