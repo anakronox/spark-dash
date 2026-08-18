@@ -211,6 +211,27 @@ TARGETS_DOWN = "up == 0"
 TARGET_LAST_UP = "time() - max_over_time(timestamp(up == 1)[30d:10m])"
 
 
+def step_seconds(step: str) -> float:
+    """A Prometheus step string as seconds. Falls back to 60s, the default.
+
+    Shared because several things must agree on it: the rate window below, and
+    the alert-episode gap tolerance, which fragments one continuous alert into
+    one episode per sample if it is smaller than the step.
+    """
+    digits = "".join(c for c in step if c.isdigit() or c == ".")
+    try:
+        value = float(digits)
+    except ValueError:
+        return 60.0
+    if not value:
+        return 60.0
+    if step.endswith("m"):
+        return value * 60
+    if step.endswith("h"):
+        return value * 3600
+    return value
+
+
 def rate_window(step: str) -> str:
     """A rate window matched to the step the chart is drawn at.
 
@@ -219,12 +240,4 @@ def rate_window(step: str) -> str:
     the ones around it. Floored at 1m because a window shorter than a couple of
     scrapes yields nothing at all.
     """
-    try:
-        seconds = int("".join(ch for ch in step if ch.isdigit()))
-    except ValueError:
-        seconds = 60
-    if step.endswith("m"):
-        seconds *= 60
-    elif step.endswith("h"):
-        seconds *= 3600
-    return f"{max(60, seconds * 4)}s"
+    return f"{max(60, int(step_seconds(step) * 4))}s"

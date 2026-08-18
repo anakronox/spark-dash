@@ -6,7 +6,8 @@
    * been climbing for an hour than when it just spiked.
    */
   import MetricChart from './MetricChart.svelte';
-  import { METRICS, RANGES, fetchHistory, snapGrid, toColumnar } from '../lib/history';
+  import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
+  import type { Annotation } from '../lib/history';
   import { nodeColor } from '../lib/theme';
 
   interface Props {
@@ -36,6 +37,7 @@
    * is what this card's legend always claimed and never did.
    */
   const STORAGE_KEY = 'spark-dash.trend-metrics.v1';
+  const EVENTS_KEY = 'spark-dash.trend-events.v1';
 
   function readSelection(): string[] {
     try {
@@ -59,6 +61,30 @@
    * small, but a filter that cannot outlive the session has none at all.
    */
   let activeNodes = $state<string[] | null>(null);
+
+  /* Events drawn on the charts. ON by default: the whole point is that a dip
+     arrives with its candidate explanation attached, and a correlation layer
+     nobody switches on explains nothing. Off is for when the marks are in the
+     way of reading a shape. */
+  let showEvents = $state(readEvents());
+  let annotations = $state<Annotation[]>([]);
+
+  function readEvents(): boolean {
+    try {
+      return localStorage.getItem(EVENTS_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  function toggleEvents() {
+    showEvents = !showEvents;
+    try {
+      localStorage.setItem(EVENTS_KEY, showEvents ? '1' : '0');
+    } catch {
+      // Still applied for this session.
+    }
+  }
 
   let rangeKey = $state(RANGES[0].key);
   let error = $state<string | null>(null);
@@ -256,6 +282,16 @@
           return [m.key, toColumnar(resp.series)] as const;
         }),
       );
+      /* Fetched with the SAME window and step as the metrics, so a mark lands
+         on the sample it explains rather than between two of them. Failure is
+         non-fatal and deliberately so: annotations are context, and losing
+         them must not cost the reader the chart. */
+      try {
+        annotations = await fetchAnnotations(range.minutes, range.step, controller.signal);
+      } catch {
+        annotations = [];
+      }
+
       if (controller.signal.aborted) return;
       const next: Record<string, Dataset> = {};
       const step = parseInt(range.step, 10) || 60;
@@ -354,6 +390,17 @@
     </div>
 
     <div class="controls">
+      <!-- Beside the range, because the two together decide what the charts
+           are showing. The count is on the control: an events layer with
+           nothing in the window otherwise reads as broken rather than quiet. -->
+      <button
+        class="events"
+        class:on={showEvents}
+        aria-pressed={showEvents}
+        title="Mark alerts, cold starts and agent deploys on the charts"
+        onclick={toggleEvents}
+      >events{annotations.length ? ` · ${annotations.length}` : ''}</button>
+
       <div class="ranges" role="group" aria-label="Time range">
         {#each RANGES as r (r.key)}
           <button
@@ -416,6 +463,7 @@
           {slots}
           theme={themeKey}
           syncKey="spark-dash-history"
+          annotations={showEvents ? annotations : []}
         />
       {/each}
     </div>
@@ -617,6 +665,24 @@
     display: flex;
     align-items: center;
     gap: 10px;
+  }
+
+  .events {
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+
+  .events:hover {
+    color: var(--ink);
+  }
+
+  .events.on {
+    color: var(--ink);
+    background: var(--panel-raised);
   }
 
   .ranges {

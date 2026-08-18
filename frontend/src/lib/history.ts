@@ -197,3 +197,33 @@ export function snapGrid(
   }
   return { x: stamps, columns: out as number[][] };
 }
+
+/** One event to mark on the charts. */
+export interface Annotation {
+  ts: number;
+  /** "alert" | "cold-start" | "deploy" — drives colour and wording. */
+  kind: string;
+  label: string;
+  node: string | null;
+}
+
+/** Events worth drawing on the history charts.
+ *
+ * ONE request, not three. The backend decides what deserves to be a mark —
+ * alerts that fired, cold starts, deploys — because that filtering is the
+ * feature and belongs in one place with its reasoning. Drawing everything was
+ * measured at 173 events in a 7-day window on a 390px chart, which is a grey
+ * wash rather than an annotation layer.
+ */
+export async function fetchAnnotations(
+  minutes: number,
+  step: string,
+  signal?: AbortSignal,
+): Promise<Annotation[]> {
+  const resp = await fetchWithTimeout(
+    `/api/annotations?minutes=${minutes}&step=${encodeURIComponent(step)}`,
+    { signal },
+  );
+  if (!resp.ok) throw new Error(String(resp.status));
+  return (await resp.json()).annotations ?? [];
+}

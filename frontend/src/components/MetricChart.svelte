@@ -19,7 +19,7 @@
   import uPlot from 'uplot';
   import 'uplot/dist/uPlot.min.css';
   import { onDestroy } from 'svelte';
-  import { chartTheme, nodeColor } from '../lib/theme';
+  import { chartTheme, cssVar, nodeColor } from '../lib/theme';
   import type { MetricSpec } from '../lib/history';
 
   interface Props {
@@ -37,9 +37,22 @@
     theme: string;
     /** Shared across the small multiples, so one crosshair moves them all. */
     syncKey: string;
+    /** Events to mark on the time axis. The same list for every chart — they
+     *  share an x axis, so an instant lines up across the whole grid. */
+    annotations?: { ts: number; kind: string; label: string; node: string | null }[];
     height?: number;
   }
-  const { metric, x, columns, names, slots, theme, syncKey, height = 132 }: Props = $props();
+  const {
+    metric,
+    x,
+    columns,
+    names,
+    slots,
+    theme,
+    syncKey,
+    annotations = [],
+    height = 132,
+  }: Props = $props();
 
   let host = $state<HTMLDivElement | null>(null);
   let chart: uPlot | null = null;
@@ -70,6 +83,17 @@
    * flagged in the caption rather than left to look like the others.
    */
   const ceiling = $derived(metric.percent ? 100 : (metric.scaleMax ?? null));
+
+  /** Annotations within half a sample of the hovered instant.
+   *
+   * Keyed off the sample spacing rather than a fixed number of seconds, so it
+   * stays "the event at this point on the chart" at a 60s step and at a 3600s
+   * one alike. */
+  function nearbyAnnotations(ts: number) {
+    if (!annotations.length || x.length < 2) return [];
+    const tolerance = Math.abs(x[1] - x[0]) / 2;
+    return annotations.filter((a) => Math.abs(a.ts - ts) <= tolerance);
+  }
 
   const fmt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1));
 
@@ -125,6 +149,53 @@
     return Math.ceil(Math.max(...ticks(candidates).map(textWidth))) + AXIS_PAD;
   });
 
+  /** How an annotation is drawn.
+   *
+   * An alert takes the STATUS palette, which is reserved for exactly this and
+   * so cannot collide with node identity — those come from `--chart-N`. The
+   * other two are not status and must not borrow its colours: a deploy is not
+   * a warning. They stay recessive and are told apart by dash, with the label
+   * on hover doing the real work.
+   *
+   * Recessive on purpose. These are context FOR the data, not data — an
+   * annotation layer that competes with the lines has taken over the chart it
+   * was meant to explain.
+   */
+  const MARK: Record<string, { token: string; dash: number[]; alpha: number }> = {
+    alert: { token: '--critical', dash: [], alpha: 0.65 },
+    'cold-start': { token: '--ink-2', dash: [4, 3], alpha: 0.5 },
+    deploy: { token: '--ink-muted', dash: [1, 3], alpha: 0.5 },
+  };
+
+  function drawAnnotations(u: uPlot) {
+    if (!annotations.length) return;
+    const lo = u.scales.x.min ?? -Infinity;
+    const hi = u.scales.x.max ?? Infinity;
+    const ctx = u.ctx;
+
+    ctx.save();
+    // Clipped to the plot area, or a mark just outside the window paints over
+    // the axis labels.
+    ctx.beginPath();
+    ctx.rect(u.bbox.left, u.bbox.top, u.bbox.width, u.bbox.height);
+    ctx.clip();
+
+    for (const a of annotations) {
+      if (a.ts < lo || a.ts > hi) continue;
+      const style = MARK[a.kind] ?? MARK.deploy;
+      ctx.strokeStyle = cssVar(style.token);
+      ctx.globalAlpha = style.alpha;
+      ctx.lineWidth = 1;
+      ctx.setLineDash(style.dash);
+      const px = Math.round(u.valToPos(a.ts, 'x', true)) + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(px, u.bbox.top);
+      ctx.lineTo(px, u.bbox.top + u.bbox.height);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function build() {
     if (!host) return;
     chart?.destroy();
@@ -149,6 +220,10 @@
         sync: { key: syncKey },
       },
       hooks: {
+        // BENEATH the series, not over them. `drawClear` fires after the canvas
+        // is cleared and before anything is plotted, so the data always sits on
+        // top of its own annotations.
+        drawClear: [drawAnnotations],
         setCursor: [
           (u: uPlot) => {
             const idx = u.cursor.idx;
@@ -227,6 +302,14 @@
   );
   let builtShape = '';
 
+  /* Annotations are painted in a draw hook, so a change to the list needs a
+     REDRAW rather than a rebuild. setData triggers one; a change to the
+     annotations alone would otherwise not repaint. */
+  $effect(() => {
+    void annotations;
+    chart?.redraw();
+  });
+
   /* Keyed on `host` rather than run once on mount: the plot is replaced by a
      placeholder when there is nothing to draw, so the element this observes
      comes and goes over the component's life. An observer attached once at
@@ -290,6 +373,12 @@
         aria-hidden="true"
       >
         <div class="when">{stamp(x[hover.idx])}</div>
+        {#each nearbyAnnotations(x[hover.idx]) as a (a.kind + a.ts + a.label)}
+          <!-- The point of the whole layer: the dip and its candidate
+               explanation in one glance, instead of three views and mental
+               alignment. -->
+          <div class="note" data-kind={a.kind}>{a.label}</div>
+        {/each}
         {#each names as name, i (name)}
           {@const v = columns[i]?.[hover.idx]}
           <div class="row">
@@ -382,6 +471,19 @@
 
   .tip .who {
     color: var(--ink-muted);
+  }
+
+  /* Named, and coloured to match the rule it explains. */
+  .tip .note {
+    color: var(--ink-2);
+    font-size: 10px;
+    max-width: 230px;
+    white-space: normal;
+    margin-top: 2px;
+  }
+
+  .tip .note[data-kind='alert'] {
+    color: var(--critical);
   }
 
   .tip .val {

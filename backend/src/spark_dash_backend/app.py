@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from spark_dash_common.models import ClusterSnapshot
 
 from spark_dash_backend.alert_history import fetch_episodes, summarise
+from spark_dash_backend.annotations import as_dicts, fetch_annotations
 from spark_dash_backend.alerts import AlertmanagerClient
 from spark_dash_backend.cluster import (
     ClusterConfigError,
@@ -468,6 +469,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         inventory.sync_prometheus_targets()
         log.info("retired inference target %s (%s)", instance, ", ".join(removed))
         return {"retired": removed}
+
+    @app.get("/api/annotations")
+    async def api_annotations(
+        minutes: int = Query(60, ge=1, le=60 * 24 * 30),
+        step: str = Query("60s"),
+    ) -> dict:
+        """Events to draw on the history charts.
+
+        One request rather than three, because the FILTERING is the feature and
+        it belongs in one place with its reasoning — see annotations.py. The
+        charts get a list of instants; they do not decide what deserves to be
+        an instant.
+        """
+        end = time.time()
+        start = end - minutes * 60
+        try:
+            found = await fetch_annotations(prom, start=start, end=end, step=step)
+        except PrometheusError as exc:
+            raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
+        return {"annotations": as_dicts(found)}
 
     @app.get("/api/models/timeline")
     async def api_model_timeline(

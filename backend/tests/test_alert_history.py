@@ -151,3 +151,45 @@ class TestSummary:
             "pending_only": 0,
             "ongoing": 0,
         }
+
+
+def test_gap_tolerance_scales_with_the_step():
+    """A gap cannot be smaller than the sampling resolution.
+
+    A fixed 150s tolerance meant that at any step above it EVERY sample looked
+    like a new episode. Found the first time a 7-day window was queried at its
+    natural 3600s step: one continuous alert came back as 21 episodes — exactly
+    one per sample — and drew 21 marks on the charts where there was one
+    incident.
+    """
+    from spark_dash_backend.prometheus import step_seconds
+
+    assert step_seconds("60s") == 60
+    assert step_seconds("3600s") == 3600
+    assert step_seconds("5m") == 300
+    assert step_seconds("1h") == 3600
+    assert step_seconds("") == 60
+
+
+def test_a_continuous_alert_is_one_episode_at_a_coarse_step():
+    """The regression itself, at the resolution that exposed it."""
+    step_s = 3600
+    start = 1_700_000_000
+    # One alert, firing continuously across six hourly samples.
+    series = [
+        alerts_series(
+            "InferenceTargetScrapeFailing", "firing", run(start, 6, step=step_s)
+        )
+    ]
+
+    fragmented = extract_episodes(
+        series, window_end=start + 6 * step_s, gap_tolerance_s=150.0
+    )
+    merged = extract_episodes(
+        series, window_end=start + 6 * step_s, gap_tolerance_s=2.5 * step_s
+    )
+
+    # What was happening: one episode per sample.
+    assert len(fragmented) == 6
+    # What should happen.
+    assert len(merged) == 1

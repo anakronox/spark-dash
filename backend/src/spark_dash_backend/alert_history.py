@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from spark_dash_backend.prometheus import PrometheusClient, PrometheusError
+from spark_dash_backend.prometheus import PrometheusClient, PrometheusError, step_seconds
 
 log = logging.getLogger(__name__)
 
@@ -187,14 +187,25 @@ async def fetch_episodes(
     start: float,
     end: float,
     step: str = "60s",
-    gap_tolerance_s: float = DEFAULT_GAP_TOLERANCE_S,
+    gap_tolerance_s: float | None = None,
 ) -> list[AlertEpisode]:
     """Read alert episodes over a window.
 
-    The step has to stay comfortably below `gap_tolerance_s` or every sample
-    looks like the start of a new episode. 60s against a 150s tolerance leaves
-    room for a couple of missed evaluations.
+    THE TOLERANCE SCALES WITH THE STEP, and it has to. A gap cannot be smaller
+    than the sampling resolution, so a fixed 150s tolerance means that at any
+    step above that EVERY sample looks like the start of a new episode. The
+    constraint was documented here and not enforced, and it showed up the first
+    time something queried a 7-day window at its natural 3600s step: one
+    continuous alert came back as 21 separate episodes, exactly one per sample,
+    and drew 21 marks on the history charts where there was one incident.
+
+    2.5 steps keeps the original intent — bridge a couple of missed evaluations
+    without swallowing a real resolve-and-refire — at whatever resolution the
+    caller is working in. An explicit value still wins, for callers that know
+    better.
     """
+    if gap_tolerance_s is None:
+        gap_tolerance_s = max(DEFAULT_GAP_TOLERANCE_S, 2.5 * step_seconds(step))
     try:
         series = await prom.query_range(ALERTS_METRIC, start, end, step)
     except PrometheusError:
