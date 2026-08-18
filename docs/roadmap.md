@@ -2328,6 +2328,102 @@ debugging session is whether these are exercised first.
   **Directly relevant to this week:** adding nodes 2 and 3 by hand would have
   produced two nodes visible on the dashboard with no history and no alerting.
 
+### S — Three signals already collected and not shown
+
+Planned 2026-08-19. The theme: **none of this needs new collection.** Every
+number below is already gathered, already in Prometheus, and in two cases
+already alerted on — it just never reaches a reader's eye. That makes these
+cheap, and it makes the work display and judgement rather than plumbing.
+
+- [ ] **S1. `temp_bands` — the scale for every temperature already shown.**
+
+  Carries `gpu_warning_c`, `gpu_critical_c`, `cpu_warning_c`, `cpu_critical_c`,
+  and a `*_source` for each. It is **not in `frontend/src/lib/types.ts` at
+  all** — the field never crosses into the UI.
+
+  The node card says `TEMP 47°C` with nothing to compare it against, so a
+  reader cannot tell 47 from 84 without knowing the hardware. That is exactly
+  what this field exists to prevent: it was added so alerting compares against
+  *the node's own* thresholds rather than numbers hardcoded in a rule file.
+  The UI then hardcodes nothing either, which also keeps [J](#j--single-host-profile-everything-on-one-gb10)
+  honest — a dashboard that hardcodes GB10 temperatures is a GB10 dashboard in
+  a way this one does not have to be.
+
+  `*_source` is the part not to drop. It distinguishes a hardware-derived band
+  from a fallback guess, and a threshold you cannot trust must not be rendered
+  like one you can. Show the band; mark it when it is a guess.
+
+- [ ] **S2. Swap — and the premise needs correcting first.**
+
+  `swap_used_bytes` is a **level, not a thrash signal**. A node can hold
+  gigabytes of cold pages swapped out and be perfectly healthy, while another
+  thrashes badly at a hundred megabytes. Thrashing is a *rate*, and displaying
+  the level as though it were the symptom would produce exactly the wrong
+  reaction on a unified-memory box where some swap is normal.
+
+  **The detection already exists and is good:** `SwapThrashing` fires on
+  `rate(node_vmstat_pswpin[5m]) + rate(node_vmstat_pswpout[5m]) > 50` for 10m,
+  and its own description notes that PSI usually catches it too and that this
+  rule "names the mechanism". Nothing to build there.
+
+  What is missing is **everything between zero and the alert threshold.** The
+  dashboard shows no swap at all, so the state is invisible until a warning
+  fires, and there is no way to see it trending toward one.
+
+  Three pieces, in increasing order of value:
+
+  1. `swap_used_bytes` on the node card — already collected, honest if labelled
+     as a level rather than as trouble.
+  2. A **swap I/O rate** chart from `pswpin + pswpout`. Two lines
+     (`HISTORY_QUERIES` + a `METRICS` chip), no collection, and it plots the
+     exact quantity `SwapThrashing` alerts on — so the chart and the alert
+     cannot disagree about what thrashing is.
+  3. **`psi_memory_full` is collected, exported, and never charted.** The agent
+     emits `psi_memory_full_avg10` and `full_avg60`; only the `some_*` variants
+     appear in `HISTORY_QUERIES`. `some` means *someone* stalled on memory;
+     `full` means *everything* did. On a box whose whole job is holding models
+     in one shared pool, `full` above zero is the strongest "this node is in
+     trouble right now" signal available, and it is being thrown away at the
+     last step.
+
+- [ ] **S3. Disk used vs free.**
+
+  Also already in Prometheus — `node_filesystem_avail_bytes` /
+  `node_filesystem_size_bytes`, per node, per mountpoint. No collection needed.
+
+  The work here is **filtering**, which is the real cost of any card. Measured
+  2026-08-19, the two hosts report between them: `/boot/efi` (vfat), `/`
+  (ext4), `/Volumes/AI` and `/Volumes/Backups` (both nfs4, and both reporting
+  an identical 21391 GB because they are the same NAS mounted twice), plus on
+  the VM a run of `ramfs`/`tmpfs` entries — `/run`, `/run/lock`, and four
+  `/run/credentials/systemd-*.service` mounts, all 0 GB. A naive table is eight
+  rows of noise around two useful ones.
+
+  **Use the same `fstype=~"ext4|xfs|btrfs"` filter the alerts already use.**
+  Not for tidiness: if the card shows a filesystem the alerts ignore, it
+  promises a warning that will never arrive. Card and alert should agree on
+  what counts as a disk.
+
+  Two findings from checking this:
+
+  - **`/models` is on the local ext4 root, not the NAS** — `/dev/nvme0n1p2`,
+    3.6 TB, 61% used, with 894 GB of models on it. So model storage *is*
+    covered by `NodeDiskFillingUp` and `NodeDiskLow`. Worth knowing before
+    assuming otherwise; the mount names suggest the opposite.
+  - **The 59 TB NAS at `/Volumes/AI` (67% used) is excluded** from both disk
+    alerts by that same fstype filter. Defensible — it is shared storage with
+    its own lifecycle, not this node's problem — but it is currently excluded
+    by accident of a filter rather than by decision. Make it a decision.
+    Separately, a *stale* NFS mount breaks model loading entirely and nothing
+    watches for that at all; capacity is not the failure mode worth fearing
+    there.
+
+**Suggested order: S1, then S2.3 (`psi_memory_full`), then the rest.** S1
+gives meaning to a number already on screen. `psi_memory_full` is two lines for
+the single best distress signal the agent produces. Both are pure display with
+no new failure modes. S3's chart is equally cheap; S3 as a *card* is the only
+item here with real design work in it, and it can wait for a reason to exist.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
