@@ -14,6 +14,7 @@
   import Trends from './components/Trends.svelte';
   import { Layout, ZONE_LABEL } from './lib/layout.svelte';
   import type { Zone } from './lib/layout.svelte';
+  import { nodeSlots } from './lib/theme';
   import { Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { AlertFeed } from './lib/alerts.svelte';
@@ -91,22 +92,26 @@
     return [...byKey.values()];
   });
 
-  /* Identity slot per node, counted across the WHOLE page in render order.
+  /* Identity slot per node: its position in the INVENTORY, which is the order
+   * of `cluster.yml`. So a node's colour is its line in that file.
    *
    * Was derived from the cluster index plus the member index, which collides:
    * a two-member cluster at index 1 takes slots 1 and 2, and the next cluster
-   * — index 2 — takes slot 2 as well. Two nodes, one colour, and the more
-   * clusters you have the likelier it gets.
+   * — index 2 — takes slot 2 as well. Two nodes, one colour.
    *
-   * A flat running count cannot collide, and it keeps the property that
-   * matters: colour follows the node, not its position, because the order it
-   * counts is stable for a given cluster layout. */
-  const slotOf = $derived.by(() => {
-    const m = new Map<string, number>();
-    let next = 0;
-    for (const c of clusters) for (const n of c.nodes) m.set(n.node_id, next++);
-    return m;
-  });
+   * Then it was a flat running count over the GROUPED list, which cannot
+   * collide but is only stable "for a given cluster layout" — and grouping
+   * pulls a cluster's members together, so a node listed between two members
+   * of one cluster is shifted by nodes that did not move. Adding hardware
+   * changes the layout, which is exactly when you least want every chart to
+   * repaint.
+   *
+   * Counting the ungrouped list makes the invariant one a human can hold:
+   * APPEND to cluster.yml and no existing node changes colour, whatever the
+   * grouping does. The cost is that colours are no longer visually sequential
+   * once grouping reorders the cards, which is the right trade — colour here
+   * is identity, not rank. */
+  const slotOf = $derived(nodeSlots(nodes.map((n) => n.node_id)));
 
   /* Agent builds across the cluster.
    *

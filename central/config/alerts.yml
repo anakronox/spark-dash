@@ -31,6 +31,31 @@ groups:
             down, or just its agent container. Check `docker ps` on the node —
             if node-exporter is still up, it's the agent.
 
+      - alert: AgentCollectionFailing
+        expr: increase(sparkdash_agent_collect_failures_total[10m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent collection on {{ $labels.node }} keeps raising"
+          description: >-
+            Snapshot collection has failed more than 3 times in 10 minutes. The
+            agent is still serving — a failed collection deliberately keeps the
+            previous snapshot rather than returning an error, because a stale
+            reading beats Prometheus recording nothing — so this is invisible
+            without watching for it. That is the whole reason this rule exists.
+
+            Distinct from AgentSnapshotStale, which fires when collection is too
+            SLOW. This one fires when it is RAISING, and the two want different
+            answers: slow is usually a runtime endpoint that stopped answering,
+            while raising is usually the agent itself — NVML, procfs, or a
+            collector hitting something it did not expect.
+
+            Check the agent's logs for "snapshot collection failed"; the
+            traceback names the collector. `sparkdash_agent_collections_total`
+            rising alongside means it is failing intermittently rather than
+            wholesale.
+
       - alert: AgentSnapshotStale
         expr: sparkdash_agent_snapshot_age_seconds > 30
         for: 2m

@@ -49,12 +49,21 @@ export function nodeColorVar(slot: number): string {
   return slot < NODE_SLOTS ? `var(--chart-${slot + 1})` : 'var(--rule)';
 }
 
-/** Stable slot per node id.
+/** Identity slot per node id — its INDEX IN THE INVENTORY, i.e. its position
+ *  in `cluster.yml`. A node's colour is its line in that file.
  *
- * Colour follows the node, not its position, so filtering out a node must not
- * repaint the survivors. Derived once from the ordered node list and reused by
- * both the cards and the charts, so a node is the same colour everywhere.
- */
+ *  Feed this the ungrouped node list, never the grouped one. Grouping pulls a
+ *  cluster's members together, so a node listed between two members of one
+ *  cluster would be shifted by nodes that did not move — and adding hardware
+ *  changes the grouping, which is precisely when repainting every chart is
+ *  least welcome.
+ *
+ *  The invariant this buys is one a human can hold: APPEND to cluster.yml and
+ *  no existing node changes colour. It is documented in cluster.yml.example
+ *  where someone editing that file will actually see it.
+ *
+ *  Colour is identity here, not rank, so it does not matter that the palette
+ *  runs out of visual order once cards are grouped. */
 export function nodeSlots(nodeIds: string[]): Map<string, number> {
   return new Map(nodeIds.map((id, i) => [id, i]));
 }

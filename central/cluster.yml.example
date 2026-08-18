@@ -20,7 +20,19 @@
 # empty file falls back to SPARK_NODES, which is how a deployment that has not
 # migrated keeps working. A file that exists but does not parse is an error:
 # the backend keeps the last good node list and logs loudly rather than
-# quietly reverting to the old source.
+# quietly reverting to the old source. An EMPTY file on a running backend is
+# treated the same way — a typo was already survivable and a blank line was
+# not, which was backwards. Emptying the cluster deliberately needs a restart.
+#
+# ORDER IS MEANINGFUL: a node's position here is its colour. Slot 1 is the
+# first node listed, and that colour identifies it on every card and every
+# chart line. **Append new nodes to the end** and nothing already here changes
+# colour; insert one in the middle and everything below it shifts, which on a
+# dashboard you read by colour is a genuinely disorienting morning.
+#
+# Grouping by `cluster:` does not affect this — cards are grouped for display,
+# colours come from this list. So cluster members need not be adjacent here,
+# and moving them together to tidy the file WOULD repaint.
 
 nodes:
   - id: sparky

@@ -2116,7 +2116,7 @@ within 2 days of 2026-08-18.**
   Q was the whole answer. Nothing further to fix here — but the investigation
   turned up R8.
 
-- [ ] **R2.** Alert on collection *failing*, not just aging. Q4 exports five
+- [x] **R2.** Alert on collection *failing*, not just aging. Q4 exports five
   metrics and `AgentSnapshotStale` consumes one. A rising
   `sparkdash_agent_collect_failures_total` means `build()` is raising, and
   right now that is silent by design — the previous snapshot keeps being served,
@@ -2201,7 +2201,7 @@ debugging session is whether these are exercised first.
   Removing it afterwards exercises the retire path (F/G) as well, which is
   worth having rehearsed before doing it in anger.
 
-- [ ] **R7.** **Append new nodes to `cluster.yml`; do not sort it.** Found
+- [x] **R7.** **Append new nodes to `cluster.yml`; do not sort it.** Found
   2026-08-18 while planning. `nodeSlots()` is
   `new Map(nodeIds.map((id, i) => [id, i]))` — the slot is the node's POSITION
   in the ordered list, while the docstring above it says colour follows the
@@ -2231,6 +2231,37 @@ debugging session is whether these are exercised first.
   nodes is comfortable. Delete `nodeSlots()` either way: two functions claiming
   to answer the same question, one of them unreachable and disagreeing with the
   other, is how the next person gets this wrong.
+
+  **Decided and shipped 2026-08-18: the slot is the node's index in the
+  INVENTORY**, i.e. its position in `cluster.yml`. A node's colour is its line
+  in that file.
+
+  Rejected: persisting the assignment in `localStorage`. It survives any edit,
+  but makes a node a different colour on the phone than on the desktop, and
+  colour is the thing you identify a node BY. Deterministic and shared beats
+  stable-but-personal.
+
+  Rejected: hashing the node id into a slot. Removes the ordering constraint
+  and introduces collisions instead — two nodes the same colour is strictly
+  worse than one reshuffle you chose.
+
+  What this buys is an invariant a human can hold: **append to `cluster.yml`
+  and no existing node changes colour.** Documented in `cluster.yml.example`,
+  where someone editing it will see it, rather than only here. The chain is
+  order-preserving end to end — `cluster.yml` → `inventory.nodes()` →
+  `asyncio.gather` (which preserves input order) → the snapshot → the slot.
+
+  The cost is that colours are no longer visually sequential once grouping
+  reorders the cards. Correct trade: colour is identity, not rank.
+
+  `nodeSlots()` was NOT deleted in the end. It turned out to be exactly the
+  implementation wanted — `App.svelte` had simply never used it and had
+  diverged. Made canonical and called, so the colour rule lives in one file
+  beside `NODE_SLOTS` and `nodeColorVar`.
+
+  **Untestable for now:** the frontend has no test framework (no vitest), so
+  this rests on `svelte-check` and reasoning. R6's dry-run is what will actually
+  exercise it, which is another reason to do R6 before the hardware.
 
 ### J — Single-host profile (everything on one GB10)
 
