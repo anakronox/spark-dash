@@ -24,6 +24,7 @@ const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
 const ROWS_KEY = 'spark-dash.section-rows.v1';
+const COLUMN_KEY = 'spark-dash.section-column.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
 const PLACEMENT_KEY = 'spark-dash.section-placement.v1';
 
@@ -170,6 +171,22 @@ const DEFAULT_ROWS: Record<string, number> = {
   activity: 10,
 };
 
+function readColumns(available: string[] = DEFAULT_ORDER): Record<string, Zone> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMN_KEY) ?? 'null');
+    if (!saved || typeof saved !== 'object') return {};
+    const known = new Set(available);
+    const out: Record<string, Zone> = {};
+    for (const [id, z] of Object.entries(saved)) {
+      if (known.has(id) && (z === 'left' || z === 'right')) out[id] = z;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+
 function readRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
   try {
     const saved = JSON.parse(localStorage.getItem(ROWS_KEY) ?? 'null');
@@ -264,6 +281,9 @@ export class Layout {
   /** Rows a section shows before it pages. Absent means the section's own
    *  default; `0` means uncapped. */
   rows = $state<Record<string, number>>(readRows());
+
+  /** The column each section was last in, so `half` can return it there. */
+  lastColumn = $state<Record<string, Zone>>(readColumns());
 
   /** Id of the section being dragged, or null. Drives the lift and dims the
    *  card it came from. An id rather than an index: the section keeps its
@@ -381,7 +401,67 @@ export class Layout {
    * that column while you aim, and an index that included it would be off by
    * one for every destination below its current home.
    */
+  /** Change a section's zone WITHOUT touching the order.
+   *
+   * This is what makes full <-> half reversible, and it needs no extra state.
+   * `order` is one list for the whole page; a zone's contents are that list
+   * filtered by `placement`, so a section's position among its column-mates is
+   * already recorded there. Leave `order` alone and a section sent to the
+   * full-width band and back lands exactly where it was.
+   *
+   * `place()` below cannot do this — a drag has to say WHERE in the target
+   * column the section goes, so it rewrites the order on purpose. The settings
+   * toggle has no such opinion, and taking one was the bug: it appended to the
+   * end of the target zone, so a round trip through full/left/right silently
+   * moved a section to the bottom of the column it started at the top of.
+   */
+  setZone(id: string, zone: Zone) {
+    if (zone !== 'full') this.#rememberColumn(id, zone);
+    this.placement = { ...this.placement, [id]: zone };
+    this.#savePlacement();
+  }
+
+  /** Which column a section was last in, so `half` can put it back.
+   *
+   * Without it, going full and back would have to guess a column, and guessing
+   * the emptier one means a section you deliberately put on the right can
+   * silently reappear on the left. Only consulted for a section that has never
+   * been in a column at all.
+   */
+  #rememberColumn(id: string, zone: Zone) {
+    if (this.lastColumn[id] === zone) return;
+    this.lastColumn = { ...this.lastColumn, [id]: zone };
+    try {
+      localStorage.setItem(COLUMN_KEY, JSON.stringify(this.lastColumn));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  /** Full width, or in a column. TWO states, because the third was unaimable.
+   *
+   * The panel used to cycle full -> left -> right, and with no natural order
+   * among three zones every click's destination had to be memorised rather
+   * than predicted. Settings answers the coarse question — wide or narrow —
+   * which is the part you can decide without looking at the page. WHICH column
+   * and where in it is a question you can only answer with the page in front
+   * of you, so it belongs to the drag.
+   */
+  toggleWidth(id: string) {
+    if (this.zoneOf(id) === 'full') {
+      this.setZone(id, this.lastColumn[id] ?? this.#emptierColumn());
+    } else {
+      this.setZone(id, 'full');
+    }
+  }
+
+  /** For a section that has never been in a column. */
+  #emptierColumn(): Zone {
+    return this.inZone('left').length <= this.inZone('right').length ? 'left' : 'right';
+  }
+
   place(id: string, zone: Zone, index: number) {
+    if (zone !== 'full') this.#rememberColumn(id, zone);
     const others = this.inZone(zone).filter((x) => x !== id);
     const next = this.order.filter((x) => x !== id);
 
@@ -470,6 +550,7 @@ export class Layout {
     this.collapsed = [];
     this.hidden = [];
     this.placement = {};
+    this.lastColumn = {};
     this.rows = {};
     /* Switched-off columns go too. Same unrecoverability rule as hidden
        sections: anything that can remove a thing from the page must have one
@@ -479,6 +560,7 @@ export class Layout {
     this.setCompactCards(false);
     this.#savePlacement();
     try {
+      localStorage.removeItem(COLUMN_KEY);
       localStorage.removeItem(ROWS_KEY);
     } catch {
       // Still applied for this session.

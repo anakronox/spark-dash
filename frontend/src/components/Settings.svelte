@@ -30,7 +30,18 @@
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
-  import { PAGED_SECTIONS, ROW_CHOICES, ZONES, ZONE_LABEL } from '../lib/layout.svelte';
+  import { PAGED_SECTIONS, ROW_CHOICES } from '../lib/layout.svelte';
+
+  /* The zones, in the order they appear on the page, plus hidden last. Naming
+     them here rather than reusing ZONES because `hidden` is not a zone — it is
+     the absence of one — and the panel is the only place the two belong in a
+     single list. */
+  const SECTION_GROUPS: { zone: 'full' | 'left' | 'right' | 'hidden'; label: string }[] = [
+    { zone: 'full', label: 'Full width' },
+    { zone: 'left', label: 'Left column' },
+    { zone: 'right', label: 'Right column' },
+    { zone: 'hidden', label: 'Hidden' },
+  ];
 
   interface Props {
     theme: Theme;
@@ -364,59 +375,66 @@
            Not here: order and collapse live on the sections themselves, and
            which COLUMNS a table shows lives in each card's top-right corner,
            next to the data it affects. Reset below clears all of it. -->
-      <p class="note dim">Placement, rows before paging, and whether it shows.</p>
-      <ol class="sections">
-        {#each layout.order as id (id)}
-          {@const hidden = layout.isHidden(id)}
-          {@const zone = layout.zoneOf(id)}
-          <li class="row" class:off={hidden}>
-            <span class="name">{layout.label(id)}</span>
-            <!-- Cycles full -> left -> right rather than offering three
-                 buttons: it is the same control as the arrow keys on the
-                 section's own handle, and a row of radio buttons per section
-                 would be fifteen targets in a panel that has to stay
-                 scannable. -->
-            <button
-              class="mini w"
-              disabled={hidden}
-              aria-label={`${layout.label(id)} placement: ${ZONE_LABEL[zone]}`}
-              onclick={() =>
-                layout.place(
-                  id,
-                  ZONES[(ZONES.indexOf(zone) + 1) % ZONES.length],
-                  layout.inZone(ZONES[(ZONES.indexOf(zone) + 1) % ZONES.length]).length,
-                )}
-            >{zone}</button>
-            <!-- Row cap. A select rather than another cycling button: seven
-                 choices would take six clicks to walk back one, and unlike
-                 placement there is no equivalent control on the section itself
-                 to learn it from.
-                 Only for sections that are a list of rows — History is a
-                 chart, where a row cap would be a setting that does nothing. -->
-            {#if PAGED_SECTIONS.has(id)}
-              <select
-                class="mini rows"
-                disabled={hidden}
-                aria-label={`${layout.label(id)} rows before paging`}
-                value={layout.rowChoice(id)}
-                onchange={(e) => layout.setRows(id, Number(e.currentTarget.value))}
-              >
-                {#each ROW_CHOICES as n (n)}
-                  <option value={n}>{n === 0 ? 'all' : `${n} rows`}</option>
-                {/each}
-              </select>
-            {:else}
-              <span class="mini placeholder" aria-hidden="true">—</span>
-            {/if}
-            <button
-              class="mini"
-              aria-pressed={!hidden}
-              aria-label={`${hidden ? 'Show' : 'Hide'} ${layout.label(id)}`}
-              onclick={() => layout.toggleHidden(id)}
-            >{hidden ? 'hidden' : 'shown'}</button>
-          </li>
-        {/each}
-      </ol>
+      <p class="note dim">Width, rows before paging, and whether it shows.</p>
+      <!-- GROUPED BY ZONE, IN DASHBOARD ORDER. The list used to be flat, in
+           `layout.order`, which meant the panel looked identical whatever the
+           arrangement was — and since the fly-out covers the page, changing a
+           section's placement appeared to do nothing at all. The row moving
+           between groups IS the feedback. -->
+      {#each SECTION_GROUPS as group (group.zone)}
+        {@const ids = group.zone === 'hidden'
+          ? layout.order.filter((id) => layout.isHidden(id))
+          : layout.inZone(group.zone)}
+        {#if ids.length}
+          <p class="eyebrow dim group">{group.label}</p>
+          <ol class="sections">
+            {#each ids as id (id)}
+              {@const hidden = layout.isHidden(id)}
+              <li class="row" class:off={hidden}>
+                <span class="name">{layout.label(id)}</span>
+                <!-- TWO states, not three. Cycling full -> left -> right gave
+                     each click a destination you had to memorise rather than
+                     predict, and it appended to the end of the target column,
+                     so a round trip silently moved a section to the bottom of
+                     one it started at the top of.
+                     Settings answers wide-or-narrow; WHICH column and where in
+                     it needs the page in front of you, so that belongs to the
+                     drag. `half` returns the section to the column it last
+                     occupied. -->
+                <button
+                  class="mini w"
+                  disabled={hidden}
+                  aria-label={`${layout.label(id)}: ${
+                    layout.zoneOf(id) === 'full' ? 'full width' : 'half width'
+                  }`}
+                  onclick={() => layout.toggleWidth(id)}
+                >{layout.zoneOf(id) === 'full' ? 'full' : 'half'}</button>
+                {#if PAGED_SECTIONS.has(id)}
+                  <select
+                    class="mini rows"
+                    disabled={hidden}
+                    aria-label={`${layout.label(id)} rows before paging`}
+                    value={layout.rowChoice(id)}
+                    onchange={(e) => layout.setRows(id, Number(e.currentTarget.value))}
+                  >
+                    {#each ROW_CHOICES as n (n)}
+                      <option value={n}>{n === 0 ? 'all' : `${n} rows`}</option>
+                    {/each}
+                  </select>
+                {:else}
+                  <span class="mini placeholder" aria-hidden="true">—</span>
+                {/if}
+                <button
+                  class="mini"
+                  aria-pressed={!hidden}
+                  aria-label={`${hidden ? 'Show' : 'Hide'} ${layout.label(id)}`}
+                  onclick={() => layout.toggleHidden(id)}
+                >{hidden ? 'hidden' : 'shown'}</button>
+              </li>
+            {/each}
+          </ol>
+        {/if}
+      {/each}
       <!-- Offered only when there is something to undo: a reset that does
            nothing still invites the click that loses your arrangement. -->
       <button
@@ -806,6 +824,17 @@
     border-radius: var(--radius);
     resize: vertical;
     white-space: pre;
+  }
+
+  /* Zone headings inside the Sections block. Tight, because they are
+     structure rather than content — the rows are what the reader is scanning. */
+  .group {
+    margin: 8px 0 3px;
+    font-size: 9px;
+  }
+
+  .group:first-of-type {
+    margin-top: 0;
   }
 
   .reset { margin-left: 0; align-self: flex-start; margin-top: 4px; }

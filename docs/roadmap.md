@@ -1499,6 +1499,40 @@ Half/full arrangements migrate on first load — full stays full, halves
 alternate into the two columns in their existing order. Keyboard: up/down
 within a column, left/right between zones.
 
+**The settings placement control, reworked 2026-08-18.** It cycled
+full -> left -> right and had three faults, all reported as "inconsistent, and
+it doesn't seem to refresh":
+
+- **It silently reordered the layout.** `place()` appends to the end of the
+  target zone, so a round trip was not a round trip: a section at the TOP of the
+  left column came back at the BOTTOM. That quietly damaged an arrangement built
+  by dragging, which is the worst of the three.
+- **It could not be aimed.** With no natural order among three zones, every
+  click's destination had to be memorised rather than predicted.
+- **Its effect was invisible.** The fly-out covers the page and the list was
+  flat, in `layout.order`, so the panel looked identical whatever the
+  arrangement was.
+
+Now two states — full or half — and the fix for the reordering needed no new
+state at all. `order` is ONE list for the whole page and a zone's contents are
+that list filtered by `placement`, so a section's position among its
+column-mates is already recorded there. `setZone` changes only the placement and
+leaves the order alone; a section sent full and back lands exactly where it was.
+`place()` still rewrites the order, because a drag has to say where in the
+target column the section goes — the settings toggle has no such opinion, and
+taking one was the bug.
+
+`half` returns a section to the column it last occupied, falling back to the
+emptier column only for one that has never been in either. Guessing the emptier
+column every time would silently move a section you deliberately put on the
+right.
+
+The division of labour that follows: **settings answers wide-or-narrow**, which
+is the part you can decide without looking at the page; **which column and where
+in it belongs to the drag**, because it needs the page in front of you. The list
+is now grouped by zone in dashboard order, so the row moving between groups is
+the feedback the panel previously could not give.
+
 **Layout shift — fixed 2026-08-17, and the cause was `1fr`.**
 
 Measured before: **CLS 0.1488 across 91 entries**. Every shift was HORIZONTAL,
