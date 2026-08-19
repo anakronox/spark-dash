@@ -2690,7 +2690,7 @@ that mould is nearly free, while a genuinely new data palette is not.
   production backend), but flipping the OS appearance mid-session was not
   exercised. That path is one `matchMedia` listener bumping `resolved`.
 
-- [x] **U5. NVIDIA — black surfaces, NVIDIA green.** Requested 2026-08-19.
+- [x] **U5. Forest — black surfaces, green accent.** Requested 2026-08-19.
 
   Built as a CHROME theme in cyberpunk's mould, which is what made it cheap:
   the eight chart slots are the dark theme's validated set, re-run against the
@@ -2700,13 +2700,13 @@ that mould is nearly free, while a genuinely new data palette is not.
   **`app.css` argues against this look and the theme answers the argument
   rather than ignoring it.** The base comment reads: *"Warm-neutral rather than
   pure black — pure black plus one acid accent is the reflexive technical
-  dashboard look, and it makes every status colour scream."* Black plus NVIDIA
-  green is precisely that. The resolution: the green cast lives in
+  dashboard look, and it makes every status colour scream."* Black plus a
+  single bright green is precisely that. The resolution: the green cast lives in
   **non-semantic chrome** (rules, tracks, secondary ink), the status ramp keeps
   the dark theme's values, and the data palette is untouched — so nothing
   screams except the one thing that should.
 
-  **NVIDIA green is `--good`, deliberately.** There is no `--accent` token in
+  **The accent green is `--good`, deliberately.** There is no `--accent` token in
   this system, so an accent has to land on a real one. Putting it anywhere else
   would have meant two greens on screen at once — the brand's and the status
   ramp's — which is worse than one green meaning both. `#76b900` measures
@@ -2727,6 +2727,19 @@ that mould is nearly free, while a genuinely new data palette is not.
   two sets are disjoint there — but the invariant holds by luck rather than by
   construction in that theme. This theme keeps them aligned. Worth resolving
   when U1 lands.
+
+  **Renamed from `nvidia` to `forest` the same day**, at the requester's call:
+  the palette is a restrained green cast rather than the bold brand colours the
+  name promised, and a theme named for a company should look like the company.
+  The hex stays — it is NVIDIA's green, kept on merit rather than branding,
+  being both the highest-contrast option tried and a better `--good` than the
+  dark theme's own.
+
+  The rename ships with a migration, because it was already deployed when the
+  call was made. `RENAMED` maps the old stored id to the new one in `read()`,
+  so a reader who had selected it keeps it. Without that, an unknown stored id
+  falls through to the default and the reader experiences "my setting was
+  forgotten" rather than "that theme has a new name".
 
 - [ ] **U3. High contrast.** The only theme on this list with a functional
   rather than aesthetic purpose, and the one worth real effort.

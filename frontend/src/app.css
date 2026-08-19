@@ -143,7 +143,7 @@
   --chart-8: #e66767;
 }
 
-:root[data-theme='nvidia'] {
+:root[data-theme='forest'] {
   color-scheme: dark;
 
   /* True black, which app.css otherwise argues against — "pure black plus one
@@ -156,7 +156,7 @@
   /* Lifted off pure black so panels separate from the page. */
   --panel: #0a0f0a;
   --panel-raised: #111a11;
-  /* Green-tinted rules and tracks are what make this read as an NVIDIA theme
+  /* Green-tinted rules and tracks are what make this read as a green theme
      rather than "dark, but blacker". Non-semantic surfaces, so tinting them
      costs nothing in meaning. */
   --rule: #1e3a1e;
@@ -173,10 +173,15 @@
   --series-2: #da5c2b; /* orange — other GPU workloads */
   --series-3: #199e70; /* aqua   — third node */
 
-  /* NVIDIA green is the BRAND colour and the GOOD colour at once, deliberately.
-     There is no `--accent` token in this system, so an accent has to land on a
-     real one; putting it anywhere else would have meant two greens on screen —
-     the brand's and this one — which is worse than one green meaning both.
+  /* The accent and the GOOD colour are the same green, deliberately. There is
+     no `--accent` token in this system, so an accent has to land on a real one;
+     putting it anywhere else would have meant two greens on screen at once,
+     which is worse than one green meaning both.
+
+     The hex is NVIDIA's brand green, which is where this palette started before
+     it was renamed — it survives on merit rather than on branding, being both
+     the highest-contrast option tried and a better `--good` than the dark
+     theme's.
      8.02 against --panel, comfortably past 4.5, and better than the dark
      theme's --good at 5.19. The rest of the status ramp is unchanged, so
      ordering and meaning survive. */

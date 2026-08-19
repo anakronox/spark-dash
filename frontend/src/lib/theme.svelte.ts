@@ -15,7 +15,7 @@
 const STORAGE_KEY = 'spark-dash.theme.v1';
 
 /** A theme that actually exists as a block of CSS custom properties. */
-export type PaletteId = 'dark' | 'light' | 'cyberpunk' | 'nvidia';
+export type PaletteId = 'dark' | 'light' | 'cyberpunk' | 'forest';
 
 /** What the reader can choose. `auto` is a rule, not a palette. */
 export type ThemeId = PaletteId | 'auto';
@@ -35,10 +35,10 @@ export const THEMES: ThemeDef[] = [
   { id: 'dark', label: 'Dark', dark: true },
   { id: 'light', label: 'Light', dark: false },
   { id: 'cyberpunk', label: 'Cyberpunk', dark: true },
-  { id: 'nvidia', label: 'NVIDIA', dark: true },
+  { id: 'forest', label: 'Forest', dark: true },
 ];
 
-const DARK_PALETTES = new Set<PaletteId>(['dark', 'cyberpunk', 'nvidia']);
+const DARK_PALETTES = new Set<PaletteId>(['dark', 'cyberpunk', 'forest']);
 const IDS = new Set<string>(THEMES.map((t) => t.id));
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';
@@ -49,9 +49,19 @@ function systemPrefersDark(): boolean {
   return globalThis.matchMedia?.(DARK_QUERY).matches ?? true;
 }
 
+/** Themes that have been renamed, so a stored choice survives the rename.
+ *
+ *  Without this a renamed theme silently reverts the reader to the default,
+ *  which reads as "my setting was forgotten" rather than "that theme is called
+ *  something else now". `forest` shipped as `nvidia` for a few hours on
+ *  2026-08-19 and was renamed because the palette is a restrained green rather
+ *  than the bold brand colours the name promised. */
+const RENAMED: Record<string, ThemeId> = { nvidia: 'forest' };
+
 function read(): ThemeId {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved && RENAMED[saved]) return RENAMED[saved];
     if (saved && IDS.has(saved)) return saved as ThemeId;
   } catch {
     // Storage unavailable (private mode, quota). Fall through to the default.
