@@ -2604,6 +2604,87 @@ is no load-start timestamp to be had, so the scrape interval is the floor.
 **Order: T1, then T2.** T1 is a live snapshot field with no new request and no
 history involved, and it is the column that makes T2's number mean something.
 
+### U — More themes, and making theme validation repeatable
+
+Planned 2026-08-19. Measured cost of adding one: **23 CSS tokens** in a new
+`:root[data-theme='x']` block (26 exist, 3 are inherited), plus two lines in
+`theme.svelte.ts` — the `THEMES` entry and the `ThemeId` union. Mechanically
+trivial.
+
+The cost is not the tokens. `theme.svelte.ts` already records that **two
+candidate themes were cut for failing validation**: a green-phosphor look where
+green/teal/amber fell below the separation floor even for full colour vision,
+and a muted slate that read as grey. Do not re-propose either.
+
+Three findings from checking the current state.
+
+**The validation is not reproducible.** The palette checker that produced those
+rejections is not in this repo — it lived in tooling on one machine. Anyone
+adding a theme, including a future session of this work, has no way to run the
+check the docstring describes, and the two rejections survive only as prose.
+
+**The light theme already carries a contrast WARN.** Ran 2026-08-19 against its
+own surface `#fcfcfb`: `--chart-4` `#eda100` at **2.11:1** and `--chart-5`
+`#e87ba4` at **2.62:1**, both under the 3:1 floor. That is not dismissable on
+its own — it obligates visible labels or a table view. The always-present chart
+legend supplies exactly that, so the requirement IS met; but it is met by a
+decision made elsewhere for another reason. If the legend ever became optional,
+light would silently drop below the floor with nothing to catch it.
+
+Dark and cyberpunk pass every check. Worst adjacent pair in both is
+`#c98500 ↔ #199e70` at ΔE 8.4 protan — above the floor, but not by much, which
+is worth knowing before anyone "just tweaks" a hue.
+
+**Cyberpunk's eight chart slots are byte-identical to dark's.** Only the
+surfaces and chrome differ. That is legitimate and validated, but it means
+cyberpunk is a *chrome* theme rather than a data one — so a fourth theme in
+that mould is nearly free, while a genuinely new data palette is not.
+
+- [ ] **U1. Vendor the palette check into the repo, as a test.** Do this first;
+  it is what makes everything after it safe.
+
+  Parse `app.css`, pull each theme's eight `--chart-*` slots and its surface,
+  and assert the floors: lightness band, chroma, adjacent-pair CVD separation,
+  normal-vision separation, contrast against that theme's own surface. A theme
+  that fails then cannot merge, which turns a documented practice into an
+  enforced one — the same move as every other "measured, not assumed" thing
+  here.
+
+  Encode light's known WARN as an explicit allowance with a comment naming the
+  legend as its relief, so the exception is recorded rather than re-discovered.
+
+- [ ] **U2. "Auto" — follow the system.** No new palette at all, and probably
+  the most-wanted entry on this list.
+
+  `prefers-color-scheme` appears **nowhere** in the frontend and the default is
+  a hardcoded `'dark'`, so a reader whose machine is in light mode gets dark
+  until they go and change it. Auto reuses two already-validated palettes and
+  needs no colour work.
+
+  One real wrinkle: charts resolve CSS custom properties into literal canvas
+  colours when they build, which is why `Theme` applies the attribute
+  synchronously in its constructor and `MetricChart` takes a `themeKey`. The
+  system preference can change *while the page is open*, so the media-query
+  listener has to bump that key the same way an explicit switch does — a theme
+  change nobody clicked is exactly the case that would otherwise leave charts
+  painted in the old palette.
+
+- [ ] **U3. High contrast.** The only theme on this list with a functional
+  rather than aesthetic purpose, and the one worth real effort.
+
+  Must be stepped for maximum separation rather than derived by pushing dark's
+  values apart: the current worst adjacent pair is already only ΔE 8.4, so
+  there is no headroom to borrow. Target well above every floor, and expect to
+  give up some hue variety to get it.
+
+- [ ] **U4. Chrome-only variants**, in cyberpunk's mould — same validated chart
+  slots, different surfaces and chrome. Cheap and taste-driven. Each still
+  needs the surface-contrast check re-run, because that is the one check a new
+  surface can break on its own.
+
+**Order: U1, U2, then U3.** U1 makes the rest checkable, U2 is the highest
+value for the least risk, U3 is the one that needs care.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
