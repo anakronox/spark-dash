@@ -2353,7 +2353,7 @@ cheap, and it makes the work display and judgement rather than plumbing.
   from a fallback guess, and a threshold you cannot trust must not be rendered
   like one you can. Show the band; mark it when it is a guess.
 
-- [ ] **S2. Swap — and the premise needs correcting first.**
+- [x] **S2. Swap — and the premise needs correcting first.** — shipped 2026-08-19
 
   `swap_used_bytes` is a **level, not a thrash signal**. A node can hold
   gigabytes of cold pages swapped out and be perfectly healthy, while another
@@ -2385,6 +2385,40 @@ cheap, and it makes the work display and judgement rather than plumbing.
      in one shared pool, `full` above zero is the strongest "this node is in
      trouble right now" signal available, and it is being thrown away at the
      last step.
+
+  **Shipped, all three pieces, none needing new collection.**
+
+  `psi_memory_full` is the one that mattered. It was already collected AND
+  already exported; only a `HISTORY_QUERIES` entry and a chip were missing, so
+  the strongest distress signal the agent produces was being discarded at the
+  last step. Charted at avg10 to match its `some` sibling — the two are meant to
+  be read against each other, and a `some` at 10s beside a `full` at 60s would
+  invite comparing numbers that are not comparable.
+
+  `swap_io` plots `rate(pswpin) + rate(pswpout)`, which is the exact expression
+  `SwapThrashing` alerts on, so the chart and the alert cannot disagree about
+  what thrashing is. No `scaleMax`: there is no natural ceiling and a fixed one
+  would clip the event the chart exists to show.
+
+  Swap occupancy went on the node card as a plain, untoned level. Colouring a
+  non-zero value would assert trouble that a resident figure cannot establish —
+  a node can hold gigabytes of cold pages and be perfectly healthy. It earns a
+  place at all because this is a unified-memory box: swap in use means the one
+  pool models live in is under real pressure, and nothing said so before.
+
+  Both queries were run against production Prometheus before wiring anything,
+  and `psi_full_avg10` was confirmed to accept an appended `{node=...}` matcher
+  before being added to `NODE_FILTERABLE`.
+
+  **Also added `tests/test_history_metrics.py`**, because this section added two
+  entries to two lists in two languages — the shape that drifts. It asserts every
+  chip has a query and every query is reachable, which is precisely the bug
+  reported once as "the Throughput chip does nothing": a chip whose key had no
+  query rendered a control that could neither show nor hide anything. Verified
+  by adding a ghost chip and watching it fail. It also checks that everything in
+  `NODE_FILTERABLE` really is a bare selector, since appending a matcher to an
+  aggregation is invalid PromQL and surfaces as a 503 rather than an honest
+  error.
 
 - [x] **S3. Disk used vs free.** — shipped 2026-08-19
 

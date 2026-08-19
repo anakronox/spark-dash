@@ -129,6 +129,17 @@ HISTORY_QUERIES: dict[str, str] = {
     "memory_used_bytes": "sparkdash_memory_used_bytes",
     "cpu_utilization": "sparkdash_cpu_utilization_percent",
     "psi_some_avg10": "sparkdash_psi_memory_some_avg10",
+    # `full`, not `some`. SOME means at least one task stalled waiting on
+    # memory, which a busy inference box does routinely; FULL means EVERY
+    # runnable task was stalled, i.e. nothing progressed at all. On a node whose
+    # entire job is holding models in one shared pool, that is the difference
+    # between "working hard" and "stopped", and the agent has been exporting it
+    # all along with nothing plotting it.
+    #
+    # Same 10s window as its sibling above, deliberately: the two are meant to
+    # be read side by side, and a `some` at 10s against a `full` at 60s would
+    # invite comparing numbers that are not comparable.
+    "psi_full_avg10": "sparkdash_psi_memory_full_avg10",
     # Cluster-wide throughput, summed across routers and vLLM instances.
     "tokens_per_second": (
         "sum by (node) (sparkdash_llama_model_tokens_per_second) "
@@ -160,6 +171,17 @@ HISTORY_QUERIES: dict[str, str] = {
     # MAXED across devices, not averaged. Saturation is "is any disk pegged",
     # and averaging a busy disk against an idle one reports a comfortable 50%
     # for a machine that is completely stalled on one of them.
+    # Swap traffic, not swap OCCUPANCY. A node can hold gigabytes of cold pages
+    # swapped out and be perfectly healthy; thrashing is a RATE. This plots the
+    # exact quantity `SwapThrashing` alerts on (> 50 for 10m), so the chart and
+    # the alert cannot disagree about what thrashing is.
+    #
+    # Pages per second, summed across in and out: direction does not matter to
+    # the reader, only that pages are moving.
+    "swap_io": (
+        f"max by (node) (rate(node_vmstat_pswpin{{{_NODES}}}[{{window}}]) "
+        f"+ rate(node_vmstat_pswpout{{{_NODES}}}[{{window}}]))"
+    ),
     "disk_busy": (
         f"100 * max by (node) (rate(node_disk_io_time_seconds_total"
         f"{{{_NODES}}}[{{window}}]))"
@@ -180,6 +202,7 @@ NODE_FILTERABLE: frozenset[str] = frozenset(
         "memory_used_bytes",
         "cpu_utilization",
         "psi_some_avg10",
+        "psi_full_avg10",
     }
 )
 

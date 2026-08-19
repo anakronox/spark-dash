@@ -80,6 +80,20 @@
   <div class="v"><dt>cpu</dt><dd class="num">{cpu ? pct(cpu.util_pct) : '—'}</dd></div>
   <div class="v"><dt>mem</dt><dd class="num">{memPct != null ? pct(memPct) : '—'}</dd></div>
   <div class="v">
+    <dt>swap</dt>
+    <!-- A LEVEL, not a symptom, and labelled plainly so it is not read as one.
+         A node can hold gigabytes of cold pages here and be perfectly healthy;
+         thrashing is a RATE and lives on the Swap I/O chart, which plots the
+         same quantity SwapThrashing alerts on. Deliberately untoned for the
+         same reason — colouring a non-zero value would assert trouble that a
+         resident figure cannot establish.
+
+         Worth showing at all because this is a unified-memory box: swap in use
+         means the one pool that models live in is under real pressure, and
+         until now nothing on the dashboard said so. -->
+    <dd class="num">{memory ? `${gib(memory.swap_used_bytes)}G` : '—'}</dd>
+  </div>
+  <div class="v">
     <dt>disk</dt>
     <!-- Used/Total in GiB, not auto-scaled to TiB: see format.ts. One fixed
          unit means two nodes' disks compare without unit-checking, which is

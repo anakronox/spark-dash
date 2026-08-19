@@ -64,6 +64,19 @@ export const METRICS: MetricSpec[] = [
    * window is named in the label so that reads as intended rather than as a
    * contradiction. */
   { key: 'psi_some_avg10', label: 'Memory pressure (10s)', unit: '%', percent: true },
+  /* SOME vs FULL, and the distinction is the whole point. "Some" means at least
+     one task stalled waiting on memory, which a busy inference box does
+     routinely and which the chart above will show as a lively line. "Full"
+     means EVERY runnable task was stalled — nothing progressed at all.
+
+     On a node whose entire job is holding models in one shared pool, that is
+     the difference between working hard and stopped, and it is the strongest
+     distress signal the agent produces. It should normally be a flat zero;
+     treat any sustained lift as the node having stopped rather than slowed.
+
+     Same 10s window as its sibling deliberately, so the two can be read
+     against each other. */
+  { key: 'psi_full_avg10', label: 'Memory stalled (10s)', unit: '%', percent: true },
   /* "SLOW" HAS AT LEAST THREE CAUSES and until now the dashboard could
      distinguish one. Memory pressure said the box was thrashing; a machine
      stalled on CPU runqueue or on disk read looked identical to a healthy one.
@@ -74,6 +87,19 @@ export const METRICS: MetricSpec[] = [
      chart's step — same units and the same meaning, but a longer and
      step-dependent smoothing. A spike an hour ago will read lower here than
      the memory chart would have shown it. */
+  /* Swap TRAFFIC, not swap occupancy. A node can hold gigabytes of cold pages
+     swapped out and be perfectly healthy; thrashing is a rate, and reading the
+     resident figure as the symptom would prompt exactly the wrong reaction on a
+     unified-memory box where some swap is normal.
+
+     This plots the quantity `SwapThrashing` alerts on — rate(pswpin) +
+     rate(pswpout) > 50 for 10m — so the chart and the alert cannot disagree
+     about what thrashing is.
+
+     No scaleMax: there is no natural ceiling, and a fixed one would clip the
+     real event this exists to show. The series is relative and the tooltip's
+     absolute value is the one to read. */
+  { key: 'swap_io', label: 'Swap I/O', unit: 'pages/s' },
   { key: 'psi_cpu_some', label: 'CPU pressure', unit: '%', percent: true },
   { key: 'psi_io_some', label: 'I/O pressure', unit: '%', percent: true },
   /* Explains a slow cold start: weights coming off disk. Maxed across devices,
