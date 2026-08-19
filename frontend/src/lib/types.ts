@@ -115,6 +115,12 @@ export interface RouterModel {
   tokens_per_sec: number | null;
   requests_running: number;
   requests_waiting: number;
+  /** From llama.cpp's `meta`. Null on vLLM and on older builds — null means
+   *  unknown, never zero. */
+  size_bytes: number | null;
+  n_params: number | null;
+  quantization: string | null;
+  context_length: number | null;
 }
 
 export interface LlamaRouterMetrics {

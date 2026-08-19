@@ -311,6 +311,26 @@ class RouterModel(BaseModel):
         "value is diagnosable rather than silently collapsed to UNKNOWN.",
     )
 
+    # --- what the model IS, as opposed to what it is doing -------------------
+    #
+    # From the `meta` block llama.cpp already returns on /v1/models, which was
+    # being parsed past. Everything else on this model describes activity;
+    # without these a load time is a number you cannot reason about — 15.6 GiB
+    # in 90s is ~175 MB/s, which is a disk answer rather than a mystery.
+    #
+    # All optional: vLLM has no equivalent, and older llama.cpp builds omit
+    # `meta` entirely. Absent means unknown, never zero.
+    size_bytes: int | None = Field(
+        default=None, ge=0, description="Resident footprint of the weights."
+    )
+    n_params: int | None = Field(default=None, ge=0)
+    quantization: str | None = Field(
+        default=None, description="llama.cpp `ftype`, e.g. 'Q5_K - Medium'."
+    )
+    context_length: int | None = Field(
+        default=None, ge=0, description="Configured context window, `n_ctx`."
+    )
+
     # Populated only for ACTIVE models — fetching these for any other state
     # would wake the model.
     slots_used: int = 0

@@ -10,7 +10,7 @@
    * knowing: a warm process with weights released answers faster than a cold
    * start but holds almost no memory.
    */
-  import { MODEL_GLYPH, num } from '../lib/format';
+  import { MODEL_GLYPH, gib, num } from '../lib/format';
   import Pager from './Pager.svelte';
   import ColumnMenu from './ColumnMenu.svelte';
   import SortButton from './SortButton.svelte';
@@ -38,6 +38,22 @@
     kvCachePct: number | null;
     running: number;
     waiting: number;
+    sizeBytes: number | null;
+    nParams: number | null;
+    quantization: string | null;
+    contextLength: number | null;
+  }
+
+  /* Quantisation, parameters and context window are real but secondary, and
+     M3's position is that columns are chosen rather than accumulated. They ride
+     in the size cell's tooltip instead of widening a table whose column widths
+     were hard-won. */
+  function sizeDetail(row: Row): string {
+    const parts: string[] = [];
+    if (row.nParams) parts.push(`${(row.nParams / 1e9).toFixed(1)}B params`);
+    if (row.quantization) parts.push(row.quantization);
+    if (row.contextLength) parts.push(`${(row.contextLength / 1024).toFixed(0)}K ctx`);
+    return parts.join(' · ');
   }
 
   const STATE_ORDER: Record<ModelState, number> = {
@@ -65,6 +81,10 @@
             kvCachePct: m.kv_cache_pct,
             running: m.requests_running,
             waiting: m.requests_waiting,
+            sizeBytes: m.size_bytes,
+            nParams: m.n_params,
+            quantization: m.quantization,
+            contextLength: m.context_length,
           });
         }
       }
@@ -84,6 +104,11 @@
           kvCachePct: v.kv_cache_pct,
           running: v.requests_running,
           waiting: v.requests_waiting,
+          // vLLM exposes no equivalent of llama.cpp's `meta`.
+          sizeBytes: null,
+          nParams: null,
+          quantization: null,
+          contextLength: null,
         });
       }
     }
@@ -152,6 +177,20 @@
         <span aria-hidden="true">{MODEL_GLYPH[row.state]}</span>
         {row.state}
       </span>
+    </td>
+  {:else if c.key === 'size'}
+    <!-- Unlike throughput, this survives a model going to sleep: a sleeping
+         model still has a size, and size is what makes a load time
+         interpretable — 15.6 GiB in 90s is ~175 MB/s, a disk answer rather
+         than a mystery.
+
+         An UNLOADED model shows nothing, and that is llama.cpp's answer rather
+         than a gap here: it reads the GGUF header on load, so a model it has
+         never loaded has no `meta` to report. Measured on the production
+         router 2026-08-19 — cydonia and qwen (both sleeping) carried size,
+         gemma (never loaded) carried none. Null means unknown, never zero. -->
+    <td class="r num size" title={sizeDetail(row)}>
+      {row.sizeBytes != null ? `${gib(row.sizeBytes)}G` : '—'}
     </td>
   {:else if c.key === 'node'}
     <td class="dim">{row.node}</td>

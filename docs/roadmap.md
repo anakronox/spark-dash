@@ -2494,7 +2494,7 @@ llama.cpp fills it with the response time, and all three models on the
 production router returned `created` equal to `now` on the same request. There
 is no load-start timestamp to be had, so the scrape interval is the floor.
 
-- [ ] **T1. Model size, parameters and quantisation — available now, discarded
+- [x] **T1. Model size, parameters and quantisation — available now, discarded
   now.** Do this one first; it is what makes T2 interpretable.
 
   `/v1/models` already returns a `meta` block the agent parses past:
@@ -2516,6 +2516,35 @@ is no load-start timestamp to be had, so the scrape interval is the floor.
 
   Size also earns its place independently — it is the per-model half of the
   unified-memory question that `MemoryBand` answers only in aggregate.
+
+  **Shipped 2026-08-19.** One column, not three. `size` sits beside `state` —
+  together they are "what is this model", separate from the activity columns —
+  with parameters, quantisation and context window in its tooltip. M3's
+  position is that columns are chosen rather than accumulated, and these
+  tables' widths were hard-won; three new columns would have spent that.
+
+  Also exported as `sparkdash_llama_model_size_bytes`,
+  `_parameters` and `_context_length`, so T2 can correlate in Prometheus rather
+  than only on screen.
+
+  **Verified against the production router**, which corrected an assumption in
+  the plan:
+
+  | model | state | size | quant |
+  |---|---|---|---|
+  | cydonia-24b | sleeping | 15.6G | Q5_K - Medium |
+  | gemma4-26b | unloaded | — | — |
+  | qwen36-35b | sleeping | 23.1G | NVFP4 |
+
+  `meta` is absent for a model llama.cpp has **never loaded** — it reads the
+  GGUF header on load, so an unloaded model has no size to report. Sleeping
+  models keep theirs. The plan said "a sleeping model still has a size", which
+  is true, and implied every state does, which is not. Null renders as `—`
+  rather than zero, which is the distinction that matters on a card whose job
+  is telling you how big a model is.
+
+  qwen36-35b at NVFP4 and 23.1G is also the first time the dashboard has shown
+  why two similarly-named models occupy very different amounts of the pool.
 
 - [ ] **T2. Load and unload durations, derived from the state series.**
 

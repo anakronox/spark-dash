@@ -20,6 +20,7 @@ from spark_dash_agent.collectors.base import Budget
 from spark_dash_agent.collectors.llama_router import (
     LlamaRouterCollector,
     RateTracker,
+    parse_model_meta,
     parse_model_metrics,
     parse_model_state,
 )
@@ -615,3 +616,67 @@ class TestCollectionIsBounded:
         assert budget.timeout(0.1) == pytest.approx(0.1, abs=0.01), (
             "a request asking for less than remains keeps its own ceiling"
         )
+
+
+class TestModelMeta:
+    """What a model IS, from the `meta` block llama.cpp already returns.
+
+    Fixture values are verbatim from cydonia-24b on the production router,
+    2026-08-19.
+    """
+
+    REAL = {
+        "id": "cydonia-24b",
+        "meta": {
+            "vocab_type": 2,
+            "n_vocab": 131072,
+            "n_ctx": 131072,
+            "n_ctx_train": 131072,
+            "n_embd": 5120,
+            "n_params": 23572403200,
+            "size": 16756101120,
+            "ftype": "Q5_K - Medium",
+        },
+    }
+
+    def test_parses_the_real_payload(self):
+        assert parse_model_meta(self.REAL) == {
+            "size_bytes": 16756101120,
+            "n_params": 23572403200,
+            "quantization": "Q5_K - Medium",
+            "context_length": 131072,
+        }
+
+    def test_absent_meta_yields_nothing_rather_than_zeros(self):
+        """vLLM has no equivalent and older llama.cpp omits the block. On a card
+        whose job is telling you how big a model is, "unknown" and "zero bytes"
+        must not look alike."""
+        assert parse_model_meta({"id": "x"}) == {}
+        assert parse_model_meta({"id": "x", "meta": "not-a-dict"}) == {}
+
+    def test_a_bad_field_costs_that_field_only(self):
+        """`size` has been seen as a string. One unparseable value should not
+        take the whole model row with it."""
+        out = parse_model_meta({"meta": {"size": "nope", "n_ctx": 4096}})
+        assert out["size_bytes"] is None
+        assert out["context_length"] == 4096
+
+    def test_numeric_strings_are_accepted(self):
+        assert parse_model_meta({"meta": {"size": "123"}})["size_bytes"] == 123
+
+    def test_negative_values_are_rejected(self):
+        assert parse_model_meta({"meta": {"n_ctx": -5}})["context_length"] is None
+
+    def test_discovery_carries_meta_onto_the_model(self):
+        """The wiring, not just the parser."""
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/models":
+                return httpx.Response(200, json={"data": [dict(TestModelMeta.REAL, **{
+                    "status": {"value": "loaded"}})]})
+            return httpx.Response(200, json=PROPS_BODY)
+
+        collector = LlamaRouterCollector(["http://r"], transport=httpx.MockTransport(handler))
+        model = collector.collect()[0].models[0]
+        assert model.size_bytes == 16756101120
+        assert model.quantization == "Q5_K - Medium"
+        assert model.context_length == 131072

@@ -510,6 +510,13 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         kv = _g("llama_model_kv_cache_percent", "KV cache utilization", rml)
         running = _g("llama_model_requests_running", "In-flight requests", rml)
         waiting = _g("llama_model_requests_waiting", "Queued requests", rml)
+        # What the model IS. Emitted for EVERY state, not only active ones: a
+        # sleeping or unloaded model still has a size, and the size is what
+        # makes a load time interpretable after the fact. Only emitted when
+        # known, so "absent" stays distinguishable from "zero bytes".
+        size = _g("llama_model_size_bytes", "Resident footprint of the weights", rml)
+        params = _g("llama_model_parameters", "Parameter count", rml)
+        ctx = _g("llama_model_context_length", "Configured context window", rml)
 
         for router in snap.runtimes.llama_cpp:
             label = router.name or router.endpoint
@@ -526,6 +533,13 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
                         [node, label, model.name, value.value],
                         1.0 if model.state is value else 0.0,
                     )
+                if model.size_bytes is not None:
+                    size.add_metric([node, label, model.name], float(model.size_bytes))
+                if model.n_params is not None:
+                    params.add_metric([node, label, model.name], float(model.n_params))
+                if model.context_length is not None:
+                    ctx.add_metric([node, label, model.name], float(model.context_length))
+
                 # Throughput/cache series exist only for active models — a
                 # sleeping model has no weights, and emitting 0 would be
                 # indistinguishable from an idle-but-loaded model.
@@ -543,6 +557,9 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             sleeping_count,
             capacity,
             state,
+            size,
+            params,
+            ctx,
             tps,
             kv,
             running,

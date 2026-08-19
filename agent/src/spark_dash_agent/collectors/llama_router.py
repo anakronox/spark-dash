@@ -117,6 +117,43 @@ class RateTracker:
                 del self._previous[key]
 
 
+def parse_model_meta(entry: dict) -> dict:
+    """Pull what a model IS out of a `/v1/models` entry's `meta` block.
+
+    llama.cpp returns this already; it was being parsed past. Present on
+    b10380-era builds, absent on older ones and on anything that is not
+    llama.cpp — and absent for a model llama.cpp has never LOADED, since it
+    reads the GGUF header on load. Measured on the production router
+    2026-08-19: two sleeping models carried `meta`, a never-loaded one did not.
+    So every field is optional and a missing block yields an empty dict rather
+    than zeros — "unknown" and "zero bytes" must not look alike on
+    a card whose whole job is telling you how big a model is.
+
+    Values are validated rather than trusted: `size` has been observed as a
+    string in some builds, and a bad value should cost that one field, not the
+    whole model row.
+    """
+    meta = entry.get("meta")
+    if not isinstance(meta, dict):
+        return {}
+
+    def _int(key: str) -> int | None:
+        raw = meta.get(key)
+        try:
+            value = int(raw)  # tolerates numeric strings
+        except (TypeError, ValueError):
+            return None
+        return value if value >= 0 else None
+
+    ftype = meta.get("ftype")
+    return {
+        "size_bytes": _int("size"),
+        "n_params": _int("n_params"),
+        "quantization": str(ftype) if isinstance(ftype, str) and ftype else None,
+        "context_length": _int("n_ctx"),
+    }
+
+
 def parse_model_metrics(text: str) -> dict[str, float]:
     """Flatten a llama.cpp `/metrics` response into {metric_name: value}."""
     out: dict[str, float] = {}
@@ -352,7 +389,11 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             if not name:
                 continue
             state, raw = parse_model_state(entry)
-            models.append(RouterModel(name=str(name), state=state, raw_status=raw))
+            models.append(
+                RouterModel(
+                    name=str(name), state=state, raw_status=raw, **parse_model_meta(entry)
+                )
+            )
         return models
 
     def _enrich_active_model(
