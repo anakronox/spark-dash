@@ -2854,6 +2854,96 @@ that mould is nearly free, while a genuinely new data palette is not.
 **Order: U1, U2, then U3.** U1 makes the rest checkable, U2 is the highest
 value for the least risk, U3 is the one that needs care.
 
+### V — More inference runtimes: SGLang, and Atlas
+
+Planned 2026-08-19. Today the agent collects from exactly two engines,
+`COLLECTIBLE_RUNTIMES = {"llama.cpp", "vllm"}`. Both of the engines below are
+launched by [Sparkrun](https://forums.developer.nvidia.com/t/sparkrun-central-command-with-tab-completion-for-launching-inference-on-spark-clusters/360832),
+which runs vLLM, SGLang and llama.cpp solo or clustered on Spark boxes.
+
+**Start from what already works, because it is more than it looks.**
+`_runtime_for` in `collectors/gpu.py` already recognises SGLang
+(`if "sglang" in haystack`), and `LLM_RUNTIMES` already contains it. So an
+SGLang server running on a node right now is already classified as an LLM
+runtime, already attributed to the `models` class of the memory band rather
+than `other gpu`, already labelled in the GPU process table — and already
+raises `UnmonitoredInferenceRuntime`, telling you it is serving with nothing
+collecting from it. The detection exists. Only the collector is missing.
+
+- [ ] **V1. SGLang collector.** The well-defined one; do it first.
+
+  Verified against SGLang's own docs 2026-08-19: `/metrics`, enabled with
+  `--enable-metrics`, examples on port 30000, metric names prefixed `sglang:`.
+  That is the same shape `VllmCollector` already handles — scrape a text
+  exposition endpoint, parse a handful of gauges — so the collector is close to
+  a sibling of one that exists rather than new ground.
+
+  Mapping, as far as it goes cleanly:
+
+  | SGLang | maps to |
+  |---|---|
+  | `sglang:num_running_reqs` | `requests_running` |
+  | `sglang:num_queue_reqs` | `requests_waiting` |
+  | `sglang:gen_throughput` | `tokens_per_sec` |
+
+  **The trap: `sglang:cache_hit_rate` is NOT vLLM's `kv_cache_usage_ratio`.**
+  One is the fraction of prompt tokens served from the prefix cache; the other
+  is how full the KV cache is. They are different questions with the same
+  shape, and putting the first under the existing `kv` column would render a
+  number that looks like occupancy and is not. Either give it its own column or
+  leave `kv` empty for SGLang rows — an empty cell is honest, a wrong one is
+  not.
+
+- [ ] **V2a. Classify Atlas. Cheap, and do it regardless of V2b.**
+
+  [Atlas](https://atlasinference.io/) is an open-source LLM engine in pure Rust
+  and CUDA, hand-tuned for DGX Spark, shipping as a single ~75 MB binary with
+  no Python or PyTorch, serving multiple models from one process and launched
+  through `sparkrun`.
+
+  **The agent does not recognise it at all** — no marker in `_runtime_for`, and
+  absent from `LLM_RUNTIMES`. The consequence is not merely a blank label: an
+  Atlas process is counted as **other GPU** in the memory band rather than
+  `models`, so on a node running Atlas the one chart that answers "what is
+  eating the pool" attributes every byte of it to the wrong class. That is
+  wrong rather than incomplete, and it is a two-line fix independent of
+  everything else here.
+
+  Needs a marker that will not misfire: "atlas" is a common enough word that
+  matching it bare in a full argv+cwd haystack risks the mislabelling
+  `_looks_like_comfyui` exists to avoid. Prefer the binary name.
+
+- [ ] **V2b. Atlas collector — blocked on knowing what it exposes.**
+
+  Its documentation says nothing about Prometheus metrics or a `/metrics`
+  endpoint, and does not state whether the API is OpenAI-compatible. The whole
+  agent model is scraping a runtime's own endpoint, so this cannot be planned
+  further until that is established. **First step is a question, not code:**
+  run Atlas and look at what ports and endpoints it opens.
+
+  If it exposes nothing, that is a real answer too — it would make Atlas a
+  runtime the dashboard can see *consuming* the GPU (via V2a) but never see
+  *serving*, which is exactly the silence `UnmonitoredInferenceRuntime` is for.
+
+- [ ] **V3. Decide whether runtime #3 is where this becomes a registry.**
+
+  Measured 2026-08-19: `vllm` is named in **27 tracked files**, `llama_cpp` in
+  12. `Runtimes` has one named list field per engine; the exporter builds a
+  metric family per engine; the frontend's types, tables and memory band all
+  name them. A third and fourth engine multiply that.
+
+  This is the counter-case to [U/§modularity](#u--more-themes-and-making-theme-validation-repeatable)'s
+  conclusion about cards. Cards are heterogeneous — each is a different table
+  meaning a different thing — so hand-wiring them is honest. Runtimes are
+  genuinely homogeneous: every one is "scrape an endpoint, get models,
+  requests, throughput". That is the shape abstraction actually pays for, and
+  V1 is the moment to decide, because doing it after four engines is a
+  refactor and doing it during the second is speculation.
+
+**Sparkrun itself is worth a look while doing V1**, though not an item yet: if
+these nodes end up launched through it, "what is running here" becomes
+something it knows and the agent currently infers from process argv.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
