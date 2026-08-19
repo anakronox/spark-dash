@@ -2640,7 +2640,7 @@ surfaces and chrome differ. That is legitimate and validated, but it means
 cyberpunk is a *chrome* theme rather than a data one — so a fourth theme in
 that mould is nearly free, while a genuinely new data palette is not.
 
-- [ ] **U1. Vendor the palette check into the repo, as a test.** Do this first;
+- [x] **U1. Vendor the palette check into the repo, as a test.** — shipped 2026-08-19 Do this first;
   it is what makes everything after it safe.
 
   Parse `app.css`, pull each theme's eight `--chart-*` slots and its surface,
@@ -2652,6 +2652,42 @@ that mould is nearly free, while a genuinely new data palette is not.
 
   Encode light's known WARN as an explicit allowance with a comment naming the
   legend as its relief, so the exception is recorded rather than re-discovered.
+
+  **Shipped as `scripts/palette_check.py` plus `tests/test_palettes.py`.**
+
+  Both a report and a gate, deliberately. Designing a theme needs numbers
+  (`uv run python scripts/palette_check.py` prints every check for every
+  theme); enforcing one needs pass/fail. A gate alone would tell you a palette
+  failed without telling you by how much.
+
+  **Themes are discovered by parsing `app.css`, not from a list beside it**, so
+  a theme cannot be added to the stylesheet and quietly skipped. Mode comes
+  from each block's own `color-scheme` rather than being inferred from surface
+  luminance — inferring it would be a second source of truth that could
+  disagree with what the browser is actually told.
+
+  **The numbers reproduce the external tool exactly**, which was the point:
+  dark's worst adjacent pair at ΔE 8.4, light's at 10.1, normal-vision floors
+  19.3 and 19.6, and light's two contrast exceptions. So this agrees with the
+  figures already recorded rather than establishing a second, subtly different
+  standard.
+
+  Light's WARN is encoded as `CONTRAST_ALLOWANCES` with the legend named as
+  what discharges it, and a test asserts allowances only reference themes and
+  slots that exist — an exemption outliving its subject would silently apply to
+  something it was never argued for.
+
+  **Verified to fail, not just to pass.** Two negative tests reconstruct the
+  cut candidates — the green-phosphor shape trips CVD separation *and* the
+  normal-vision floor, the muted slate trips the chroma floor. Then both
+  enforcement paths were exercised against the real stylesheet: greying
+  forest's `--chart-3` fails that theme by name, and adding an unregistered
+  `ghost` block fails the drift check. A validation suite that has never failed
+  is decoration.
+
+  The drift check is the extra one worth having: a `PaletteId` with no CSS
+  renders as `:root`'s defaults with no error, and a CSS block nobody
+  registered is unreachable. Both shapes have precedent in this repo.
 
 - [x] **U2. "Auto" — follow the system.** — shipped 2026-08-19, and now the default No new palette at all, and probably
   the most-wanted entry on this list.

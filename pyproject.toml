@@ -19,5 +19,8 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
-testpaths = ["common/tests", "agent/tests", "backend/tests"]
+testpaths = ["common/tests", "agent/tests", "backend/tests", "tests"]
+# `tests/` holds repo-level checks that are not any one package's logic —
+# the theme palette validation reads frontend/src/app.css directly.
+pythonpath = ["scripts"]
 asyncio_mode = "auto"
