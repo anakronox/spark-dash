@@ -10,6 +10,8 @@
    * knowing: a warm process with weights released answers faster than a cold
    * start but holds almost no memory.
    */
+  import { onMount } from 'svelte';
+  import { fetchWithTimeout } from '../lib/request';
   import { MODEL_GLYPH, gib, num } from '../lib/format';
   import Pager from './Pager.svelte';
   import ColumnMenu from './ColumnMenu.svelte';
@@ -44,10 +46,48 @@
     contextLength: number | null;
   }
 
+  /* How long each model last took to come up, keyed by model name.
+     Reconstructed server-side from the one-hot state series; see
+     timeline.summarise_loads for why the answer is a multiple of the step. */
+  let loadTimes = $state<Record<string, { seconds: number; uncertainty_s: number }>>({});
+
+  async function fetchLoadTimes() {
+    try {
+      /* 15s, matching the scrape interval, because the duration IS the sample
+         count — the estimator stays honest at any step but a coarse one widens
+         the error bar past usefulness. Measured on this cluster, real loads
+         occupy one or two 15s samples, so SwapTimeline's 60-600s steps cannot
+         resolve them at all.
+
+         24h because the question is "how long does this take", and a model
+         that last loaded this morning still answers it. */
+      const resp = await fetchWithTimeout('/api/models/timeline?minutes=1440&step=15s');
+      if (!resp.ok) throw new Error(String(resp.status));
+      loadTimes = (await resp.json()).loads ?? {};
+    } catch {
+      // Leave the previous answer up. A load time going briefly stale is
+      // harmless; blanking the column on one failed poll is just flicker.
+    }
+  }
+
+  onMount(() => {
+    fetchLoadTimes();
+    // Loads are rare — a dozen a day on this cluster. Polling faster would ask
+    // Prometheus for 24h of 15s samples to learn nothing.
+    const timer = setInterval(fetchLoadTimes, 300_000);
+    return () => clearInterval(timer);
+  });
+
   /* Quantisation, parameters and context window are real but secondary, and
      M3's position is that columns are chosen rather than accumulated. They ride
      in the size cell's tooltip instead of widening a table whose column widths
      were hard-won. */
+  function loadDetail(row: Row): string {
+    const l = loadTimes[row.model];
+    if (!l) return 'no load observed in the last 24h';
+    return `last load ${Math.round(l.seconds)}s ±${Math.round(l.uncertainty_s)}s (scrape resolution)`;
+  }
+
   function sizeDetail(row: Row): string {
     const parts: string[] = [];
     if (row.nParams) parts.push(`${(row.nParams / 1e9).toFixed(1)}B params`);
@@ -191,6 +231,15 @@
          gemma (never loaded) carried none. Null means unknown, never zero. -->
     <td class="r num size" title={sizeDetail(row)}>
       {row.sizeBytes != null ? `${gib(row.sizeBytes)}G` : '—'}
+    </td>
+  {:else if c.key === 'load'}
+    <!-- Approximate BY CONSTRUCTION: the duration is how many scrape samples
+         caught the model mid-load, so it is a multiple of the interval with the
+         interval as its error bar. Rendered with a leading ~ so it is never
+         read as a measurement. Empty when this model has not loaded inside the
+         window, which is not the same as loading instantly. -->
+    <td class="r num load" title={loadDetail(row)}>
+      {loadTimes[row.model] ? `~${Math.round(loadTimes[row.model].seconds)}s` : '—'}
     </td>
   {:else if c.key === 'node'}
     <td class="dim">{row.node}</td>

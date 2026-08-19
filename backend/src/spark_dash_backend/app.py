@@ -13,9 +13,9 @@ mixing them would make the live view as laggy as the scrape interval.
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 import time
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
@@ -25,8 +25,8 @@ from pydantic import BaseModel, Field
 from spark_dash_common.models import ClusterSnapshot
 
 from spark_dash_backend.alert_history import fetch_episodes, summarise
-from spark_dash_backend.annotations import as_dicts, fetch_annotations
 from spark_dash_backend.alerts import AlertmanagerClient
+from spark_dash_backend.annotations import as_dicts, fetch_annotations
 from spark_dash_backend.cluster import (
     ClusterConfigError,
     ClusterNode,
@@ -49,8 +49,14 @@ from spark_dash_backend.prometheus import (
     PrometheusClient,
     PrometheusError,
     rate_window,
+    step_seconds,
 )
-from spark_dash_backend.timeline import fetch_events
+from spark_dash_backend.timeline import (
+    extract_events,
+    fetch_state_series,
+    latest_by_model,
+    summarise_loads,
+)
 
 log = logging.getLogger(__name__)
 
@@ -504,9 +510,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         end = time.time()
         start = end - minutes * 60
         try:
-            events = await fetch_events(prom, start=start, end=end, step=step)
+            series = await fetch_state_series(prom, start=start, end=end, step=step)
         except PrometheusError as exc:
             raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
+        events = extract_events(series)
 
         return {
             "window_minutes": minutes,
@@ -514,6 +521,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Transitions that cost a user latency — the number worth watching
             # if requests feel slow.
             "cold_starts": sum(1 for e in events if e.cold),
+            # How long each model last took to come up. Derived from the same
+            # series already fetched, so this costs no extra query — but it is
+            # only meaningful when `step` is near the scrape interval, because
+            # the duration IS the sample count. See summarise_loads.
+            "loads": latest_by_model(summarise_loads(series, step_s=step_seconds(step))),
         }
 
     @app.get("/api/cluster/config")

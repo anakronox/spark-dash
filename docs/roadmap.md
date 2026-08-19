@@ -2546,7 +2546,7 @@ is no load-start timestamp to be had, so the scrape interval is the floor.
   qwen36-35b at NVFP4 and 23.1G is also the first time the dashboard has shown
   why two similarly-named models occupy very different amounts of the pool.
 
-- [ ] **T2. Load and unload durations, derived from the state series.**
+- [x] **T2. Load and unload durations, derived from the state series.**
 
   `ModelEvent` already carries `ts, node, router, model, from_state, to_state,
   label, cold` and no duration. `extract_events` already walks the one-hot
@@ -2563,6 +2563,43 @@ is no load-start timestamp to be had, so the scrape interval is the floor.
   deliberately stateless about history; deriving them centrally also means they
   survive an agent restart and reach back as far as retention, which is the
   same reasoning that put the timeline in Prometheus rather than in a table.
+
+  **Shipped 2026-08-19, and the plan needed two corrections.**
+
+  **Correction 1: it IS a second query, unavoidably.** The plan said to add a
+  summary to `/api/models/timeline` and avoid a second fetch. The summary is
+  there and costs no extra Prometheus round-trip *for a given call* — but
+  `SwapTimeline` calls that endpoint at 60–600s steps depending on window, and
+  at those steps a real load cannot be resolved at all. The Models card
+  therefore makes its own call at `step=15s`. Same endpoint, same code path,
+  separate call.
+
+  **Correction 2: unload durations do not exist to be measured.** Freeing
+  weights completes inside one scrape, so an unload is a point, not an
+  interval. What ships is load duration; the unload timestamp is already in the
+  timeline events.
+
+  **The estimator, and why it is `samples × step`.** With samples spaced
+  `step`, a model observed `loading` for `m` consecutive samples started
+  somewhere in the gap before the first and finished somewhere in the gap after
+  the last, so the true duration lies in `[(m-1)·step, (m+1)·step)`. The
+  midpoint `m·step` is the point estimate and `step` is the error bar. Counting
+  samples and subtracting — the obvious version — measures `(m-1)·step` and
+  reports a real 20s load as 0s.
+
+  This stays *correct* at any step and merely loses precision, which is why the
+  endpoint does not refuse coarse ones: at 60s a one-sample load reports
+  60±60s, and the true 30s is inside that. The card asks for 15s to tighten it.
+
+  **Validated against 24h of real production data**, not just fixtures: 12
+  completed load episodes, all successful, 15–30s each. qwen36-35b at 23.1 GiB
+  in ~30s is roughly 800 MB/s, which is NVMe-plausible — and is exactly the
+  cross-check T1's size column exists to enable.
+
+  Rendered as `~30s` with a leading tilde so it is never read as a measurement,
+  `—` when no load happened in the window (not the same as "loaded instantly"),
+  and the ± in the tooltip. A failed poll leaves the previous answer up rather
+  than blanking the column.
 
 **Order: T1, then T2.** T1 is a live snapshot field with no new request and no
 history involved, and it is the column that makes T2's number mean something.

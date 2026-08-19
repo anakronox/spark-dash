@@ -24,9 +24,9 @@ import contextlib
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
-from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
 
