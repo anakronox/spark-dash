@@ -2335,7 +2335,7 @@ number below is already gathered, already in Prometheus, and in two cases
 already alerted on — it just never reaches a reader's eye. That makes these
 cheap, and it makes the work display and judgement rather than plumbing.
 
-- [ ] **S1. `temp_bands` — the scale for every temperature already shown.**
+- [x] **S1. `temp_bands` — the scale for every temperature already shown.** — shipped 2026-08-19
 
   Carries `gpu_warning_c`, `gpu_critical_c`, `cpu_warning_c`, `cpu_critical_c`,
   and a `*_source` for each. It is **not in `frontend/src/lib/types.ts` at
@@ -2352,6 +2352,33 @@ cheap, and it makes the work display and judgement rather than plumbing.
   `*_source` is the part not to drop. It distinguishes a hardware-derived band
   from a fallback guess, and a threshold you cannot trust must not be rendered
   like one you can. Show the band; mark it when it is a guess.
+
+  **Shipped.** The GPU temperature on the node card is now toned against the
+  node's OWN bands and carries them in its tooltip, so `56°C` finally has a
+  scale attached. Nothing in the frontend hardcodes a temperature, which is
+  what keeps [J](#j--single-host-profile-everything-on-one-gb10) reachable: a
+  dashboard that hardcoded GB10 trip points would be a GB10 dashboard in a way
+  this one does not have to be.
+
+  **Toned with `>`, not `>=`**, matching `health.py`'s
+  `temp_c > temps.critical_c`. A degree of disagreement between the card and
+  the health pill about the same reading is worse than either being slightly
+  conservative.
+
+  **`gpu_source` turned out to be a provenance label, not a boolean**, which
+  the first implementation got wrong. The real vocabulary is `nvml-slowdown`,
+  `acpi-critical-trip`, `override` and `fallback` — the live node reports
+  `nvml-slowdown` (82/86°C) and `acpi-critical-trip` (92.8/98.8°C). Checking for
+  a literal `"hardware"` would have labelled a genuine NVML reading an
+  "estimate". Only `fallback` is untrustworthy; the rest name where the number
+  came from and are shown verbatim, because the label is more informative than
+  any paraphrase. `fallback` is spelled out as "not read from this device",
+  since a guess presented in the same voice as a measurement is precisely the
+  failure this field exists to prevent.
+
+  CPU bands are carried through to the frontend but not yet displayed — the
+  vitals strip shows GPU temperature only. They are there for whenever CPU
+  temperature earns a place.
 
 - [x] **S2. Swap — and the premise needs correcting first.** — shipped 2026-08-19
 

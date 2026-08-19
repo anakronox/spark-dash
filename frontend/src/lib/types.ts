@@ -33,6 +33,17 @@ export interface DiskMetrics {
   used_bytes: number;
 }
 
+export interface TempBands {
+  gpu_warning_c: number;
+  gpu_critical_c: number;
+  /** "hardware" when read off the device, otherwise a fallback estimate.
+   *  A threshold you cannot trust must not be presented like one you can. */
+  gpu_source: string;
+  cpu_warning_c: number;
+  cpu_critical_c: number;
+  cpu_source: string;
+}
+
 export interface PsiMetrics {
   some_avg10: number;
   some_avg60: number;
@@ -176,6 +187,7 @@ export interface NodeSnapshot {
   gpu: GpuMetrics | null;
   memory: MemoryMetrics | null;
   disk: DiskMetrics | null;
+  temp_bands: TempBands | null;
   psi: PsiMetrics | null;
   cpu: CpuMetrics | null;
   processes: ProcessInfo[];

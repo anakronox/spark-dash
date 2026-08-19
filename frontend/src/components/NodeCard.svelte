@@ -124,6 +124,7 @@
           psi={node.psi}
           memory={node.memory}
           disk={node.disk}
+          tempBands={node.temp_bands}
           tokensPerSec={nodeTokensPerSec}
         />
       </div>
@@ -134,6 +135,7 @@
         psi={node.psi}
         memory={node.memory}
         disk={node.disk}
+        tempBands={node.temp_bands}
         tokensPerSec={nodeTokensPerSec}
       />
     {/if}

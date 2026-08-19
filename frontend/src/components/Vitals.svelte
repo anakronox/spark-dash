@@ -3,7 +3,14 @@
    * Deliberately one dense row — scanning a row of aligned figures is faster
    * than reading a grid of labelled cards. */
   import { gib, num, pct } from '../lib/format';
-  import type { CpuMetrics, DiskMetrics, GpuMetrics, PsiMetrics, MemoryMetrics } from '../lib/types';
+  import type {
+    CpuMetrics,
+    DiskMetrics,
+    GpuMetrics,
+    PsiMetrics,
+    MemoryMetrics,
+    TempBands,
+  } from '../lib/types';
 
   interface Props {
     gpu: GpuMetrics | null;
@@ -14,9 +21,11 @@
        the chip values lost nothing for those — these would have gone dark. */
     memory: MemoryMetrics | null;
     disk: DiskMetrics | null;
+    /** This node's OWN thresholds, so nothing here hardcodes a temperature. */
+    tempBands: TempBands | null;
     tokensPerSec: number;
   }
-  const { gpu, cpu, psi, memory, disk, tokensPerSec }: Props = $props();
+  const { gpu, cpu, psi, memory, disk, tempBands, tokensPerSec }: Props = $props();
 
   const memPct = $derived(
     memory && memory.total_bytes > 0
@@ -38,6 +47,43 @@
   const diskTone = $derived(
     diskPct == null ? undefined : diskPct >= 95 ? 'critical' : diskPct >= 90 ? 'warning' : undefined,
   );
+
+  /* 56°C means nothing without a scale, and until now the card showed the
+     number with none. The bands come from the NODE — read off the hardware
+     where possible — which is also why nothing here hardcodes a GB10
+     temperature: a dashboard that did would be a GB10 dashboard in a way this
+     one does not have to be.
+
+     STRICTLY GREATER THAN, matching health.py's `temp_c > temps.critical_c`.
+     Using >= would tone the card a degree before the health pill agreed, and
+     two indicators disagreeing about the same reading is worse than either
+     being slightly conservative. */
+  const tempTone = $derived.by(() => {
+    const t = gpu?.temp_c;
+    if (t == null || !tempBands) return undefined;
+    if (t > tempBands.gpu_critical_c) return 'critical';
+    if (t > tempBands.gpu_warning_c) return 'warning';
+    return undefined;
+  });
+
+  /* `gpu_source` is the difference between a threshold you can trust and one
+     that is a guess, so it is said out loud rather than dropped.
+
+     It is a PROVENANCE LABEL, not a boolean — the vocabulary is
+     `nvml-slowdown`, `acpi-critical-trip`, `override` and `fallback`. Only the
+     last is untrustworthy; the rest name where the number genuinely came from
+     and are more informative than any paraphrase, so they are shown verbatim.
+     `fallback` is spelled out instead, because a guess presented in the same
+     voice as a measurement is the failure this field exists to prevent. */
+  const tempDetail = $derived.by(() => {
+    if (!tempBands) return '';
+    const b = tempBands;
+    const origin =
+      b.gpu_source === 'fallback'
+        ? 'fallback estimate — not read from this device'
+        : b.gpu_source;
+    return `warns above ${b.gpu_warning_c}°C, critical above ${b.gpu_critical_c}°C (${origin})`;
+  });
 
   // IDLE is not a fault — it means "not under load, so not evaluated". Only a
   // judgement made under load is worth colouring.
@@ -71,7 +117,9 @@
   </div>
   <div class="v">
     <dt>temp</dt>
-    <dd class="num">{gpu?.temp_c != null ? `${num(gpu.temp_c)}°C` : '—'}</dd>
+    <dd class="num" data-tone={tempTone} title={tempDetail}>
+      {gpu?.temp_c != null ? `${num(gpu.temp_c)}°C` : '—'}
+    </dd>
   </div>
   <div class="v">
     <dt>power</dt>
