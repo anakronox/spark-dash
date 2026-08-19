@@ -2653,7 +2653,7 @@ that mould is nearly free, while a genuinely new data palette is not.
   Encode light's known WARN as an explicit allowance with a comment naming the
   legend as its relief, so the exception is recorded rather than re-discovered.
 
-- [ ] **U2. "Auto" — follow the system.** No new palette at all, and probably
+- [x] **U2. "Auto" — follow the system.** — shipped 2026-08-19, and now the default No new palette at all, and probably
   the most-wanted entry on this list.
 
   `prefers-color-scheme` appears **nowhere** in the frontend and the default is
@@ -2668,6 +2668,65 @@ that mould is nearly free, while a genuinely new data palette is not.
   listener has to bump that key the same way an explicit switch does — a theme
   change nobody clicked is exactly the case that would otherwise leave charts
   painted in the old palette.
+
+  **Shipped.** `Theme` now separates the reader's *selection* from the *resolved
+  palette*: `auto` is a rule, not a palette, and `data-theme` never carries it —
+  writing `auto` to the document would leave it on `:root`'s defaults with no
+  way to reach light. `THEMES` gained an entry whose `dark` flag is absent,
+  because for `auto` the answer depends on the system and can change while the
+  page is open.
+
+  `App.svelte` now passes `theme.resolved` as the chart `themeKey` rather than
+  `theme.current`. That is the whole reason the split exists: under `auto` the
+  selection never changes while the palette does, so keying charts off the
+  selection would have left every canvas painted in the old colours at sunset.
+
+  Behaviour change worth naming: a reader with nothing stored now follows their
+  system instead of getting dark. Anyone who has already chosen keeps their
+  choice — the stored value is untouched.
+
+  **Not verified: the live system-flip.** The listener is wired and typechecked
+  and `auto` resolves correctly on load (confirmed in a dev server against the
+  production backend), but flipping the OS appearance mid-session was not
+  exercised. That path is one `matchMedia` listener bumping `resolved`.
+
+- [x] **U5. NVIDIA — black surfaces, NVIDIA green.** Requested 2026-08-19.
+
+  Built as a CHROME theme in cyberpunk's mould, which is what made it cheap:
+  the eight chart slots are the dark theme's validated set, re-run against the
+  new surface `#0a0f0a` — all checks pass, worst adjacent pair
+  `#c98500 ↔ #199e70` at ΔE 8.4 protan.
+
+  **`app.css` argues against this look and the theme answers the argument
+  rather than ignoring it.** The base comment reads: *"Warm-neutral rather than
+  pure black — pure black plus one acid accent is the reflexive technical
+  dashboard look, and it makes every status colour scream."* Black plus NVIDIA
+  green is precisely that. The resolution: the green cast lives in
+  **non-semantic chrome** (rules, tracks, secondary ink), the status ramp keeps
+  the dark theme's values, and the data palette is untouched — so nothing
+  screams except the one thing that should.
+
+  **NVIDIA green is `--good`, deliberately.** There is no `--accent` token in
+  this system, so an accent has to land on a real one. Putting it anywhere else
+  would have meant two greens on screen at once — the brand's and the status
+  ramp's — which is worse than one green meaning both. `#76b900` measures
+  **8.02:1** against `--panel`, past the 4.5 these tokens need as text, and
+  better than the dark theme's own `--good` at 5.19.
+
+  A green DATA palette was not attempted: that is exactly what got the
+  green-phosphor candidate cut, and ΔE 8.4 leaves no headroom to spend.
+
+  Every text-bearing token was measured against the new surface rather than
+  assumed — ink 17.27, ink-2 11.39, ink-muted 7.52, series 5.32/5.11/5.68,
+  status 8.02/10.54/7.33/5.13. All clear 4.5.
+
+  **Noted while here:** cyberpunk overrides `--series-1..3` to theme hues while
+  leaving `--chart-1..3` at the base values, which breaks `:root`'s stated
+  invariant that "the first three ARE the node hues … so a metric colour never
+  collides with a node colour by accident". No collision results, because the
+  two sets are disjoint there — but the invariant holds by luck rather than by
+  construction in that theme. This theme keeps them aligned. Worth resolving
+  when U1 lands.
 
 - [ ] **U3. High contrast.** The only theme on this list with a functional
   rather than aesthetic purpose, and the one worth real effort.

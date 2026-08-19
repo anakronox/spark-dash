@@ -14,22 +14,40 @@
 
 const STORAGE_KEY = 'spark-dash.theme.v1';
 
-export type ThemeId = 'dark' | 'light' | 'cyberpunk';
+/** A theme that actually exists as a block of CSS custom properties. */
+export type PaletteId = 'dark' | 'light' | 'cyberpunk' | 'nvidia';
+
+/** What the reader can choose. `auto` is a rule, not a palette. */
+export type ThemeId = PaletteId | 'auto';
 
 export interface ThemeDef {
   id: ThemeId;
   label: string;
-  /** Whether charts should draw on a dark surface. */
-  dark: boolean;
+  /** Whether charts should draw on a dark surface. Absent for `auto`, whose
+   *  answer depends on the system and can change while the page is open. */
+  dark?: boolean;
 }
 
 export const THEMES: ThemeDef[] = [
+  // First, and the default: a reader whose machine is in light mode should not
+  // have to find this menu to stop being handed a dark dashboard.
+  { id: 'auto', label: 'Auto' },
   { id: 'dark', label: 'Dark', dark: true },
   { id: 'light', label: 'Light', dark: false },
   { id: 'cyberpunk', label: 'Cyberpunk', dark: true },
+  { id: 'nvidia', label: 'NVIDIA', dark: true },
 ];
 
+const DARK_PALETTES = new Set<PaletteId>(['dark', 'cyberpunk', 'nvidia']);
 const IDS = new Set<string>(THEMES.map((t) => t.id));
+
+const DARK_QUERY = '(prefers-color-scheme: dark)';
+
+function systemPrefersDark(): boolean {
+  // Defaults to dark when the browser cannot answer, which preserves the
+  // behaviour every existing reader already has.
+  return globalThis.matchMedia?.(DARK_QUERY).matches ?? true;
+}
 
 function read(): ThemeId {
   try {
@@ -41,20 +59,41 @@ function read(): ThemeId {
   return 'dark';
 }
 
+function resolve(id: ThemeId): PaletteId {
+  return id === 'auto' ? (systemPrefersDark() ? 'dark' : 'light') : id;
+}
+
 export class Theme {
+  /** What the reader chose. May be `auto`, which is not a palette. */
   current = $state<ThemeId>(read());
 
+  /** The palette actually in force. This is what charts must key off: `auto`
+   *  is never applied to the document, and it changes underneath while the
+   *  page is open. */
+  resolved = $state<PaletteId>('dark');
+
+  #media: MediaQueryList | null = null;
+
   constructor() {
+    this.resolved = resolve(this.current);
     // Applied synchronously in the constructor, not from an $effect. Charts
     // resolve CSS custom properties into literal canvas colours when they
     // build, and effect ordering isn't guaranteed — a chart that built before
     // the attribute landed would paint with the previous theme's values.
-    this.#apply(this.current);
+    this.#apply(this.resolved);
+
+    // The system preference can change while the page is open — at sunset, on
+    // most machines. That is a theme change nobody clicked, and it is exactly
+    // the case that would otherwise leave every chart painted in the previous
+    // palette, because canvases cannot re-read CSS variables.
+    this.#media = globalThis.matchMedia?.(DARK_QUERY) ?? null;
+    this.#media?.addEventListener('change', this.#onSystemChange);
   }
 
   set(id: ThemeId) {
     this.current = id;
-    this.#apply(id);
+    this.resolved = resolve(id);
+    this.#apply(this.resolved);
     try {
       localStorage.setItem(STORAGE_KEY, id);
     } catch {
@@ -62,13 +101,27 @@ export class Theme {
     }
   }
 
-  /** Whether the active theme sits on a dark surface — charts need to know,
+  /** Whether the active palette sits on a dark surface — charts need to know,
    *  since they can't read CSS variables from a canvas. */
   get isDark(): boolean {
-    return THEMES.find((t) => t.id === this.current)?.dark ?? true;
+    return DARK_PALETTES.has(this.resolved);
   }
 
-  #apply(id: ThemeId) {
+  destroy() {
+    this.#media?.removeEventListener('change', this.#onSystemChange);
+  }
+
+  #onSystemChange = () => {
+    if (this.current !== 'auto') return;
+    const next = resolve('auto');
+    if (next === this.resolved) return;
+    this.resolved = next;
+    this.#apply(next);
+  };
+
+  #apply(id: PaletteId) {
+    // Always a real palette id — `auto` has no CSS block, and writing it here
+    // would leave the document on :root's defaults with no way to reach light.
     document.documentElement.dataset.theme = id;
   }
 }

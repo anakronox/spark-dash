@@ -143,6 +143,63 @@
   --chart-8: #e66767;
 }
 
+:root[data-theme='nvidia'] {
+  color-scheme: dark;
+
+  /* True black, which app.css otherwise argues against — "pure black plus one
+     acid accent is the reflexive technical-dashboard look, and it makes every
+     status colour scream". Requested deliberately for GB10 boxes, so the note
+     is answered rather than ignored: the green cast lives in the CHROME (rules,
+     tracks, secondary ink) and the status palette keeps the dark theme's
+     values, so nothing screams except the one thing that should. */
+  --page: #000000;
+  /* Lifted off pure black so panels separate from the page. */
+  --panel: #0a0f0a;
+  --panel-raised: #111a11;
+  /* Green-tinted rules and tracks are what make this read as an NVIDIA theme
+     rather than "dark, but blacker". Non-semantic surfaces, so tinting them
+     costs nothing in meaning. */
+  --rule: #1e3a1e;
+  --track: #111a11;
+
+  --ink: #eaf5ea;
+  --ink-2: #b8ccb8;
+  --ink-muted: #8fa88f;
+
+  /* Node/runtime hues are the dark theme's, unchanged: they are validated as
+     TEXT (the process table prints runtime names in them) and re-checked
+     against this surface — 5.32 / 5.11 / 5.68, all clear of 4.5. */
+  --series-1: #3987e5; /* blue   — LLM runtimes */
+  --series-2: #da5c2b; /* orange — other GPU workloads */
+  --series-3: #199e70; /* aqua   — third node */
+
+  /* NVIDIA green is the BRAND colour and the GOOD colour at once, deliberately.
+     There is no `--accent` token in this system, so an accent has to land on a
+     real one; putting it anywhere else would have meant two greens on screen —
+     the brand's and this one — which is worse than one green meaning both.
+     8.02 against --panel, comfortably past 4.5, and better than the dark
+     theme's --good at 5.19. The rest of the status ramp is unchanged, so
+     ordering and meaning survive. */
+  --good: #76b900;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d85b5b;
+
+  /* Categorical chart slots — the dark theme's validated set, re-run against
+     this surface with the dataviz validator: all checks pass, worst adjacent
+     pair #c98500 <-> #199e70 at dE 8.4 protan. Unchanged rather than
+     re-tinted, because there is no headroom above the floor to spend and a
+     green data palette is exactly what got the green-phosphor candidate cut. */
+  --chart-1: #3987e5;
+  --chart-2: #da5c2b;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+}
+
 :root[data-theme='light'] {
   color-scheme: light;
   --page: #f9f9f7;

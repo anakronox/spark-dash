@@ -484,7 +484,7 @@
         {:else if id === 'activity'}
           <SwapTimeline maxRows={layout.rowsFor(id)} />
         {:else if id === 'history'}
-          <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.current} />
+          <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.resolved} />
         {/if}
       </Section>
     {/each}
