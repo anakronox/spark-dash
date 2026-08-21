@@ -4217,6 +4217,14 @@ converted, because the utility layer is additive while the hand-written CSS is
 still there. That reverses as the migration completes, but it does mean a
 half-done migration is strictly worse than either end.
 
+**Tried on the cluster 2026-08-21** — the spike build ran as a second backend
+on `:8081` against live data, alongside production on `:8080`. **No usability
+issues.** That is the expected result and worth saying so: five components
+converted correctly should look identical, so the visual test could only have
+disproved the migration, never justified it. What it does confirm is that the
+mechanics — themes, tokens, utilities, the hybrid components — all work in a
+real browser against real data.
+
 **Recommendation: keep the branch, do not merge yet.** The spike answered the
 question it was built for — the mechanics work, the themes are safe, and the
 gain is real on simple components and absent on complex ones. What it did not
