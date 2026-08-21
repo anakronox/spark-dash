@@ -4110,6 +4110,65 @@ one-sided answer:
 - **Consistency by construction.** Which is the finding below, and the part of
   the question worth acting on.
 
+**What a Tailwind migration would actually take**, scoped 2026-08-21 because
+"decline" is only an honest answer if the cost of the alternative is known.
+
+**Measured surface:** 20 components with `<style>`, 437 rules, ~598 elements in
+markup that would carry utility classes, 530 lines of `app.css`.
+
+**What ports mechanically** — most of it. Flex, spacing, type, colour, borders,
+radius. That is the bulk of the 437 rules and the least interesting part.
+
+**What does not, and is where the time goes:**
+
+| feature | count | why it resists |
+|---|---|---|
+| `var()` references | 322 | every one becomes a theme-aware utility or an arbitrary value |
+| custom properties set | 164 | the token layer itself; stays hand-written either way |
+| attribute selectors | 44 | `[data-state]`, `[data-tone]`, `[data-link]` — state encoded in markup, which utilities express as conditional class strings |
+| descendant/child combinators | 26 | `tbody tr:last-child td` and friends have no utility form |
+| `@media` | 20 | Tailwind covers breakpoints; `prefers-reduced-motion` and `prefers-color-scheme` need care |
+| transitions | 15 | mostly portable |
+| pseudo-elements | 13 | `::after` grips, glyphs, backdrops — arbitrary variants |
+| `:not()` / `:has()` | 10 | `th:not(.slack)` is exactly the kind of rule utilities replace by putting the class on the element instead |
+| structural pseudo | 8 | `:last-child` borders — `[&:last-child]:` arbitrary variants |
+| `@keyframes` | 3 | hand-written in a config either way |
+
+**The theme system is the real obstacle, and it is not a big number.** Seven
+`:root[data-theme]` blocks define 164 custom properties, and **two tools parse
+that stylesheet as their contract** — `scripts/palette_check.py` and
+`tests/test_palettes.py`, which between them validate every theme for CVD
+separation, chroma floor, lightness band and contrast, and hold seven text
+tokens to 4.5:1. Tailwind v4 consumes CSS variables happily, so the blocks
+themselves survive; what needs deciding is whether the validators keep reading
+`app.css` or start reading a build output. Reading source is strictly better
+and is worth preserving deliberately rather than by accident.
+
+**Honest estimate, in phases that each leave the app working:**
+
+1. **Tokens stay as they are** — Tailwind reads them. Half a day, mostly config
+   and proving the seven themes still switch. Nothing else changes.
+2. **Leaf components** (`StatusPill`, `Pager`, `SortButton`, `ColumnGrip`,
+   `ConnectionState`) — small, self-contained, and the honest test of whether
+   the result reads better. A day.
+3. **The tables** — `ModelsTable`, `ProcessTable`, `NetworkPanel`. The dense
+   ones, and where the comment loss bites hardest: 26–36% of their CSS is
+   reasoning. Two days, and the point at which to stop if it feels worse.
+4. **The rest** — `App.svelte` alone is 521 lines of CSS with the section grid
+   and the layout engine. Two days.
+5. **Delete what the migration orphaned**, and re-point the validators. Half a
+   day.
+
+**Call it a week of focused work, and the risk is not the week.** It is that
+step 3 is where the reasoning has to go somewhere, and there is no good answer
+yet for where. Every alternative — a comment above the element, a doc, a
+`// why:` convention — is worse than a comment beside the declaration it
+explains.
+
+**The cheap 80% is AB1**, which is why it is the item and this is the note. A
+type scale is the one thing the comparison showed missing; the rest of what
+Tailwind offers here is already provided by scoped styles and the token layer.
+
 - [ ] **AB1. Promote the type scale to tokens.**
 
   The measurement that makes the Tailwind question productive rather than
