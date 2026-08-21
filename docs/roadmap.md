@@ -3841,6 +3841,37 @@ lived on one node, and `danflashes` serves **one** vLLM model across two.
   failed" yields no series at all — because missing attribution must not
   manufacture a memory alert. `CollectorFailing` reports the failure itself.
 
+  **Z3 SHIPPED HALF A FIX, and the other half was the visible one.** Corrected
+  2026-08-21, same day. The alert was only ever one of TWO independent memory
+  rules: `common/health.py` computes node health separately, and it kept its
+  own level check — so the cards went on reading `serious — memory 88% with
+  swap active` while the alert had gone quiet. The dashboard and its alerts
+  disagreed about the same nodes, which is worse than either being wrong alone.
+
+  Worse, that rule carried **the exact theory this section had already
+  retired**. Its comment read "high usage alone is unremarkable on a box
+  deliberately full of model weights, but paired with active swap it means real
+  contention" — and `alerts.yml` records the measurement that killed it:
+  `swap_used` is a LEVEL, not a flow, so pages parked by some past squeeze sit
+  there indefinitely and the conjunct is ~always true. Every node in this
+  cluster carries 1.4–2.5 GiB of parked swap, so the escalation was automatic
+  and unclearable.
+
+  `assess()` now takes `model_bytes` and asks the same question the alert does,
+  against the same 40% threshold from one constant, so the card and the alert
+  cannot disagree. Swap escalates nothing: real contention is PSI's job, and
+  PSI is a flow. `model_bytes` defaults to 0, so a caller with no process list
+  degrades to the old "how full" question rather than silently passing.
+
+  Verified against the live nodes: `sparketa` 87.8% used / 96.8 GiB of weights
+  and `sparkjr` 86.7% / 96.8 GiB both go **serious → good**, while `sparky` is
+  unchanged.
+
+  **The lesson worth keeping:** "fix the alert" was not the same as "fix the
+  thing the operator sees". Two rules for one question, in two files, in two
+  languages of intent — and only searching for the *question* rather than the
+  *rule name* would have found both.
+
   **Harm coverage is untouched.** `MemoryPressureHigh`/`Critical` read PSI and
   `SwapThrashing` reads swap I/O; both remain, and a test asserts they do.
   Headroom and harm are different questions, and only the first was unclearable.

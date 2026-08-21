@@ -18,6 +18,7 @@ from spark_dash_common.models import (
 from spark_dash_common.thresholds import (
     DEFAULT_TEMP_THRESHOLDS,
     MEM_HIGH_PCT,
+    MEM_UNEXPLAINED_PCT,
     TempThresholds,
 )
 
@@ -51,11 +52,18 @@ def assess(
     cpu_temp_c: float | None = None,
     temps: TempThresholds = DEFAULT_TEMP_THRESHOLDS,
     cpu_temps: TempThresholds | None = None,
+    model_bytes: int = 0,
 ) -> tuple[HealthState, list[str]]:
     """Return the worst state across all signals, plus why.
 
     The reasons are not decoration: the UI renders them as the text label
     beside the status color, so meaning never rides on hue alone.
+
+    `model_bytes` is GPU memory held by LLM runtimes — what the node is
+    SUPPOSED to be full of. Passed in rather than derived here because the
+    process list lives in the snapshot builder, and health has never taken one.
+    Zero is a safe default: it degrades this check to the old "how full is it"
+    question rather than silently passing.
 
     `temps` covers the GPU and `cpu_temps` the CPU. They are separate because
     the parts have very different limits — a GB10 GPU throttles at 86C while
@@ -82,19 +90,40 @@ def assess(
     if cpu_temp_c is not None:
         findings.extend(_temp_findings("CPU", cpu_temp_c, cpu_bands))
 
+    model_pct = (
+        100.0 * model_bytes / memory.total_bytes
+        if memory is not None and memory.total_bytes and model_bytes
+        else 0.0
+    )
     if memory is not None and memory.used_pct > MEM_HIGH_PCT:
-        # sparkview keys on the *combination*: high usage alone is unremarkable
-        # on a box deliberately full of model weights, but paired with active
-        # swap it means real contention.
-        if memory.swap_used_bytes > 0:
+        # HOW FULL IS NOT THE QUESTION; WHETHER IT IS EXPLAINED IS.
+        #
+        # This rule used to escalate to SERIOUS whenever usage was high AND
+        # swap was in use, on the theory that the combination meant real
+        # contention. `alerts.yml` records the measurement that killed that
+        # theory for the equivalent alert, and it applies here identically:
+        # swap_used is a LEVEL, not a flow. Pages evicted during some past
+        # squeeze sit there indefinitely because Linux never faults them back
+        # proactively, so the conjunct is ~always true and the escalation was
+        # automatic. Observed 2026-08-21: every node in the cluster carried
+        # 1.4-2.5 GiB of parked swap, and both cluster members read SERIOUS
+        # permanently while doing exactly what they were built for.
+        #
+        # So the same answer Z3 gave the alert: subtract what resident model
+        # weights explain. A node full of weights is not unhealthy — it is
+        # loaded. A node full of something nobody can name is worth a look.
+        # Pressure, which is the "real contention" the old rule was reaching
+        # for, is already a separate finding above and reads PSI, which IS a
+        # flow.
+        unexplained = memory.used_pct - model_pct
+        if unexplained > MEM_UNEXPLAINED_PCT:
             findings.append(
                 (
-                    HealthState.SERIOUS,
-                    f"memory {memory.used_pct:.0f}% with swap active",
+                    HealthState.WARNING,
+                    f"memory {memory.used_pct:.0f}%, "
+                    f"{unexplained:.0f}% not model weights",
                 )
             )
-        else:
-            findings.append((HealthState.WARNING, f"memory {memory.used_pct:.0f}%"))
 
     if not findings:
         return HealthState.GOOD, []

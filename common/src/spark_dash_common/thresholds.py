@@ -117,6 +117,19 @@ DEFAULT_TEMP_THRESHOLDS = TempThresholds()
 # model weights.
 MEM_HIGH_PCT = 85.0
 
+#: Share of the pool held by something OTHER than resident model weights,
+#: above which a node is worth a look.
+#:
+#: Matches the `UnexplainedMemoryUse` alert deliberately, so the card and the
+#: alert cannot disagree about the same node — two answers that differ leave a
+#: reader unable to tell which to believe.
+#:
+#: PROVISIONAL, and the alert says so too: over 7 days, restricted to samples
+#: where GPU-process attribution actually exists, non-model use never exceeded
+#: 25.8% on any node here. 40 is ~1.5x the worst observed, not a derived
+#: constant like the temperature bands.
+MEM_UNEXPLAINED_PCT = 40.0
+
 # --- Memory pressure (PSI) -------------------------------------------------
 
 

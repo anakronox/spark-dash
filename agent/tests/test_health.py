@@ -19,8 +19,7 @@ GPU_BANDS = TempThresholds(warning_c=70, critical_c=80)
 CPU_BANDS = TempThresholds(warning_c=92, critical_c=98)
 
 
-def _mem(used_pct: float, swap: int = 0) -> MemoryMetrics:
-    total = 1000
+def _mem(used_pct: float, swap: int = 0, total: int = 1000) -> MemoryMetrics:
     used = int(total * used_pct / 100)
     return MemoryMetrics(
         total_bytes=total,
@@ -99,17 +98,42 @@ def test_cpu_bands_fall_back_to_the_gpu_pair_when_unset():
     assert state is HealthState.CRITICAL
 
 
-def test_high_memory_alone_is_only_a_warning():
-    """A box deliberately full of model weights is not an incident."""
-    state, _ = assess(memory=_mem(90))
+def test_a_node_full_of_model_weights_is_healthy():
+    """The whole point. A node holding a large model is doing its job, not
+    failing at it — and it stays that way indefinitely, which is what made the
+    old rule impossible to clear. Observed 2026-08-21: both cluster members sat
+    at 87-88% with a 96.8 GiB shard each and read SERIOUS permanently."""
+    state, reasons = assess(memory=_mem(90, total=100), model_bytes=88)
+    assert state is HealthState.GOOD, reasons
+
+
+def test_memory_nobody_can_account_for_is_a_warning():
+    """Same level, different cause: 90% used with almost none of it explained
+    by resident weights is worth a look, whether or not models are loaded."""
+    state, reasons = assess(memory=_mem(90, total=100), model_bytes=10)
     assert state is HealthState.WARNING
+    assert any("not model weights" in r for r in reasons)
 
 
-def test_high_memory_with_swap_is_serious():
-    """The combination is what sparkview keys on — real contention."""
-    state, reasons = assess(memory=_mem(90, swap=1))
-    assert state is HealthState.SERIOUS
-    assert any("swap" in r for r in reasons)
+def test_swap_no_longer_escalates_anything():
+    """`swap_used` is a LEVEL, not a flow. Pages evicted during some past
+    squeeze sit there indefinitely because Linux never faults them back, so the
+    old "high memory AND swap in use" conjunct was ~always true — every node in
+    this cluster carries 1.4-2.5 GiB of parked swap. alerts.yml dropped the same
+    conjunct for the same measured reason; this rule kept it for two days
+    longer and pinned both cluster nodes to SERIOUS.
+
+    Real contention is PSI's job, and PSI is a flow."""
+    loaded = assess(memory=_mem(90, total=100, swap=8), model_bytes=88)
+    assert loaded[0] is HealthState.GOOD, loaded[1]
+    assert not any("swap" in r for r in loaded[1])
+
+
+def test_without_process_data_it_falls_back_to_how_full():
+    """`model_bytes` defaults to 0, so a caller that cannot supply the process
+    list degrades to the old question rather than silently passing everything."""
+    state, _ = assess(memory=_mem(90, total=100))
+    assert state is HealthState.WARNING
 
 
 def test_psi_maps_through_to_health():

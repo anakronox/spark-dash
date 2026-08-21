@@ -31,7 +31,7 @@ from spark_dash_common.thresholds import TempThresholds
 from spark_dash_agent.collectors.cpu import CpuCollector, read_critical_trip_c
 from spark_dash_agent.collectors.disk import DiskCollector
 from spark_dash_agent.collectors.engine import SPECS, EngineCollector
-from spark_dash_agent.collectors.gpu import GpuCollector
+from spark_dash_agent.collectors.gpu import LLM_RUNTIMES, GpuCollector
 from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.collectors.memory import MemoryCollector, detect_unified_memory
 from spark_dash_agent.collectors.network import NetworkCollector, RdmaCollector
@@ -465,6 +465,11 @@ class SnapshotBuilder:
             )
 
         gpu_bands, cpu_bands = self._temp_bands()
+        # What the node is SUPPOSED to be full of, so health can ask whether
+        # the memory is explained rather than merely how much there is.
+        model_bytes = sum(
+            p.gpu_mem_bytes for p in processes if p.runtime in LLM_RUNTIMES
+        )
         health, reasons = assess(
             gpu=gpu,
             memory=memory,
@@ -472,6 +477,7 @@ class SnapshotBuilder:
             cpu_temp_c=cpu.temp_c if cpu else None,
             temps=gpu_bands,
             cpu_temps=cpu_bands,
+            model_bytes=model_bytes,
         )
 
         return NodeSnapshot(
