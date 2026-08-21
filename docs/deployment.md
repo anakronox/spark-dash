@@ -322,8 +322,22 @@ volumes:
 
 ## Building and shipping images
 
-Settled. Images are built by hand with `scripts/publish-images.sh`, tagged with
-the commit, and pinned by tag in each stack's `.env`. Four steps, in order:
+Settled. Images are built by hand, tagged with the commit, and pinned by tag in
+each stack's `.env`.
+
+**Two scripts, because they serve two different people.**
+
+| | who runs it |
+|---|---|
+| `scripts/build-images.sh` | **everyone.** Builds locally, no registry, no `docker login`, no account anywhere. This is the whole job for an install. |
+| `scripts/publish-images.sh` | **the maintainer**, publishing images others pull. Builds by delegating to the above, then pushes. |
+
+Building used to be `publish-images.sh <target> --no-push` — a script called
+*publish* with a flag saying *do not publish*, which failed a first-time user
+against a registry they have no account on if they forgot the flag. The split
+makes the common path the default one.
+
+Four steps for the maintainer path, in order:
 
 ```bash
 # 1. On a host of the TARGET architecture, from a clone of this repo
@@ -340,6 +354,24 @@ cd "$REPO" && git pull        # $REPO = wherever you cloned this
 #    watches that repo.
 ```
 
+**A published tag holds ONE architecture, and the script now refuses to change
+it silently.** These images are built natively where they run, so `:latest` is
+whatever was pushed last. A maintainer on an amd64 monitoring VM and a
+single-host user on a GB10 want that tag to mean two different things, and
+overwriting one with the other gives every puller `exec format error` at
+container start — long after they followed the instructions, with a message
+that names nothing useful.
+
+`publish-images.sh` compares the build's architecture against what the tag
+already holds and refuses on a mismatch, suggesting an arch-suffixed tag or
+`--allow-arch-change`. Getting the check itself right mattered: a plain
+`docker manifest inspect` of a single-arch image **names no architecture at
+all**, so the first version silently passed everything. It uses `--verbose`.
+
+**Single-host installs are unaffected** — they build both images locally on the
+GB10, both arm64, and never touch a registry. That is why the quickstart uses
+`build-images.sh`.
+
 **Built natively, never cross-built.** The GX10s are arm64 and the monitoring
 VM is amd64. Building each image where it will run avoids QEMU and buildx
 multi-arch entirely, and takes seconds rather than many minutes. The cost is
@@ -355,12 +387,27 @@ would then run different bytes depending on when they pulled.
 
 ### Script options
 
+`build-images.sh`:
+
 | | |
 |---|---|
-| `--no-push` | build locally and stop; no registry or `docker login` needed |
 | `--tag TAG` | override the tag (default: short git sha, `-dirty` if the tree is) |
+| `--keep N` | sha-tagged images to keep locally (default 5, 0 = keep all) |
+| `--print-tag` | print the tag this run would use, and exit |
+
+`publish-images.sh` — everything above is delegated, plus:
+
+| | |
+|---|---|
 | `--no-latest` | push only the tag, not `:latest` |
+| `--allow-arch-change` | push even though the tag already holds another architecture |
 | `REGISTRY=` / `OWNER=` | override the registry; both default to the clone's own `origin` remote |
+
+`--no-push` is gone: not-publishing is now a different script rather than a
+flag on this one. `publish-images.sh` asks `build-images.sh` for the tag with
+`--print-tag` rather than deriving its own, because two scripts computing "the
+same" tag independently is how you publish an image that is not the one you
+just built.
 
 Deriving the registry from `git remote origin` means a fork publishes to its
 own registry with no configuration, and nobody's personal registry is baked

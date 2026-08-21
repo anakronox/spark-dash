@@ -35,7 +35,7 @@ git clone "$SRC" "$REPO" || git -C "$REPO" pull
 cd "$REPO"
 
 docker login <registry>                 # only if deploying FROM a registry
-./scripts/publish-images.sh backend
+./scripts/build-images.sh backend
 ```
 
 ## Configure

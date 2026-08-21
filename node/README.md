@@ -26,7 +26,7 @@ directory to create, no `DATA_ROOT`, and nothing relative to get wrong. The
    cd "$REPO"
 
    docker login <registry>                 # only if deploying FROM a registry
-   ./scripts/publish-images.sh agent
+   ./scripts/build-images.sh agent
    ```
 
 2. **Each node needs `docker login <registry>`** if the package is

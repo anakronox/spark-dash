@@ -1,50 +1,42 @@
 #!/usr/bin/env bash
-# Build and push spark-dash images to a container registry.
+# Push the spark-dash images to a container registry. MAINTAINER PATH.
 #
 #   ./scripts/publish-images.sh agent      # run this ON a GX10 (arm64)
-#   ./scripts/publish-images.sh backend    # run this ON the monitoring VM (amd64)
-#   ./scripts/publish-images.sh both
-#   ./scripts/publish-images.sh backend --no-push     # build locally, no registry
-#   ./scripts/publish-images.sh agent --tag rc1
+#   ./scripts/publish-images.sh backend    # run this ON the host that runs it
 #   ./scripts/publish-images.sh --help
 #
-# Run from a clone of this repo, on a host of the TARGET ARCHITECTURE.
+# MOST INSTALLS NEVER RUN THIS. Building is the whole job for an end user, and
+# that is build-images.sh — no registry, no `docker login`, no account
+# anywhere. This script exists for whoever publishes the images other people
+# pull, which is normally one person.
 #
-# WHY NATIVE RATHER THAN CROSS-BUILDING: the GX10s are arm64 and the monitoring
-# VM is amd64. Building each image where it will run means no QEMU emulation, no
-# buildx multi-arch setup, and a build that takes seconds instead of many
-# minutes. The tradeoff is that you build in two places — which is fine, because
-# each image is only ever deployed to one of them.
-#
-# WHY THIS SCRIPT RATHER THAN BUILD-ON-DEPLOY. Deploy tooling can often build
-# from a Dockerfile at deploy time. Deliberately not used here — see
-# docs/deployment.md. Two reasons: rollback stays a one-line tag edit with no
-# rebuild, and the build happens once rather than once per host, so every node
-# runs bytes that are known to be identical.
+# It BUILDS BY DELEGATING to build-images.sh rather than repeating it, and asks
+# that script for the tag rather than deriving its own: two scripts computing
+# "the same" tag independently is how you publish an image that is not the one
+# you just built.
 
 set -euo pipefail
 
 c_ok=$'\033[32m'; c_bad=$'\033[31m'; c_warn=$'\033[33m'; c_dim=$'\033[2m'; c_off=$'\033[0m'
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD="${REPO_ROOT}/scripts/build-images.sh"
 cd "$REPO_ROOT"
 
 usage() {
   cat <<'EOF'
 usage: publish-images.sh {agent|backend|both} [options]
 
-  agent      build on a GX10 (arm64)
-  backend    build on the monitoring VM (amd64)
-  both       build both here — only correct if one host runs both
+  agent      build on a GX10 (arm64), then push
+  backend    build on the host that will run it, then push
+  both       both here — only correct if one host runs both
 
 options:
-  --no-push        build locally and stop; no registry or login needed
   --tag TAG        override the tag (default: short git sha)
   --no-latest      push only the tag, not :latest
+  --allow-arch-change  push even though the tag already holds another
+                       architecture (see the warning it prints)
   -h, --help       this
-
-options (cont.):
-  --keep N         sha-tagged images to keep locally (default 5, 0 = keep all)
 
 environment:
   REGISTRY   registry host   (default: derived from git remote origin)
@@ -54,6 +46,9 @@ Deriving both from the clone's own remote means a fork publishes to its own
 registry with no configuration, and no one's personal registry is baked into
 a tracked file. Override either when the registry is not where the source
 lives.
+
+To build WITHOUT publishing — which is what most installs want — use
+build-images.sh instead.
 EOF
 }
 
@@ -82,17 +77,15 @@ derive_from_remote
 REGISTRY="${REGISTRY:-$DERIVED_REGISTRY}"
 OWNER="${OWNER:-$DERIVED_OWNER}"
 
-# --- arguments --------------------------------------------------------------
-TARGET=""; PUSH=1; PUSH_LATEST=1; TAG_OVERRIDE=""; KEEP="${KEEP_IMAGES:-5}"
+TARGET=""; PUSH_LATEST=1; TAG_OVERRIDE=""; ALLOW_ARCH_CHANGE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    agent|backend|both) TARGET="$1" ;;
-    --no-push)    PUSH=0 ;;
-    --no-latest)  PUSH_LATEST=0 ;;
-    --tag)        TAG_OVERRIDE="${2:-}"; shift ;;
-    --keep)       KEEP="${2:-5}"; shift ;;
-    -h|--help)    usage; exit 0 ;;
+    agent|backend|both)   TARGET="$1" ;;
+    --no-latest)          PUSH_LATEST=0 ;;
+    --tag)                TAG_OVERRIDE="${2:-}"; shift ;;
+    --allow-arch-change)  ALLOW_ARCH_CHANGE=1 ;;
+    -h|--help)            usage; exit 0 ;;
     *) echo "${c_bad}unknown argument:${c_off} $1"; echo; usage; exit 2 ;;
   esac
   shift
@@ -100,101 +93,15 @@ done
 
 if [[ -z "$TARGET" ]]; then usage; exit 2; fi
 
-if [[ $PUSH -eq 1 && ( -z "$REGISTRY" || -z "$OWNER" ) ]]; then
+if [[ -z "$REGISTRY" || -z "$OWNER" ]]; then
   echo "${c_bad}Cannot work out where to push.${c_off}"
   echo "No usable 'origin' remote, so REGISTRY and OWNER must be set:"
   echo
   echo "  REGISTRY=registry.example.com OWNER=you $0 $TARGET"
   echo
-  echo "Or build without a registry:  $0 $TARGET --no-push"
+  echo "Or just build, without a registry:  ./scripts/build-images.sh $TARGET"
   exit 2
 fi
-
-# --- tag --------------------------------------------------------------------
-#
-# The commit, so a deployed image can be traced back to source. A dirty tree is
-# marked, because an image built from uncommitted changes cannot be rebuilt
-# from git — and that is exactly the image you least want to find running
-# somewhere six weeks later with no way to reproduce it.
-if [[ -n "$TAG_OVERRIDE" ]]; then
-  TAG="$TAG_OVERRIDE"
-else
-  TAG="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-    TAG="${TAG}-dirty"
-    echo "${c_warn}WARNING${c_off} working tree is dirty; tagging as ${TAG}"
-  fi
-fi
-
-build_and_push() {
-  local name="$1" dockerfile="$2" env_var="$3"
-  local base
-  # A local build is named for what will RUN it, not for where it isn't going.
-  # The compose files default to the bare name, so --no-push must produce that
-  # exact tag or a fresh clone builds an image its own stack cannot see.
-  if [[ $PUSH -eq 1 && -n "$REGISTRY" && -n "$OWNER" ]]; then
-    base="${REGISTRY}/${OWNER}/${name}"
-  else
-    base="$name"
-  fi
-
-  echo
-  echo "── ${name} ─────────────────────────────────────"
-  echo "${c_dim}arch: $(uname -m)   tag: ${TAG}${c_off}"
-
-  local tags=(-t "${base}:${TAG}")
-  [[ $PUSH_LATEST -eq 1 ]] && tags+=(-t "${base}:latest")
-
-  # Build context is the repo ROOT, not the component directory — both images
-  # depend on the local common/ package, which has to be inside the context.
-  #
-  # BUILD_VERSION is what the running container reports as its version. Without
-  # it a stale container presents as a missing feature rather than as a stale
-  # container, which has cost real debugging time here more than once.
-  docker build -f "$dockerfile" --build-arg "BUILD_VERSION=${TAG}" "${tags[@]}" .
-
-  if [[ $PUSH -eq 0 ]]; then
-    echo "${c_ok}built${c_off} ${base}:${TAG} ${c_dim}(and :latest, not pushed)${c_off}"
-    echo "${c_dim}this is the stacks' default image, so 'up -d' runs it as-is,${c_off}"
-    echo "${c_dim}provided ${env_var} and PULL_POLICY are unset in .env.${c_off}"
-    prune_old_tags "$base"
-    return
-  fi
-
-  docker push "${base}:${TAG}"
-  [[ $PUSH_LATEST -eq 1 ]] && docker push "${base}:latest"
-
-  echo "${c_ok}pushed${c_off} ${base}:${TAG} ${c_dim}(and :latest)${c_off}"
-  echo "${c_dim}stacks tracking :latest pick this up on their next deploy.${c_off}"
-  echo "${c_dim}to PIN this exact build instead, in the stack's .env:${c_off}"
-  echo "  ${env_var}=${base}:${TAG}"
-  prune_old_tags "$base"
-}
-
-# Every build leaves a sha-tagged image behind, and `docker image prune` will
-# NOT reclaim them — they are tagged, not dangling. At ~160MB each that is
-# roughly a gigabyte per thirty builds, growing forever and silently.
-#
-# Keep the newest few so a rollback can retag a recent build instead of
-# rebuilding it, and drop the rest. `docker images` lists newest first, so the
-# tail of that list is what ages out. An image still backing a container refuses
-# to be removed, which is the correct outcome — skip it rather than force.
-prune_old_tags() {
-  local base="$1"
-  [[ "$KEEP" -le 0 ]] && return 0
-
-  local stale=()
-  mapfile -t stale < <(docker images "$base" --format '{{.Tag}}' \
-                       | grep -v '^latest$' | tail -n +$((KEEP + 1)))
-  [[ ${#stale[@]} -eq 0 ]] && return 0
-
-  local removed=0
-  for tag in "${stale[@]}"; do
-    if docker rmi "${base}:${tag}" >/dev/null 2>&1; then removed=$((removed + 1)); fi
-  done
-  [[ $removed -gt 0 ]] && echo "${c_dim}pruned ${removed} old image(s), kept the newest ${KEEP}${c_off}"
-  return 0
-}
 
 check_login() {
   # Docker has no "am I logged in" command; the config file is the only signal.
@@ -204,31 +111,92 @@ check_login() {
     echo "For Forgejo/Gitea, use an access token with package read/write scope"
     echo "as the password."
     echo
-    echo "Or build without pushing:  $0 $TARGET --no-push"
+    echo "Or just build, without a registry:  ./scripts/build-images.sh $TARGET"
     exit 1
   fi
 }
+check_login
 
-[[ $PUSH -eq 1 ]] && check_login
+# ARCHITECTURE IS PART OF A TAG'S IDENTITY, and nothing else here enforces it.
+#
+# These images are built NATIVELY where they will run, so `:latest` holds
+# whichever architecture was last pushed. Publish an amd64 backend over an
+# arm64 one and every arm64 puller gets `exec format error` at container start
+# — long after they followed the instructions, with a message that names
+# nothing useful.
+#
+# That is not hypothetical for a published repo: a maintainer on an amd64
+# monitoring VM and a single-host user on a GB10 want the same tag to mean two
+# different things. Until these are proper multi-arch manifest lists, the honest
+# behaviour is to refuse and say so.
+arch_guard() {
+  local ref="$1" local_arch remote_arch
+  local_arch="$(docker image inspect "$ref" --format '{{.Os}}/{{.Architecture}}' 2>/dev/null || true)"
+  # --verbose IS REQUIRED, and getting this wrong makes the guard useless
+  # rather than noisy: a plain `docker manifest inspect` of a single-arch image
+  # returns schemaVersion/config/layers and NAMES NO ARCHITECTURE AT ALL, so
+  # the check silently found nothing to compare and passed everything. Only a
+  # manifest LIST carries platform data without --verbose, and these images are
+  # not lists. Verified against the live registry.
+  remote_arch="$(docker manifest inspect --verbose "$ref" 2>/dev/null \
+    | grep -oE '"architecture": *"[a-z0-9_]+"' | head -1 \
+    | sed 's/.*"\([a-z0-9_]*\)"$/\1/' || true)"
+
+  # A tag that does not exist yet, or a manifest we cannot read, is not a
+  # conflict — say nothing rather than blocking a first publish.
+  [[ -z "$remote_arch" || -z "$local_arch" ]] && return 0
+  [[ "$local_arch" == */"$remote_arch" ]] && return 0
+
+  echo
+  echo "${c_bad}REFUSING:${c_off} ${ref} currently holds ${remote_arch};"
+  echo "this build is ${local_arch}. Overwriting it would break every puller on"
+  echo "${remote_arch} with 'exec format error' at container start."
+  echo
+  echo "  - publishing for a different architecture? use a distinct tag:"
+  echo "      $0 $TARGET --tag ${TAG}-${local_arch##*/}"
+  echo "  - genuinely replacing the published architecture?"
+  echo "      $0 $TARGET --allow-arch-change"
+  echo
+  [[ $ALLOW_ARCH_CHANGE -eq 1 ]] || return 1
+  echo "${c_warn}--allow-arch-change given; continuing.${c_off}"
+  return 0
+}
+
+# One source of truth for the tag: ask the builder rather than re-deriving it.
+TAG="$("$BUILD" --print-tag ${TAG_OVERRIDE:+--tag "$TAG_OVERRIDE"})"
+
+push_one() {
+  local name="$1"
+  local base="${REGISTRY}/${OWNER}/${name}"
+
+  docker tag "${name}:${TAG}" "${base}:${TAG}"
+  arch_guard "${base}:${TAG}" || exit 1
+  docker push "${base}:${TAG}"
+
+  if [[ $PUSH_LATEST -eq 1 ]]; then
+    docker tag "${name}:${TAG}" "${base}:latest"
+    arch_guard "${base}:latest" || exit 1
+    docker push "${base}:latest"
+  fi
+
+  local env_var="AGENT_IMAGE"
+  [[ "$name" == "spark-dash-backend" ]] && env_var="BACKEND_IMAGE"
+  echo "${c_ok}pushed${c_off} ${base}:${TAG} ${c_dim}$([[ $PUSH_LATEST -eq 1 ]] && echo '(and :latest)')${c_off}"
+  echo "${c_dim}stacks tracking :latest pick this up on their next deploy.${c_off}"
+  echo "${c_dim}to PIN this exact build instead, in the stack's .env:${c_off}"
+  echo "  ${env_var}=${base}:${TAG}"
+}
+
+# Build first, through the one script that knows how.
+"$BUILD" "$TARGET" --tag "$TAG"
 
 case "$TARGET" in
-  agent)   build_and_push spark-dash-agent   agent/Dockerfile   AGENT_IMAGE ;;
-  backend) build_and_push spark-dash-backend backend/Dockerfile BACKEND_IMAGE ;;
-  both)
-    echo "${c_warn}Note:${c_off} both images will be built for $(uname -m). The agent must be"
-    echo "arm64 (GX10) and the backend whatever the monitoring VM runs — so 'both'"
-    echo "is only correct if one host runs both stacks."
-    build_and_push spark-dash-agent   agent/Dockerfile   AGENT_IMAGE
-    build_and_push spark-dash-backend backend/Dockerfile BACKEND_IMAGE
-    ;;
+  agent)   push_one spark-dash-agent ;;
+  backend) push_one spark-dash-backend ;;
+  both)    push_one spark-dash-agent; push_one spark-dash-backend ;;
 esac
 
 echo
-if [[ $PUSH -eq 0 ]]; then
-  echo "Built locally. The image exists only on this host's docker daemon, which"
-  echo "is all the stacks need: they default to this name and do not pull."
-else
-  echo "Nothing pulls images on a schedule, so publishing changes nothing until"
-  echo "you deploy. Pin the tag above in the stack's .env, then either commit"
-  echo "that (if a deploy tool watches it) or run 'docker compose up -d <service>'."
-fi
+echo "Nothing pulls images on a schedule, so publishing changes nothing until"
+echo "you deploy. Pin the tag above in the stack's .env, then either commit"
+echo "that (if a deploy tool watches it) or run 'docker compose up -d <service>'."

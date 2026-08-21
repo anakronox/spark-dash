@@ -9,7 +9,7 @@
 # adds nothing to the base OS.
 #
 # Images come from the Forgejo container registry rather than being built here
-# — nothing here builds them. See scripts/publish-images.sh.
+# — nothing here builds them. See scripts/build-images.sh.
 
 # Project name pinned rather than derived from the directory. Compose defaults
 # it to the folder name, so moving or renaming this directory would silently
@@ -52,7 +52,7 @@ services:
 
   spark-dash-agent:
     image: ${AGENT_IMAGE:-spark-dash-agent:latest}
-    # Default is the name `publish-images.sh --no-push` gives a local build, so
+    # Default is the name `build-images.sh` gives a local build, so
     # a fresh clone runs build then `up -d` with no registry involved at all.
     # Point AGENT_IMAGE at a registry to deploy from one instead; :latest is the
     # norm there and pinning is the exception (see .env.example).

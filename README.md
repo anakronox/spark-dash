@@ -22,7 +22,7 @@ the images are built on the hosts that run them.**
 
 ```bash
 git clone <this repo's URL> spark-dash && cd spark-dash
-./scripts/publish-images.sh backend --no-push   # builds spark-dash-backend:latest
+./scripts/build-images.sh backend               # builds spark-dash-backend:latest
 
 cd central
 cp .env.example .env
@@ -49,7 +49,7 @@ Build on the node itself — it is arm64, which avoids cross-building entirely:
 
 ```bash
 git clone <this repo's URL> spark-dash && cd spark-dash
-./scripts/publish-images.sh agent --no-push     # builds spark-dash-agent:latest
+./scripts/build-images.sh agent                 # builds spark-dash-agent:latest
 
 cd node
 cp .env.example .env

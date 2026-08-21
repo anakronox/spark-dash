@@ -29,7 +29,7 @@ spark-dash-homegrown/
 ├── backend/
 │   └── app/                     # FastAPI: REST (history) + WebSocket (live)
 ├── frontend/                    # Svelte 5 + Vite
-├── scripts/                     # publish-images.sh, validate-on-gx10.sh
+├── scripts/                     # build-images.sh, publish-images.sh, validate-on-gx10.sh
 ├── node/                        # per-GX10 stack (identical on all 3)
 │   └── compose.yaml             #   just this — every mount is an absolute host path
 └── central/                     # Prometheus + Alertmanager + backend (Proxmox VM)
