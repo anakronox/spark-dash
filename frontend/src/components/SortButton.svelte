@@ -23,33 +23,21 @@
   const { view, id, label }: Props = $props();
 </script>
 
-<button class="sort" class:active={view.sortKey === id} onclick={() => view.toggle(id)}>
-  {label}<span class="arrow" aria-hidden="true"
+<!-- SPIKE NOTE (roadmap AB). `font: inherit; color: inherit; letter-spacing:
+     inherit; text-transform: inherit` was four declarations saying one thing:
+     this button must look like the header it sits in, whatever the header
+     looks like. Tailwind has no "inherit everything typographic" utility, so
+     it becomes four arbitrary values — longer, and the intent that the comment
+     above them carried is now only in the comment.
+
+     `hover:text-ink` and the active state are the opposite case: cleaner here
+     than as two selectors sharing a rule. -->
+<button
+  class="[font:inherit] [color:inherit] [letter-spacing:inherit] [text-transform:inherit]
+         inline-flex cursor-pointer items-center gap-[3px] p-0 hover:text-ink
+         {view.sortKey === id ? 'text-ink' : ''}"
+  onclick={() => view.toggle(id)}
+>
+  {label}<span class="text-[8px]" aria-hidden="true"
     >{view.sortKey === id ? (view.dir === 'asc' ? '▲' : '▼') : ''}</span>
 </button>
-
-<style>
-  /* Kept looking like a header rather than growing borders and backgrounds:
-     the affordance is the cursor and the arrow, and a row of chunky buttons
-     would read as a toolbar sitting on the data. */
-  .sort {
-    font: inherit;
-    color: inherit;
-    letter-spacing: inherit;
-    text-transform: inherit;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    cursor: pointer;
-  }
-
-  .sort:hover,
-  .sort.active {
-    color: var(--ink);
-  }
-
-  .arrow {
-    font-size: 8px;
-  }
-</style>

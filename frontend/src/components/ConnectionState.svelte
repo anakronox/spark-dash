@@ -26,53 +26,56 @@
           ? `reconnecting · last frame ${secondsSinceFrame}s ago`
           : 'offline',
   );
+
+  /* SPIKE NOTE (roadmap AB). THIS IS THE COMPONENT THAT DOES NOT FULLY
+   * CONVERT, and it is the useful one to have tried.
+   *
+   * The `beat` keyframe uses `color-mix(in srgb, var(--good) 70%, transparent)`
+   * so the pulse takes the current theme's green. Tailwind v4 can register an
+   * animation via `--animate-*` in `@theme`, but the keyframes themselves are
+   * still hand-written CSS that has to live somewhere — either in app.css,
+   * where a component-specific animation does not belong, or in a scoped
+   * style block here, which is what this does. (Writing the literal tag name
+   * in this comment broke the parser once: Svelte reads it as a real tag even
+   * inside a script comment.)
+   *
+   * So the honest result for a component with a bespoke animation is HYBRID:
+   * utilities for layout and colour, a residual style block for the one thing
+   * utilities cannot express. That is not a failure of the conversion, it is
+   * what the conversion looks like — and a migration should expect it rather
+   * than treat each case as a defeat.
+   */
+  const TONE: Record<ConnectionState, string> = {
+    live: 'text-ink-2',
+    connecting: 'text-ink-2',
+    reconnecting: 'text-warning',
+    offline: 'text-critical',
+  };
+  const DOT: Record<ConnectionState, string> = {
+    live: 'bg-good beat',
+    connecting: 'bg-ink-muted',
+    reconnecting: 'bg-warning',
+    offline: 'bg-critical',
+  };
 </script>
 
-<div class="conn" data-state={state} role="status" aria-live="polite">
+<div
+  class="inline-flex items-center gap-[7px] text-label {TONE[state]}"
+  role="status"
+  aria-live="polite"
+>
   <!-- Keyed on tick so the pulse restarts per frame: it stops when data stops,
        which is the entire point. -->
   {#key tick}
-    <span class="dot" data-state={state} aria-hidden="true"></span>
+    <span class="size-[7px] flex-none rounded-full {DOT[state]}" aria-hidden="true"></span>
   {/key}
   <span>{label}</span>
 </div>
 
 <style>
-  .conn {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 11px;
-    color: var(--ink-2);
-  }
-
-  .dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex: none;
-    background: var(--ink-muted);
-  }
-
-  .dot[data-state='live'] {
-    background: var(--good);
+  /* The residual: a theme-aware keyframe, which has no utility form. */
+  .beat {
     animation: beat 900ms ease-out;
-  }
-
-  .dot[data-state='reconnecting'] {
-    background: var(--warning);
-  }
-
-  .dot[data-state='offline'] {
-    background: var(--critical);
-  }
-
-  [data-state='reconnecting'] {
-    color: var(--warning);
-  }
-
-  [data-state='offline'] {
-    color: var(--critical);
   }
 
   @keyframes beat {

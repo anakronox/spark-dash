@@ -1,3 +1,59 @@
+/* SPIKE (roadmap AB): Tailwind v4, evaluated on a branch.
+ *
+ * PREFLIGHT IS DELIBERATELY NOT IMPORTED. `@import "tailwindcss"` pulls in a
+ * global CSS reset that rewrites margins, font sizes, borders and form
+ * elements everywhere — which is fine at the END of a migration and fatal
+ * during one, because it would perturb the fifteen components that have not
+ * been converted yet and make "did this conversion read better?" unanswerable.
+ * Importing the layers individually skips it. This is the single thing that
+ * makes a phased migration possible rather than all-or-nothing, and it is the
+ * first real finding of the spike.
+ *
+ * The tokens below stay exactly as they are and Tailwind reads them. That
+ * matters beyond convenience: seven themes are defined as `:root[data-theme]`
+ * blocks, and `scripts/palette_check.py` plus `tests/test_palettes.py` parse
+ * THIS FILE to validate every palette. Keeping the stylesheet as the source
+ * rather than a build output keeps both of those working untouched.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Maps the project's tokens onto Tailwind's namespaces, so `text-ink` and
+ * `bg-panel` resolve to the same variables the hand-written CSS uses.
+ *
+ * `inline` matters: it substitutes the reference rather than re-emitting a
+ * copy, so a `[data-theme]` block overriding `--ink` still reaches every
+ * utility. That works here only because every theme targets `:root` — the
+ * indirection resolves on the same element that the override lands on.
+ */
+@theme inline {
+  --color-page: var(--page);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-rule: var(--rule);
+  --color-track: var(--track);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-muted: var(--ink-muted);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+
+  --font-mono: var(--font-mono);
+
+  /* THE TYPE SCALE AB1 IDENTIFIED, which the migration needs anyway: four
+   * sizes carry 96 of 103 uses across the codebase. Named for role rather
+   * than size, so "should labels be 10 or 11px" stays one edit. */
+  --text-body: 12px;
+  --text-label: 11px;
+  --text-micro: 10px;
+  --text-nano: 9px;
+
+  --radius-sm: var(--radius);
+}
+
 /* Design tokens.
  *
  * Direction: instrument panel, not dashboard. One monospace family throughout,

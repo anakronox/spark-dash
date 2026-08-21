@@ -4169,6 +4169,60 @@ explains.
 type scale is the one thing the comparison showed missing; the rest of what
 Tailwind offers here is already provided by scoped styles and the token layer.
 
+**SPIKE RUN 2026-08-21 on `spike/tailwind` — phases 1 and 2, five leaf
+components.** Numbers rather than opinion, which was the point of doing it.
+
+| component | before | after | outcome |
+|---|---|---|---|
+| StatusPill | 49 ln / 27 css | 42 / 0 | full |
+| SortButton | 55 / 25 | 43 / 0 | full |
+| Pager | 78 / 36 | 41 / 0 | full |
+| ConnectionState | 86 / 47 | 89 / 15 | **hybrid, longer** |
+| ColumnGrip | 137 / 46 | 132 / 40 | **hybrid** |
+| **total** | **405 / 181** | **347 / 55** | −58 lines, −126 css |
+
+**Four findings worth keeping whatever is decided:**
+
+1. **Preflight must not be imported during a phased migration.**
+   `@import "tailwindcss"` pulls a global reset that rewrites margins, type,
+   borders and form elements everywhere — fine at the *end*, fatal in the
+   middle, because it perturbs every unconverted component and makes "did this
+   read better?" unanswerable. Importing the layers individually skips it. This
+   is the single thing that makes phase-by-phase possible at all.
+
+2. **The theme system survives untouched, and that was the main risk.**
+   `@theme inline` maps `--color-ink: var(--ink)` so utilities resolve to the
+   project's own tokens. It works *because every theme block targets `:root`* —
+   the indirection resolves on the same element the override lands on. All
+   seven themes still validate; `palette_check.py` and `test_palettes.py` keep
+   reading `app.css` as source, unchanged.
+
+3. **Simple presentational components get genuinely shorter** — Pager 78 → 41
+   lines, and the result reads well. **Components with a bespoke animation or
+   pseudo-element do not convert**, they go hybrid: `ConnectionState` came out
+   *longer* (86 → 89), and `ColumnGrip` kept 40 of its 46 CSS lines. That is
+   not a failure to be worked around; it is what a real migration looks like,
+   and roughly 40% of these five landed there.
+
+4. **The comment problem is real and reproduced exactly as predicted.**
+   `ColumnGrip`'s reasoning — why 8px of grab area for a 2px cue, why invisible
+   until wanted — sat above the declarations it explained. Utilities have
+   nowhere to put it, so it floated up into a block comment away from the code,
+   or would be lost. `StatusPill`'s four `[data-health]` rules became a
+   `Record` lookup: greppable from markup, but a missing case is now a silent
+   `undefined` in a class string where it used to be a visibly unstyled pill.
+
+**Cost signal:** bundled CSS grew 41 KB → 49 KB with three components fully
+converted, because the utility layer is additive while the hand-written CSS is
+still there. That reverses as the migration completes, but it does mean a
+half-done migration is strictly worse than either end.
+
+**Recommendation: keep the branch, do not merge yet.** The spike answered the
+question it was built for — the mechanics work, the themes are safe, and the
+gain is real on simple components and absent on complex ones. What it did not
+answer is where the reasoning goes, and that is the thing worth solving before
+the tables (phase 3), not during.
+
 - [ ] **AB1. Promote the type scale to tokens.**
 
   The measurement that makes the Tailwind question productive rather than

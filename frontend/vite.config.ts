@@ -1,8 +1,12 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-  plugins: [svelte()],
+  // SPIKE (roadmap AB): Tailwind is being evaluated on a branch. It reads the
+  // theme tokens already in app.css rather than replacing them, so the seven
+  // themes and the two validators that parse that file keep working unchanged.
+  plugins: [tailwindcss(), svelte()],
   build: {
     // Served by the backend container from /app/static.
     outDir: 'dist',

@@ -64,16 +64,17 @@
   }
 </script>
 
-<!-- A FOCUSABLE `separator` IS interactive per ARIA — that is the "window
-     splitter" pattern, and it is exactly this. The linter only knows the
-     non-focusable variant, which is decorative, so both rules are suppressed
-     here rather than the role being downgraded to something less accurate.
-     A `button` would be the lint-clean choice and would lie: this performs no
-     action, it holds a value the arrow keys change. -->
+<!-- A FOCUSABLE `separator` IS interactive per ARIA — the "window splitter"
+     pattern, which is exactly this. The linter only knows the non-focusable
+     variant, which is decorative, so both rules are suppressed here rather
+     than downgrading the role to something less accurate. A `button` would be
+     lint-clean and would lie: this performs no action, it holds a value the
+     arrow keys change. -->
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <span
-  class="grip"
+  class="grip absolute top-0 -right-1 z-[1] h-full w-2 cursor-col-resize bg-transparent
+         focus-visible:outline-none"
   class:dragging
   role="separator"
   aria-orientation="vertical"
@@ -90,24 +91,22 @@
 ></span>
 
 <style>
-  /* Sits on the column boundary rather than inside its own column, so the
-     target is the line the reader is trying to move. Wider than it looks —
-     8px of grab area for a 2px visual cue, because a hairline is a miserable
-     thing to hit and this one is competing with a button underneath. */
-  .grip {
-    position: absolute;
-    top: 0;
-    right: -4px;
-    width: 8px;
-    height: 100%;
-    cursor: col-resize;
-    /* Above the sort button, which fills the cell. */
-    z-index: 1;
-    /* Invisible until wanted: a visible divider on every header would turn a
-       quiet instrument panel into a spreadsheet. */
-    background: transparent;
-  }
+  /* SPIKE NOTE (roadmap AB). THE RESIDUAL IS THE INTERESTING PART.
+     Layout moved to utilities above and reads fine. What could not move:
 
+     - `::after` is the visible 2px cue inside an 8px grab area, and it needs
+       three states (hover, focus-visible, dragging). Tailwind has `after:`
+       variants, but each state carries its own inset, width and colour, so the
+       result is a class string longer than the rule it replaces with the
+       geometry scattered across variants instead of stated once.
+     - `prefers-reduced-motion` is available as a variant but has to stack onto
+       the pseudo-element: `motion-reduce:after:transition-none`.
+
+     The comment you are reading is the actual finding. Originally the
+     reasoning — why 8px of grab area for a 2px cue, why invisible until
+     wanted — sat directly above the declarations it explained. Utilities have
+     nowhere to put that, so it either floats up here away from the code it
+     describes, or it is lost. */
   .grip::after {
     content: '';
     position: absolute;
@@ -123,10 +122,6 @@
   .grip.dragging::after {
     opacity: 1;
     background: var(--good);
-  }
-
-  .grip:focus-visible {
-    outline: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
