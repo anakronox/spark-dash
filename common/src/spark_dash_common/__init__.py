@@ -5,10 +5,12 @@ contract between them can't drift.
 """
 
 from spark_dash_common.models import (
+    ENGINE_RUNTIMES,
     SCRAPEABLE_STATES,
     ClockState,
     ClusterSnapshot,
     CpuMetrics,
+    EngineMetrics,
     GpuMetrics,
     HealthState,
     LlamaRouterMetrics,
@@ -22,7 +24,6 @@ from spark_dash_common.models import (
     RdmaPort,
     RouterModel,
     Runtimes,
-    VllmMetrics,
 )
 
 __all__ = [
@@ -43,5 +44,6 @@ __all__ = [
     "RdmaPort",
     "RouterModel",
     "Runtimes",
-    "VllmMetrics",
+    "ENGINE_RUNTIMES",
+    "EngineMetrics",
 ]

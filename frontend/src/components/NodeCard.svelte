@@ -12,6 +12,7 @@
   import { relativeTime } from '../lib/format';
   import { nodeColorVar } from '../lib/theme';
   import type { NodeSnapshot } from '../lib/types';
+  import { engines } from '../lib/types';
 
   interface Props {
     node: NodeSnapshot;
@@ -45,15 +46,21 @@
 
   const routerSummary = $derived.by(() => {
     const routers = node.runtimes.llama_cpp;
-    if (!routers.length && !node.runtimes.vllm.length) return 'no runtimes';
+    const engineCounts = engines(node.runtimes).filter(([, list]) => list.length);
+    if (!routers.length && !engineCounts.length) return 'no runtimes';
     const models = routers.reduce((n, r) => n + r.models.length, 0);
     const active = routers.reduce(
       (n, r) => n + r.models.filter((m) => m.state === 'active').length,
       0,
     );
-    const parts = [`${routers.length} router${routers.length === 1 ? '' : 's'}`];
+    const parts = routers.length
+      ? [`${routers.length} router${routers.length === 1 ? '' : 's'}`]
+      : [];
     if (models) parts.push(`${active}/${models} loaded`);
-    if (node.runtimes.vllm.length) parts.push(`${node.runtimes.vllm.length} vllm`);
+    /* Named per engine rather than pooled into "2 engines": which engine is
+       serving is the thing you are checking for on a node that runs more than
+       one, and the count alone does not say it. */
+    for (const [runtime, list] of engineCounts) parts.push(`${list.length} ${runtime}`);
     return parts.join(' · ');
   });
 
@@ -63,7 +70,10 @@
      diverge completely. Summed the same way App does it. */
   const nodeTokensPerSec = $derived(
     (node.runtimes?.llama_cpp ?? []).reduce((a, r) => a + r.tokens_per_sec, 0) +
-      (node.runtimes?.vllm ?? []).reduce((a, v) => a + v.tokens_per_sec, 0),
+      engines(node.runtimes).reduce(
+        (a, [, list]) => a + list.reduce((n, v) => n + v.tokens_per_sec, 0),
+        0,
+      ),
   );
 </script>
 

@@ -31,6 +31,7 @@
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
   import { PAGED_SECTIONS, ROW_CHOICES } from '../lib/layout.svelte';
+  import { ENGINE_RUNTIMES } from '../lib/types';
 
   /* The zones, in the order they appear on the page, plus hidden last. Naming
      them here rather than reusing ZONES because `hidden` is not a zone — it is
@@ -88,7 +89,65 @@
      *  answered it. Null when the poller has no snapshot for this node yet. */
     config_source: 'central' | 'env' | 'unreachable' | null;
     config_fetched_at: string | null;
-    runtimes: { llama_routers: RuntimeRef[]; vllm: RuntimeRef[] };
+    /** Interfaces this node is currently reporting, so exclusions are ticked
+     *  from a list rather than typed. Empty when the node is not being polled. */
+    observed_interfaces: string[];
+    /** Interfaces excluded from alerting, by name. */
+    ignored_interfaces: string[];
+    runtimes: { llama_routers: RuntimeRef[] } & Record<EngineRuntime, RuntimeRef[]>;
+  }
+
+  type EngineRuntime = (typeof ENGINE_RUNTIMES)[number];
+
+  /** How the editor presents each engine, and the port it offers for a new
+   *  entry. The DEPLOYMENT's conventional port, not the engine's upstream
+   *  default — these are the ports the node stacks actually publish, and a
+   *  prefilled value that has to be corrected every time is worse than none.
+   *  Ordered as ENGINE_RUNTIMES is, so the panel and the file agree. */
+  const ENGINE_UI: Record<EngineRuntime, { label: string; port: number }> = {
+    vllm: { label: 'vLLM', port: 8120 },
+    sglang: { label: 'SGLang', port: 30000 },
+  };
+
+  /** Tolerates a config from a backend that predates an engine: an absent key
+   *  becomes an empty list rather than an exception in the editor. */
+  function engineRefs(n: ConfiguredNode, runtime: EngineRuntime): RuntimeRef[] {
+    return n.runtimes[runtime] ?? (n.runtimes[runtime] = []);
+  }
+
+  /** Every interface the editor should offer for this node: the ones it is
+   *  currently reporting, plus any name already excluded that it is NOT
+   *  reporting.
+   *
+   *  That second half is the important one. A NIC is absent because the node is
+   *  down, or because it was renamed — and an editor that only knew what it
+   *  could currently see would drop the exclusion on the next save, silently
+   *  re-arming an alert someone deliberately turned off. Those rows are shown
+   *  as `absent` and still written back.
+   */
+  function interfaceRows(n: ConfiguredNode): { name: string; observed: boolean }[] {
+    const observed = n.observed_interfaces ?? [];
+    const ignored = n.ignored_interfaces ?? [];
+    const extra = ignored.filter((name) => !observed.includes(name));
+    return [
+      ...observed.map((name) => ({ name, observed: true })),
+      ...extra.map((name) => ({ name, observed: false })),
+    ];
+  }
+
+  /** Ticked means WATCHED, so the box reads the way the dashboard behaves:
+   *  everything is watched unless you turn it off. Storing the inverse would
+   *  put a checkbox labelled "ignore" next to a green dot meaning "up", and
+   *  the two would disagree about what checked means. */
+  function isWatched(n: ConfiguredNode, name: string): boolean {
+    return !(n.ignored_interfaces ?? []).includes(name);
+  }
+
+  function setWatched(n: ConfiguredNode, name: string, watched: boolean): void {
+    const current = n.ignored_interfaces ?? [];
+    n.ignored_interfaces = watched
+      ? current.filter((i) => i !== name)
+      : [...current, name];
   }
 
   type Cfg = { source: string; path: string; nodes: ConfiguredNode[] };
@@ -147,8 +206,12 @@
      * Caught by round-tripping the output through the real loader, which is
      * now a test. */
     const routers = n.runtimes.llama_routers.filter((r) => r.port != null);
-    const vllm = n.runtimes.vllm.filter((v) => v.port != null);
-    if (routers.length || vllm.length) {
+    const engineEntries = ENGINE_RUNTIMES.map(
+      (runtime) => [runtime, engineRefs(n, runtime).filter((v) => v.port != null)] as const,
+    ).filter(([, refs]) => refs.length);
+
+    const ignored = n.ignored_interfaces ?? [];
+    if (routers.length || engineEntries.length) {
       lines.push('  runtimes:');
       if (routers.length) {
         lines.push('    llama_routers:');
@@ -157,10 +220,20 @@
           if (r.scrape_metrics) lines.push('        scrape_metrics: true');
         }
       }
-      if (vllm.length) {
-        lines.push('    vllm:');
-        for (const v of vllm) lines.push(`      - ${v.port}`);
+      for (const [runtime, refs] of engineEntries) {
+        lines.push(`    ${runtime}:`);
+        for (const v of refs) lines.push(`      - ${v.port}`);
       }
+    }
+    /* Outside the `runtimes:` block, and that is load-bearing rather than
+       stylistic: the agent reads every list under `runtimes:` as an engine's
+       endpoints so it can pick up an engine a newer backend knows about, so a
+       nested ignore list would parse as an engine named "interfaces" —
+       scraped by nothing and silently wrong. */
+    if (ignored.length) {
+      lines.push('  interfaces:');
+      lines.push('    ignore:');
+      for (const name of ignored) lines.push(`      - ${name}`);
     }
     return lines.join('\n');
   }
@@ -235,7 +308,15 @@
             llama_routers: n.runtimes.llama_routers
               .filter((r) => r.port != null)
               .map((r) => ({ port: r.port, scrape_metrics: !!r.scrape_metrics })),
-            vllm: n.runtimes.vllm.filter((v) => v.port != null).map((v) => v.port),
+            ignored_interfaces: n.ignored_interfaces ?? [],
+            ...Object.fromEntries(
+              ENGINE_RUNTIMES.map((runtime) => [
+                runtime,
+                engineRefs(n, runtime)
+                  .filter((v) => v.port != null)
+                  .map((v) => v.port),
+              ]),
+            ),
           })),
         }),
       });
@@ -265,7 +346,14 @@
         in_inventory: false,
         config_source: null,
         config_fetched_at: null,
-        runtimes: { llama_routers: [], vllm: [] },
+        observed_interfaces: [],
+        ignored_interfaces: [],
+        runtimes: {
+          llama_routers: [],
+          ...(Object.fromEntries(
+            ENGINE_RUNTIMES.map((r) => [r, [] as RuntimeRef[]]),
+          ) as unknown as Record<EngineRuntime, RuntimeRef[]>),
+        },
       },
     ];
   }
@@ -548,28 +636,63 @@
               >+ router</button>
             </div>
 
-            <div class="rt">
-              <span class="eyebrow dim">vLLM</span>
-              {#each n.runtimes.vllm as v, vi (vi)}
-                <div class="rt-row">
-                  {#if v.port == null}
-                    <span class="dim">{v.url}</span>
-                    <span class="tag">off-node</span>
-                  {:else}
-                    <input class="in num" type="number" min="1" max="65535" aria-label="vLLM port" bind:value={v.port} />
-                  {/if}
-                  <button
-                    class="mini"
-                    aria-label="Remove vLLM endpoint"
-                    onclick={() => (n.runtimes.vllm = n.runtimes.vllm.filter((_, j) => j !== vi))}
-                  >×</button>
-                </div>
-              {/each}
-              <button
-                class="mini add"
-                onclick={() => (n.runtimes.vllm = [...n.runtimes.vllm, { url: '', port: 8120 }])}
-              >+ vLLM</button>
+            <div class="rt ifaces">
+              <span class="eyebrow dim">Interfaces watched by alerting</span>
+              {#if interfaceRows(n).length}
+                {#each interfaceRows(n) as iface (iface.name)}
+                  <label class="iface">
+                    <input
+                      type="checkbox"
+                      checked={isWatched(n, iface.name)}
+                      onchange={(e) =>
+                        setWatched(n, iface.name, (e.currentTarget as HTMLInputElement).checked)}
+                    />
+                    <span class="mono">{iface.name}</span>
+                    {#if !iface.observed}
+                      <!-- Configured but not currently reported. Kept, not
+                           dropped: the node may be down or the NIC renamed,
+                           and discarding it would re-arm an alert someone
+                           turned off on purpose. -->
+                      <span class="tag">absent</span>
+                    {/if}
+                  </label>
+                {/each}
+                <p class="hint dim">
+                  Unticked stops <span class="mono">NetworkLinkDown</span> and its
+                  RoCE port alerting. The interface keeps being collected and
+                  charted.
+                </p>
+              {:else}
+                <p class="hint dim">
+                  Nothing to list until this node reports its interfaces.
+                </p>
+              {/if}
             </div>
+
+            {#each ENGINE_RUNTIMES as runtime (runtime)}
+              <div class="rt">
+                <span class="eyebrow dim">{ENGINE_UI[runtime].label}</span>
+                {#each engineRefs(n, runtime) as v, vi (vi)}
+                  <div class="rt-row">
+                    {#if v.port == null}
+                      <span class="dim">{v.url}</span>
+                      <span class="tag">off-node</span>
+                    {:else}
+                      <input class="in num" type="number" min="1" max="65535" aria-label="{ENGINE_UI[runtime].label} port" bind:value={v.port} />
+                    {/if}
+                    <button
+                      class="mini"
+                      aria-label="Remove {ENGINE_UI[runtime].label} endpoint"
+                      onclick={() => (n.runtimes[runtime] = engineRefs(n, runtime).filter((_, j) => j !== vi))}
+                    >×</button>
+                  </div>
+                {/each}
+                <button
+                  class="mini add"
+                  onclick={() => (n.runtimes[runtime] = [...engineRefs(n, runtime), { url: '', port: ENGINE_UI[runtime].port }])}
+                >+ {ENGINE_UI[runtime].label}</button>
+              </div>
+            {/each}
           </div>
         {/each}
 
@@ -705,6 +828,19 @@
   }
 
   .node-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+
+  .ifaces label.iface {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 1px 0;
+  }
+
+  .ifaces .hint {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
+  }
 
   .tag {
     font-size: 9px;

@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from spark_dash_common.models import ClusterSnapshot
+from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
 
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
@@ -30,6 +30,7 @@ from spark_dash_backend.annotations import as_dicts, fetch_annotations
 from spark_dash_backend.cluster import (
     ClusterConfigError,
     ClusterNode,
+    InterfacePolicy,
     NodeRuntimes,
     RouterConfig,
     _own_port,
@@ -87,7 +88,21 @@ class NodeWrite(BaseModel):
     agent_port: int = Field(default=9500, ge=1, le=65535)
     node_exporter_port: int = Field(default=9100, ge=1, le=65535)
     llama_routers: list[RouterWrite] = Field(default_factory=list)
+    # One field per engine, mirroring cluster.yml's own shape — a node's
+    # runtimes are what an operator reads there, so the file stays legible
+    # rather than becoming a map of maps.
     vllm: list[int] = Field(default_factory=list)
+    sglang: list[int] = Field(default_factory=list)
+    #: Interfaces excluded from alerting, by name. Free text rather than a
+    #: port, because a name is what sysfs reports and nothing resolves it into
+    #: a request — unlike a runtime endpoint, an interface name is inert.
+    #: Names the node is not currently reporting are kept, not rejected: a NIC
+    #: absent because the node is down must not have its exclusion dropped by
+    #: whoever next opens the editor.
+    ignored_interfaces: list[str] = Field(default_factory=list)
+
+    def engine_ports(self) -> dict[str, list[int]]:
+        return {runtime: getattr(self, runtime, []) for runtime in ENGINE_RUNTIMES}
 
 
 class ClusterWrite(BaseModel):
@@ -271,21 +286,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "requests_waiting": model.requests_waiting,
                         }
                     )
-            for instance in node.runtimes.vllm:
-                rows.append(
-                    {
-                        "node": node.node_id,
-                        "runtime": "vllm",
-                        "router": None,
-                        "model": instance.model,
-                        "state": "active",
-                        "raw_status": "",
-                        "tokens_per_second": instance.tokens_per_sec,
-                        "kv_cache_pct": instance.kv_cache_pct,
-                        "requests_running": instance.requests_running,
-                        "requests_waiting": instance.requests_waiting,
-                    }
-                )
+            for runtime, instances in node.runtimes.engines.items():
+                for instance in instances:
+                    rows.append(
+                        {
+                            "node": node.node_id,
+                            "runtime": runtime,
+                            "router": None,
+                            "model": instance.model,
+                            "state": "active",
+                            "raw_status": "",
+                            "tokens_per_second": instance.tokens_per_sec,
+                            "kv_cache_pct": instance.kv_cache_pct,
+                            "requests_running": instance.requests_running,
+                            "requests_waiting": instance.requests_waiting,
+                        }
+                    )
 
         return {"models": rows}
 
@@ -412,7 +428,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         validate-and-replace path, so this cannot produce a config the editor
         would have rejected.
         """
-        if job != "vllm":
+        # Every engine job, not just vLLM. The job name IS the runtime name —
+        # one scrape job per engine, one target file per engine — so the check
+        # is membership rather than a second list to keep in step.
+        if job not in ENGINE_RUNTIMES:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -432,14 +451,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # in-place edit cannot half-apply and leave the loaded cluster
         # disagreeing with the file.
         #
-        # `vllm` is a list of resolved URL strings; `llama_routers` holds
-        # RouterConfig objects. Assuming both were the same shape is what made
-        # the first attempt at this a 500.
+        # An engine's config is a list of resolved URL strings; `llama_routers`
+        # holds RouterConfig objects. Assuming both were the same shape is what
+        # made the first attempt at this a 500.
+        #
+        # Only the named job's engine is touched. Two engines on one node can
+        # legitimately answer on addresses that differ by port alone, and
+        # retiring across all of them would remove an endpoint the operator did
+        # not ask about.
         removed: list[str] = []
         rebuilt = []
         for node in cluster:
+            existing = node.runtimes.engines.get(job) or []
             keep = []
-            for url in node.runtimes.vllm:
+            for url in existing:
                 # `instance` is host:port as Prometheus knows it; the config
                 # holds a URL. Compare on the authority so a trailing /metrics
                 # or a scheme difference cannot cause a silent no-op — the
@@ -448,17 +473,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     removed.append(f"{node.node_id}:{url}")
                 else:
                     keep.append(url)
-            rebuilt.append(
-                replace(node, runtimes=replace(node.runtimes, vllm=keep))
-                if len(keep) != len(node.runtimes.vllm)
-                else node
-            )
+            if len(keep) == len(existing):
+                rebuilt.append(node)
+                continue
+            engines = {k: list(v) for k, v in node.runtimes.engines.items()}
+            if keep:
+                engines[job] = keep
+            else:
+                engines.pop(job, None)
+            rebuilt.append(replace(node, runtimes=replace(node.runtimes, engines=engines)))
         cluster = rebuilt
 
         if not removed:
             raise HTTPException(
                 status_code=404,
-                detail=f"no configured vllm endpoint matches {instance!r}",
+                detail=f"no configured {job} endpoint matches {instance!r}",
             )
 
         try:
@@ -566,6 +595,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "config_fetched_at": (
                     n.config.fetched_at.isoformat() if n.config.fetched_at else None
                 ),
+                # WHAT THE NODE ACTUALLY HAS, so the editor can offer its
+                # interfaces as a list to tick rather than a name to type.
+                # Nothing resolves an interface name into a request, so this is
+                # about accuracy rather than safety: a typo'd exclusion is an
+                # alert that silently keeps firing, and the reader has no way
+                # to tell it apart from a rule that ignored them.
+                "observed_interfaces": [i.name for i in n.network],
             }
             for n in (snap.nodes if snap else [])
         }
@@ -581,7 +617,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "agent_port": c.agent_port,
                     "node_exporter_port": c.node_exporter_port,
                     "in_inventory": c.node_id in live,
-                    **fetched.get(c.node_id, {"config_source": None, "config_fetched_at": None}),
+                    **fetched.get(
+                        c.node_id,
+                        {
+                            "config_source": None,
+                            "config_fetched_at": None,
+                            "observed_interfaces": [],
+                        },
+                    ),
                     # Ports alongside the resolved urls. The UI edits ports —
                     # that is what keeps a write from naming an arbitrary URL —
                     # so handing it the port directly saves it parsing one back
@@ -596,11 +639,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             }
                             for r in c.runtimes.llama_routers
                         ],
-                        "vllm": [
-                            {"url": u, "port": _own_port(u, c.host, "/metrics")}
-                            for u in c.runtimes.vllm
-                        ],
+                        **{
+                            runtime: [
+                                {"url": u, "port": _own_port(u, c.host, "/metrics")}
+                                for u in (c.runtimes.engines.get(runtime) or [])
+                            ]
+                            for runtime in ENGINE_RUNTIMES
+                        },
                     },
+                    "ignored_interfaces": list(c.interfaces.ignore),
                 }
                 for c in cluster
             ],
@@ -642,7 +689,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         )
                         for r in n.llama_routers
                     ],
-                    vllm=[f"http://{n.host.strip()}:{p}/metrics" for p in n.vllm],
+                    engines={
+                        runtime: [f"http://{n.host.strip()}:{p}/metrics" for p in ports]
+                        for runtime, ports in n.engine_ports().items()
+                        if ports
+                    },
+                ),
+                interfaces=InterfacePolicy(
+                    ignore=[i.strip() for i in n.ignored_interfaces if i.strip()]
                 ),
             )
             for n in payload.nodes
@@ -702,7 +756,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "node": node,
             "configured": match is not None,
             "runtimes": (
-                match.runtimes.as_dict() if match else {"llama_routers": [], "vllm": []}
+                match.runtimes.as_dict() if match else NodeRuntimes().as_dict()
+            ),
+            # A SIBLING of `runtimes`, never a key inside it. The agent reads
+            # every list-valued key under `runtimes` as an engine's endpoints
+            # so it can pick up an engine a newer backend knows about — nested,
+            # an interface ignore list would parse as an engine named
+            # "interfaces". Nothing would scrape it, and the config would be
+            # silently wrong, which is worse than an error.
+            "interfaces": (
+                match.interfaces.as_dict() if match else InterfacePolicy().as_dict()
             ),
         }
 
@@ -937,9 +1000,10 @@ def _unreachable_endpoints(snapshot) -> list[str]:
         for router in node.runtimes.llama_cpp:
             if not router.reachable:
                 out.append(f"{node.node_id} · llama.cpp · {router.endpoint}")
-        for instance in node.runtimes.vllm:
-            if not instance.reachable:
-                out.append(f"{node.node_id} · vllm · {instance.server}")
+        for runtime, instances in node.runtimes.engines.items():
+            for instance in instances:
+                if not instance.reachable:
+                    out.append(f"{node.node_id} · {runtime} · {instance.server}")
     return out
 
 

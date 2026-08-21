@@ -84,6 +84,11 @@ export interface ProcessInfo {
 export interface NetworkInterface {
   name: string;
   up: boolean;
+  /** False when this node's config excludes the interface from alerting.
+   *  Excluded by name, never selected by name — an interface nobody has
+   *  configured is still watched, so forgetting the list is noisy rather than
+   *  silent. Reported either way: the panel keeps showing it. */
+  monitored: boolean;
   /** Negotiated link speed. Null when the driver doesn't report one. */
   speed_mbps: number | null;
   rx_bytes_per_sec: number;
@@ -99,6 +104,9 @@ export interface NetworkInterface {
 export interface RdmaPort {
   device: string;
   port: number;
+  /** Derived from the Ethernet interface this port is paired with — one cable
+   *  carries both, so they are excluded together or not at all. */
+  monitored: boolean;
   state: string;
   physical_state: string;
   /** "Ethernet" for RoCE, "InfiniBand" for native IB. The GX10s run RoCEv2. */
@@ -122,6 +130,11 @@ export interface RouterModel {
   raw_status: string;
   slots_used: number;
   slots_total: number;
+  /** Null for an engine that does not report OCCUPANCY. SGLang publishes
+   *  `cache_hit_rate` — the fraction of prompt tokens served from the prefix
+   *  cache — which has the same shape and answers a different question, so its
+   *  rows leave this empty rather than showing a number that reads as how full
+   *  the cache is. */
   kv_cache_pct: number | null;
   tokens_per_sec: number | null;
   requests_running: number;
@@ -144,12 +157,15 @@ export interface LlamaRouterMetrics {
   tokens_per_sec: number;
 }
 
-export interface VllmMetrics {
+/** One vLLM or SGLang instance. They answer the same questions in the same
+ *  shape — only the metric NAMES differ, and those are the agent's problem —
+ *  so one type covers both rather than two identical ones drifting apart. */
+export interface EngineMetrics {
   model: string;
-  /** host:port. Nothing fronts a vLLM instance, so this is its own endpoint. */
+  /** host:port. Nothing fronts these engines, so this is its own endpoint. */
   /** False when the configured endpoint did not answer. Reported rather
    *  than omitted: an instance dropped from the list is indistinguishable
-   *  from a node that runs no vLLM. */
+   *  from a node that runs none. */
   reachable: boolean;
   server: string;
   requests_running: number;
@@ -162,7 +178,30 @@ export interface VllmMetrics {
 
 export interface Runtimes {
   llama_cpp: LlamaRouterMetrics[];
-  vllm: VllmMetrics[];
+  vllm: EngineMetrics[];
+  sglang: EngineMetrics[];
+}
+
+/** The engine fields of `Runtimes`, keyed by runtime name — the frontend's
+ *  copy of ENGINE_RUNTIMES in the Python models. Everything that walks "every
+ *  engine on this node" goes through here, so adding one is a key rather than
+ *  another `.vllm` beside every existing one.
+ *
+ *  Tolerates a snapshot from an older backend that has no `sglang` key: the
+ *  dashboard is deployed separately from the agents it reads. */
+export const ENGINE_RUNTIMES = ['vllm', 'sglang'] as const;
+
+export function engines(runtimes: Runtimes): [string, EngineMetrics[]][] {
+  return ENGINE_RUNTIMES.map((r) => [r, runtimes?.[r] ?? []]);
+}
+
+/** Whether a Prometheus job is an engine — the job name IS the runtime name,
+ *  one job per engine. Gates the retire button: an engine endpoint is
+ *  configuration and can be removed, while an infrastructure target describes
+ *  hardware that still exists, and removing it would blind the dashboard to a
+ *  real failure. */
+export function isEngineJob(job: string): boolean {
+  return (ENGINE_RUNTIMES as readonly string[]).includes(job);
 }
 
 export interface NodeSnapshot {
@@ -206,4 +245,4 @@ export interface ClusterSnapshot {
  *  Mirrors LLM_RUNTIMES in the agent — on GB10 both compete for one pool, so
  *  telling them apart is the difference between "12GB used" and "12GB used by
  *  ComfyUI". */
-export const LLM_RUNTIMES = new Set(['vllm', 'llama.cpp', 'sglang', 'tgi', 'ollama']);
+export const LLM_RUNTIMES = new Set(['vllm', 'llama.cpp', 'sglang', 'atlas', 'tgi', 'ollama']);

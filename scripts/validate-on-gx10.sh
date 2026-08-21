@@ -200,7 +200,7 @@ else
   # footprint is real capacity pressure, not a footnote.
   printf '%s' "$SNAP" | python3 -c "
 import json,sys
-LLM={'vllm','llama.cpp','sglang','tgi','ollama'}
+LLM={'vllm','llama.cpp','sglang','atlas','tgi','ollama'}
 procs=json.load(sys.stdin).get('processes') or []
 llm=sum(p['gpu_mem_bytes'] for p in procs if p.get('runtime') in LLM)
 other=sum(p['gpu_mem_bytes'] for p in procs if p.get('runtime') not in LLM)
@@ -264,12 +264,20 @@ print('yes' if any(m.get('tokens_per_sec') for r in ((json.load(sys.stdin).get('
   echo "    ./scripts/soak-test-autoload.sh 10"
 fi
 
-VLLM_COUNT=$(printf '%s' "$SNAP" | python3 -c "
+# Every engine the snapshot carries, not vLLM alone — a node running SGLang
+# with nothing configured for it is the same silence, and reporting only on
+# vLLM would have this script agree with a half-configured node.
+ENGINE_REPORT=$(printf '%s' "$SNAP" | python3 -c "
 import json,sys
-print(len((json.load(sys.stdin).get('runtimes') or {}).get('vllm') or []))
+runtimes=json.load(sys.stdin).get('runtimes') or {}
+for name in ('vllm','sglang'):
+    print(f\"{name} {len(runtimes.get(name) or [])}\")
 ")
-[[ "$VLLM_COUNT" -gt 0 ]] && ok "$VLLM_COUNT vLLM instance(s) scraped" \
-                          || info "no vLLM instances (VLLM_URLS unset?)"
+while read -r ENGINE COUNT; do
+  ENV_VAR=$(printf '%s' "$ENGINE" | tr '[:lower:]' '[:upper:]')_URLS
+  [[ "$COUNT" -gt 0 ]] && ok "$COUNT $ENGINE instance(s) scraped" \
+                       || info "no $ENGINE instances (${ENV_VAR} unset?)"
+done <<< "$ENGINE_REPORT"
 
 # ------------------------------------------------------------------- summary
 hdr "Summary"

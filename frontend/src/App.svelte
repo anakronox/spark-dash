@@ -21,6 +21,7 @@
   import { fetchWithTimeout } from './lib/request';
   import { gib, num } from './lib/format';
   import type { NodeSnapshot, ProcessInfo } from './lib/types';
+  import { engines, isEngineJob } from './lib/types';
 
   const feed = new LiveFeed();
   const alertFeed = new AlertFeed();
@@ -160,9 +161,11 @@
         ...n.runtimes.llama_cpp
           .filter((r) => !r.reachable)
           .map((r) => ({ node: n.node_id, runtime: 'llama.cpp', endpoint: r.endpoint })),
-        ...n.runtimes.vllm
-          .filter((v) => !v.reachable)
-          .map((v) => ({ node: n.node_id, runtime: 'vllm', endpoint: v.server })),
+        ...engines(n.runtimes).flatMap(([runtime, list]) =>
+          list
+            .filter((v) => !v.reachable)
+            .map((v) => ({ node: n.node_id, runtime, endpoint: v.server })),
+        ),
       ]),
   );
 
@@ -218,7 +221,8 @@
     for (const node of nodes) {
       if (node.up) up += 1;
       for (const r of node.runtimes.llama_cpp) tokensPerSec += r.tokens_per_sec;
-      for (const v of node.runtimes.vllm) tokensPerSec += v.tokens_per_sec;
+      for (const [, list] of engines(node.runtimes))
+        for (const v of list) tokensPerSec += v.tokens_per_sec;
     }
 
     /* The largest block one model could actually occupy: the best any single
@@ -328,7 +332,7 @@
       {#each absent as t (t.instance)}
         <span class="num">{t.instance}</span>
         <span class="dim">{t.job}{t.node ? ` on ${t.node}` : ''} · down {downFor(t.down_for_s)}</span>
-        {#if t.job === 'vllm'}
+        {#if isEngineJob(t.job)}
           <!-- Removal only, and only for inference. Hardware still exists, so
                being able to delete an environmental target would let someone
                permanently blind the dashboard to a real failure. -->

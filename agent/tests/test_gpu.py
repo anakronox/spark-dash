@@ -105,6 +105,33 @@ class TestInferRuntime:
     def test_case_insensitive(self):
         assert infer_runtime("PYTHON", "-m VLLM.entrypoints") == "vllm"
 
+    def test_atlas_by_binary_name(self):
+        """Atlas is a single static binary, so its name is what identifies it."""
+        assert infer_runtime("atlas", "/usr/local/bin/atlas serve qwen3-30b") == "atlas"
+
+    def test_atlas_by_argv0_when_launched_through_a_wrapper(self):
+        assert infer_runtime("sparkrun", "/opt/atlas/bin/atlas serve --port 8500") == "atlas"
+
+    @pytest.mark.parametrize(
+        "name,cmd",
+        [
+            # The whole reason Atlas is matched on the executable name: "atlas"
+            # is an ordinary word, and each of these would be mislabeled by a
+            # substring match over the full argv+cwd haystack.
+            ("python", "python train.py --dataset atlas-corpus"),
+            ("python", "python -m vllm.entrypoints.openai.api_server --model org/atlas-7b"),
+            ("llama-server", "llama-server -m /models/atlas.gguf"),
+        ],
+    )
+    def test_the_word_atlas_in_argv_is_not_atlas(self, name, cmd):
+        assert infer_runtime(name, cmd) != "atlas"
+
+    def test_atlas_process_counts_as_an_llm_runtime(self):
+        """The point of V2a: an unclassified Atlas process is attributed to
+        `other gpu` in the memory band, so the one chart that answers "what is
+        eating the pool" blames the wrong class for every byte of it."""
+        assert infer_runtime("atlas", "atlas serve") in LLM_RUNTIMES
+
 
 class TestNonLlmGpuWorkloads:
     """Not every GPU consumer is an inference runtime. On GB10 these share the

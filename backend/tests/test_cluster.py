@@ -187,7 +187,11 @@ class TestAgentConfigEndpoint:
             resp = c.get("/api/agent-config", params={"node": "newcomer"})
         assert resp.status_code == 200
         assert resp.json()["configured"] is False
-        assert resp.json()["runtimes"] == {"llama_routers": [], "vllm": []}
+        assert resp.json()["runtimes"] == {
+            "llama_routers": [],
+            "vllm": [],
+            "sglang": [],
+        }
 
     def test_malformed_config_is_an_error_not_an_empty_answer(self, tmp_path):
         """Silently serving "no runtimes" for a typo would leave every node
@@ -398,6 +402,237 @@ class TestCopyYamlRoundTrip:
         assert node.runtimes.vllm == []
 
 
+class TestInterfaceExclusions:
+    """Which interfaces alerting watches, round-tripped through the file.
+
+    The pain this fixes: two 200Gb ports per node were cabled to a switch as a
+    test and unplugged, and having been up they read as failed links forever —
+    eight firing series across two nodes, re-notified daily because a
+    dashboard silence is capped at 24h on purpose.
+    """
+
+    def test_ignore_list_is_parsed(self, tmp_path):
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n- id: sparketa\n  host: 192.168.50.62\n"
+            "  interfaces:\n    ignore:\n      - enP2p1s0f1np1\n      - enp1s0f1np1\n"
+        )
+        node = load_cluster(path)[0]
+        assert node.interfaces.ignore == ["enP2p1s0f1np1", "enp1s0f1np1"]
+
+    def test_a_node_with_no_block_watches_everything(self, tmp_path):
+        """Excluded by name, never selected by name. Forgetting the block is
+        noisy rather than silent, which is the safe direction here."""
+        path = tmp_path / "cluster.yml"
+        path.write_text("nodes:\n- id: sparky\n  host: 192.168.50.61\n")
+        assert load_cluster(path)[0].interfaces.ignore == []
+
+    def test_a_bare_list_is_read_as_the_ignore_list(self, tmp_path):
+        """What someone writes from memory, and the only meaning it could
+        have."""
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
+            "  interfaces:\n    - wlP9s9\n"
+        )
+        assert load_cluster(path)[0].interfaces.ignore == ["wlP9s9"]
+
+    def test_a_malformed_block_does_not_disarm_alerting(self, tmp_path):
+        """The failure direction matters: reading garbage as "ignore
+        everything" would silently stop every link alert on the node."""
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n- id: sparky\n  host: 192.168.50.61\n  interfaces: 7\n"
+        )
+        assert load_cluster(path)[0].interfaces.ignore == []
+
+    def test_round_trips_through_a_write(self, tmp_path):
+        """The dashboard rewrites this file whenever the cluster is edited, so
+        an exclusion that did not survive a write would come back as alerts the
+        next time someone changed a port."""
+        from spark_dash_backend.cluster import write_cluster
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n- id: sparketa\n  host: 192.168.50.62\n"
+            "  interfaces:\n    ignore:\n      - enP2p1s0f1np1\n"
+        )
+        write_cluster(path, load_cluster(path))
+        assert load_cluster(path)[0].interfaces.ignore == ["enP2p1s0f1np1"]
+
+    def test_the_agent_is_served_the_list_beside_runtimes_not_inside_it(self, tmp_path):
+        """LOAD-BEARING PLACEMENT. The agent reads every list-valued key under
+        `runtimes` as an engine's endpoints, so that it can pick up an engine a
+        newer backend knows about. Nested there, an ignore list would parse as
+        an engine named "interfaces" — scraped by nothing, and silently wrong.
+        """
+        from fastapi.testclient import TestClient
+        from spark_dash_backend.app import create_app
+        from spark_dash_backend.config import Settings
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n- id: sparketa\n  host: 192.168.50.62\n"
+            "  runtimes:\n    vllm:\n      - 8120\n"
+            "  interfaces:\n    ignore:\n      - enP2p1s0f1np1\n"
+        )
+        app = create_app(
+            Settings(
+                spark_nodes="sparketa=192.168.50.62",
+                cluster_config=path,
+                prometheus_targets_dir=None,
+            )
+        )
+        with TestClient(app) as c:
+            body = c.get("/api/agent-config", params={"node": "sparketa"}).json()
+
+        assert body["interfaces"] == {"ignore": ["enP2p1s0f1np1"]}
+        assert "interfaces" not in body["runtimes"]
+
+
+class TestInterfaceExclusionsSurviveAWrite:
+    def _client(self, tmp_path, text):
+        from fastapi.testclient import TestClient
+        from spark_dash_backend.app import create_app
+        from spark_dash_backend.config import Settings
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(text)
+        return (
+            TestClient(
+                create_app(
+                    Settings(
+                        spark_nodes="sparketa=192.168.50.62",
+                        cluster_config=path,
+                        prometheus_targets_dir=None,
+                    )
+                )
+            ),
+            path,
+        )
+
+    def test_a_name_the_editor_cannot_see_is_still_written(self, tmp_path):
+        """The editor sends back names it may not currently observe — a NIC
+        absent because the node is down, or renamed. Dropping them on write
+        would silently re-arm an alert someone deliberately turned off."""
+        client, path = self._client(
+            tmp_path, "nodes:\n- id: sparketa\n  host: 192.168.50.62\n"
+        )
+        with client as c:
+            resp = c.put(
+                "/api/cluster/config",
+                json={
+                    "nodes": [
+                        {
+                            "node_id": "sparketa",
+                            "host": "192.168.50.62",
+                            "ignored_interfaces": [
+                                "enP2p1s0f1np1",
+                                "a-nic-nobody-can-see",
+                            ],
+                        }
+                    ]
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        assert load_cluster(path)[0].interfaces.ignore == [
+            "enP2p1s0f1np1",
+            "a-nic-nobody-can-see",
+        ]
+        assert resp.json()["nodes"][0]["ignored_interfaces"] == [
+            "enP2p1s0f1np1",
+            "a-nic-nobody-can-see",
+        ]
+
+    def test_an_empty_list_removes_the_block_entirely(self, tmp_path):
+        """Un-ticking the last box has to actually re-arm the alert, not leave
+        an empty `interfaces:` key that reads as configuration."""
+        client, path = self._client(
+            tmp_path,
+            "nodes:\n- id: sparketa\n  host: 192.168.50.62\n"
+            "  interfaces:\n    ignore:\n      - enP2p1s0f1np1\n",
+        )
+        with client as c:
+            resp = c.put(
+                "/api/cluster/config",
+                json={
+                    "nodes": [
+                        {
+                            "node_id": "sparketa",
+                            "host": "192.168.50.62",
+                            "ignored_interfaces": [],
+                        }
+                    ]
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        assert load_cluster(path)[0].interfaces.ignore == []
+        assert "interfaces" not in path.read_text()
+
+
+class TestRetiringAnEngineEndpoint:
+    """The retire button, against a real cluster file.
+
+    Two engines on one node can answer on addresses that differ by port alone,
+    so retiring has to touch exactly the engine named by the job — removing
+    across all of them would take out an endpoint nobody asked about.
+    """
+
+    TWO_ENGINES = (
+        "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
+        "  runtimes:\n"
+        "    vllm:\n      - 8120\n      - 8121\n"
+        "    sglang:\n      - 30000\n"
+    )
+
+    def _client(self, tmp_path):
+        from fastapi.testclient import TestClient
+        from spark_dash_backend.app import create_app
+        from spark_dash_backend.config import Settings
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(self.TWO_ENGINES)
+        client = TestClient(
+            create_app(
+                Settings(
+                    spark_nodes="sparky=192.168.50.61",
+                    cluster_config=path,
+                    prometheus_targets_dir=None,
+                )
+            )
+        )
+        return client, path
+
+    def test_retiring_one_engines_endpoint_leaves_the_other_alone(self, tmp_path):
+        client, path = self._client(tmp_path)
+        with client as c:
+            resp = c.delete(
+                "/api/targets/absent",
+                params={"job": "sglang", "instance": "192.168.50.61:30000"},
+            )
+        assert resp.status_code == 200
+
+        node = load_cluster(path)[0]
+        assert node.runtimes.engines.get("sglang") in (None, [])
+        assert node.runtimes.vllm == [
+            "http://192.168.50.61:8120/metrics",
+            "http://192.168.50.61:8121/metrics",
+        ]
+
+    def test_a_port_that_matches_another_engine_is_not_retired(self, tmp_path):
+        """Named by job, matched by authority. Asking to retire vLLM's 8120
+        must not reach an SGLang entry that happens to share a port on another
+        node — and must not silently succeed against the wrong engine."""
+        client, path = self._client(tmp_path)
+        with client as c:
+            resp = c.delete(
+                "/api/targets/absent",
+                params={"job": "sglang", "instance": "192.168.50.61:8120"},
+            )
+        assert resp.status_code == 404
+        assert len(load_cluster(path)[0].runtimes.vllm) == 2
+
+
 class TestVllmScrapeTargetsAreGenerated:
     """Retiring an endpoint must stop Prometheus scraping it.
 
@@ -409,7 +644,7 @@ class TestVllmScrapeTargetsAreGenerated:
     """
 
     def test_every_configured_endpoint_becomes_a_scrape_target(self, tmp_path):
-        from spark_dash_backend.inventory import render_vllm_file_sd
+        from spark_dash_backend.inventory import render_engine_file_sd
 
         path = tmp_path / "cluster.yml"
         path.write_text(
@@ -422,7 +657,7 @@ class TestVllmScrapeTargetsAreGenerated:
             "      - 8120\n"
             "      - 8121\n"
         )
-        out = yaml.safe_load(render_vllm_file_sd(load_cluster(path), header="# x"))
+        out = yaml.safe_load(render_engine_file_sd(load_cluster(path), "vllm", header="# x"))
         # ONE ENTRY PER ENDPOINT, not per node — a node may serve several.
         assert [e["targets"] for e in out] == [
             ["192.168.50.61:8120"],
@@ -435,20 +670,41 @@ class TestVllmScrapeTargetsAreGenerated:
 
     def test_removing_it_from_the_cluster_file_removes_the_target(self, tmp_path):
         """The whole point: retire has to reach Prometheus, not just the agent."""
-        from spark_dash_backend.inventory import render_vllm_file_sd
+        from spark_dash_backend.inventory import render_engine_file_sd
 
         path = tmp_path / "cluster.yml"
         path.write_text(
             "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
             "  runtimes:\n    vllm:\n      - 8120\n"
         )
-        assert yaml.safe_load(render_vllm_file_sd(load_cluster(path), header="# x"))
+        assert yaml.safe_load(render_engine_file_sd(load_cluster(path), "vllm", header="# x"))
 
         # ...as the retire endpoint leaves it.
         path.write_text("nodes:\n- id: sparky\n  host: 192.168.50.61\n")
         # An empty LIST, not a missing file: Prometheus reads it and ends up
         # with no vLLM targets, which is what retiring the last one means.
-        assert yaml.safe_load(render_vllm_file_sd(load_cluster(path), header="# x")) == []
+        assert yaml.safe_load(render_engine_file_sd(load_cluster(path), "vllm", header="# x")) == []
+
+    def test_each_engine_gets_its_own_target_file(self, tmp_path):
+        """One file per engine, matching one scrape job per engine. Pooling
+        them would put targets that publish differently-named series behind a
+        single `job` label."""
+        from spark_dash_backend.inventory import write_prometheus_targets
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
+            "  runtimes:\n    vllm:\n      - 8120\n    sglang:\n      - 30000\n"
+        )
+        targets = tmp_path / "targets"
+        targets.mkdir()
+        write_prometheus_targets([], targets, cluster_nodes=load_cluster(path))
+
+        assert "192.168.50.61:8120" in (targets / "vllm.yml").read_text()
+        assert "192.168.50.61:30000" in (targets / "sglang.yml").read_text()
+        # Not in each other's file: the job label is how a rule tells them
+        # apart, and the metric names behind it are not interchangeable.
+        assert "30000" not in (targets / "vllm.yml").read_text()
 
     def test_env_fallback_does_not_render_an_empty_vllm_file(self, tmp_path):
         """Under SPARK_NODES there are no runtimes to render. Writing an empty
@@ -460,6 +716,7 @@ class TestVllmScrapeTargetsAreGenerated:
         targets.mkdir()
         write_prometheus_targets([], targets, source="env", cluster_nodes=None)
         assert not (targets / "vllm.yml").exists()
+        assert not (targets / "sglang.yml").exists()
 
 
 def test_saving_the_cluster_rewrites_prometheus_targets(tmp_path):

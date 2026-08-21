@@ -35,18 +35,30 @@ log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class RuntimeConfig:
-    """What this node should poll.
+class NodeConfig:
+    """What this node should poll, and what it should stay quiet about.
 
-    Named RuntimeConfig rather than Runtimes to keep it distinct from the
-    snapshot's Runtimes, which carries collected METRICS. This is the
-    instruction; that is the result.
+    Named for the node rather than for runtimes because it is no longer only
+    runtimes: the interface ignore list rides the same fetch. Kept distinct
+    from the snapshot's `Runtimes`, which carries collected METRICS — this is
+    the instruction, that is the result.
     """
 
     llama_routers: list[str] = field(default_factory=list)
     #: Subset of `llama_routers` allowed to serve `/metrics?model=`.
     metrics_allowlist: list[str] = field(default_factory=list)
-    vllm: list[str] = field(default_factory=list)
+    #: runtime name -> /metrics endpoints, for the engines that share one
+    #: collector (vLLM, SGLang). A mapping rather than a field per engine so a
+    #: new engine is a new key in the cluster file and nothing here.
+    engines: dict[str, list[str]] = field(default_factory=dict)
+    #: Interfaces excluded from alerting, by name. Empty means watch
+    #: everything, which is also what an unconfigured node gets.
+    ignored_interfaces: list[str] = field(default_factory=list)
+
+    @property
+    def vllm(self) -> list[str]:
+        """Kept because `vllm` is the engine every deployment already has."""
+        return self.engines.get("vllm", [])
 
 
 class RemoteConfig:
@@ -77,7 +89,7 @@ class RemoteConfig:
         self._timeout_s = timeout_s
         self._ttl_s = ttl_s
 
-        self._runtimes: RuntimeConfig | None = None
+        self._runtimes: NodeConfig | None = None
         #: True once the backend has confirmed this node IS in cluster.yml.
         #: Distinct from having runtimes: a configured node may legitimately
         #: serve nothing, and that must override env rather than fall back.
@@ -112,7 +124,7 @@ class RemoteConfig:
             return "unreachable", None
         return ("central" if self._configured else "env"), self._last_ok
 
-    def current(self, now: float) -> RuntimeConfig | None:
+    def current(self, now: float) -> NodeConfig | None:
         """This node's central runtimes, or None if central has no opinion.
 
         None means "fall back to env" — either the backend has never answered,
@@ -169,18 +181,48 @@ class RemoteConfig:
             for r in (raw.get("llama_routers") or [])
             if isinstance(r, dict) and r.get("url") and r.get("scrape_metrics")
         ]
-        vllm = [str(u) for u in (raw.get("vllm") or []) if u]
+        # Every key the backend sends that is not the routers is an engine
+        # list. Read that way rather than from a hardcoded set of names so a
+        # node running a newer backend picks up a new engine without needing a
+        # newer agent — the agent still only COLLECTS from engines it has a
+        # spec for, so an unknown key costs nothing.
+        engines = {
+            str(key): [str(u) for u in (value or []) if u]
+            for key, value in raw.items()
+            if key != "llama_routers" and isinstance(value, list)
+        }
+        engines = {k: v for k, v in engines.items() if v}
 
-        updated = RuntimeConfig(
-            llama_routers=routers, metrics_allowlist=allowlist, vllm=vllm
+        # A SIBLING of `runtimes`, deliberately — see the engine loop above,
+        # which claims every list-valued key under `runtimes` for an engine.
+        # Nested, this list would be read as an engine named "interfaces".
+        raw_interfaces = payload.get("interfaces")
+        ignored = []
+        if isinstance(raw_interfaces, dict):
+            ignored = [
+                str(i).strip()
+                for i in (raw_interfaces.get("ignore") or [])
+                if str(i).strip()
+            ]
+
+        updated = NodeConfig(
+            llama_routers=routers,
+            metrics_allowlist=allowlist,
+            engines=engines,
+            ignored_interfaces=ignored,
         )
         if updated != self._runtimes:
             log.info(
                 "cluster config: %d router(s) (%d scraped for per-model "
-                "metrics), %d vLLM endpoint(s)",
+                "metrics), %s",
                 len(routers),
                 len(allowlist),
-                len(vllm),
+                ", ".join(f"{len(v)} {k} endpoint(s)" for k, v in sorted(engines.items()))
+                or "no engine endpoints",
             )
+            if ignored:
+                log.info(
+                    "interfaces excluded from alerting: %s", ", ".join(ignored)
+                )
         self._runtimes = updated
         self._configured = True

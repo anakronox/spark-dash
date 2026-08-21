@@ -11,6 +11,7 @@ from spark_dash_backend.app import create_app
 from spark_dash_backend.config import Settings
 from spark_dash_common.models import (
     ClusterSnapshot,
+    EngineMetrics,
     GpuMetrics,
     HealthState,
     LlamaRouterMetrics,
@@ -19,7 +20,6 @@ from spark_dash_common.models import (
     NodeSnapshot,
     RouterModel,
     Runtimes,
-    VllmMetrics,
 )
 
 INVENTORY = """
@@ -69,7 +69,8 @@ def node(node_id: str, *, up: bool = True, util: float = 50.0) -> NodeSnapshot:
                     tokens_per_sec=41.2,
                 )
             ],
-            vllm=[VllmMetrics(model="llama-3.3-70b", tokens_per_sec=88.5)],
+            vllm=[EngineMetrics(model="llama-3.3-70b", tokens_per_sec=88.5)],
+            sglang=[EngineMetrics(model="deepseek-v3", server="192.168.50.61:30000")],
         )
         if up
         else Runtimes(),
@@ -190,6 +191,16 @@ def test_models_flattens_across_runtimes(client):
     assert ("llama-3.3-70b", "active") in names
 
 
+def test_models_names_the_engine_each_row_came_from(client):
+    """Every engine's instances become rows, labelled with the engine — the
+    table is node x RUNTIME x model, and pooling two engines under one name
+    would make "what is serving this" unanswerable from it."""
+    rows = client.get("/api/models").json()["models"]
+    by_model = {r["model"]: r["runtime"] for r in rows}
+    assert by_model["llama-3.3-70b"] == "vllm"
+    assert by_model["deepseek-v3"] == "sglang"
+
+
 def test_models_includes_router_label(client):
     rows = client.get("/api/models").json()["models"]
     llama = [r for r in rows if r["runtime"] == "llama.cpp"]
@@ -288,10 +299,10 @@ def test_health_flags_a_configured_endpoint_that_is_not_answering():
     from spark_dash_backend.app import _unreachable_endpoints
     from spark_dash_common.models import (
         ClusterSnapshot,
+        EngineMetrics,
         LlamaRouterMetrics,
         NodeSnapshot,
         Runtimes,
-        VllmMetrics,
     )
 
     snap = ClusterSnapshot(
@@ -306,7 +317,7 @@ def test_health_flags_a_configured_endpoint_that_is_not_answering():
                         LlamaRouterMetrics(endpoint="http://h:8001", reachable=True),
                         LlamaRouterMetrics(endpoint="http://h:8002", reachable=False),
                     ],
-                    vllm=[VllmMetrics(model="h:8000", server="h:8000", reachable=False)],
+                    vllm=[EngineMetrics(model="h:8000", server="h:8000", reachable=False)],
                 ),
             )
         ],
@@ -367,6 +378,17 @@ def test_retire_refuses_infrastructure_targets(client):
     )
     assert resp.status_code == 400
     assert "only inference targets" in resp.json()["detail"]
+
+
+def test_retire_accepts_every_engine_job(client):
+    """The job name IS the runtime name, so the gate is membership rather than
+    a second list to keep in step. A 404 here means it got past the gate and
+    found no matching endpoint — which is the point being tested."""
+    resp = client.delete(
+        "/api/targets/absent", params={"job": "sglang", "instance": "10.0.0.1:30000"}
+    )
+    assert resp.status_code == 404
+    assert "sglang" in resp.json()["detail"]
 
 
 def test_retire_reports_not_found_rather_than_silently_succeeding(client):

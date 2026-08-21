@@ -155,6 +155,18 @@ class NetworkInterface(BaseModel):
 
     name: str
     up: bool = True
+    monitored: bool = Field(
+        default=True,
+        description="False when this node's config excludes the interface from "
+        "alerting.\n\n"
+        "DEFAULT TRUE, and excluded by name rather than selected by name: an "
+        "interface nobody has configured is still watched, so forgetting to "
+        "maintain the list makes the dashboard noisy rather than silent. It is "
+        "reported rather than omitted for the same reason — the panel still "
+        "shows the interface, and its history keeps accumulating.\n\n"
+        "Distinct from `unmonitored_runtimes`, which is the opposite kind of "
+        "fact: that is a gap to be fixed, this is a deliberate exclusion.",
+    )
     speed_mbps: int | None = Field(
         default=None,
         description="Negotiated link speed. None when the driver doesn't report "
@@ -189,6 +201,15 @@ class RdmaPort(BaseModel):
 
     device: str
     port: int
+    monitored: bool = Field(
+        default=True,
+        description="False when the Ethernet interface this port is paired "
+        "with is excluded from alerting.\n\n"
+        "DERIVED, never configured separately: one cable carries both, so a "
+        "pulled f1 port that is excluded as an interface but not as a RoCE "
+        "port would simply trade `NetworkLinkDown` for `RdmaPortDown`. A port "
+        "with no netdev pairing stays monitored.",
+    )
     state: str = "UNKNOWN"
     physical_state: str = ""
     link_layer: str = ""
@@ -383,16 +404,26 @@ class LlamaRouterMetrics(BaseModel):
         return len(self.models)
 
 
-class VllmMetrics(BaseModel):
-    """One vLLM instance, scraped from its native /metrics endpoint."""
+class EngineMetrics(BaseModel):
+    """One engine instance, scraped from its native Prometheus endpoint.
+
+    Shared by vLLM and SGLang because they answer the same questions in the
+    same shape — a text exposition endpoint with running/queued requests and a
+    token counter. Only the metric NAMES differ, and those live in the agent's
+    `SPECS` table rather than in a second copy of this model.
+
+    It is deliberately not shared with llama.cpp router mode, which is a
+    genuinely different thing: one endpoint fronting several models with
+    load/unload state, rather than one process serving one model.
+    """
 
     model: str
     reachable: bool = Field(
         default=True,
         description="False when the configured endpoint did not answer.\n\n"
         "An unreachable instance used to be dropped from the list entirely, "
-        "which made a typo'd port INVISIBLE: the node reported no vLLM, which "
-        "is indistinguishable from a node that runs no vLLM. Silence is the "
+        "which made a typo'd port INVISIBLE: the node reported no instance, "
+        "which is indistinguishable from a node that runs none. Silence is the "
         "failure mode this whole area exists to catch, so a configured "
         "endpoint that does not answer is reported as such rather than "
         "omitted. `model` carries the endpoint in that case, since nothing "
@@ -401,13 +432,23 @@ class VllmMetrics(BaseModel):
 
     server: str = Field(
         default="",
-        description="host:port this instance is served from. vLLM has no router "
-        "in front of it, so this is the endpoint itself — which is what lets it "
-        "sit in the same column as a llama.cpp router rather than showing a gap.",
+        description="host:port this instance is served from. Nothing fronts a "
+        "vLLM or SGLang instance, so this is the endpoint itself — which is "
+        "what lets it sit in the same column as a llama.cpp router rather than "
+        "showing a gap.",
     )
     requests_running: int = 0
     requests_waiting: int = 0
-    kv_cache_pct: float | None = None
+    kv_cache_pct: float | None = Field(
+        default=None,
+        description="How full the KV cache is, as a percentage.\n\n"
+        "None for engines that do not report it. SGLang is the reason it is "
+        "optional rather than defaulted: it publishes `cache_hit_rate`, which "
+        "is the fraction of prompt tokens served from the PREFIX cache — a "
+        "different question with the same shape. Rendering it here would show "
+        "a number that reads as occupancy and is not, so an SGLang row leaves "
+        "this empty. An empty cell is honest; a wrong one is not.",
+    )
     tokens_per_sec: float = 0.0
     prompt_tokens_total: int = 0
     generation_tokens_total: int = 0
@@ -416,8 +457,41 @@ class VllmMetrics(BaseModel):
 class Runtimes(BaseModel):
     # Lists, not single objects: a node typically runs several llama.cpp router
     # containers alongside several vLLM instances.
+    #
+    # One field per engine, even though vLLM and SGLang share a model type. The
+    # alternative — a single `engines` list with a `runtime` discriminator —
+    # would rename the `sparkdash_vllm_*` metric family that alert rules and
+    # recorded history are written against, which is a migration this buys
+    # nothing. The collector is shared; the wire stays per-engine.
     llama_cpp: list[LlamaRouterMetrics] = Field(default_factory=list)
-    vllm: list[VllmMetrics] = Field(default_factory=list)
+    vllm: list[EngineMetrics] = Field(default_factory=list)
+    sglang: list[EngineMetrics] = Field(default_factory=list)
+
+    @property
+    def engines(self) -> dict[str, list[EngineMetrics]]:
+        """The `EngineMetrics` fields, keyed by runtime name.
+
+        One place that knows which fields are engines, so the exporter and the
+        snapshot builder iterate rather than each naming every engine again.
+        Derived from the model's own annotations: a field added above is
+        included here without a second edit, and one that is forgotten cannot
+        silently fall out.
+        """
+        return {name: getattr(self, name) for name in ENGINE_RUNTIMES}
+
+
+#: Engines configured as "a list of /metrics endpoints", in wire order.
+#:
+#: Derived from `Runtimes` itself so there is one list rather than one per
+#: component: the agent builds a collector per entry, the backend parses,
+#: renders and retires config per entry, and neither can drift from the
+#: snapshot's own shape. llama.cpp is absent on purpose — its config is
+#: routers with a per-router opt-in, not a bare list of endpoints.
+ENGINE_RUNTIMES: tuple[str, ...] = tuple(
+    name
+    for name, info in Runtimes.model_fields.items()
+    if info.annotation == list[EngineMetrics]
+)
 
 
 class TempBands(BaseModel):
@@ -515,10 +589,12 @@ class NodeSnapshot(BaseModel):
         "holding GPU memory with no throughput, latency or queue-depth data "
         "reaching the dashboard, and nothing else says so — the node looks "
         "healthy because the parts being measured are healthy.\n\n"
-        "Only runtimes there is a collector FOR are reported. sglang, TGI and "
-        "ollama are deliberately excluded: with no collector to configure, "
-        "flagging them would produce a warning that can never be resolved, "
-        "which trains the reader to ignore the whole indicator.",
+        "Only runtimes there is a collector FOR are reported — llama.cpp, "
+        "vLLM and SGLang. Atlas, TGI and ollama are deliberately excluded: "
+        "with no collector to configure, flagging them would produce a warning "
+        "that can never be resolved, which trains the reader to ignore the "
+        "whole indicator. They are still classified as LLM runtimes, so their "
+        "memory is attributed to models rather than to `other gpu`.",
     )
 
     temp_bands: TempBands | None = Field(
@@ -552,8 +628,10 @@ class NodeSnapshot(BaseModel):
 
     @property
     def total_tokens_per_sec(self) -> float:
-        return sum(v.tokens_per_sec for v in self.runtimes.vllm) + sum(
-            r.tokens_per_sec for r in self.runtimes.llama_cpp
+        return (
+            sum(v.tokens_per_sec for v in self.runtimes.vllm)
+            + sum(s.tokens_per_sec for s in self.runtimes.sglang)
+            + sum(r.tokens_per_sec for r in self.runtimes.llama_cpp)
         )
 
 

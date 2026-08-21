@@ -429,22 +429,48 @@ groups:
   # ------------------------------------------------------------------- fabric
   - name: fabric
     rules:
-      # A GX10 has interfaces that are down as their NORMAL state — the unused
-      # ConnectX-7 f1 ports and wifi have never been up — so `up == 0` alone
-      # would alert forever on three of six interfaces.
+      # TWO FILTERS, answering two different questions.
       #
       # `max_over_time(...) == 1` means "this link has been up at some point in
       # the window", which distinguishes a link that FAILED from one that was
-      # never in service. No allowlist to maintain, and a newly cabled port
-      # starts being watched the moment it first comes up.
+      # never in service — the unused ports and wifi on a fresh node have never
+      # been up, and `up == 0` alone would alert forever on them. Nothing to
+      # maintain, and a newly cabled port starts being watched the moment it
+      # first comes up.
       #
-      # Consequence worth knowing: if a link stays down longer than the window,
-      # the alert resolves itself even though the link is still down. 7d is long
-      # enough that this only happens for a deliberate decommission, which is
-      # what silencing is for.
+      # `sparkdash_network_monitored` is the part that history cannot supply:
+      # INTENT. A port cabled to the switch as a test and then
+      # deliberately unplugged HAS been up, so it reads as a failure to the
+      # rule above and alerts indefinitely — observed 2026-08-21 on four ports
+      # across sparketa and sparkjr, once every 24h, because the dashboard caps
+      # silences at 24h precisely so a mute cannot outlive the memory of
+      # setting it. That cap's own reasoning names the fix: a permanently
+      # unwanted alert should have its target removed from CONFIGURATION. This
+      # is that configuration — an ignore list per node in cluster.yml.
+      #
+      # `unless ... == 0` RATHER THAN `and ... == 1`, and the difference is the
+      # failure mode. The flag only exists once every node runs an agent that
+      # exports it, and `and == 1` matches nothing while it is missing — so a
+      # node on a stale image, or a rules reload that lands before the rollout
+      # finishes, would silently lose link alerting altogether. Measured
+      # against live Prometheus 2026-08-21: `and == 1` returned 0 series where
+      # `unless == 0` returned the 4 that were genuinely down. Set subtraction
+      # removes only what is explicitly marked excluded, so an absent flag
+      # leaves today's behaviour exactly as it was. Noisy beats silent, which
+      # is the same reason the list excludes by name instead of selecting.
+      #
+      # `on (node, interface)` and not a bare `unless`: the agent's series
+      # carry `job` and `instance` too, and full-label matching would subtract
+      # nothing.
+      #
+      # Consequence worth knowing, unchanged: if a link stays down longer than
+      # the window, the alert resolves itself even though the link is still
+      # down. That is now the WEAKER of the two ways an alert stops, and the
+      # honest one is the config.
       - alert: NetworkLinkDown
         expr: >-
           sparkdash_network_up == 0
+          unless on (node, interface) sparkdash_network_monitored == 0
           and max_over_time(sparkdash_network_up[7d]) == 1
         for: 5m
         labels:
@@ -458,9 +484,15 @@ groups:
       # The clustered pair does distributed inference over RoCE, so a fabric
       # port dropping is the difference between a working cluster and a node
       # that has silently left it.
+      # ONE CABLE CARRIES BOTH, so this has to honour the same exclusion or
+      # unplugging a port simply trades NetworkLinkDown for RdmaPortDown.
+      # `sparkdash_rdma_port_monitored` is DERIVED by the agent from the netdev
+      # the RoCE device is paired with, so there is one list to maintain rather
+      # than two that can disagree.
       - alert: RdmaPortDown
         expr: >-
           sparkdash_rdma_port_active == 0
+          unless on (node, device, port) sparkdash_rdma_port_monitored == 0
           and max_over_time(sparkdash_rdma_port_active[7d]) == 1
         for: 5m
         labels:
@@ -475,10 +507,15 @@ groups:
       # Counters, so a rate: what matters is whether errors are still
       # accumulating, not the total since boot. A link can be up and still be
       # corrupting frames, which shows up as retransmits rather than an outage.
+      # Excluded interfaces are quiet here too. A port nobody watches for being
+      # DOWN is not a port anyone wants paged about marginal frames.
       - alert: NetworkErrorsRising
         expr: >-
-          rate(sparkdash_network_receive_errors_total[15m])
-          + rate(sparkdash_network_transmit_errors_total[15m]) > 0
+          (
+            rate(sparkdash_network_receive_errors_total[15m])
+            + rate(sparkdash_network_transmit_errors_total[15m])
+          ) > 0
+          unless on (node, interface) sparkdash_network_monitored == 0
         for: 15m
         labels:
           severity: warning
@@ -490,7 +527,9 @@ groups:
             negotiated rate long before it becomes an outage.
 
       - alert: RdmaErrorsRising
-        expr: rate(sparkdash_rdma_errors_total[15m]) > 0
+        expr: >-
+          rate(sparkdash_rdma_errors_total[15m]) > 0
+          unless on (node, device, port) sparkdash_rdma_port_monitored == 0
         for: 15m
         labels:
           severity: warning
@@ -596,7 +635,7 @@ groups:
       # is a fault however long it lasts, and letting it expire would blind
       # the dashboard to exactly the failure it exists to catch.
       - alert: PrometheusTargetScrapeFailing
-        expr: up{job!~"vllm"} == 0
+        expr: up{job!~"vllm|sglang"} == 0
         for: 15m
         labels:
           severity: warning
@@ -622,10 +661,14 @@ groups:
       # that being silent is that the FACT outlives the ALERT: the dashboard
       # keeps reporting a configured-but-absent target (see roadmap G3), so it
       # stops nagging without being forgotten.
+      #
+      # The job list is the ENGINES, and the two rules must stay complements of
+      # each other: a job in neither would never alert at all, and a job in
+      # both would alert twice with different ageing rules.
       - alert: InferenceTargetScrapeFailing
         expr: >-
-          up{job="vllm"} == 0
-          and max_over_time(up{job="vllm"}[24h]) == 1
+          up{job=~"vllm|sglang"} == 0
+          and max_over_time(up{job=~"vllm|sglang"}[24h]) == 1
         for: 15m
         labels:
           severity: warning

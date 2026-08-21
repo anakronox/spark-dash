@@ -13,16 +13,19 @@ from spark_dash_agent.config import Settings
 from spark_dash_agent.snapshot import (
     SnapshotBuilder,
     _point_psutil_at_host_proc,
+    apply_interface_policy,
     detect_unmonitored_runtimes,
     resolve_process_servers,
 )
 from spark_dash_common.models import (
+    EngineMetrics,
     HealthState,
     LlamaRouterMetrics,
     ModelState,
+    NetworkInterface,
     ProcessInfo,
+    RdmaPort,
     RouterModel,
-    VllmMetrics,
 )
 
 
@@ -121,7 +124,7 @@ class TestVllmAttribution:
         procs = resolve_process_servers(
             [self._engine()],
             [],
-            [VllmMetrics(model="qwen36-35b-heretic", server="192.168.50.61:8120")],
+            {"vllm": [EngineMetrics(model="qwen36-35b-heretic", server="192.168.50.61:8120")]},
         )
         assert procs[0].model == "qwen36-35b-heretic"
         assert procs[0].server == "192.168.50.61:8120"
@@ -133,10 +136,12 @@ class TestVllmAttribution:
         procs = resolve_process_servers(
             [self._engine(1), self._engine(2)],
             [],
-            [
-                VllmMetrics(model="a", server="h:8120"),
-                VllmMetrics(model="b", server="h:8121"),
-            ],
+            {
+                "vllm": [
+                    EngineMetrics(model="a", server="h:8120"),
+                    EngineMetrics(model="b", server="h:8121"),
+                ]
+            },
         )
         assert all(p.model is None and p.server is None for p in procs)
 
@@ -146,7 +151,7 @@ class TestVllmAttribution:
         procs = resolve_process_servers(
             [_proc("qwen36-35b")],
             [_router("http://a:8000", "a:8001", **{"qwen36-35b": ModelState.ACTIVE})],
-            [VllmMetrics(model="something-else", server="h:8120")],
+            {"vllm": [EngineMetrics(model="something-else", server="h:8120")]},
         )
         assert procs[0].model == "qwen36-35b"
         assert procs[0].server == "a:8001"
@@ -238,14 +243,28 @@ def test_health_is_assessed_from_collected_signals():
     assert snap.health in set(HealthState)
 
 
-def test_vllm_endpoints_parsed_from_comma_separated_env():
-    settings = Settings(vllm_urls="http://a:8000/metrics, http://b:8001/metrics ")
-    assert settings.vllm_endpoints == ["http://a:8000/metrics", "http://b:8001/metrics"]
+def test_engine_endpoints_parsed_from_comma_separated_env():
+    settings = Settings(
+        vllm_urls="http://a:8000/metrics, http://b:8001/metrics ",
+        sglang_urls="http://c:30000/metrics",
+    )
+    assert settings.engine_endpoints("vllm") == [
+        "http://a:8000/metrics",
+        "http://b:8001/metrics",
+    ]
+    assert settings.engine_endpoints("sglang") == ["http://c:30000/metrics"]
+
+
+def test_an_unknown_engine_has_no_endpoints_rather_than_raising():
+    """The agent can be older than the backend naming an engine to it. Nothing
+    configured is the honest answer; a crash on a node running a newer stack is
+    not."""
+    assert Settings().engine_endpoints("some-future-engine") == []
 
 
 def test_empty_vllm_urls_yields_no_endpoints():
-    assert Settings(vllm_urls="").vllm_endpoints == []
-    assert Settings(vllm_urls="  ,  ").vllm_endpoints == []
+    assert Settings(vllm_urls="").engine_endpoints("vllm") == []
+    assert Settings(vllm_urls="  ,  ").engine_endpoints("vllm") == []
 
 
 class TestNodeIdResolution:
@@ -359,13 +378,13 @@ class TestUnmonitoredRuntimes:
         holding GPU memory, with no throughput or queue data reaching the
         dashboard, and nothing said so."""
         gaps = detect_unmonitored_runtimes(
-            [self._proc("vllm")], llama_configured=True, vllm_configured=False
+            [self._proc("vllm")], configured={"llama.cpp"}
         )
         assert gaps == ["vllm"]
 
     def test_nothing_flagged_when_configured(self):
         gaps = detect_unmonitored_runtimes(
-            [self._proc("vllm")], llama_configured=False, vllm_configured=True
+            [self._proc("vllm")], configured={"vllm"}
         )
         assert gaps == []
 
@@ -374,34 +393,39 @@ class TestUnmonitoredRuntimes:
         gap warning — that would turn a transient scrape failure into a
         misconfiguration report."""
         gaps = detect_unmonitored_runtimes(
-            [self._proc("vllm")], llama_configured=False, vllm_configured=True
+            [self._proc("vllm")], configured={"vllm"}
         )
         assert gaps == []
 
     def test_runtimes_with_no_collector_are_not_flagged(self):
-        """sglang, TGI and ollama have nothing to configure, so flagging them
+        """Atlas, TGI and ollama have nothing to configure, so flagging them
         would produce a warning that can never be resolved — which teaches the
         reader to ignore the indicator entirely."""
         gaps = detect_unmonitored_runtimes(
-            [self._proc("sglang"), self._proc("ollama", pid=2)],
-            llama_configured=False,
-            vllm_configured=False,
+            [self._proc("atlas"), self._proc("ollama", pid=2)],
+            configured=set(),
         )
         assert gaps == []
+
+    def test_sglang_is_flagged_now_that_it_has_a_collector(self):
+        """It was excluded for exactly as long as there was nothing to
+        configure. There is now, so an SGLang server running with no endpoint
+        configured is a resolvable gap rather than noise."""
+        gaps = detect_unmonitored_runtimes([self._proc("sglang")], configured=set())
+        assert gaps == ["sglang"]
 
     def test_non_llm_workloads_are_irrelevant(self):
         """ComfyUI holds GPU memory but is not an inference server; there is no
         endpoint to configure for it."""
         gaps = detect_unmonitored_runtimes(
-            [self._proc("comfyui")], llama_configured=False, vllm_configured=False
+            [self._proc("comfyui")], configured=set()
         )
         assert gaps == []
 
     def test_both_runtimes_unconfigured(self):
         gaps = detect_unmonitored_runtimes(
             [self._proc("vllm"), self._proc("llama.cpp", pid=2)],
-            llama_configured=False,
-            vllm_configured=False,
+            configured=set(),
         )
         assert gaps == ["llama.cpp", "vllm"]
 
@@ -410,13 +434,12 @@ class TestUnmonitoredRuntimes:
         not per process, so this must not report the same thing twice."""
         gaps = detect_unmonitored_runtimes(
             [self._proc("vllm", 1), self._proc("vllm", 2), self._proc("vllm", 3)],
-            llama_configured=False,
-            vllm_configured=False,
+            configured=set(),
         )
         assert gaps == ["vllm"]
 
     def test_idle_node_reports_nothing(self):
-        assert detect_unmonitored_runtimes([], llama_configured=False, vllm_configured=False) == []
+        assert detect_unmonitored_runtimes([], configured=set()) == []
 
 
 class TestGapDetectionUnderCentralConfig:
@@ -429,22 +452,115 @@ class TestGapDetectionUnderCentralConfig:
     """
 
     def test_central_config_counts_as_configured(self):
-        from spark_dash_agent.remote_config import RuntimeConfig
+        from spark_dash_agent.remote_config import NodeConfig
 
         builder = SnapshotBuilder(Settings(node_id="n1", llama_router_urls=""))
-        builder._applied = RuntimeConfig(llama_routers=["http://r:8001"])
+        builder._applied = NodeConfig(llama_routers=["http://r:8001"])
 
         procs = [ProcessInfo(pid=1, name="llama-server", gpu_mem_bytes=1, runtime="llama.cpp")]
         gaps = detect_unmonitored_runtimes(
-            procs,
-            llama_configured=bool(builder._applied.llama_routers),
-            vllm_configured=bool(builder._applied.vllm),
+            procs, configured=builder._configured_runtimes()
         )
         assert gaps == [], "central-configured routers must not read as unmonitored"
+
+    def test_central_config_covers_every_engine(self):
+        """The same rule, for an engine the deployment gained later: an SGLang
+        endpoint that arrived from cluster.yml must count as configured even
+        though the node's own env names nothing."""
+        from spark_dash_agent.remote_config import NodeConfig
+
+        builder = SnapshotBuilder(Settings(node_id="n1"))
+        builder._applied = NodeConfig(
+            engines={"sglang": ["http://s:30000/metrics"]}
+        )
+        assert builder._configured_runtimes() == {"sglang"}
 
     def test_env_still_counts_when_central_is_absent(self):
         """A node not yet migrated keeps working off its environment."""
         procs = [ProcessInfo(pid=1, name="llama-server", gpu_mem_bytes=1, runtime="llama.cpp")]
         assert detect_unmonitored_runtimes(
-            procs, llama_configured=True, vllm_configured=False
+            procs, configured={"llama.cpp"}
         ) == []
+
+
+class TestInterfacePolicy:
+    """Which interfaces alerting watches.
+
+    The failure this exists for: two 200Gb ports per node were cabled to a
+    switch as a test and then deliberately unplugged. Having been up, they read
+    as links that FAILED to the 7-day heuristic and alerted indefinitely — four
+    NetworkLinkDown plus four RdmaPortDown across two nodes, measured
+    2026-08-21. Nothing in the history distinguishes "I unplugged this" from
+    "this died", so intent has to be configured.
+    """
+
+    def _iface(self, name):
+        return NetworkInterface(name=name, up=False)
+
+    def _port(self, device, interface):
+        return RdmaPort(device=device, port=1, interface=interface)
+
+    def test_named_interfaces_are_excluded(self):
+        network = [self._iface("enP2p1s0f0np0"), self._iface("enP2p1s0f1np1")]
+        apply_interface_policy(network, [], {"enP2p1s0f1np1"})
+        assert [i.monitored for i in network] == [True, False]
+
+    def test_everything_is_watched_by_default(self):
+        """Excluded by name, never selected by name: an interface nobody has
+        configured still alerts, so forgetting the list is noisy rather than
+        silent."""
+        network = [self._iface("enP7s7"), self._iface("wlP9s9")]
+        apply_interface_policy(network, [], set())
+        assert all(i.monitored for i in network)
+
+    def test_excluded_interfaces_are_still_reported(self):
+        """Marked, not filtered. An interface that vanished from the panel
+        would be worse than one that is quiet in it — and its link history has
+        to keep accumulating for the day someone plugs it back in."""
+        network = [self._iface("enP2p1s0f1np1")]
+        apply_interface_policy(network, [], {"enP2p1s0f1np1"})
+        assert len(network) == 1
+        assert network[0].name == "enP2p1s0f1np1"
+
+    def test_a_roce_port_inherits_its_netdevs_policy(self):
+        """One cable carries both. Excluding the interface without excluding
+        its port would trade NetworkLinkDown for RdmaPortDown and change
+        nothing an operator would notice — which is half of what was firing."""
+        network = [self._iface("enP2p1s0f1np1")]
+        rdma = [
+            self._port("roceP2p1s0f0", "enP2p1s0f0np0"),
+            self._port("roceP2p1s0f1", "enP2p1s0f1np1"),
+        ]
+        apply_interface_policy(network, rdma, {"enP2p1s0f1np1"})
+        assert [p.monitored for p in rdma] == [True, False]
+
+    def test_an_unpaired_roce_port_stays_monitored(self):
+        """`interface` is empty when the RoCE device has no netdev under its
+        PCI function. Defaulting to quiet there would hide a fabric port nobody
+        chose to hide."""
+        rdma = [self._port("roceX", "")]
+        apply_interface_policy([], rdma, {"enP2p1s0f1np1"})
+        assert rdma[0].monitored is True
+
+    def test_a_name_matching_nothing_is_not_an_error(self):
+        """Ordinary during a rename, or while a NIC is absent. The config keeps
+        the entry so the exclusion survives the interface coming back."""
+        network = [self._iface("enP7s7")]
+        apply_interface_policy(network, [], {"enP9s9-gone"})
+        assert network[0].monitored is True
+
+
+class TestIgnoredInterfacesComeFromCentralConfig:
+    def test_central_config_supplies_the_list(self):
+        from spark_dash_agent.remote_config import NodeConfig
+
+        builder = SnapshotBuilder(Settings(node_id="n1"))
+        builder._applied = NodeConfig(ignored_interfaces=["enP2p1s0f1np1"])
+        assert builder._ignored_interfaces() == {"enP2p1s0f1np1"}
+
+    def test_an_unconfigured_node_watches_everything(self):
+        """Central-only, deliberately: a node not in cluster.yml keeps the
+        historical behaviour, and the node stack stays identical everywhere
+        rather than gaining a per-node variable for a decision the dashboard
+        owns."""
+        assert SnapshotBuilder(Settings(node_id="n1"))._ignored_interfaces() == set()

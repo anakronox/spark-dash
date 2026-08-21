@@ -121,6 +121,11 @@ def infer_runtime(name: str, command: str = "", cwd: str = "") -> str | None:
     haystack = f"{name} {command} {cwd}".lower()
 
     # --- LLM inference runtimes ---
+    # Atlas is matched on the executable name alone rather than the haystack —
+    # see `_looks_like_atlas` — so it is checked first without risk of stealing
+    # a process that belongs to another runtime.
+    if _looks_like_atlas(name, command):
+        return "atlas"
     # vLLM is checked before llama.cpp: a vLLM process serving a Llama model
     # has "llama" in its argv and would otherwise be misattributed.
     if "vllm" in haystack:
@@ -273,6 +278,26 @@ def infer_model(command: str) -> str | None:
     return None
 
 
+def _looks_like_atlas(name: str, command: str) -> bool:
+    """Identify Atlas, which ships as a single self-contained binary.
+
+    Matched against the executable NAME only — never the argv+cwd haystack the
+    other runtimes use. "atlas" is an ordinary English word that turns up in
+    repository paths, dataset names and model names, so a bare substring match
+    over a full command line is precisely the mislabeling `_looks_like_comfyui`
+    exists to avoid.
+
+    argv[0]'s basename is checked alongside the process name because a binary
+    invoked by absolute path still reports its own name, but a wrapper (Atlas
+    is launched through `sparkrun`) may not.
+    """
+    candidates = [name.strip().lower()]
+    argv0 = command.strip().split(maxsplit=1)
+    if argv0:
+        candidates.append(argv0[0].rsplit("/", 1)[-1].lower())
+    return any(c == "atlas" or c.startswith(("atlas-", "atlas_")) for c in candidates)
+
+
 def _looks_like_comfyui(haystack: str) -> bool:
     """Identify ComfyUI by its distinctive CLI flags.
 
@@ -285,7 +310,7 @@ def _looks_like_comfyui(haystack: str) -> bool:
 
 # Runtimes that serve LLM inference, as opposed to other GPU consumers. Lets
 # the UI separate "what's serving models" from "what else is eating the pool".
-LLM_RUNTIMES = frozenset({"vllm", "llama.cpp", "sglang", "tgi", "ollama"})
+LLM_RUNTIMES = frozenset({"vllm", "llama.cpp", "sglang", "atlas", "tgi", "ollama"})
 
 
 class GpuCollector(Collector[GpuMetrics]):

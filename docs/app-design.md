@@ -55,6 +55,13 @@ WebSocket is same-origin. Not worth a separate nginx service at this scale.
 | `GET /api/nodes` | Node inventory + liveness/last-seen |
 | `GET /api/cluster/summary` | Aggregate GPU utilization, free capacity, total tokens/sec |
 | `GET /api/models` | "What's running where": node × runtime × model × status |
+
+A field per engine under `runtimes`, even though vLLM and SGLang carry the same
+shape. The alternative — one `engines` list with a `runtime` discriminator —
+would rename the `sparkdash_vllm_*` metric family that the alert rules and every
+recorded series are written against. The collector is shared (one spec of metric
+names per engine); the wire is per-engine. `kv_cache_pct` is null for an engine
+that reports no occupancy — see [metrics](metrics.md#sglang-per-instance--same-shape-different-names).
 | `GET /api/history?metric=&node=&from=&to=&step=` | Time-series for trend charts; thin PromQL wrapper |
 | `GET /health` | Liveness + self-assessment, for the external UptimeKuma check |
 
@@ -101,7 +108,9 @@ Snapshot shape (illustrative):
       "llama_cpp": {"loaded_models": ["qwen3-32b"], "slots_used": 2, "slots_total": 4,
                     "tokens_per_sec": 41.2},
       "vllm": [{"model": "llama-3.3-70b", "running": 1, "waiting": 0,
-                "kv_cache_pct": 0.63, "tokens_per_sec": 88.5}]
+                "kv_cache_pct": 0.63, "tokens_per_sec": 88.5}],
+      "sglang": [{"model": "deepseek-v3", "running": 2, "waiting": 5,
+                  "kv_cache_pct": null, "tokens_per_sec": 137.5}]
     }
   }]
 }

@@ -121,6 +121,39 @@ Key metrics to surface on the dashboard:
 - GPU cache block eviction / prefix-cache hit rate, if we want cache-efficiency
   panels later
 
+### SGLang (per instance) — same shape, different names
+
+SGLang also ships a native Prometheus endpoint, so it is scraped directly and
+collected by the same code path as vLLM. The only differences are names.
+
+- Endpoint: `http://<host>:<port>/metrics`, **only with `--enable-metrics`**.
+  Without the flag there is nothing to scrape, and the instance reports as
+  configured-but-unreachable — the right answer, and a confusing one if the
+  missing flag is what you are looking for.
+- Metric prefix: `sglang:*`; the examples in its docs use port 30000.
+
+| SGLang | maps to | vLLM's name for it |
+|---|---|---|
+| `sglang:num_running_reqs` | requests running | `vllm:num_requests_running` |
+| `sglang:num_queue_reqs` | requests waiting | `vllm:num_requests_waiting` |
+| `sglang:prompt_tokens_total` | → tokens/sec | `vllm:prompt_tokens_total` |
+| `sglang:generation_tokens_total` | → tokens/sec | `vllm:generation_tokens_total` |
+| `sglang:cache_hit_rate` | **nothing — see below** | — |
+
+**`sglang:cache_hit_rate` is NOT `vllm:kv_cache_usage_perc`.** One is the
+fraction of prompt tokens served from the *prefix cache* — how much work was
+skipped; the other is how full the KV cache is. Same 0-1 shape, different
+question. Rendered in the KV column it would show a number that reads as
+occupancy: 93% prefix hits is a node doing well, 93% occupancy is a node about
+to evict. So the KV cell is **empty** on an SGLang row. `sglang:token_usage` is
+the closer analogue and is a candidate once it can be checked against a running
+server.
+
+**`sglang:gen_throughput` is not used either**, for the same class of reason:
+it is instantaneous *decode* throughput, while every other runtime contributes
+prompt+generation over the poll interval, and the node card sums them. It is
+the fallback only when the token counters are absent from a scrape.
+
 ## 3. llama.cpp (router mode, per node)
 
 `llama-server` exposes a Prometheus-compatible endpoint via the `--metrics` flag.

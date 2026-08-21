@@ -15,18 +15,20 @@ from spark_dash_agent.exporter import SnapshotMetricsCollector
 from spark_dash_common.models import (
     ClockState,
     CpuMetrics,
+    EngineMetrics,
     GpuMetrics,
     HealthState,
     LlamaRouterMetrics,
     MemoryMetrics,
     ModelState,
+    NetworkInterface,
     NodeSnapshot,
     ProcessInfo,
     PsiMetrics,
     PsiState,
+    RdmaPort,
     RouterModel,
     Runtimes,
-    VllmMetrics,
 )
 
 
@@ -84,7 +86,7 @@ def make_snapshot(**overrides) -> NodeSnapshot:
                     tokens_per_sec=41.2,
                 )
             ],
-            vllm=[VllmMetrics(model="llama-3.3-70b", tokens_per_sec=88.5, kv_cache_pct=63.0)],
+            vllm=[EngineMetrics(model="llama-3.3-70b", tokens_per_sec=88.5, kv_cache_pct=63.0)],
         ),
     )
     defaults.update(overrides)
@@ -216,7 +218,7 @@ def test_endpoint_reachable_exports_healthy_endpoints_too():
                         endpoint="http://h:8002", name="lab", reachable=False
                     ),
                 ],
-                vllm=[VllmMetrics(model="h:8000", server="h:8000", reachable=False)],
+                vllm=[EngineMetrics(model="h:8000", server="h:8000", reachable=False)],
             )
         )
     )
@@ -308,6 +310,32 @@ def test_runtime_metrics_are_labeled_by_model():
     assert 'sparkdash_llama_router_max_instances{node="gx10-1",router="router-a:8080"} 3.0' in text
 
 
+def test_each_engine_gets_its_own_metric_family():
+    """A family per engine, not one family with a `runtime` label. The vLLM
+    names are what alert rules and recorded history are written against, so
+    renaming them to add a second engine would orphan stored series."""
+    snap = make_snapshot(
+        runtimes=Runtimes(
+            vllm=[EngineMetrics(model="llama-3.3-70b", tokens_per_sec=88.5)],
+            sglang=[EngineMetrics(model="deepseek-v3", tokens_per_sec=137.5, requests_waiting=5)],
+        )
+    )
+    text = render(snap)
+    assert 'sparkdash_vllm_tokens_per_second{model="llama-3.3-70b",node="gx10-1"} 88.5' in text
+    assert 'sparkdash_sglang_tokens_per_second{model="deepseek-v3",node="gx10-1"} 137.5' in text
+    assert 'sparkdash_sglang_requests_waiting{model="deepseek-v3",node="gx10-1"} 5.0' in text
+
+
+def test_engine_reporting_no_kv_occupancy_emits_no_kv_series():
+    """An SGLang row leaves KV empty rather than borrowing `cache_hit_rate`,
+    which answers a different question. A series of zeroes would be worse than
+    the absence — it would chart as an empty cache."""
+    snap = make_snapshot(
+        runtimes=Runtimes(sglang=[EngineMetrics(model="deepseek-v3", tokens_per_sec=1.0)])
+    )
+    assert "sparkdash_sglang_kv_cache_percent{" not in render(snap)
+
+
 def test_model_state_renders_one_series_per_state():
     text = render(make_snapshot())
     assert (
@@ -373,6 +401,37 @@ def test_unreachable_router_is_reported_as_down():
     )
     text = render(snap)
     assert 'sparkdash_llama_router_up{node="gx10-1",router="dead:8080"} 0.0' in text
+
+
+def test_monitored_is_a_separate_series_not_a_label():
+    """A label on `network_up` would split that series' history at the deploy
+    — the same reason a node id is chosen once and never changed — and the
+    link-down history of a port is exactly what you keep when you stop alerting
+    on it."""
+    snap = make_snapshot(
+        network=[
+            NetworkInterface(name="enP2p1s0f0np0", up=True),
+            NetworkInterface(name="enP2p1s0f1np1", up=False, monitored=False),
+        ]
+    )
+    text = render(snap)
+    assert 'sparkdash_network_monitored{interface="enP2p1s0f0np0",node="gx10-1"} 1.0' in text
+    assert 'sparkdash_network_monitored{interface="enP2p1s0f1np1",node="gx10-1"} 0.0' in text
+    # Still reported, and still carrying its own up/down series.
+    assert 'sparkdash_network_up{interface="enP2p1s0f1np1",node="gx10-1"} 0.0' in text
+    assert "monitored=" not in text
+
+
+def test_rdma_port_monitored_is_exported_per_port():
+    snap = make_snapshot(
+        rdma=[
+            RdmaPort(device="roceP2p1s0f0", port=1, state="ACTIVE", interface="a"),
+            RdmaPort(device="roceP2p1s0f1", port=1, state="DOWN", interface="b", monitored=False),
+        ]
+    )
+    text = render(snap)
+    assert 'sparkdash_rdma_port_monitored{device="roceP2p1s0f0",node="gx10-1",port="1"} 1.0' in text
+    assert 'sparkdash_rdma_port_monitored{device="roceP2p1s0f1",node="gx10-1",port="1"} 0.0' in text
 
 
 def test_metrics_content_type_matches_the_generator(client):

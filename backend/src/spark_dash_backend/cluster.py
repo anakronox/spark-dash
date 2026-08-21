@@ -27,6 +27,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
+from spark_dash_common.models import ENGINE_RUNTIMES
 
 log = logging.getLogger(__name__)
 
@@ -48,16 +49,54 @@ class NodeRuntimes:
     """What a node serves. Empty is normal — a node may run neither."""
 
     llama_routers: list[RouterConfig] = field(default_factory=list)
-    vllm: list[str] = field(default_factory=list)
+    #: runtime name -> /metrics endpoints, for the engines that are just a
+    #: list of endpoints (`ENGINE_RUNTIMES`). A mapping rather than a field
+    #: per engine so parsing, rendering, serving and retiring an endpoint are
+    #: each written once — the per-engine spelling stays in the YAML and in
+    #: the snapshot, where it is what an operator and an alert rule read.
+    engines: dict[str, list[str]] = field(default_factory=dict)
+
+    @property
+    def vllm(self) -> list[str]:
+        """The engine every existing deployment already has."""
+        return self.engines.get("vllm", [])
 
     def as_dict(self) -> dict:
+        """What the agent is served. Every engine key is present, empty
+        included: an absent key and an empty list would otherwise be
+        indistinguishable to an agent deciding whether an engine is configured
+        at all, and that distinction is what the unmonitored-runtime warning
+        rests on."""
         return {
             "llama_routers": [
                 {"url": r.url, "scrape_metrics": r.scrape_metrics}
                 for r in self.llama_routers
             ],
-            "vllm": list(self.vllm),
+            **{runtime: list(self.engines.get(runtime, [])) for runtime in ENGINE_RUNTIMES},
         }
+
+
+@dataclass(frozen=True)
+class InterfacePolicy:
+    """Which of a node's network interfaces are excluded from alerting.
+
+    AN IGNORE LIST, not an allowlist. Every interface is watched unless named
+    here, so an interface nobody has configured still alerts — forgetting to
+    maintain this makes the dashboard noisy, never silent, which is the safe
+    direction for a system whose recurring failure mode is silence. It also
+    keeps A4's property that a newly cabled port is watched from the moment it
+    comes up, with nothing to remember.
+
+    Names are matched exactly against what the node reports. A name that
+    matches nothing is kept rather than dropped: an interface can be absent
+    because the node is down or the NIC was renamed, and silently discarding
+    the entry would quietly re-arm an alert someone deliberately turned off.
+    """
+
+    ignore: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict:
+        return {"ignore": list(self.ignore)}
 
 
 @dataclass(frozen=True)
@@ -70,6 +109,7 @@ class ClusterNode:
     agent_port: int = 9500
     node_exporter_port: int = 9100
     runtimes: NodeRuntimes = field(default_factory=NodeRuntimes)
+    interfaces: InterfacePolicy = field(default_factory=InterfacePolicy)
 
 
 class ClusterConfigError(ValueError):
@@ -134,17 +174,47 @@ def parse_runtimes(raw: object, host: str) -> NodeRuntimes:
         scrape = bool(item.get("scrape_metrics")) if isinstance(item, dict) else False
         routers.append(RouterConfig(url=url.rstrip("/"), scrape_metrics=scrape))
 
-    vllm: list[str] = []
-    for item in raw.get("vllm") or []:
-        # vLLM's Prometheus endpoint is conventionally /metrics, so the port
-        # shorthand appends it rather than making every entry spell it out.
-        url = _resolve(item, host, default_path="/metrics")
-        if not url:
-            log.warning("skipping unparseable vllm entry: %r", item)
-            continue
-        vllm.append(url)
+    engines: dict[str, list[str]] = {}
+    for runtime in ENGINE_RUNTIMES:
+        urls: list[str] = []
+        for item in raw.get(runtime) or []:
+            # Both engines expose Prometheus on /metrics conventionally, so
+            # the port shorthand appends it rather than making every entry
+            # spell it out.
+            url = _resolve(item, host, default_path="/metrics")
+            if not url:
+                log.warning("skipping unparseable %s entry: %r", runtime, item)
+                continue
+            urls.append(url)
+        if urls:
+            engines[runtime] = urls
 
-    return NodeRuntimes(llama_routers=routers, vllm=vllm)
+    return NodeRuntimes(llama_routers=routers, engines=engines)
+
+
+def parse_interfaces(raw: object) -> InterfacePolicy:
+    """Parse `interfaces: {ignore: [...]}`.
+
+    Tolerant of a bare list — `interfaces: [enP2p1s0f1np1]` is what someone
+    writes from memory, and reading it as the ignore list is the only sensible
+    meaning it could have. Anything else yields the empty policy, which watches
+    everything: a malformed entry must not silently disarm alerting.
+    """
+    if isinstance(raw, dict):
+        entries = raw.get("ignore")
+    elif isinstance(raw, list):
+        entries = raw
+    else:
+        if raw is not None:
+            log.warning("ignoring unparseable `interfaces:` block: %r", raw)
+        return InterfacePolicy()
+
+    names = []
+    for item in entries or []:
+        name = str(item).strip()
+        if name:
+            names.append(name)
+    return InterfacePolicy(ignore=names)
 
 
 def parse_cluster(text: str) -> list[ClusterNode]:
@@ -207,6 +277,7 @@ def parse_cluster(text: str) -> list[ClusterNode]:
                 agent_port=int(entry.get("agent_port") or 9500),
                 node_exporter_port=int(entry.get("node_exporter_port") or 9100),
                 runtimes=parse_runtimes(entry.get("runtimes"), host),
+                interfaces=parse_interfaces(entry.get("interfaces")),
             )
         )
 
@@ -295,11 +366,15 @@ def dump_cluster(nodes: list[ClusterNode]) -> str:
             routers.append(item)
         if routers:
             runtimes["llama_routers"] = routers
-        vllm = [_own_port(u, n.host, "/metrics") or u for u in n.runtimes.vllm]
-        if vllm:
-            runtimes["vllm"] = vllm
+        for runtime in ENGINE_RUNTIMES:
+            urls = n.runtimes.engines.get(runtime) or []
+            entries = [_own_port(u, n.host, "/metrics") or u for u in urls]
+            if entries:
+                runtimes[runtime] = entries
         if runtimes:
             entry["runtimes"] = runtimes
+        if n.interfaces.ignore:
+            entry["interfaces"] = {"ignore": list(n.interfaces.ignore)}
         out.append(entry)
 
     body = yaml.safe_dump({"nodes": out}, default_flow_style=False, sort_keys=False)

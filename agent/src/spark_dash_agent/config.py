@@ -69,8 +69,12 @@ class Settings(BaseSettings):
     # /props; only per-model throughput/KV-cache detail is withheld.
     llama_metrics_routers: str = ""
 
-    # Comma-separated vLLM /metrics endpoints on this node.
+    # Comma-separated /metrics endpoints on this node, per engine.
+    #
+    # The env fallback for a node not yet managed centrally. Both are read
+    # through `engine_endpoints`, so nothing downstream names an engine twice.
     vllm_urls: str = ""
+    sglang_urls: str = ""
 
     # Where to fetch this node's runtime config from.
     #
@@ -152,9 +156,19 @@ class Settings(BaseSettings):
         """Explicit CPU override, or None to derive from the hardware."""
         return _override(self.cpu_temp_warning_c, self.cpu_temp_critical_c)
 
-    @property
-    def vllm_endpoints(self) -> list[str]:
-        return _split(self.vllm_urls)
+    def engine_endpoints(self, runtime: str) -> list[str]:
+        """Configured endpoints for one engine, by runtime name.
+
+        One accessor rather than a property per engine, so the settings are
+        addressable by the same key the collectors, the snapshot and the
+        exporter use — adding an engine is a spec plus a setting rather than an
+        edit in each of them.
+
+        An unknown runtime yields no endpoints rather than raising: the agent
+        may be older than the backend telling it about an engine, and the
+        honest answer there is "nothing configured", not a crash.
+        """
+        return _split(getattr(self, f"{runtime.replace('.', '_')}_urls", ""))
 
 
 def _read_host_hostname(hostname_path: Path) -> str:

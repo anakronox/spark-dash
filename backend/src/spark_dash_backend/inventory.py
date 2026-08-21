@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from spark_dash_common.models import ENGINE_RUNTIMES
 
 from spark_dash_backend.cluster import ClusterConfigError, authority, load_cluster
 
@@ -265,12 +266,17 @@ def render_file_sd(nodes: list[Node], *, port_of, header: str) -> str:
     return f"{header}\n{body}"
 
 
-def render_vllm_file_sd(cluster_nodes, *, header: str) -> str:
-    """Render every configured vLLM endpoint as Prometheus `file_sd` YAML.
+def render_engine_file_sd(cluster_nodes, runtime: str, *, header: str) -> str:
+    """Render one engine's configured endpoints as Prometheus `file_sd` YAML.
 
-    ONE ENTRY PER ENDPOINT, not per node: a node may serve several vLLM
-    instances, which is why this cannot reuse `render_file_sd` — that renders
-    one target per node.
+    ONE ENTRY PER ENDPOINT, not per node: a node may serve several instances,
+    which is why this cannot reuse `render_file_sd` — that renders one target
+    per node.
+
+    One FILE per engine, matching the one scrape job per engine in
+    prometheus.yml. Pooling them would put targets that expose different
+    metric names behind a single `job` label, and every rule and query that
+    selects on the job would then have to know which is which.
 
     WHY THIS IS GENERATED AT ALL. It was hand-maintained in
     `config/vllm-targets.yml`, which made cluster.yml and that file two
@@ -285,7 +291,7 @@ def render_vllm_file_sd(cluster_nodes, *, header: str) -> str:
     """
     entries = []
     for node in cluster_nodes:
-        for url in node.runtimes.vllm:
+        for url in node.runtimes.engines.get(runtime) or []:
             labels = {"node": node.node_id}
             if node.cluster:
                 labels["cluster"] = node.cluster
@@ -337,9 +343,12 @@ def write_prometheus_targets(
     }
     # Only when the cluster file is the source. Under SPARK_NODES there are no
     # runtimes to render, and writing an empty list would silently retire every
-    # vLLM target the moment someone fell back to env.
+    # engine target the moment someone fell back to env.
     if cluster_nodes is not None:
-        files["vllm.yml"] = render_vllm_file_sd(cluster_nodes, header=header)
+        for runtime in ENGINE_RUNTIMES:
+            files[f"{runtime}.yml"] = render_engine_file_sd(
+                cluster_nodes, runtime, header=header
+            )
 
     changed = False
     failures: list[str] = []

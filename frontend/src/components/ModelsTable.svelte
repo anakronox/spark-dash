@@ -20,6 +20,7 @@
   import { ColumnView } from '../lib/columns.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
   import type { NodeSnapshot, ModelState } from '../lib/types';
+  import { engines } from '../lib/types';
 
   interface Props {
     nodes: NodeSnapshot[];
@@ -128,28 +129,31 @@
           });
         }
       }
-      for (const v of node.runtimes.vllm) {
-        out.push({
-          key: `${node.node_id}/vllm/${v.model}`,
-          node: node.node_id,
-          runtime: 'vllm',
-          // vLLM has no router in front of it, so its own endpoint is where
-          // the model is served from. Showing a dash here made it look like
-          // missing data rather than a different topology.
-          server: v.server || '—',
-          model: v.model,
-          state: 'active',
-          rawStatus: '',
-          tokensPerSec: v.tokens_per_sec,
-          kvCachePct: v.kv_cache_pct,
-          running: v.requests_running,
-          waiting: v.requests_waiting,
-          // vLLM exposes no equivalent of llama.cpp's `meta`.
-          sizeBytes: null,
-          nParams: null,
-          quantization: null,
-          contextLength: null,
-        });
+      for (const [runtime, instances] of engines(node.runtimes)) {
+        for (const v of instances) {
+          out.push({
+            key: `${node.node_id}/${runtime}/${v.model}`,
+            node: node.node_id,
+            runtime,
+            // Nothing fronts these engines, so an instance's own endpoint is
+            // where the model is served from. Showing a dash here made it look
+            // like missing data rather than a different topology.
+            server: v.server || '—',
+            model: v.model,
+            state: 'active',
+            rawStatus: '',
+            tokensPerSec: v.tokens_per_sec,
+            // Null on an SGLang row, deliberately — see EngineMetrics.
+            kvCachePct: v.kv_cache_pct,
+            running: v.requests_running,
+            waiting: v.requests_waiting,
+            // Neither engine exposes an equivalent of llama.cpp's `meta`.
+            sizeBytes: null,
+            nParams: null,
+            quantization: null,
+            contextLength: null,
+          });
+        }
       }
     }
     // Active first: what's serving right now is what you came to see.

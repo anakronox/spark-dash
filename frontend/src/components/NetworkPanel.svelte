@@ -33,6 +33,7 @@
     node: string;
     name: string;
     up: boolean;
+    monitored: boolean;
     speedMbps: number | null;
     rx: number;
     tx: number;
@@ -45,6 +46,7 @@
     node: string;
     device: string;
     port: number;
+    monitored: boolean;
     state: string;
     linkLayer: string;
     rate: string;
@@ -62,6 +64,9 @@
         node: n.node_id,
         name: i.name,
         up: i.up,
+        /* Defaulted true for a snapshot from an agent that predates the flag:
+           an older agent watches everything, which is what the field means. */
+        monitored: i.monitored ?? true,
         speedMbps: i.speed_mbps,
         rx: i.rx_bytes_per_sec,
         tx: i.tx_bytes_per_sec,
@@ -99,6 +104,7 @@
         node: n.node_id,
         device: p.device,
         port: p.port,
+        monitored: p.monitored ?? true,
         state: p.state,
         linkLayer: p.link_layer,
         rate: p.rate,
@@ -235,6 +241,15 @@
   $effect(() => dropSortWhenHidden(rdmaView, (k) => rdmaCols.isVisible(k)));
   $effect(() => dropSortWhenHidden(ifaceView, (k) => ifaceCols.isVisible(k)));
 
+  /** green when up, red when a WATCHED link is down, muted when a link nobody
+   *  watches is down. Three states because "down" means two different things
+   *  once exclusions exist, and rendering them alike is what made a real
+   *  failure the quietest row in the table. */
+  function linkTone(i: { up: boolean; monitored: boolean }): 'up' | 'bad' | 'quiet' {
+    if (i.up) return 'up';
+    return i.monitored ? 'bad' : 'quiet';
+  }
+
   const rdmaShown = $derived(rdmaView.slice(rdma));
   const ifacesShown = $derived(ifaceView.slice(interfaces));
 </script>
@@ -244,7 +259,7 @@
     <td class="name">{p.device}:{p.port}</td>
   {:else if c.key === 'state'}
     <td>
-      <span class="state" data-active={p.active}>
+      <span class="state" data-link={p.active ? 'up' : p.monitored ? 'bad' : 'quiet'}>
         <span aria-hidden="true">{p.active ? '●' : '○'}</span>
         {p.state || 'unknown'}
       </span>
@@ -272,10 +287,20 @@
 {#snippet ifaceCell(c: ColumnDef, i: IfaceRow)}
   {#if c.key === 'name'}
     <td class="name">
-      <span class="state" data-active={i.up}>
+      <!-- COLOUR IS THE LINK, the tag is whether anyone is watching.
+           Down-and-watched is `bad`, not muted: before this, a failed link
+           rendered in the same grey as an unused port, so the most alarming
+           row in the table was also its quietest. Down-and-excluded stays
+           muted, because that one really is unremarkable. -->
+      <span class="state" data-link={linkTone(i)}>
         <span aria-hidden="true">{i.up ? '●' : '○'}</span>
         {i.name}
       </span>
+      {#if !i.monitored}
+        <span class="tag" title="Excluded from alerting in this node's config">
+          not monitored
+        </span>
+      {/if}
     </td>
   {:else if c.key === 'node'}
     <td class="dim">{i.node}</td>
@@ -483,12 +508,33 @@
     gap: 6px;
   }
 
-  .state[data-active='true'] {
+  .state[data-link='up'] {
     color: var(--good);
   }
 
-  .state[data-active='false'] {
+  /* A watched link that is down is a fault, and reads as one. Before this it
+     rendered in the same muted ink as an unused port. */
+  .state[data-link='bad'] {
+    color: var(--critical);
+  }
+
+  /* A link nobody watches, down, is exactly as unremarkable as it looks. */
+  .state[data-link='quiet'] {
     color: var(--ink-muted);
+  }
+
+  /* Sits beside the name rather than taking a column of its own: it is true of
+     a minority of rows, and a column would spend width on emptiness. */
+  .tag {
+    margin-left: 6px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 1px 5px;
+    border-radius: var(--radius);
+    border: 1px solid var(--rule);
+    color: var(--ink-muted);
+    white-space: nowrap;
   }
 
   /* RESERVED WIDTHS, so a rising number cannot resize its own column.

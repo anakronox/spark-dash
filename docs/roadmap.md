@@ -2854,9 +2854,9 @@ that mould is nearly free, while a genuinely new data palette is not.
 **Order: U1, U2, then U3.** U1 makes the rest checkable, U2 is the highest
 value for the least risk, U3 is the one that needs care.
 
-### V — More inference runtimes: SGLang, and Atlas
+### V — More inference runtimes: SGLang, and Atlas — **V1/V2a/V3 shipped 2026-08-21**
 
-Planned 2026-08-19. Today the agent collects from exactly two engines,
+Planned 2026-08-19. Then the agent collected from exactly two engines,
 `COLLECTIBLE_RUNTIMES = {"llama.cpp", "vllm"}`. Both of the engines below are
 launched by [Sparkrun](https://forums.developer.nvidia.com/t/sparkrun-central-command-with-tab-completion-for-launching-inference-on-spark-clusters/360832),
 which runs vLLM, SGLang and llama.cpp solo or clustered on Spark boxes.
@@ -2870,7 +2870,16 @@ than `other gpu`, already labelled in the GPU process table — and already
 raises `UnmonitoredInferenceRuntime`, telling you it is serving with nothing
 collecting from it. The detection exists. Only the collector is missing.
 
-- [ ] **V1. SGLang collector.** The well-defined one; do it first.
+**Correction, found while doing V1: it did NOT raise the warning.**
+`COLLECTIBLE_RUNTIMES` was `{"llama.cpp", "vllm"}`, and the gap detector
+deliberately reports only runtimes there is a collector *for* — a warning that
+cannot be resolved teaches the reader to ignore the indicator. So SGLang was
+classified and attributed correctly and was **silent**, which is the failure
+this area exists to catch, one level up. Adding it to `COLLECTIBLE_RUNTIMES` is
+part of V1 rather than something already in place. The same now applies to
+Atlas, which V2a classifies but deliberately leaves out of that set.
+
+- [x] **V1. SGLang collector.** Shipped 2026-08-21.
 
   Verified against SGLang's own docs 2026-08-19: `/metrics`, enabled with
   `--enable-metrics`, examples on port 30000, metric names prefixed `sglang:`.
@@ -2894,7 +2903,33 @@ collecting from it. The detection exists. Only the collector is missing.
   leave `kv` empty for SGLang rows — an empty cell is honest, a wrong one is
   not.
 
-- [ ] **V2a. Classify Atlas. Cheap, and do it regardless of V2b.**
+  **Settled: `kv` is left empty**, and `cache_hit_rate` is not collected at
+  all. A column for one engine's number is a column that is blank on every
+  other row, and the question it answers is not one anyone has asked yet.
+  `sglang:token_usage` is the closer analogue to occupancy and is the candidate
+  if the column is ever wanted — noted in `SPECS`, not implemented, because it
+  has not been checked against a running server.
+
+  **A second trap of the same kind, found while implementing:
+  `sglang:gen_throughput` is not the tokens/sec this dashboard means.** It is
+  instantaneous *decode* throughput over the engine's last batch, while vLLM
+  and the llama.cpp routers contribute prompt+generation counted over the poll
+  interval — and the node card SUMS those into one figure. Adding the two would
+  produce a total that is neither. So throughput is derived from
+  `sglang:prompt_tokens_total` / `sglang:generation_tokens_total` like every
+  other engine's, and the gauge is used only when the counters are missing from
+  a scrape.
+
+  **Also fixed, because V1 walked straight into it:** the `tokens_per_second`
+  history query was `sum by (node) (llama) + sum by (node) (vllm)`. Binary `+`
+  between instant vectors keeps only label sets present on BOTH sides, so that
+  returned **nothing** for a node running only one of them. Every node here
+  runs llama.cpp, so it read as correct; a vLLM-only node was charting a flat
+  blank while serving tokens, and a third engine would have made it worse. Now
+  one `sum by (node)` over a `__name__` regex — no matching step, and an engine
+  added later joins by name.
+
+- [x] **V2a. Classify Atlas.** Shipped 2026-08-21, ahead of the rest.
 
   [Atlas](https://atlasinference.io/) is an open-source LLM engine in pure Rust
   and CUDA, hand-tuned for DGX Spark, shipping as a single ~75 MB binary with
@@ -2913,6 +2948,13 @@ collecting from it. The detection exists. Only the collector is missing.
   matching it bare in a full argv+cwd haystack risks the mislabelling
   `_looks_like_comfyui` exists to avoid. Prefer the binary name.
 
+  **Done that way.** `_looks_like_atlas` matches the process name and argv[0]'s
+  basename only — never the haystack — so `--dataset atlas-corpus`, a model
+  named `org/atlas-7b` and `-m /models/atlas.gguf` are all left alone, each
+  pinned by a test. Atlas is in `LLM_RUNTIMES` (so its memory lands in
+  `models`) and deliberately NOT in `COLLECTIBLE_RUNTIMES`: with nothing known
+  to scrape, flagging it would raise a warning nobody can resolve.
+
 - [ ] **V2b. Atlas collector — blocked on knowing what it exposes.**
 
   Its documentation says nothing about Prometheus metrics or a `/metrics`
@@ -2925,7 +2967,7 @@ collecting from it. The detection exists. Only the collector is missing.
   runtime the dashboard can see *consuming* the GPU (via V2a) but never see
   *serving*, which is exactly the silence `UnmonitoredInferenceRuntime` is for.
 
-- [ ] **V3. Decide whether runtime #3 is where this becomes a registry.**
+- [x] **V3. Decided 2026-08-21: share the collector, keep the wire.**
 
   Measured 2026-08-19: `vllm` is named in **27 tracked files**, `llama_cpp` in
   12. `Runtimes` has one named list field per engine; the exporter builds a
@@ -2940,9 +2982,294 @@ collecting from it. The detection exists. Only the collector is missing.
   V1 is the moment to decide, because doing it after four engines is a
   refactor and doing it during the second is speculation.
 
+  **Decided: share the collector, keep the wire.** `EngineCollector` takes an
+  `EngineSpec` — a table of what one engine calls the things every engine
+  reports — so vLLM and SGLang scrape, parse and rate-track through one
+  implementation. What is NOT abstracted is the wire: `Runtimes` keeps a field
+  per engine and the exporter keeps emitting `sparkdash_vllm_*` and
+  `sparkdash_sglang_*` rather than one family with a `runtime` label.
+
+  **Why stop there.** The label would be the tidier design and buys nothing
+  here: the vLLM names are what `alerts.yml`, the history queries and every
+  recorded series are already written against, so unifying them is a migration
+  of stored data in exchange for symmetry. Per-engine names are also what lets
+  a scrape job, a target file and the retire button all be named for one
+  engine — `job="sglang"` is a label an operator can read at 2am.
+
+  **The line that holds the pieces together is one list**, `ENGINE_RUNTIMES`,
+  derived from `Runtimes`'s own fields. The agent builds a collector per entry;
+  the backend parses, renders targets for, serves and retires per entry; the
+  frontend walks the same list. `tests/test_engine_wiring.py` checks the four
+  copies that cannot be derived from each other — Python, TypeScript,
+  `prometheus.yml`'s scrape jobs, and the two alert rules that must stay
+  complements — because each way of drifting is silent.
+
+  **Measured after:** adding SGLang touched no per-engine `if` in the agent's
+  collect path, and adding engine #4 is a `SPECS` entry, a `Runtimes` field, a
+  scrape job, and two regex updates the wiring test names for you.
+
 **Sparkrun itself is worth a look while doing V1**, though not an item yet: if
 these nodes end up launched through it, "what is running here" becomes
 something it knows and the agent currently infers from process argv.
+
+**Still open after 2026-08-21: V2b only.** It is blocked on the same question
+it was planned with — run Atlas, see what ports and endpoints it opens. Until
+then Atlas is a runtime the dashboard can see *consuming* the GPU and never see
+*serving*, which is exactly the silence `UnmonitoredInferenceRuntime` is for —
+except that Atlas is deliberately outside that warning, since there is nothing
+to configure. If Atlas turns out to expose a Prometheus endpoint, V2b is a
+`SPECS` entry and a `Runtimes` field; if it exposes an OpenAI-compatible API
+and no metrics, it is a different collector shape and a real decision.
+
+### W — Choosing which interfaces are monitored — **shipped 2026-08-21**
+
+Planned 2026-08-21, from a live failure rather than an audit. The second
+ConnectX-7 port on each node was cabled to the 100Gb switch as a test, then
+unplugged — the extra links were interfering with standing up clustered vLLM.
+Cluster operation was unaffected: the direct spark-to-spark link carries the
+fabric, and the 10Gb port is more than enough for management and client access.
+The dashboard has been alerting on the unplugged ports ever since, returning at
+most every 24 hours.
+
+**What is actually alerting**, read off the live agents 2026-08-21:
+
+| node | interfaces | down and previously up |
+|---|---|---|
+| `sparky` (.61) | `enP7s7` 10Gb up, `wlP9s9` wifi down | none — wifi was never up |
+| `sparketa` (.62) | two 200Gb pairs + 10Gb + wifi | `enP2p1s0f1np1`, `enp1s0f1np1` |
+| `sparkjr` (.63) | same | `enP2p1s0f1np1`, `enp1s0f1np1` |
+
+So it is **two** down ports per new node, not one — each new node has two
+dual-port 200Gb cards, with both `f0` ports up at `200 Gb/sec (2X NDR)` and
+both `f1` ports pulled. And each `f1` port has a RoCE device behind it
+(`roceP2p1s0f1`, `rocep1s0f1`) reporting DOWN after previously being ACTIVE, so
+`RdmaPortDown` is firing alongside `NetworkLinkDown`: **eight** firing series,
+not four. That is why W3 covers RDMA rather than leaving it for later — half
+the noise is on that side.
+
+**Why [A4](#a--alerting-correctness)'s heuristic cannot fix this, and was never
+going to.** `NetworkLinkDown` fires on `sparkdash_network_up == 0 and
+max_over_time(sparkdash_network_up[7d]) == 1` — "was up at some point this
+week" — which separates a link that *failed* from one that was never in
+service. That is the right question for a never-cabled port and the wrong one
+here: these ports **were** in service, so they read as links that failed. The
+heuristic infers intent from history, and there is no history that distinguishes
+"I unplugged this" from "this died".
+
+**The 24-hour period is the silence cap, and it is pointing at the fix.**
+Silences created from the dashboard are capped at `MAX_SILENCE_HOURS = 24`, and
+that cap's own reasoning says why: "a mute that outlives the person's memory of
+setting it is how a real failure goes unnoticed, and a permanently unwanted
+alert should have its target removed from configuration instead." The system
+has been saying *this belongs in configuration* once a day. The configuration
+does not exist for interfaces. That is the whole of this section.
+
+**It would also stop on its own after seven days — and that is worse, not
+better.** Once the ports have been down longer than the window, `max_over_time`
+stops matching and the alert resolves itself while the links are still down. So
+the same rule that nags today goes quiet about a genuinely dead link on the
+eighth day. Both halves of that are the absence of a way to say what is
+intended.
+
+- [x] **W1. Read admin-down and no-carrier — VERIFIED AND ABANDONED 2026-08-21.**
+  The premise was wrong, and the measurement is worth keeping.
+
+  The idea was that `operstate` says "down" for two different situations, and
+  that `flags` (bit `0x1`, `IFF_UP`) plus `carrier` would separate a deliberate
+  `ip link set X down` from a lost cable — giving the dashboard the intent the
+  7-day heuristic was inferring from history.
+
+  Measured on `sparketa` and `sparkjr`:
+
+  | interface | `operstate` | `flags` | `carrier` |
+  |---|---|---|---|
+  | `enP2p1s0f0np0` — cluster fabric, up | up | `0x1003` | 1 |
+  | `enP2p1s0f1np1` — **cable pulled** | down | `0x1003` | 0 |
+  | `wlP9s9` — wifi, never cabled | down | `0x1003` | 0 |
+
+  `0x1003` is `IFF_UP|IFF_BROADCAST|IFF_MULTICAST`: **every** interface is
+  administratively up, including the ones nobody has ever used. Nothing on
+  these nodes is admin-down, so the distinction exists in the kernel and is
+  constant in practice — `carrier` is `operstate` restated, and the pulled
+  cable is indistinguishable from the never-cabled wifi by exactly the signal
+  that was supposed to tell them apart.
+
+  It could be *made* to work by running `ip link set <iface> down` on each
+  node, which is the rejected alternative below wearing a different hat: it
+  moves the decision onto three hosts and leaves no record in the dashboard.
+  W2 answers the same question better, so the collector is left alone rather
+  than gaining a field whose value is `true` on every row.
+
+  **What this changes downstream:** W1 was going to let the panel say `down (no
+  carrier)` against `down (admin)`. It cannot, so a down interface says only
+  that it is down, and *why* stays a question for the operator. It also means
+  W1 removes nothing from the ignore list — the full set below is real work,
+  not a fallback.
+
+- [x] **W2. A per-node ignore list in `cluster.yml`, served to the agent.**
+
+  ```yaml
+  - id: sparky
+    host: 192.168.50.61
+    interfaces:
+      ignore:
+        - enP2p1s0f1np1   # switch port, cable pulled 2026-08-21
+  ```
+
+  **Default monitored, named to exclude** — not an allowlist. It keeps A4's
+  best property, that a newly cabled port is watched the moment it comes up
+  with nothing to remember, and it fails in the safe direction: forgetting to
+  maintain the list makes the dashboard noisy, never silent. On a system whose
+  recurring failure mode is silence, that asymmetry decides it.
+
+  Travels the path the runtimes already travel — `cluster.yml` →
+  `/api/agent-config` → `RemoteConfig` → the agent — so this is one more key,
+  not a new mechanism.
+
+  **A trap created by [V](#v--more-inference-runtimes-sglang-and-atlas):**
+  `RemoteConfig` now treats *every* list-valued key under `runtimes:` as an
+  engine's endpoint list, deliberately, so a node picks up an engine a newer
+  backend knows about. `interfaces` must therefore be a **sibling of
+  `runtimes`**, never a key inside it — nested, an ignore list would be parsed
+  as an engine named "interfaces". Harmless at runtime (there is no spec for
+  it, so nothing scrapes it) and silently wrong, which is worse.
+
+  **No environment fallback, deliberately.** A node not in `cluster.yml` keeps
+  today's behaviour — everything monitored — which is the correct default
+  anyway. That adds no per-node variable and keeps the node stack identical
+  across the cluster, which is the property `.env` parity exists to protect.
+
+  **No cluster-wide defaults block in v1.** Three identical nodes will carry
+  three identical lists, which looks like something to factor out — but W4's
+  editor writes them, so the duplication costs nothing to maintain, while a
+  defaults-plus-override merge rule is a thing to explain forever. Revisit if
+  the cluster grows past a handful of nodes.
+
+- [x] **W3. One metric, four alert rules.**
+
+  `sparkdash_network_monitored{node,interface}`, 0 or 1, emitted for every
+  interface the agent sees.
+
+  **Not a label on `sparkdash_network_up`.** Adding a label to an existing
+  series splits its history at the deploy — the same reason a node id is chosen
+  once and never changed.
+
+  **Not achieved by dropping unmonitored interfaces from the export.** Their
+  history would vanish and the panel would lose interfaces that physically
+  exist. Report and mark; never omit. That rule is why an unreachable engine
+  endpoint is reported rather than dropped, and it holds here for the same
+  reason.
+
+  `NetworkLinkDown` and `NetworkErrorsRising` gain
+  `and on (node, interface) sparkdash_network_monitored == 1`. **The 7-day
+  guard stays** — it still does the never-cabled work for any deployment that
+  has configured nothing, and the two are complementary rather than redundant.
+
+  **RDMA has to follow, or one pulled cable trades two alerts for two others.**
+  The f1 port is also a RoCE port, so `RdmaPortDown` and `RdmaErrorsRising`
+  would carry on alone. `sparkdash_rdma_port_monitored{node,device,port}`,
+  derived from the paired netdev rather than configured separately —
+  `RdmaPort.interface` already carries that pairing, which exists because mlx5
+  leaves the InfiniBand byte counters at zero on an Ethernet link layer. A port
+  with no netdev pairing defaults to monitored.
+
+  Cardinality is six interfaces across three nodes. Nothing.
+
+  **`unless ... == 0`, not `and ... == 1` — decided by measurement.** The
+  obvious form gates the rule on the flag being 1, and it fails in the wrong
+  direction: the flag does not exist until every node runs an agent that
+  exports it, so a stale node, or a rules reload landing before the rollout
+  finishes, would take link alerting **silent** rather than merely unfiltered.
+  Checked against the live Prometheus before committing to it: the `and == 1`
+  form returned **0** series where `unless == 0` returned the **4** that were
+  genuinely down. Set subtraction removes only what is explicitly marked
+  excluded, so an absent flag leaves the old behaviour exactly as it was —
+  the same "noisy beats silent" asymmetry that decided the ignore list.
+
+  Both forms were also run against live Prometheus to confirm they parse and
+  match the expected series, since nothing in CI evaluates PromQL.
+
+  **Naming collision worth noticing:** `unmonitored_runtimes` already means
+  something adjacent and different — an inference runtime nothing is configured
+  to *collect from*, which is a gap to fix. An unmonitored interface is a
+  deliberate exclusion. Same word, opposite intent, and the docs should not let
+  them blur.
+
+- [x] **W4. The status element, and choosing from the UI.**
+
+  **Colour answers "is it up"; a tag answers "do we watch it".**
+
+  | state | reads as |
+  |---|---|
+  | up | green |
+  | down, monitored | red — a fault |
+  | down, not monitored | grey, tagged `not monitored` |
+  | up, not monitored | green, tagged `not monitored` |
+
+  **This fixes an inversion that exists today independent of the config work.**
+  A down link currently renders in muted ink — visually identical to an unused
+  port — so the most alarming row in the table is also its quietest. With W1 the
+  down state can also say which kind it is: `down (no carrier)` against
+  `down (admin)`.
+
+  **The settings fly-out gets checkboxes, not a text field:** each node's
+  interfaces as the live snapshot reports them, ticked when monitored. Nothing
+  is typed, which is narrower than free text and the same instinct as
+  ports-rather-than-URLs in the cluster editor.
+
+  **A name in the config that the node is not currently reporting must survive
+  a save.** A node that is down, or a NIC that was renamed, would otherwise
+  have its entry silently deleted by an editor that only knows what it can
+  currently see — a save while a node is unreachable would quietly erase its
+  configuration. Render those as read-only rows and write them back untouched.
+
+  **Node health is unchanged.** A pulled cable does not repaint the cluster
+  view; `health` stays GPU, memory, PSI and temperature. The alert and the panel
+  carry it, which is the whole point of having both.
+
+- [ ] **W5. Roll it out, then clear the silences.** Operational, not code.
+
+  **Order does not matter for correctness** — that is what the `unless` form
+  bought — but it does decide when the noise stops:
+
+  1. Build and push the agent image on **one** node (all three are arm64, and
+     two nodes pushing the same tag would leave different digests behind one
+     tag), then redeploy the node stacks. Every node is on `b074d8e` today,
+     several commits behind, so this also ships [V](#v--more-inference-runtimes-sglang-and-atlas).
+  2. Redeploy central for the new rules, backend and dashboard.
+  3. Tick the boxes off in settings — `enP2p1s0f1np1` and `enp1s0f1np1` on
+     `sparketa` and `sparkjr`. Nothing to hand-edit.
+  4. Drop any standing 24-hour silences rather than letting them expire, so the
+     alert list reflects configuration rather than a mute that is still
+     running.
+
+  Two unrelated alerts are also firing and are worth a look while there:
+  `TemperatureBandsNotDerived` on `sparkjr` — it is judging temperature against
+  fallback guesses rather than its own silicon, which is what
+  [A3](#a--alerting-correctness) exists to catch — and `MemoryNearlyFull` on
+  both new nodes.
+
+**Considered and rejected:**
+
+- **A regex in `alerts.yml`** — `sparkdash_network_up{interface!~".*f1np1"}`.
+  This genuinely is the five-minute fix and remains a reasonable stopgap for
+  today. Rejected as the answer: it makes an operational decision a repo edit
+  plus a Prometheus reload, it cannot differ per node without growing the
+  regex, and it leaves the dashboard unable to say anything about intent — the
+  panel would still show a bare down link with nothing indicating anyone meant
+  it.
+- **`ip link set <iface> down` on each host.** The honest Unix answer, and W1
+  makes the dashboard read it correctly rather than guessing. Rejected as the
+  *whole* answer because it moves the decision onto three hosts with no record
+  in the dashboard, and it cannot express "this link is cabled and up, and I do
+  not want to be paged about it".
+- **Roles instead of a boolean** — `cluster` / `management` / `unused` per
+  interface, with alerting derived from the role. Richer, and nothing asks for
+  it yet. The per-interface map form is the migration path if it ever does.
+
+**Sequence: W1, then W2, then W3 and W4 together.** W1 stands alone and improves
+the panel whether or not the rest lands; W3 has nothing to join against without
+W2; W4's editor cannot write a shape W2 has not defined.
 
 ### J — Single-host profile (everything on one GB10)
 

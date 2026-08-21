@@ -83,6 +83,48 @@ nodes:
       vllm:
         - 8120
 
+      # SGLang, the same shape — it exposes Prometheus natively too, and its
+      # /metrics path is appended the same way.
+      #
+      # ONLY IF THE SERVER WAS STARTED WITH `--enable-metrics`. Without that
+      # flag there is no endpoint to scrape, and the instance reports as
+      # configured-but-unreachable — correct, and confusing if the missing
+      # flag is what you are looking at.
+      #
+      # sglang:
+      #   - 30000
+
+    # Interfaces to EXCLUDE from alerting, by the name the node reports.
+    #
+    # AN IGNORE LIST, not an allowlist. Everything is watched unless named
+    # here, so an interface nobody has configured still alerts — forgetting to
+    # maintain this makes the dashboard noisy, never silent, and a newly
+    # cabled port is watched from the moment it comes up.
+    #
+    # What it is for: a port that HAS been up and was then deliberately
+    # unplugged. `NetworkLinkDown` already ignores ports that were never in
+    # service, but a port cabled as a test and then pulled looks exactly like
+    # one that failed, and no amount of history can tell those apart. This is
+    # where the intent goes.
+    #
+    # THE ROCE PORT BEHIND AN INTERFACE IS EXCLUDED WITH IT. One cable carries
+    # both, so naming the interface here also quiets `RdmaPortDown` for the
+    # paired device — otherwise unplugging a port would simply swap one alert
+    # for another.
+    #
+    # NOT a way to hide an interface: it is still collected, still charted, and
+    # still shown in the Network panel, tagged `not monitored`. Only the alert
+    # rules read this.
+    #
+    # Easier to set from the dashboard's settings panel, which lists the
+    # interfaces each node is actually reporting as tick boxes and writes this
+    # file for you.
+    #
+    # interfaces:
+    #   ignore:
+    #     - enP2p1s0f1np1   # 200Gb f1, cabled to the switch and pulled
+    #     - enp1s0f1np1
+
   # When nodes 2 and 3 arrive they are additions here and nothing else — no
   # per-node file to edit, and nothing node-specific in the node stack.
   #

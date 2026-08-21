@@ -202,11 +202,12 @@ def _node_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
             [node, "llama.cpp", router.endpoint], 1.0 if router.reachable else 0.0
         )
         seen = True
-    for instance in snap.runtimes.vllm:
-        endpoints.add_metric(
-            [node, "vllm", instance.server], 1.0 if instance.reachable else 0.0
-        )
-        seen = True
+    for runtime, instances in snap.runtimes.engines.items():
+        for instance in instances:
+            endpoints.add_metric(
+                [node, runtime, instance.server], 1.0 if instance.reachable else 0.0
+            )
+            seen = True
     if seen:
         yield endpoints
 
@@ -345,6 +346,14 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
     if snap.network:
         nl = ["node", "interface"]
         up = _g("network_up", "1 when the interface is up", nl)
+        # A SEPARATE SERIES, not a label on `network_up`. Adding a label to an
+        # existing series splits its history at the deploy — the same reason a
+        # node id is chosen once and never changed — and the link-down history
+        # of a port is exactly what you want to keep when you stop alerting on
+        # it.
+        monitored = _g(
+            "network_monitored", "1 when the interface is watched by alerting", nl
+        )
         speed = _g("network_speed_mbps", "Negotiated link speed", nl)
         rx = _g("network_receive_bytes_total", "Bytes received", nl)
         tx = _g("network_transmit_bytes_total", "Bytes transmitted", nl)
@@ -356,6 +365,7 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         for iface in snap.network:
             labels = [node, iface.name]
             up.add_metric(labels, 1.0 if iface.up else 0.0)
+            monitored.add_metric(labels, 1.0 if iface.monitored else 0.0)
             if iface.speed_mbps is not None:
                 speed.add_metric(labels, float(iface.speed_mbps))
             rx.add_metric(labels, float(iface.rx_bytes_total))
@@ -365,7 +375,7 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             rx_drop.add_metric(labels, float(iface.rx_dropped))
             tx_drop.add_metric(labels, float(iface.tx_dropped))
 
-        yield from (up, speed, rx, tx, rx_err, tx_err, rx_drop, tx_drop)
+        yield from (up, monitored, speed, rx, tx, rx_err, tx_err, rx_drop, tx_drop)
 
     if snap.rdma:
         # Byte totals are exported, not the rates the live view computes:
@@ -373,6 +383,9 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         # wrong at any step other than the one it was sampled at.
         rl = ["node", "device", "port"]
         active = _g("rdma_port_active", "1 when the RDMA port is ACTIVE", rl)
+        rdma_monitored = _g(
+            "rdma_port_monitored", "1 when the RDMA port is watched by alerting", rl
+        )
         rx = _g("rdma_receive_bytes_total", "Bytes received", rl)
         tx = _g("rdma_transmit_bytes_total", "Bytes transmitted", rl)
         errs = _g("rdma_errors_total", "Receive errors, discards and link downs", rl)
@@ -385,6 +398,7 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         for port in snap.rdma:
             labels = [node, port.device, str(port.port)]
             active.add_metric(labels, 1.0 if port.active else 0.0)
+            rdma_monitored.add_metric(labels, 1.0 if port.monitored else 0.0)
             rx.add_metric(labels, float(port.rx_bytes_total))
             tx.add_metric(labels, float(port.tx_bytes_total))
             errs.add_metric(labels, float(port.errors))
@@ -392,7 +406,7 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             # negotiated below its rated speed, and it can't be a gauge value.
             info.add_metric([*labels, port.link_layer, port.rate], 1.0)
 
-        yield from (active, rx, tx, errs, info)
+        yield from (active, rdma_monitored, rx, tx, errs, info)
 
 
 def _temp_band_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
@@ -566,13 +580,21 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             waiting,
         )
 
-    if snap.runtimes.vllm:
-        tps = _g("vllm_tokens_per_second", "Token throughput", ["node", "model"])
-        kv = _g("vllm_kv_cache_percent", "KV cache utilization", ["node", "model"])
-        running = _g("vllm_requests_running", "In-flight requests", ["node", "model"])
-        waiting = _g("vllm_requests_waiting", "Queued requests", ["node", "model"])
+    # A family per engine — `sparkdash_vllm_*`, `sparkdash_sglang_*` — rather
+    # than one family carrying a `runtime` label. The label would be the
+    # tidier design and is the wrong trade here: the vLLM names are what the
+    # alert rules, the recorded history and the backend's queries are already
+    # written against, and renaming them would orphan every stored series for
+    # no gain a second engine benefits from.
+    for runtime, instances in snap.runtimes.engines.items():
+        if not instances:
+            continue
+        tps = _g(f"{runtime}_tokens_per_second", "Token throughput", ["node", "model"])
+        kv = _g(f"{runtime}_kv_cache_percent", "KV cache utilization", ["node", "model"])
+        running = _g(f"{runtime}_requests_running", "In-flight requests", ["node", "model"])
+        waiting = _g(f"{runtime}_requests_waiting", "Queued requests", ["node", "model"])
 
-        for instance in snap.runtimes.vllm:
+        for instance in instances:
             tps.add_metric([node, instance.model], instance.tokens_per_sec)
             if instance.kv_cache_pct is not None:
                 kv.add_metric([node, instance.model], instance.kv_cache_pct)

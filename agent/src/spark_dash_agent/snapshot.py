@@ -16,26 +16,28 @@ import psutil
 from spark_dash_common.health import assess
 from spark_dash_common.models import (
     ConfigStatus,
+    EngineMetrics,
     LlamaRouterMetrics,
     ModelState,
+    NetworkInterface,
     NodeSnapshot,
     ProcessInfo,
+    RdmaPort,
     Runtimes,
     TempBands,
-    VllmMetrics,
 )
 from spark_dash_common.thresholds import TempThresholds
 
 from spark_dash_agent.collectors.cpu import CpuCollector, read_critical_trip_c
 from spark_dash_agent.collectors.disk import DiskCollector
+from spark_dash_agent.collectors.engine import SPECS, EngineCollector
 from spark_dash_agent.collectors.gpu import GpuCollector
 from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.collectors.memory import MemoryCollector, detect_unified_memory
 from spark_dash_agent.collectors.network import NetworkCollector, RdmaCollector
 from spark_dash_agent.collectors.psi import PsiCollector
-from spark_dash_agent.collectors.vllm import VllmCollector
 from spark_dash_agent.config import Settings
-from spark_dash_agent.remote_config import RemoteConfig, RuntimeConfig
+from spark_dash_agent.remote_config import NodeConfig, RemoteConfig
 
 log = logging.getLogger(__name__)
 
@@ -43,9 +45,9 @@ log = logging.getLogger(__name__)
 def resolve_process_servers(
     processes: list[ProcessInfo],
     routers: list[LlamaRouterMetrics],
-    vllm: list[VllmMetrics] | None = None,
+    engines: dict[str, list[EngineMetrics]] | None = None,
 ) -> list[ProcessInfo]:
-    """Attach the serving host:port — and for vLLM, the model — to each process.
+    """Attach the serving host:port — and for the engines, the model — to each process.
 
     The join is by model name, because a llama.cpp child's `--alias` is the
     same string its router reports. The label used matches the exporter's
@@ -95,48 +97,92 @@ def resolve_process_servers(
                 len(candidates),
             )
 
-    _resolve_vllm(processes, vllm or [])
+    for runtime, instances in (engines or {}).items():
+        _resolve_engine(processes, runtime, instances)
     return processes
 
 
-def _resolve_vllm(processes: list[ProcessInfo], vllm: list[VllmMetrics]) -> None:
-    """Name the model and server for vLLM processes.
+def _resolve_engine(
+    processes: list[ProcessInfo], runtime: str, instances: list[EngineMetrics]
+) -> None:
+    """Name the model and server for one engine's processes.
 
-    vLLM cannot be resolved the way llama.cpp is. It rewrites its process title
-    to a bare `VLLM::EngineCore` with NO arguments at all, so there is nothing
-    in argv to parse — verified on the GX10. The model name is only available
-    from the instance's own /metrics, which the vllm collector already scraped.
+    These cannot be resolved the way llama.cpp is. vLLM rewrites its process
+    title to a bare `VLLM::EngineCore` with NO arguments at all, so there is
+    nothing in argv to parse — verified on the GX10. The model name is only
+    available from the instance's own /metrics, which the engine collector
+    already scraped.
 
     So the join is by count rather than by identity: with exactly one instance
-    configured, every vLLM process on the node belongs to it. With several,
-    there is no way to tell which engine serves which without cross-namespace
-    socket inspection, so they are left unattributed rather than guessed at —
-    the same rule the router join follows.
+    configured, every process of that runtime on the node belongs to it. With
+    several, there is no way to tell which engine serves which without
+    cross-namespace socket inspection, so they are left unattributed rather
+    than guessed at — the same rule the router join follows.
+
+    Per runtime, not across them: one vLLM instance and one SGLang instance on
+    a node are each unambiguous on their own, and pooling them would make
+    neither resolvable.
     """
-    if len(vllm) != 1:
-        if len(vllm) > 1:
+    if len(instances) != 1:
+        if len(instances) > 1:
             log.debug(
-                "%d vLLM instances; cannot attribute engine processes to one", len(vllm)
+                "%d %s instances; cannot attribute engine processes to one",
+                len(instances),
+                runtime,
             )
         return
 
-    instance = vllm[0]
+    instance = instances[0]
     for proc in processes:
-        if proc.runtime == "vllm":
+        if proc.runtime == runtime:
             proc.model = proc.model or instance.model
             proc.server = proc.server or instance.server
 
 
+def apply_interface_policy(
+    network: list[NetworkInterface], rdma: list[RdmaPort], ignored: set[str]
+) -> None:
+    """Mark which interfaces and RoCE ports are watched, in place.
+
+    HERE RATHER THAN IN THE COLLECTORS, for the same reason
+    `resolve_process_servers` lives here: the RDMA half cannot be decided
+    without the interface half. A RoCE port inherits the policy of the netdev
+    it is paired with, because one cable carries both — excluding an interface
+    without excluding its port would trade `NetworkLinkDown` for
+    `RdmaPortDown` and change nothing an operator would notice.
+
+    Nothing is filtered out. An excluded interface is still collected, still
+    reported and still recorded in Prometheus; only the alert rules read the
+    flag. An interface that vanished from the panel would be worse than one
+    that is quiet in it — the point is to stop being paged, not to stop
+    looking.
+
+    A name in `ignored` that matches no interface is not an error. It is
+    ordinary during a rename or while a NIC is absent, and the config keeps it
+    so the exclusion survives.
+    """
+    for iface in network:
+        iface.monitored = iface.name not in ignored
+    for port in rdma:
+        # Unpaired ports stay monitored: `interface` is empty when the RoCE
+        # device has no netdev under its PCI function, and defaulting to quiet
+        # there would hide a fabric port nobody chose to hide.
+        port.monitored = not port.interface or port.interface not in ignored
+
+
 #: Runtimes this agent has a collector for. A gap is only actionable if there
 #: is something to configure — see `detect_unmonitored_runtimes`.
-COLLECTIBLE_RUNTIMES = frozenset({"llama.cpp", "vllm"})
+#:
+#: Atlas is classified (`LLM_RUNTIMES`) but deliberately absent here: nothing
+#: is known to scrape from it, so flagging it would raise a warning that
+#: cannot be resolved.
+COLLECTIBLE_RUNTIMES = frozenset({"llama.cpp", *SPECS})
 
 
 def detect_unmonitored_runtimes(
     processes: list[ProcessInfo],
     *,
-    llama_configured: bool,
-    vllm_configured: bool,
+    configured: set[str],
 ) -> list[str]:
     """Runtimes observed on the GPU that nothing is configured to collect from.
 
@@ -146,9 +192,12 @@ def detect_unmonitored_runtimes(
     an unmonitored server looks like an absence rather than an error.
 
     Compares against what is CONFIGURED, not what was successfully collected.
-    A vLLM endpoint that is configured but momentarily erroring drops out of
-    the collected list, and treating that as "unconfigured" would raise a gap
+    An endpoint that is configured but momentarily erroring drops out of the
+    collected list, and treating that as "unconfigured" would raise a gap
     warning for a transient scrape failure.
+
+    `configured` holds runtime names, spelled as `ProcessInfo.runtime` spells
+    them, for runtimes with at least one endpoint configured.
 
     Deliberately does NOT try to match listening ports against configured
     ports. A process's port is not readable across the network namespace — the
@@ -158,12 +207,6 @@ def detect_unmonitored_runtimes(
     matters, and cannot false-positive when one instance spawns several
     engine processes.
     """
-    configured = set()
-    if llama_configured:
-        configured.add("llama.cpp")
-    if vllm_configured:
-        configured.add("vllm")
-
     observed = {
         p.runtime for p in processes if p.runtime in COLLECTIBLE_RUNTIMES
     }
@@ -202,9 +245,18 @@ class SnapshotBuilder:
             budget_s=settings.runtime_collect_budget_s,
             metrics_allowlist=settings.llama_metrics_allowlist,
         )
-        self._vllm = VllmCollector(
-            settings.vllm_endpoints, budget_s=settings.runtime_collect_budget_s
-        )
+        # One collector per engine, sharing one implementation. Keyed by
+        # runtime name so everything downstream — process attribution, the
+        # unmonitored-runtime gap, the exporter's metric families — can iterate
+        # rather than name each engine again.
+        self._engines = {
+            runtime: EngineCollector(
+                spec,
+                settings.engine_endpoints(runtime),
+                budget_s=settings.runtime_collect_budget_s,
+            )
+            for runtime, spec in SPECS.items()
+        }
 
         # Central config, if a backend is configured. Built after the
         # collectors so the env-derived ones above are the starting point and
@@ -214,7 +266,7 @@ class SnapshotBuilder:
             self._node_id,
             ttl_s=settings.cluster_config_ttl_s,
         )
-        self._applied: RuntimeConfig | None = None
+        self._applied: NodeConfig | None = None
         self._disk = DiskCollector(settings.root_path)
         self._network = NetworkCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
@@ -241,9 +293,11 @@ class SnapshotBuilder:
             return
 
         log.info(
-            "applying cluster config: routers=%s vllm=%s",
+            "applying cluster config: routers=%s %s",
             runtimes.llama_routers or "none",
-            runtimes.vllm or "none",
+            " ".join(
+                f"{runtime}={runtimes.engines.get(runtime) or 'none'}" for runtime in SPECS
+            ),
         )
         self._llama = LlamaRouterCollector(
             runtimes.llama_routers,
@@ -251,10 +305,49 @@ class SnapshotBuilder:
             budget_s=self._settings.runtime_collect_budget_s,
             metrics_allowlist=runtimes.metrics_allowlist,
         )
-        self._vllm = VllmCollector(
-            runtimes.vllm, budget_s=self._settings.runtime_collect_budget_s
-        )
+        self._engines = {
+            runtime: EngineCollector(
+                spec,
+                runtimes.engines.get(runtime, []),
+                budget_s=self._settings.runtime_collect_budget_s,
+            )
+            for runtime, spec in SPECS.items()
+        }
         self._applied = runtimes
+
+    def _ignored_interfaces(self) -> set[str]:
+        """Interfaces this node is configured not to alert on.
+
+        Central config only. A node not in `cluster.yml` watches everything,
+        which is both the historical behaviour and the right default — and it
+        keeps the node stack identical everywhere rather than adding a
+        per-node variable for a decision the dashboard should own.
+        """
+        applied = self._applied
+        return set(applied.ignored_interfaces) if applied else set()
+
+    def _configured_runtimes(self) -> set[str]:
+        """Runtime names this node has at least one endpoint configured for.
+
+        Against the EFFECTIVE config, not the environment. Once a node is
+        managed centrally its env is empty by design, so checking `settings`
+        alone reported every running runtime as unmonitored the moment the
+        migration completed — a false positive on exactly the configuration
+        that feature exists to support.
+        """
+        applied = self._applied
+        configured = set()
+        if applied.llama_routers if applied else self._settings.llama_router_endpoints:
+            configured.add("llama.cpp")
+        for runtime in SPECS:
+            endpoints = (
+                applied.engines.get(runtime)
+                if applied
+                else self._settings.engine_endpoints(runtime)
+            )
+            if endpoints:
+                configured.add(runtime)
+        return configured
 
     def _config_status(self) -> ConfigStatus:
         """Where this node's runtimes came from, as wall-clock time.
@@ -318,6 +411,7 @@ class SnapshotBuilder:
         cpu = self._cpu.safe_collect(errors)
         network = self._network.safe_collect(errors) or []
         rdma = self._rdma.safe_collect(errors) or []
+        apply_interface_policy(network, rdma, self._ignored_interfaces())
         # Tell the router collector which models are actually working, so it
         # only scrapes those. `/metrics?model=` resets the router's idle timer,
         # so scraping an idle-but-loaded model would keep it resident forever —
@@ -328,27 +422,17 @@ class SnapshotBuilder:
             {p.model for p in processes if p.model and p.sm_pct > 0}
         )
         llama = self._llama.safe_collect(errors) or []
-        vllm = self._vllm.safe_collect(errors) or []
+        engines = {
+            runtime: collector.safe_collect(errors) or []
+            for runtime, collector in self._engines.items()
+        }
 
-        # Needs both collectors' output, so it happens here rather than inside
-        # either one.
-        processes = resolve_process_servers(processes, llama, vllm)
+        # Needs every collector's output, so it happens here rather than inside
+        # any one of them.
+        processes = resolve_process_servers(processes, llama, engines)
 
-        # Against the EFFECTIVE config, not the environment.
-        #
-        # Once a node is managed centrally its env is empty by design, so
-        # checking `settings` alone reported every running runtime as
-        # unmonitored the moment the migration completed — a false positive on
-        # exactly the configuration this feature is meant to support.
-        applied = self._applied
         unmonitored = detect_unmonitored_runtimes(
-            processes,
-            llama_configured=bool(
-                applied.llama_routers if applied else self._settings.llama_router_endpoints
-            ),
-            vllm_configured=bool(
-                applied.vllm if applied else self._settings.vllm_endpoints
-            ),
+            processes, configured=self._configured_runtimes()
         )
         if unmonitored:
             log.warning(
@@ -392,6 +476,9 @@ class SnapshotBuilder:
             processes=processes,
             network=network,
             rdma=rdma,
-            runtimes=Runtimes(llama_cpp=llama, vllm=vllm),
+            # Keyed by runtime name, which is also the field name on
+            # `Runtimes` — asserted in the tests, since a spec added without
+            # the matching field would otherwise fail only at runtime.
+            runtimes=Runtimes(llama_cpp=llama, **engines),
             errors=errors,
         )

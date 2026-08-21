@@ -5,7 +5,7 @@
 #
 # Targets come from two places, by who writes them:
 #   targets/             rendered by the backend from cluster.yml — never edited
-#   config/vllm-targets.yml   hand-maintained in this repo
+#   config/vllm-targets.yml   superseded; kept inert, see the file itself
 #
 # The hand-maintained ones live in config/ rather than a second targets
 # directory. Sharing one directory is not possible — the backend's mount would
@@ -71,6 +71,21 @@ scrape_configs:
   - job_name: vllm
     file_sd_configs:
       - files: [/etc/prometheus/targets/generated/vllm.yml]
+        refresh_interval: 30s
+
+  # SGLang, the same way: it exposes Prometheus natively with
+  # `--enable-metrics`, so it is scraped directly and its targets are
+  # generated from cluster.yml alongside vLLM's.
+  #
+  # A JOB PER ENGINE, not one `inference` job carrying both. The two publish
+  # differently-named series — `vllm:num_requests_running` against
+  # `sglang:num_running_reqs` — so a single job label would put targets with
+  # incompatible metrics behind one selector, and every rule would have to
+  # re-derive which engine it was looking at. It is also what lets the retire
+  # button name the engine it is retiring from.
+  - job_name: sglang
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/generated/sglang.yml]
         refresh_interval: 30s
 
   # Prometheus scraping itself — cheap, and it's how you notice the monitoring

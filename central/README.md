@@ -396,11 +396,16 @@ says so loudly in its log rather than dropping back to an older source — check
 `docker logs sparkdash-backend` if an edit appears to do nothing.
 
 Everything under `targets/` is **generated** — gitignored, rewritten by the
-backend, never hand-edited. The one hand-maintained scrape target list lives in
-`config/vllm-targets.yml`, because vLLM instances don't map one-per-node and so
-can't be derived from the node list. Filing them by who WRITES them, rather
-than by what they are, is what let the old `targets/static` mount and the
-`DATA_ROOT` variable that kept it distinct both go away.
+backend, never hand-edited. That now includes the engine targets: one file per
+engine (`vllm.yml`, `sglang.yml`), rendered from the same `cluster.yml` the
+agents are told about, one entry per endpoint rather than one per node.
+
+`config/vllm-targets.yml` is **superseded and inert**, kept only so a deploy
+that has not yet picked up the current `prometheus.yml` finds an empty list
+instead of a missing file. It was hand-maintained, which made it and
+`cluster.yml` two independent sources for one fact — retiring an endpoint
+removed it from `cluster.yml` so the agent stopped polling while Prometheus
+carried on scraping from here, and the retire button looked broken.
 
 ## Where things land
 
@@ -411,7 +416,7 @@ path:
 | What | Managed by | Tracked in git? |
 |---|---|---|
 | `compose.yaml`, `config/*.yml` | this repo | yes |
-| `config/vllm-targets.yml` | hand-maintained | yes |
+| `config/vllm-targets.yml` | superseded, inert | yes |
 | `.env` | edited on the host | no — gitignored |
 | `cluster/cluster.yml` | edited on the host | no — gitignored |
 | `prometheus/` (TSDB), `alertmanager/`, `secrets/` | the containers, at runtime | no — gitignored |
@@ -441,16 +446,17 @@ SRC=<the URL you cloned this from>
 git clone "$SRC" "$REPO" || git -C "$REPO" pull
 ```
 
-### Two target directories
+### One target directory
 
 | Path in container | Source | Contents |
 |---|---|---|
-| `targets/generated/` | Docker volume, written by the backend | `agents.yml`, `node-exporters.yml` — from `cluster.yml` |
-| `targets/static/` | bind mount from the stack dir | `vllm.yml` — hand-maintained |
+| `targets/generated/` | Docker volume, written by the backend | `agents.yml`, `node-exporters.yml`, and one file per engine (`vllm.yml`, `sglang.yml`) — all from `cluster.yml` |
 
-They're separate on purpose. A single directory can't work: the volume holding
-the generated files would mount *over* the stack directory's own files, so
-`vllm.yml` would silently never be scraped.
+There used to be a second, `targets/static/`, for the hand-maintained vLLM
+list. Sharing one directory was impossible while that existed — the volume
+holding the generated files would mount *over* the stack directory's own —
+which is why they were split. Generating every target from `cluster.yml`
+removed the reason for the split rather than working around it.
 
 ## Verify
 

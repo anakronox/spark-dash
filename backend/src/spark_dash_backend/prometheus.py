@@ -140,10 +140,22 @@ HISTORY_QUERIES: dict[str, str] = {
     # be read side by side, and a `some` at 10s against a `full` at 60s would
     # invite comparing numbers that are not comparable.
     "psi_full_avg10": "sparkdash_psi_memory_full_avg10",
-    # Cluster-wide throughput, summed across routers and vLLM instances.
+    # Cluster-wide throughput, summed across routers and every engine.
+    #
+    # ONE SUM OVER A NAME REGEX, not a sum per engine added together. Binary
+    # `+` between instant vectors keeps only the label sets present on BOTH
+    # sides, so `sum by (node) (llama) + sum by (node) (vllm)` — which is what
+    # this was — returned NOTHING for a node running only one of them. Every
+    # node here runs llama.cpp, so it read as correct; a vLLM-only or
+    # SGLang-only node would have charted a flat blank while serving tokens.
+    # A third engine would have made it strictly worse.
+    #
+    # Selecting the families by `__name__` and summing once has no matching
+    # step at all, so a node contributes whatever it runs, and an engine added
+    # later joins by name rather than by another term.
     "tokens_per_second": (
-        "sum by (node) (sparkdash_llama_model_tokens_per_second) "
-        "+ sum by (node) (sparkdash_vllm_tokens_per_second)"
+        "sum by (node) ({__name__=~"
+        '"sparkdash_(llama_model|vllm|sglang)_tokens_per_second"})'
     ),
     # --- From node_exporter rather than the agent -------------------------
     #

@@ -13,7 +13,7 @@ moment it restarts — a bad way to discover an ordering mistake.
 
 import httpx
 import pytest
-from spark_dash_agent.remote_config import RemoteConfig, RuntimeConfig
+from spark_dash_agent.remote_config import NodeConfig, RemoteConfig
 
 CONFIGURED = {
     "node": "sparky",
@@ -62,6 +62,29 @@ class TestPrecedence:
         ]
         assert cfg.vllm == ["http://192.168.50.61:8120/metrics"]
 
+    def test_every_engine_key_becomes_an_endpoint_list(self, patched):
+        """Engine lists are read by key rather than against a fixed set of
+        names, so a node picks up an engine the backend learned about without
+        needing a newer agent. It still only COLLECTS from engines it has a
+        spec for, so an unknown key costs nothing."""
+        payload = {
+            "node": "sparky",
+            "configured": True,
+            "runtimes": {
+                "llama_routers": [],
+                "vllm": ["http://n:8120/metrics"],
+                "sglang": ["http://n:30000/metrics"],
+                "some_future_engine": ["http://n:31000/metrics"],
+            },
+        }
+        patched(payload)
+        cfg = RemoteConfig("http://backend:8080", "sparky").current(now=1000.0)
+        assert cfg.engines == {
+            "vllm": ["http://n:8120/metrics"],
+            "sglang": ["http://n:30000/metrics"],
+            "some_future_engine": ["http://n:31000/metrics"],
+        }
+
     def test_scrape_metrics_becomes_the_allowlist(self, patched):
         """Only routers flagged in central config may be scraped per-model —
         the same opt-in that stops an idle model being pinned in memory."""
@@ -83,7 +106,7 @@ class TestPrecedence:
         old value in its .env."""
         patched({"node": "n", "configured": True, "runtimes": {}})
         cfg = RemoteConfig("http://backend:8080", "n").current(now=1000.0)
-        assert cfg == RuntimeConfig()
+        assert cfg == NodeConfig()
 
     def test_no_backend_url_means_central_is_off(self):
         """How a deployment that has not migrated keeps working."""

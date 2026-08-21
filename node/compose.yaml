@@ -156,8 +156,10 @@ services:
       # an autoload router. Empty means no such request is ever issued.
       - LLAMA_METRICS_ROUTERS=${LLAMA_METRICS_ROUTERS:-}
 
-      # Comma-separated vLLM /metrics endpoints on this node.
+      # Comma-separated /metrics endpoints on this node, per engine. SGLang
+      # only exposes one when started with `--enable-metrics`.
       - VLLM_URLS=${VLLM_URLS:-}
+      - SGLANG_URLS=${SGLANG_URLS:-}
 
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
 
