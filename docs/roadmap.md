@@ -113,6 +113,9 @@ only `sparky` exists today, and it is the only scrape target.
 
 ## Next up (prioritized)
 
+Sections are lettered in the order they were opened, not by priority. A–Z are
+used; later ones continue AA, AB, and so on.
+
 The three workstreams below came out of an audit of the running system on
 2026-08-15. Ordered by whether they fix something currently *wrong* versus add
 something currently *missing*.
@@ -3879,6 +3882,122 @@ lived on one node, and `danflashes` serves **one** vLLM model across two.
   **Harm coverage is untouched.** `MemoryPressureHigh`/`Critical` read PSI and
   `SwapThrashing` reads swap I/O; both remain, and a test asserts they do.
   Headroom and harm are different questions, and only the first was unclearable.
+
+### AA — Column widths: sane defaults, then draggable
+
+Reported 2026-08-21: the Models table shows a large gap between `model` and the
+column to its right. All 26 single letters are used, so sections continue as
+AA, AB, …
+
+**The cause, and it is not a hard-coded width.** Nothing sets a width on
+`model` at all. Numeric columns carry `width: 1%` with `white-space: nowrap`,
+which in an auto-layout table is the standard way to say "as narrow as your
+content" — so every pixel of slack in the container is handed to the *text*
+columns, and auto-layout distributes it in proportion to content, which gives
+the lion's share to the column with the longest strings. `model` holds things
+like `Qwen_Qwen3.5-4B-Q4_K_M.gguf`, so it wins.
+
+That was tolerable at nine columns. [M3](#m--making-the-tables-usable-at-scale)
+restored `size` and `load` and added `prefill`, all numeric — **more `width: 1%`
+columns means more slack to redistribute, not less** — and on a wide viewport
+the result is the reported gap. The comment above that rule already predicted
+the failure mode in the opposite direction ("a wider page spreads every column
+equally… the numbers so far from the row's identity that tracking one across
+became unreliable"); this is the same problem with the slack pooled in one place
+instead of spread evenly.
+
+**So there are two separate things here, and only one of them was asked for.**
+Dragging lets a reader fix a bad layout. It does not make the layout good. A
+table that needs dragging before it reads well has simply moved the work onto
+the reader, so the default has to be right whether or not AA2–AA4 ever ship.
+
+- [ ] **AA1. Fix the default. Ships alone, and should ship first.**
+
+  Cap how much slack any single text column can absorb — a `max-width` in `ch`
+  on the identity columns, so long model names still get room but stop
+  swallowing the container. One rule, no new mechanism, and it fixes the
+  reported bug.
+
+  Worth measuring the tables at 1280px, 1920px and 2560px before choosing the
+  number rather than picking one that looks right on the machine it was written
+  on. The existing `min-width: 620px` on the table and the `.scroll` wrapper
+  already handle the narrow end.
+
+  **This is not a workaround for AA2.** Even with dragging, this is the width a
+  reader sees before they touch anything, and on every new browser.
+
+- [ ] **AA2. `table-layout: fixed`, driven by `ColumnDef`.**
+
+  Draggable widths need widths that are actually honoured. In auto layout a
+  specified width is a *suggestion* — content can override it — so a dragged
+  column would sometimes spring back, which reads as the drag not working.
+  `table-layout: fixed` with a `<colgroup>` is the mechanism, and every column
+  then needs a width.
+
+  `ColumnDef` gains `width` (the default, in `ch` or px) and the row/header
+  loops already iterate it, so there is one source for order, visibility and
+  now size — the same property [M4](#m--making-the-tables-usable-at-scale)
+  relied on to stop headers and cells disagreeing.
+
+  **Two existing behaviours have to survive the switch, and one improves:**
+
+  - The `width: 1%` numeric trick stops working and must be replaced by real
+    per-column defaults. That is a rewrite of the current sizing, not an
+    addition to it — the bulk of AA2's work.
+  - The **reserved widths** from [N/S](#n--arranging-the-sections--shipped-2026-08-17)
+    exist because volatile columns swing between an em dash and a live reading,
+    resizing the table on every model transition. Under fixed layout that jitter
+    is impossible by construction, so those `min-width` hacks can go — a
+    simplification AA2 buys rather than costs.
+  - Column *hiding* redistributes: with fixed layout, hiding a column must
+    narrow the table rather than stretch the survivors, or the reader's widths
+    silently change meaning every time they toggle one.
+
+- [ ] **AA3. The drag handle, and the conflict it has to avoid.**
+
+  A grab area on each header's right edge. **The hazard is that the header is
+  already a button**: `SortButton` fills the `<th>`, so a handle inside it
+  would make every resize also sort the table — and a 3px mis-aim would reorder
+  the data the reader was measuring. The handle must be a sibling, must stop
+  propagation, and a pointer-up that never moved must not count as a click on
+  the sort control.
+
+  **Keyboard resizing is not optional.** `role="separator"` with
+  `aria-orientation="vertical"`, `aria-valuenow`, and arrow keys to nudge —
+  otherwise this is a feature only a mouse user can reach, on a page that has
+  otherwise been careful about that (the compact card's focusability, the
+  column menu, `SortButton`).
+
+  **Double-click resets that column** to its `ColumnDef` default, which is the
+  cheapest possible escape from a width dragged to zero.
+
+- [ ] **AA4. Persistence, clamped on read.**
+
+  Widths belong with hidden columns in `columnStore` — same table key, same
+  per-browser scope, same `reset`. A width is a preference in the way a *filter*
+  is not, so unlike [M2](#m--making-the-tables-usable-at-scale)'s node scope it
+  should survive a reload.
+
+  **Store pixels, clamp on read.** A width dragged on a 2560px monitor is
+  nonsense on a 1280px laptop, and the same account opens both. This is the
+  lesson the pager already learned when the row count moved underneath it:
+  clamp at the point of use rather than trusting what was stored. Fractions of
+  the container are the obvious alternative and are worse — hiding a column
+  changes the container's meaning, so the fractions drift.
+
+  **`reset` must restore widths as well as visibility.** The existing rule
+  applies unchanged: a thing hidden from the page it is hidden from has no way
+  back, and a column dragged to 2px is hidden.
+
+**Scope: all four tables or none.** Models, GPU processes and Network's two.
+Sorting, pagination and column visibility were each built once in
+`TableView`/`ColumnView` and applied everywhere, and a table that resizes while
+its neighbour does not is the kind of inconsistency that reads as a bug.
+
+**Not planned: auto-fit to content.** A double-click-to-fit gesture is the
+obvious companion and is a different feature — it needs measuring rendered text
+per column, and the widths would then change as data arrives, which is the
+jitter the reserved widths were added to stop.
 
 ### J — Single-host profile (everything on one GB10)
 
