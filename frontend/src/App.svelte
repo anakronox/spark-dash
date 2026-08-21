@@ -215,6 +215,34 @@
   const downFor = (s: number | null) =>
     s === null ? 'never seen up' : s >= 172800 ? `${Math.round(s / 86400)}d` : `${Math.round(s / 3600)}h`;
 
+  /* CLUSTER-RELATIVE ALERTS, keyed by node, for the cards to show.
+   *
+   * Taken from the alert feed rather than recomputed here, and that matters:
+   * the rules compare 15-minute AVERAGES, because a healthy pair swings
+   * -117..+110 MHz sample to sample. A card recomputing from the live snapshot
+   * would use instantaneous values, disagree with the alert constantly, and
+   * leave a reader unable to tell which to believe.
+   *
+   * Node health is deliberately untouched. A node clocking 60MHz below its
+   * partner is not unhealthy on its own terms, and colouring the card for it
+   * would repeat the mistake W avoided — an indicator firing on something
+   * nobody can act on. This is a note ON the card, not a change of its state.
+   */
+  const CLUSTER_ALERTS: Record<string, string> = {
+    ClusterNodeClockLagging: 'clock lagging',
+    ClusterNodeRunningHot: 'running hot',
+  };
+
+  const stragglers = $derived.by(() => {
+    const out = new Map<string, string[]>();
+    for (const a of alertFeed.alerts) {
+      const label = CLUSTER_ALERTS[a.name];
+      if (!label || !a.node) continue;
+      out.set(a.node, [...(out.get(a.node) ?? []), label]);
+    }
+    return out;
+  });
+
   const cluster = $derived.by(() => {
     let tokensPerSec = 0;
     let up = 0;
@@ -429,14 +457,24 @@
           {/if}
           <div class="nodes">
             {#each cluster.nodes as node (node.node_id)}
-              <NodeCard {node} slot={slotOf.get(node.node_id) ?? 0} compact={layout.compactCards} />
+              <NodeCard
+                {node}
+                slot={slotOf.get(node.node_id) ?? 0}
+                compact={layout.compactCards}
+                lagging={stragglers.get(node.node_id) ?? []}
+              />
             {/each}
           </div>
         </section>
       {:else}
         <div class="nodes">
           {#each cluster.nodes as node (node.node_id)}
-            <NodeCard {node} slot={slotOf.get(node.node_id) ?? 0} compact={layout.compactCards} />
+            <NodeCard
+              {node}
+              slot={slotOf.get(node.node_id) ?? 0}
+              compact={layout.compactCards}
+              lagging={stragglers.get(node.node_id) ?? []}
+            />
           {/each}
         </div>
       {/if}

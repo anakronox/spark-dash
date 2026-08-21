@@ -63,14 +63,18 @@ Goal: something real running on the existing GX10, informative for day-to-day us
 Triggered by the 2 additional GX10 units arriving. **Blocked on hardware** —
 only `sparky` exists today, and it is the only scrape target.
 
-- [ ] Roll out the same per-node stack to nodes 2 and 3.
+- [x] Roll out the same per-node stack to nodes 2 and 3. **Done** — `sparketa`
+  and `sparkjr` run the identical stack; the only per-node value is the
+  hostname the agent reads for its own id.
 - [x] Move Prometheus target list to file-based service discovery. **Done** —
   `prometheus.yml` uses `file_sd_configs` against `targets/`, rendered by the
   backend from `cluster.yml` with a 30s refresh. Adding a node needs no Prometheus config
   change and no restart.
 - [x] Extend backend/frontend to aggregate across nodes — `/api/cluster/summary`
   and the per-node health cards exist and handle clustering.
-- [ ] Point the central Prometheus at all 3 nodes.
+- [x] Point the central Prometheus at all 3 nodes. **Done** — rendered from
+  `cluster.yml` into `targets/generated/`, so adding a node is one edit and
+  no Prometheus restart.
 
 > **Note for the rollout:** nodes 2 and 3 need no stack repo and no per-node
 > config. Clone `spark-dash-homegrown` into `/docker/`, `cd node`, copy
@@ -3338,12 +3342,28 @@ rendered anywhere.
   against `sum by (node)` on a live node to confirm. An empty `model` is a
   router parent holding its own overhead, not a subtotal.
 
-- [ ] **X3. Fold the catalog into [docs/metrics.md](metrics.md).** The panel
-  descriptions and the README cover the surface a dashboard uses, which is not
-  all 73 series — `agent_collect_*`, the `*_info` metrics and the PSI
-  `avg60` variants have no panel. The doc still describes only upstream
-  engines, and that gap is the actual answer to "is this easy": the data was
-  always there, the description of it was not.
+- [x] **X3. The catalogue exists.** Shipped 2026-08-21 in
+  [docs/metrics.md](metrics.md).
+
+  **85 metric names**, grouped by area, each with its labels and what it means
+  — plus the three that will catch a reader out, cross-referenced to
+  `central/grafana/README.md` rather than duplicated there.
+
+  **`tests/test_metrics_catalog.py` checks it BOTH ways**, which is the part
+  that makes it worth having. A metric added without a doc entry is
+  undocumented; a doc entry with no metric is a name someone will query and get
+  nothing back from, which is indistinguishable from a quiet cluster. Both
+  failure modes were confirmed to fail the test before shipping it.
+
+  Names come from **rendering a snapshot**, not from grepping the exporter:
+  they are built there by three different patterns — `_g("name", ...)`, lists
+  of `(name, doc, value)` tuples, and f-strings per engine — so a regex over
+  the source silently misses whichever one it was not written for.
+
+  Writing it found two shorthands in my own first draft (`llama_models_known /
+  _active / _sleeping`, and a nested `{receive,transmit}_{errors,dropped}`)
+  that read fine and expand to nothing. Spelled out rather than teaching the
+  parser to guess.
 
 - [ ] **X4. Decide whether Grafana gets a container here.** Deliberately not
   done. `central/compose.yaml` has a hand-maintained deploy copy that drifts by
@@ -3495,12 +3515,27 @@ other closely. SM says the cluster is busy; it cannot say who is late.
   per node, and in a pooled cluster that is the same information arriving by a
   shorter route. A second rule would double-alert on one event.
 
-- [ ] **Y4. Surface it where the cluster is already grouped.** The node cards
-  are already grouped by cluster, so a straggler badge belongs on the card
-  rather than in a new panel. Nothing here should touch node health: a node
-  clocking 60 MHz below its partner is not unhealthy on its own terms, and
-  saying so would repeat the mistake [W](#w--choosing-which-interfaces-are-monitored--shipped-2026-08-21)
-  avoided — an indicator that fires on something nobody can act on.
+- [x] **Y4. Surfaced on the node cards.** Shipped 2026-08-21.
+
+  A short badge beside the status pill — `clock lagging`, `running hot` — in
+  warning ink, on the cards that are already grouped by cluster.
+
+  **Read from the alert feed, not recomputed.** A card cannot see its peers, so
+  it could not derive this alone; and even given the data, the rules compare
+  15-minute *averages* while a card would have instantaneous values. Two
+  answers that disagree constantly leave a reader unable to tell which to
+  believe, so the alert is the single source and the card reflects it.
+
+  **Node health is untouched**, deliberately. A node clocking 60 MHz below its
+  partner is not unhealthy on its own terms, and colouring the card for it
+  would repeat the mistake [W](#w--choosing-which-interfaces-are-monitored--shipped-2026-08-21)
+  avoided: an indicator firing on something nobody can act on. The badge is a
+  note *on* the card, not a change of its state — and it sits outside the
+  status pill so the two cannot be confused.
+
+  Kept in compact mode, unlike the runtime summary, because "which node is
+  dragging" is scan material rather than something you read after deciding to
+  look closer.
 
 **What this cannot see, stated so it is not rediscovered.** If the interconnect
 itself is the bottleneck, every node looks equally busy and equally warm, and

@@ -16,6 +16,12 @@
 
   interface Props {
     node: NodeSnapshot;
+    /** Cluster-relative alerts firing on this node, already turned into short
+     *  labels — "clock lagging", "running hot". Passed in rather than derived
+     *  here because the comparison is against this node's PEERS, which a card
+     *  cannot see, and because the alert rules average over 15 minutes: a card
+     *  recomputing from the live snapshot would disagree with them constantly. */
+    lagging?: string[];
     /** Categorical slot index, so a node keeps its colour as others come and
      *  go. Colour follows the node, never its position. */
     slot: number;
@@ -33,7 +39,7 @@
      * attention would invert the point. */
     compact?: boolean;
   }
-  const { node, slot, compact = false }: Props = $props();
+  const { node, slot, compact = false, lagging = [] }: Props = $props();
 
   /* Down nodes are never compacted — see `compact` above. */
   const dense = $derived(compact && node.up);
@@ -102,6 +108,21 @@
     </h2>
     <div class="meta">
       <StatusPill health={node.health} reasons={node.health_reasons} />
+      <!-- OUT OF STEP WITH ITS PEERS, which is a different claim from
+           unhealthy — this node may be perfectly fine on its own terms and
+           still be the one setting the pace for a model that spans the
+           cluster. Deliberately NOT folded into the status pill: node health
+           stays GPU, memory, pressure and temperature, so a pulled-ahead
+           partner cannot repaint the cluster view.
+
+           Kept in compact mode, unlike the runtime summary, because it is the
+           kind of thing you want to see while scanning rather than after
+           deciding to look closer. -->
+      {#each lagging as label (label)}
+        <span class="straggler" title="Relative to the other nodes in {node.cluster}">
+          {label}
+        </span>
+      {/each}
       <!-- The runtime summary goes in compact mode: it is a sentence, and a
            sentence per card is what makes a grid of them unscannable. -->
       {#if !dense}
@@ -270,6 +291,19 @@
     align-items: baseline;
     gap: 12px;
     font-size: 11px;
+  }
+
+  /* Warning ink, not critical: this is "look at this node before the next
+     run", never "something is broken now". It sits beside the status pill
+     rather than inside it so the two cannot be confused. */
+  .straggler {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border: 1px solid var(--warning);
+    border-radius: var(--radius);
+    color: var(--warning);
+    white-space: nowrap;
   }
 
   .sep {

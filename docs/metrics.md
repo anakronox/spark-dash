@@ -197,12 +197,134 @@ Metrics to surface:
 
 ## What the agent itself exports
 
-This document describes what the ENGINES and exporters expose upstream. What
-the agent re-publishes from them — the 73 `sparkdash_*` series — is not
-catalogued here yet (roadmap X3). Until it is, the closest thing is
-[central/grafana/README.md](../central/grafana/README.md), which lists the
-traps, and the panel descriptions in the starter dashboard beside it, which
-explain each series in place.
+Everything above describes what the ENGINES and exporters publish upstream.
+This section is the other half: the `sparkdash_*` series the agent republishes,
+which is what alert rules, the history charts and any Grafana dashboard
+actually query. **85 metric names**, every one carrying a `node` label, and a
+`cluster` label on nodes that belong to one.
+
+Read [central/grafana/README.md](../central/grafana/README.md) alongside this —
+it lists the ways this surface misleads, which a table of names cannot convey.
+
+`tests/test_metrics_catalog.py` asserts this list and the exporter agree in both
+directions, by rendering a snapshot rather than trusting the prose.
+
+### Node and agent
+
+| metric | labels | meaning |
+|---|---|---|
+| `node_up` | | 1 if the agent produced a snapshot |
+| `node_health` | `state` | one series per state; 1 for the active one |
+| `agent_build_info` | `build` | always 1; the build sha rides as a label |
+| `agent_snapshot_age_seconds` | | age of what is being served — climbing means collection is behind the poll |
+| `agent_collect_duration_seconds` | | wall time of one collection |
+| `agent_collections_total` | | collections that completed |
+| `agent_collect_failures_total` | | collections that raised; the previous snapshot is kept |
+| `agent_collection_stalled` | | 1 while readers are getting stale data rather than waiting briefly |
+| `collector_errors` | `collector` | 1 per collector that failed this scrape |
+| `unmonitored_runtime` | `runtime` | a runtime is running with nothing configured to collect it, **anywhere in its cluster** |
+
+### GPU
+
+| metric | labels | meaning |
+|---|---|---|
+| `gpu_utilization_percent` | | fraction of time a kernel was resident — busy, not efficient |
+| `gpu_temperature_celsius` | | |
+| `gpu_power_watts` | | whole-module draw on GB10, so it moves with CPU work too |
+| `gpu_clock_mhz` | | SM clock |
+| `gpu_clock_target_mhz` | | NVML applications clock — the reference throttling is judged against, **not** the boost ceiling |
+| `gpu_clock_state` | `state` | `PASS` / `THROTTLED` / `LOCKED` / `IDLE`, load-gated |
+| `gpu_temp_warning_celsius`, `gpu_temp_critical_celsius` | | the bands **as metrics**, derived per node from NVML's slowdown threshold |
+| `cpu_temp_warning_celsius`, `cpu_temp_critical_celsius` | | same, from the ACPI critical trip |
+| `temp_band_source_info` | `component`, `derived` | always 1; where each band came from |
+
+### GPU processes
+
+All five carry `runtime`, `model`, `server`. Aggregated by that key, **never
+per-pid** — a deliberate cardinality trade, so per-process detail with pids
+exists only in the agent's live `/snapshot`.
+
+| metric | meaning |
+|---|---|
+| `gpu_process_memory_bytes` | GPU memory held, by workload |
+| `gpu_process_count` | processes in that workload |
+| `gpu_process_sm_percent` | share of SM time — answers "who is competing", not "what fraction of the device" |
+| `gpu_process_encoder_percent`, `gpu_process_decoder_percent` | NVENC/NVDEC, separate fixed-function blocks |
+
+An empty `model` is a router parent holding its own overhead, and an empty
+`runtime` is a process nothing recognised. Both are categories, not gaps. The
+partition is disjoint, so aggregating at any level is safe.
+
+### Memory and pressure
+
+| metric | meaning |
+|---|---|
+| `memory_total_bytes`, `memory_available_bytes`, `memory_used_bytes` | one pool; GB10 has no separate VRAM |
+| `memory_unified` | 1 when CPU and GPU share one coherent pool |
+| `memory_swap_used_bytes` | a LEVEL, not a flow — pages sit here indefinitely after a past squeeze |
+| `psi_memory_some_avg10`, `psi_memory_some_avg60` | at least one task stalled on memory |
+| `psi_memory_full_avg10`, `psi_memory_full_avg60` | EVERY runnable task stalled — the difference between working hard and stopped |
+| `psi_memory_state` | `state` label: `LOW` / `MOD` / `HIGH` / `CRITICAL` |
+| `cpu_utilization_percent`, `cpu_load1`, `cpu_temperature_celsius` | |
+| `disk_total_bytes`, `disk_used_bytes`, `disk_available_bytes` | root filesystem only |
+
+### Network and RDMA
+
+| metric | labels | meaning |
+|---|---|---|
+| `network_up` | `interface` | 1 when the link is up |
+| `network_monitored` | `interface` | 0 when excluded from alerting by `cluster.yml` — still collected and charted |
+| `network_speed_mbps` | `interface` | absent while a link is down |
+| `network_{receive,transmit}_bytes_total` | `interface` | monotonic counters **typed as gauges**; `rate()` is correct on them |
+| `network_receive_errors_total`, `network_receive_dropped_total` | `interface` | |
+| `network_transmit_errors_total`, `network_transmit_dropped_total` | `interface` | |
+| `rdma_port_active` | `device`, `port` | |
+| `rdma_port_monitored` | `device`, `port` | derived from the paired netdev — one cable carries both |
+| `rdma_{receive,transmit}_bytes_total`, `rdma_errors_total` | `device`, `port` | |
+| `rdma_port_info` | + `link_layer`, `rate` | always 1; the negotiated rate rides as a label because a string cannot be a gauge value |
+
+### Inference — llama.cpp router mode
+
+Per model: `model`, `router`. Per router: `router`.
+
+| metric | meaning |
+|---|---|
+| `llama_router_up` | 1 when the router answered |
+| `llama_models_known`, `llama_models_active`, `llama_models_sleeping` | registered / weights resident / slept but process alive |
+| `llama_router_max_instances` | the `--models-max` ceiling |
+| `llama_model_state` | `state` label; one series per state |
+| `llama_model_size_bytes`, `llama_model_parameters`, `llama_model_context_length` | from the router's `meta`, absent on models it has never loaded |
+| `llama_model_generation_tokens_per_second` | **decode — the throughput number** |
+| `llama_model_prompt_tokens_per_second` | prefill |
+| `llama_model_tokens_per_second` | the two added together; legacy, kept so history is not orphaned |
+| `llama_model_kv_cache_percent`, `llama_model_requests_running`, `llama_model_requests_waiting` | active models only — emitting 0 for a sleeping one is indistinguishable from idle-but-loaded |
+
+### Inference — engines (vLLM, SGLang)
+
+One family per engine, `sparkdash_vllm_*` and `sparkdash_sglang_*`, each
+labelled `model`. A family per engine rather than one with a `runtime` label,
+because the vLLM names are what alert rules and stored history are written
+against.
+
+| metric | meaning |
+|---|---|
+| `{engine}_generation_tokens_per_second` | **decode — the throughput number** |
+| `{engine}_prompt_tokens_per_second` | prefill |
+| `{engine}_tokens_per_second` | the two added together; legacy |
+| `{engine}_requests_running`, `{engine}_requests_waiting` | |
+| `{engine}_kv_cache_percent` | **vLLM only.** The family exists for SGLang and never carries samples: SGLang publishes `cache_hit_rate`, which is prefix-cache hits rather than occupancy — a different question with the same 0–1 shape |
+| `endpoint_reachable` | `runtime`, `endpoint` — 0 for a configured endpoint that did not answer |
+
+### The three that will catch you out
+
+1. **`_tokens_per_second` is prefill AND decode.** Measured on this cluster it
+   read 47,672 tok/s while the model generated 48. Use the `generation_`
+   variant.
+2. **Never sum a memory pool across nodes.** No separate VRAM, no shared pool
+   between boxes.
+3. **`sum(A) + sum(B)` drops nodes running only one engine** — binary `+` keeps
+   only label sets present on both sides. Select families by `__name__` regex
+   and sum once.
 
 ## 4. Derived / cluster-level
 
