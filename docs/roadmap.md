@@ -3953,68 +3953,70 @@ the reader, so the default has to be right whether or not AA2–AA4 ever ship.
   idiom. This is the smallest change that makes the default readable in the
   meantime, which is what AA1 was for.
 
-- [ ] **AA2. `table-layout: fixed`, driven by `ColumnDef`.**
+- [x] **AA2. `table-layout: fixed`, driven by `ColumnDef`.** Shipped
+  2026-08-21. `ColumnDef` gains a required `width` in `ch`, rendered through a
+  `<colgroup>` per table.
 
-  Draggable widths need widths that are actually honoured. In auto layout a
-  specified width is a *suggestion* — content can override it — so a dragged
-  column would sometimes spring back, which reads as the drag not working.
-  `table-layout: fixed` with a `<colgroup>` is the mechanism, and every column
-  then needs a width.
+  **Defaults measured, not guessed.** Longest real content across the live
+  cluster: model 22 (`deepseek-v4-flash-0731`), process model 27
+  (`Qwen_Qwen3.5-4B-Q4_K_M.gguf`), server 18, RDMA rate 19, interface 13. Each
+  column is `max(header, content) + 3ch` for padding and the sort caret.
 
-  `ColumnDef` gains `width` (the default, in `ch` or px) and the row/header
-  loops already iterate it, so there is one source for order, visibility and
-  now size — the same property [M4](#m--making-the-tables-usable-at-scale)
-  relied on to stop headers and cells disagreeing.
+  **`ch` for the default, pixels for a drag.** `ch` tracks the font, and these
+  tables set their own `font-size`; a pixel default would be wrong the moment
+  that changed. A dragged width is pixels because that measurement happened at
+  a specific size on a specific screen, and storing it as anything else would
+  be inventing precision.
 
-  **Two existing behaviours have to survive the switch, and one improves:**
+  **It reverses AA1's no-ellipsis decision, and that is the real cost.** AA1
+  argued a model whose name you cannot read is worse than a wide column — true
+  while columns could grow. Under fixed layout they cannot, so the alternative
+  to clipping is text visibly spilling across its neighbour, which is worse
+  than either. The full value stays reachable, and the column is now draggable
+  precisely so a reader who needs the whole name can have it and keep it.
 
-  - The `width: 1%` numeric trick stops working and must be replaced by real
-    per-column defaults. That is a rewrite of the current sizing, not an
-    addition to it — the bulk of AA2's work.
-  - The **reserved widths** from [N/S](#n--arranging-the-sections--shipped-2026-08-17)
-    exist because volatile columns swing between an em dash and a live reading,
-    resizing the table on every model transition. Under fixed layout that jitter
-    is impossible by construction, so those `min-width` hacks can go — a
-    simplification AA2 buys rather than costs.
-  - Column *hiding* redistributes: with fixed layout, hiding a column must
-    narrow the table rather than stretch the survivors, or the reader's widths
-    silently change meaning every time they toggle one.
+  The `.slack` column from AA1 survives and is still load-bearing: without it,
+  fixed layout spreads the surplus across every column in proportion to the
+  widths just set, undoing the point of setting them.
 
-- [ ] **AA3. The drag handle, and the conflict it has to avoid.**
+- [x] **AA3. The drag handle.** Shipped 2026-08-21 as `ColumnGrip.svelte`.
 
-  A grab area on each header's right edge. **The hazard is that the header is
-  already a button**: `SortButton` fills the `<th>`, so a handle inside it
-  would make every resize also sort the table — and a 3px mis-aim would reorder
-  the data the reader was measuring. The handle must be a sibling, must stop
-  propagation, and a pointer-up that never moved must not count as a click on
-  the sort control.
+  **The hazard was the one the plan named**, and it shaped the component: the
+  header is already a button. `SortButton` fills the `<th>`, so the grip is a
+  sibling that sits above it and stops the gesture at `pointerdown` — the
+  button never sees it start, so it cannot complete a click. 8px of grab area
+  for a 2px visual cue, because a hairline competing with a button underneath
+  is a miserable target.
 
-  **Keyboard resizing is not optional.** `role="separator"` with
-  `aria-orientation="vertical"`, `aria-valuenow`, and arrow keys to nudge —
-  otherwise this is a feature only a mouse user can reach, on a page that has
-  otherwise been careful about that (the compact card's focusability, the
-  column menu, `SortButton`).
+  **Keyboard resizing shipped with it**, not after: `role="separator"`,
+  `aria-orientation="vertical"`, `aria-valuenow`, arrow keys to nudge, shift
+  for coarse, Home/Escape to reset. Svelte's a11y lint objects to a focusable
+  separator; it is suppressed with the reason rather than downgrading the role
+  to `button`, which would be lint-clean and a lie — this performs no action,
+  it holds a value.
 
-  **Double-click resets that column** to its `ColumnDef` default, which is the
-  cheapest possible escape from a width dragged to zero.
+  Double-click resets one column, which is the escape from the single
+  unrecoverable state: dragged so narrow its own handle cannot be grabbed
+  again.
 
-- [ ] **AA4. Persistence, clamped on read.**
+- [x] **AA4. Persistence, clamped on read.** Shipped 2026-08-21 alongside the
+  hidden-column store, same file and same `reset`.
 
-  Widths belong with hidden columns in `columnStore` — same table key, same
-  per-browser scope, same `reset`. A width is a preference in the way a *filter*
-  is not, so unlike [M2](#m--making-the-tables-usable-at-scale)'s node scope it
-  should survive a reload.
+  Pixels, clamped to `[44, 900]` **at the point of use** rather than on write —
+  a width dragged on a 2560px monitor is nonsense on a 1280px laptop and the
+  same browser opens both. Fractions of the container were the obvious
+  alternative and are worse: hiding a column changes what the container means,
+  so stored fractions drift.
 
-  **Store pixels, clamp on read.** A width dragged on a 2560px monitor is
-  nonsense on a 1280px laptop, and the same account opens both. This is the
-  lesson the pager already learned when the row count moved underneath it:
-  clamp at the point of use rather than trusting what was stored. Fractions of
-  the container are the obvious alternative and are worse — hiding a column
-  changes the container's meaning, so the fractions drift.
+  `reset` clears widths as well as visibility, because a column dragged to its
+  minimum is hidden in every sense that matters.
 
-  **`reset` must restore widths as well as visibility.** The existing rule
-  applies unchanged: a thing hidden from the page it is hidden from has no way
-  back, and a column dragged to 2px is hidden.
+  **The tests needed testing.** Two of the four new guards first passed against
+  deliberately broken code: one matched `table-layout: fixed` inside the
+  comment explaining it after the declaration was deleted, and the other found
+  `stopPropagation` in the keyboard handler after the pointer handler had lost
+  it — which is the exact bug, since the mouse is what aims at an 8px target
+  beside a button. Both now strip comments and check the specific code path.
 
 **Scope: all four tables or none.** Models, GPU processes and Network's two.
 Sorting, pagination and column visibility were each built once in

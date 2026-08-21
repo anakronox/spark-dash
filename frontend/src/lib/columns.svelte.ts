@@ -18,6 +18,46 @@
 import type { ColumnDef } from './table.svelte';
 
 const KEY = 'spark-dash.section-columns.v1';
+const WIDTH_KEY = 'spark-dash.column-widths.v1';
+
+/** Below this a column is unreadable and, worse, its drag handle is hard to
+ *  grab again — so a width dragged to nothing has no easy way back. Enforced
+ *  in the store rather than only in the drag handler, because it also bounds
+ *  whatever a previous browser wrote. */
+export const MIN_COLUMN_PX = 44;
+
+/** No column needs more than this, and a stored value beyond it is almost
+ *  always a drag on a much wider monitor. Clamped rather than dropped: the
+ *  reader still gets a wide column, just not one that pushes everything else
+ *  off the page. */
+const MAX_COLUMN_PX = 900;
+
+function readWidths(): Record<string, Record<string, number>> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(WIDTH_KEY) ?? 'null');
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+    const out: Record<string, Record<string, number>> = {};
+    for (const [table, widths] of Object.entries(saved)) {
+      if (!widths || typeof widths !== 'object' || Array.isArray(widths)) continue;
+      const clean: Record<string, number> = {};
+      for (const [key, px] of Object.entries(widths as Record<string, unknown>)) {
+        // CLAMPED ON READ, not on write. A width dragged on a 2560px monitor is
+        // nonsense on a 1280px laptop and the same browser opens both, so the
+        // stored value cannot be trusted at the point of use — the same lesson
+        // the pager learned when the row count moved underneath its index.
+        if (typeof px === 'number' && Number.isFinite(px)) {
+          clean[key] = Math.min(MAX_COLUMN_PX, Math.max(MIN_COLUMN_PX, Math.round(px)));
+        }
+      }
+      if (Object.keys(clean).length) out[table] = clean;
+    }
+    return out;
+  } catch {
+    // Same failure direction as the hidden-column store: a table that renders
+    // at its default widths is fine; one that does not render is not.
+    return {};
+  }
+}
 
 function read(): Record<string, string[]> {
   try {
@@ -47,9 +87,26 @@ function read(): Record<string, string[]> {
 class ColumnStore {
   hidden = $state<Record<string, string[]>>(read());
 
+  /** table -> column key -> width in PIXELS.
+   *
+   * Pixels rather than a fraction of the container, which is the obvious
+   * alternative and is worse: hiding a column changes what the container's
+   * width means, so stored fractions drift every time the reader toggles one.
+   * Pixels stay literal and are clamped where they are read.
+   */
+  widths = $state<Record<string, Record<string, number>>>(readWidths());
+
   #save() {
     try {
       localStorage.setItem(KEY, JSON.stringify(this.hidden));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  #saveWidths() {
+    try {
+      localStorage.setItem(WIDTH_KEY, JSON.stringify(this.widths));
     } catch {
       // Still applied for this session.
     }
@@ -64,17 +121,48 @@ class ColumnStore {
     this.#save();
   }
 
+  width(table: string, key: string): number | null {
+    return this.widths[table]?.[key] ?? null;
+  }
+
+  setWidth(table: string, key: string, px: number) {
+    const clamped = Math.min(MAX_COLUMN_PX, Math.max(MIN_COLUMN_PX, Math.round(px)));
+    this.widths = {
+      ...this.widths,
+      [table]: { ...(this.widths[table] ?? {}), [key]: clamped },
+    };
+    this.#saveWidths();
+  }
+
+  /** Back to the ColumnDef default for one column. The escape from a column
+   *  dragged too narrow to grab again — which is why it exists at all. */
+  clearWidth(table: string, key: string) {
+    const current = this.widths[table];
+    if (!current || !(key in current)) return;
+    const { [key]: _dropped, ...rest } = current;
+    this.widths = { ...this.widths, [table]: rest };
+    this.#saveWidths();
+  }
+
+  /** RESETS BOTH. A column dragged to its minimum is hidden in every sense
+   *  that matters, so a reset that restored visibility but not width would
+   *  leave the reader stuck with the half they could not see. */
   reset() {
     this.hidden = {};
+    this.widths = {};
     try {
       localStorage.removeItem(KEY);
+      localStorage.removeItem(WIDTH_KEY);
     } catch {
       // Still applied for this session.
     }
   }
 
   get customised(): boolean {
-    return Object.values(this.hidden).some((keys) => keys.length > 0);
+    return (
+      Object.values(this.hidden).some((keys) => keys.length > 0) ||
+      Object.values(this.widths).some((w) => Object.keys(w).length > 0)
+    );
   }
 }
 
@@ -131,6 +219,29 @@ export class ColumnView {
       this.#table,
       current.includes(key) ? current.filter((k) => k !== key) : [...current, key],
     );
+  }
+
+  /** The width to render, or null to let the ColumnDef default stand.
+   *
+   * Null rather than a resolved number so the markup can emit the default as a
+   * CSS unit (`ch`) and only switch to pixels once the reader has dragged.
+   * `ch` is the right unit for a default — it tracks the font — and pixels are
+   * the only honest unit for a drag, which happened at a specific size on a
+   * specific screen. */
+  width(key: string): number | null {
+    return columnStore.width(this.#table, key);
+  }
+
+  setWidth(key: string, px: number) {
+    columnStore.setWidth(this.#table, key, px);
+  }
+
+  resetWidth(key: string) {
+    columnStore.clearWidth(this.#table, key);
+  }
+
+  get resized(): boolean {
+    return this.#columns.some((c) => this.width(c.key) !== null);
   }
 
   get hiddenCount(): number {

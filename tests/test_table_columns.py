@@ -133,3 +133,115 @@ def test_slack_is_not_a_declared_column(table):
     understand why."""
     defined, rendered, sortable = lists(table)
     assert "slack" not in defined | rendered | sortable
+
+
+# --- AA2/AA3: fixed layout, declared widths, and the grip --------------------
+#
+# `table-layout: fixed` is what makes a declared width actually apply — in auto
+# layout it is only a suggestion and content can override it, so a dragged
+# column would sometimes spring back and read as the drag not working. Under
+# fixed layout a column with NO width takes whatever is left over, which is the
+# very failure AA1 fixed, so every column must declare one.
+
+LIB = Path(__file__).resolve().parent.parent / "frontend" / "src" / "lib"
+GRIP = COMPONENTS / "ColumnGrip.svelte"
+
+
+def without_comments(src: str) -> str:
+    """Strip CSS and HTML comments.
+
+    Both of the checks below first passed against a file where the DECLARATION
+    had been deleted and only the comment explaining it remained — the string
+    was still present, so the assertion held while the behaviour was gone.
+    Testing the tests is what caught that."""
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"<!--.*?-->", "", src, flags=re.S)
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_layout_is_fixed_so_declared_widths_apply(table):
+    src = without_comments((COMPONENTS / f"{table}.svelte").read_text())
+    assert "table-layout: fixed;" in src, (
+        f"{table} declares column widths that auto layout is free to ignore"
+    )
+    assert "<colgroup>" in src, f"{table} has no colgroup to carry the widths"
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_every_column_declares_a_width(table):
+    """Under fixed layout an undeclared column takes the leftover space, which
+    is exactly how one column swallowed the table before AA1."""
+    src = (COMPONENTS / f"{table}.svelte").read_text()
+    missing = [
+        m.group(1)
+        for m in re.finditer(r"\{ key: '([a-z]+)', label:[^}]*\}", src)
+        if "width:" not in m.group(0)
+    ]
+    assert not missing, f"{table} columns with no default width: {missing}"
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_a_dragged_width_wins_over_the_default(table):
+    """The stored pixel width has to take precedence, or dragging appears to do
+    nothing after a re-render."""
+    src = (COMPONENTS / f"{table}.svelte").read_text()
+    assert ".width(c.key) !== null" in src, (
+        f"{table} does not prefer a stored width over the ColumnDef default"
+    )
+    assert "c.width}ch" in src, f"{table} does not fall back to the ch default"
+
+
+def test_the_grip_cannot_trigger_a_sort():
+    """THE hazard: the header is already a button. SortButton fills the <th>,
+    so a handle that let its events through would re-sort the table on every
+    resize — and a 3px mis-aim would reorder the data being measured."""
+    src = without_comments(GRIP.read_text())
+    # Specifically in the POINTERDOWN path. Checking the file as a whole passed
+    # against a version where pointerdown let events through and only the
+    # keyboard handler still stopped them — which is the exact bug: the mouse
+    # is what aims at a 8px target next to a button.
+    down = src[src.index("function onpointerdown"):]
+    down = down[: down.index("\n  }")]
+    assert "e.stopPropagation();" in down, "the grip lets a drag reach the sort button"
+    assert "e.preventDefault();" in down
+
+
+def test_the_grip_is_reachable_without_a_mouse():
+    """This page has been careful about that elsewhere. A resize only a mouse
+    could reach would be the one exception."""
+    src = GRIP.read_text()
+    assert 'role="separator"' in src and 'tabindex="0"' in src
+    assert "ArrowLeft" in src and "ArrowRight" in src
+    assert "aria-valuenow" in src, "a separator with no value announces nothing"
+
+
+def test_a_column_dragged_to_nothing_can_be_recovered():
+    """The one unrecoverable state: dragged so narrow its own handle cannot be
+    grabbed again. Both escapes must exist."""
+    src = GRIP.read_text()
+    assert "ondblclick" in src, "no double-click reset"
+    assert "onreset" in src
+    store = (LIB / "columns.svelte.ts").read_text()
+    assert "MIN_COLUMN_PX" in store, "no floor on how narrow a column can go"
+
+
+def test_reset_restores_widths_as_well_as_visibility():
+    """A column dragged to its minimum is hidden in every sense that matters,
+    so a reset that restored one but not the other leaves the reader stuck with
+    the half they could not see."""
+    store = (LIB / "columns.svelte.ts").read_text()
+    reset = store[store.index("  reset() {"):]
+    reset = reset[: reset.index("\n  }")]
+    assert "this.hidden = {}" in reset and "this.widths = {}" in reset
+
+
+def test_stored_widths_are_clamped_where_they_are_read():
+    """A width dragged on a 2560px monitor is nonsense on a 1280px laptop and
+    the same browser opens both, so the stored value cannot be trusted at the
+    point of use."""
+    store = (LIB / "columns.svelte.ts").read_text()
+    read_fn = store[store.index("function readWidths"):]
+    read_fn = read_fn[: read_fn.index("\nfunction ")]
+    assert "Math.min" in read_fn and "Math.max" in read_fn, (
+        "readWidths does not clamp what a previous browser wrote"
+    )

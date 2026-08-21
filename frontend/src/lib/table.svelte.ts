@@ -63,6 +63,19 @@ export interface ColumnDef {
   /** Carries an alert. Switched off it comes back on its own the moment it has
    *  something to say — see ColumnView.force. */
   signal?: boolean;
+  /** Default width, in `ch`. The starting point a reader sees before touching
+   *  anything, and what double-clicking a drag handle restores.
+   *
+   * `ch` rather than pixels because it tracks the font: these tables set their
+   * own font-size, and a pixel default would be wrong the moment that changed.
+   * A DRAGGED width is stored in pixels instead — that measurement happened at
+   * a specific size on a specific screen, and pretending otherwise would be
+   * inventing precision.
+   *
+   * Required under `table-layout: fixed`: a column with no width there takes
+   * whatever is left over, which is exactly how one column ends up swallowing
+   * the table. `tests/test_table_columns.py` fails a ColumnDef without one. */
+  width: number;
 }
 
 /** Drop the sort when the column it sorts by is no longer on screen.

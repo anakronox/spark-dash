@@ -12,6 +12,7 @@
    */
   import { num } from '../lib/format';
   import ColumnMenu from './ColumnMenu.svelte';
+  import ColumnGrip from './ColumnGrip.svelte';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
@@ -198,27 +199,27 @@
   });
 
   const RDMA_COLUMNS: ColumnDef[] = [
-    { key: 'port', label: 'rdma port', required: true },
-    { key: 'state', label: 'state' },
-    { key: 'link', label: 'link' },
+    { key: 'port', label: 'rdma port', required: true, width: 18 },
+    { key: 'state', label: 'state', width: 12 },
+    { key: 'link', label: 'link', width: 12 },
     // "rate", not "negotiated": the longer word was setting this column's
     // width all by itself, and the value beneath it is self-evidently a rate.
-    { key: 'rate', label: 'rate' },
-    { key: 'iface', label: 'interface' },
-    { key: 'node', label: 'node' },
-    { key: 'rx', label: 'rx', right: true },
-    { key: 'tx', label: 'tx', right: true },
-    { key: 'err', label: 'err', right: true, signal: true },
+    { key: 'rate', label: 'rate', width: 16 },
+    { key: 'iface', label: 'interface', width: 17 },
+    { key: 'node', label: 'node', width: 13 },
+    { key: 'rx', label: 'rx', right: true, width: 11 },
+    { key: 'tx', label: 'tx', right: true, width: 11 },
+    { key: 'err', label: 'err', right: true, signal: true, width: 8 },
   ];
 
   const IFACE_COLUMNS: ColumnDef[] = [
-    { key: 'name', label: 'interface', required: true },
-    { key: 'node', label: 'node' },
-    { key: 'link', label: 'link', right: true },
-    { key: 'rx', label: 'rx', right: true },
-    { key: 'tx', label: 'tx', right: true },
-    { key: 'err', label: 'err', right: true, signal: true },
-    { key: 'drop', label: 'drop', right: true, signal: true },
+    { key: 'name', label: 'interface', required: true, width: 17 },
+    { key: 'node', label: 'node', width: 13 },
+    { key: 'link', label: 'link', right: true, width: 12 },
+    { key: 'rx', label: 'rx', right: true, width: 11 },
+    { key: 'tx', label: 'tx', right: true, width: 11 },
+    { key: 'err', label: 'err', right: true, signal: true, width: 8 },
+    { key: 'drop', label: 'drop', right: true, signal: true, width: 9 },
   ];
 
   const rdmaCols = new ColumnView('network.rdma', RDMA_COLUMNS);
@@ -253,6 +254,26 @@
 
   const rdmaShown = $derived(rdmaView.slice(rdma));
   const ifacesShown = $derived(ifaceView.slice(interfaces));
+
+  /* Measured from the rendered header rather than from the stored value: a
+     column still on its `ch` default has no stored pixel width, and a drag has
+     to start from where the column actually is, not from a guess. */
+  const headers = new Map<string, HTMLElement>();
+  const gripWidth = (key: string) =>
+    headers.get(key)?.getBoundingClientRect().width ?? 0;
+
+  /** Keeps that map in step with what is actually rendered. An action rather
+   *  than `bind:this` because the headers come from a loop whose membership
+   *  changes as columns are hidden, and a stale node would hand the next drag
+   *  a width from a column that is no longer on the page. */
+  function register(node: HTMLElement, key: string) {
+    headers.set(key, node);
+    return {
+      destroy() {
+        headers.delete(key);
+      },
+    };
+  }
 </script>
 
 {#snippet rdmaCell(c: ColumnDef, p: RdmaRow)}
@@ -342,11 +363,36 @@
   {#if rdma.length}
     <div class="scroll">
       <table>
+        <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed`
+             the first row's widths decide the whole table, and a `<colgroup>`
+             states them once instead of relying on whichever row happens to
+             render first.
+
+             A dragged width is pixels; the default is `ch`, which tracks the
+             font — these tables set their own font-size, and a pixel default
+             would be wrong the moment that changed. The `.slack` col stays
+             unsized so it still absorbs whatever `width: 100%` leaves over
+             (AA1); under fixed layout that surplus would otherwise be split
+             across every column and undo the point of setting them. -->
+        <colgroup>
+          {#each rdmaCols.visible() as c (c.key)}
+            <col style="width: {rdmaCols.width(c.key) !== null
+              ? `${rdmaCols.width(c.key)}px`
+              : `${c.width}ch`}" />
+          {/each}
+          <col />
+        </colgroup>
         <thead>
           <tr>
             {#each rdmaCols.visible() as c (c.key)}
-              <th scope="col" class:r={c.right} aria-sort={rdmaView.ariaSort(c.key)}>
+              <th use:register={c.key} scope="col" class:r={c.right} aria-sort={rdmaView.ariaSort(c.key)}>
                 <SortButton view={rdmaView} id={c.key} label={c.label} />
+                <ColumnGrip
+                  label={c.label}
+                  width={() => gripWidth(c.key)}
+                  onresize={(px) => rdmaCols.setWidth(c.key, px)}
+                  onreset={() => rdmaCols.resetWidth(c.key)}
+                />
               </th>
             {/each}
             <!-- SLACK PARKS HERE. `table { width: 100% }` in app.css forces the
@@ -385,11 +431,36 @@
   {#if interfaces.length}
     <div class="scroll" class:spaced={rdma.length > 0}>
       <table>
+        <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed`
+             the first row's widths decide the whole table, and a `<colgroup>`
+             states them once instead of relying on whichever row happens to
+             render first.
+
+             A dragged width is pixels; the default is `ch`, which tracks the
+             font — these tables set their own font-size, and a pixel default
+             would be wrong the moment that changed. The `.slack` col stays
+             unsized so it still absorbs whatever `width: 100%` leaves over
+             (AA1); under fixed layout that surplus would otherwise be split
+             across every column and undo the point of setting them. -->
+        <colgroup>
+          {#each ifaceCols.visible() as c (c.key)}
+            <col style="width: {ifaceCols.width(c.key) !== null
+              ? `${ifaceCols.width(c.key)}px`
+              : `${c.width}ch`}" />
+          {/each}
+          <col />
+        </colgroup>
         <thead>
           <tr>
             {#each ifaceCols.visible() as c (c.key)}
-              <th scope="col" class:r={c.right} aria-sort={ifaceView.ariaSort(c.key)}>
+              <th use:register={c.key} scope="col" class:r={c.right} aria-sort={ifaceView.ariaSort(c.key)}>
                 <SortButton view={ifaceView} id={c.key} label={c.label} />
+                <ColumnGrip
+                  label={c.label}
+                  width={() => gripWidth(c.key)}
+                  onresize={(px) => ifaceCols.setWidth(c.key, px)}
+                  onreset={() => ifaceCols.resetWidth(c.key)}
+                />
               </th>
             {/each}
             <!-- SLACK PARKS HERE. `table { width: 100% }` in app.css forces the
@@ -475,9 +546,14 @@
   table {
     font-size: 12px;
     min-width: 620px;
+    /* Required for the colgroup widths to be honoured at all. */
+    table-layout: fixed;
   }
 
   th {
+    /* Positioning context for the resize grip, which sits on the column
+       boundary rather than inside the cell's text flow. */
+    position: relative;
     text-align: left;
     font-size: 10px;
     font-weight: 500;
@@ -644,24 +720,29 @@
     color: var(--ink);
   }
 
-  /* Real columns size to their content; the trailing `.slack` column takes
-     whatever `width: 100%` leaves over. `width: 1%` with nowrap is the
-     auto-layout idiom for "as narrow as your content allows" — the numeric
-     columns already used it, and applying it to the text columns too is what
-     stops one of them absorbing the entire surplus.
+  /* AA2: widths come from the `<colgroup>` above, which only `table-layout:
+     fixed` actually honours — in auto layout a specified width is a suggestion
+     and content can override it, so a dragged column would sometimes spring
+     back and read as the drag not working.
 
-     A pathological name still gets its full width rather than being truncated,
-     which is why there is no ellipsis here: this is a monitoring table, and a
-     model you cannot read the name of is not better than a wide column. If a
-     name is long enough to force horizontal scroll, the `.scroll` wrapper
-     handles it.
+     THE TRADE FIXED LAYOUT MAKES, and it reverses a decision AA1 took: a
+     column can no longer grow to fit its content, so a long value has to be
+     clipped rather than allowed to widen the table. AA1 argued against ellipsis
+     on the grounds that a model whose name you cannot read is worse than a wide
+     column — that was right while columns could grow. Now that they cannot, the
+     alternative to ellipsis is text visibly spilling across the neighbouring
+     cell, which is worse than either. The full value stays reachable: every
+     truncatable cell carries it as a `title`, and the reader can widen the
+     column and keep that width.
 
-     AA2 replaces all of this with `table-layout: fixed` and explicit
-     per-column widths; until then this is the smallest change that makes the
-     default readable. */
+     The `.slack` column stays unsized so it still absorbs whatever
+     `width: 100%` leaves over. Without it, fixed layout would spread the
+     surplus across every column in proportion to the widths just set, which
+     undoes the point of setting them. */
   th:not(.slack),
   td:not(.slack) {
-    width: 1%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
