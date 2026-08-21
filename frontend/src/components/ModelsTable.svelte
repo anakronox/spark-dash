@@ -549,15 +549,11 @@
     font-weight: 500;
   }
 
-  /* Numeric columns shrink to their contents instead of sharing the slack.
-     `width: 1%` with nowrap is the standard way to say "as narrow as the text
-     allows" in an auto-layout table.
-
-     Without it a wider page spreads every column equally, which pushed the
-     numbers so far from the row's identity that tracking one across became
-     unreliable — the exact failure the old 1180px cap was hiding. The slack
-     now lands in the text columns, where longer names and addresses can use
-     it, and the numbers stay in one readable block. */
+  /* Column widths now come from the `<colgroup>` under `table-layout: fixed`
+     (AA2), not from the `width: 1%` idiom this comment used to describe. The
+     concern it recorded still holds and is what the declared widths are for:
+     numbers spread across a wide page drift so far from the row's identity
+     that tracking one across becomes unreliable. */
   /* Row hover. Cheap, and it is what makes a wide table navigable: with the
      identity columns on the left and the numbers on the right, the eye needs
      something to hold the line across the gap between them. */
@@ -612,18 +608,6 @@
     border-color: var(--accent);
   }
 
-  .toks {
-    min-width: calc(7ch + 24px);
-  }
-
-  .pct {
-    min-width: calc(5ch + 24px);
-  }
-
-  .queue {
-    min-width: calc(4ch + 24px);
-  }
-
   .state {
     display: inline-flex;
     align-items: baseline;
@@ -672,6 +656,16 @@
      `width: 100%` leaves over. Without it, fixed layout would spread the
      surplus across every column in proportion to the widths just set, which
      undoes the point of setting them. */
+
+  /* THE RESERVED MIN-WIDTHS ARE GONE (AA2). They existed because these columns
+     swing between an em dash and a live reading every time a model wakes or
+     sleeps, and in an auto-layout table that resized the whole row on every
+     transition. Under `table-layout: fixed` a column's width comes from the
+     colgroup and content cannot change it, so the jitter they defended against
+     is now impossible by construction rather than merely discouraged.
+
+     Clipping and ellipsis moved to the shared `:not(.slack)` rule, which
+     applies to every column rather than the few that happened to need it. */
   th:not(.slack),
   td:not(.slack) {
     overflow: hidden;

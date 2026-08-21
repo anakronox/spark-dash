@@ -4018,6 +4018,21 @@ the reader, so the default has to be right whether or not AA2–AA4 ever ship.
   it — which is the exact bug, since the mouse is what aims at an 8px target
   beside a button. Both now strip comments and check the specific code path.
 
+**Cleanup the switch bought, done 2026-08-21.** AA2 predicted the reserved
+`min-width` hacks from [N/S](#n--arranging-the-sections--shipped-2026-08-17)
+could go, and they have — ten rules across the three components. They existed
+because those columns swing between an em dash and a live reading every time a
+model wakes or sleeps, which resized the row on every transition in an
+auto-layout table. Under fixed layout a column's width comes from the colgroup
+and content cannot change it, so that jitter is impossible by construction
+rather than merely discouraged.
+
+Checked before removing rather than assumed: the declared widths are content-
+derived and the old minimums were conservative, the widest gap being `tok` at
+9ch against an effective ~10.3ch for values like `47.9`. Three stale comments
+describing the `width: 1%` idiom went with them, and a sweep confirmed no
+orphaned CSS classes were left behind.
+
 **Scope: all four tables or none.** Models, GPU processes and Network's two.
 Sorting, pagination and column visibility were each built once in
 `TableView`/`ColumnView` and applied everywhere, and a table that resizes while
