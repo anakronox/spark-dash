@@ -3024,7 +3024,7 @@ that mould is nearly free, while a genuinely new data palette is not.
 for itself twice over, catching the clipped-chroma grey in U3's first palette
 and the missing chrome check that U4 added.
 
-### V — More inference runtimes: SGLang, and Atlas — **V1/V2a/V3 shipped 2026-08-21**
+### V — More inference runtimes: SGLang, and Atlas — **shipped 2026-08-21** (V2b deferred)
 
 Planned 2026-08-19. Then the agent collected from exactly two engines,
 `COLLECTIBLE_RUNTIMES = {"llama.cpp", "vllm"}`. Both of the engines below are
@@ -3125,17 +3125,32 @@ Atlas, which V2a classifies but deliberately leaves out of that set.
   `models`) and deliberately NOT in `COLLECTIBLE_RUNTIMES`: with nothing known
   to scrape, flagging it would raise a warning nobody can resolve.
 
-- [ ] **V2b. Atlas collector — blocked on knowing what it exposes.**
+- [ ] **V2b. Atlas collector — DEFERRED 2026-08-21 on install base, not on
+  capability.**
 
-  Its documentation says nothing about Prometheus metrics or a `/metrics`
-  endpoint, and does not state whether the API is OpenAI-compatible. The whole
-  agent model is scraping a runtime's own endpoint, so this cannot be planned
-  further until that is established. **First step is a question, not code:**
-  run Atlas and look at what ports and endpoints it opens.
+  It was written as blocked on a technical question: Atlas documents no
+  Prometheus endpoint and does not say whether its API is OpenAI-compatible, so
+  the first step was to run it and look. That question is still unanswered and
+  is no longer the reason to wait.
 
-  If it exposes nothing, that is a real answer too — it would make Atlas a
-  runtime the dashboard can see *consuming* the GPU (via V2a) but never see
-  *serving*, which is exactly the silence `UnmonitoredInferenceRuntime` is for.
+  **The GB10 community runs llama.cpp, vLLM and SGLang** — all three of which
+  are collected. Atlas is young and its install base is unclear, so building a
+  collector for it means maintaining a code path that may have no users, in a
+  place where every engine added multiplies the surface `V3` was written to
+  contain.
+
+  **The valuable half already shipped.** V2a classifies Atlas, so on a node
+  running it the memory lands in the `models` class rather than `other gpu` —
+  which was the part that was *wrong* rather than merely missing. It is
+  deliberately outside `COLLECTIBLE_RUNTIMES`, so it raises no warning nobody
+  can resolve. A node running Atlas today is accounted for; it just has no
+  throughput or queue depth.
+
+  **The trigger to revisit is adoption, not curiosity.** If Atlas turns up on a
+  node here, or the community moves to it, the work is small — V3 made adding
+  an engine a `SPECS` entry, a `Runtimes` field, a scrape job and two regex
+  updates the wiring test names for you. Until then this is a collector for a
+  runtime nobody is running.
 
 - [x] **V3. Decided 2026-08-21: share the collector, keep the wire.**
 
@@ -3182,14 +3197,11 @@ Atlas, which V2a classifies but deliberately leaves out of that set.
 these nodes end up launched through it, "what is running here" becomes
 something it knows and the agent currently infers from process argv.
 
-**Still open after 2026-08-21: V2b only.** It is blocked on the same question
-it was planned with — run Atlas, see what ports and endpoints it opens. Until
-then Atlas is a runtime the dashboard can see *consuming* the GPU and never see
-*serving*, which is exactly the silence `UnmonitoredInferenceRuntime` is for —
-except that Atlas is deliberately outside that warning, since there is nothing
-to configure. If Atlas turns out to expose a Prometheus endpoint, V2b is a
-`SPECS` entry and a `Runtimes` field; if it exposes an OpenAI-compatible API
-and no metrics, it is a different collector shape and a real decision.
+**Effectively complete after 2026-08-21.** V1, V2a and V3 shipped; V2b is
+deferred on install base rather than blocked on a question. The engines the
+GB10 community actually runs — llama.cpp, vLLM, SGLang — are all collected, and
+Atlas is classified so its memory is attributed correctly even though nothing
+scrapes it.
 
 ### W — Choosing which interfaces are monitored — **shipped 2026-08-21**
 
