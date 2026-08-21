@@ -365,3 +365,80 @@ def test_header_padding_is_explicit_on_every_side(table):
             f"{table} header cells set no {axis} padding — the browser default "
             "applies instead of the value this table was designed with"
         )
+
+
+FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
+DIST = FRONTEND / "dist" / "assets"
+
+#: Classes already inert on `main`, before the Tailwind migration touched
+#: anything -- mostly column-width classes left behind when AA2 moved widths to
+#: the `<colgroup>`. Verified inert against the running page: none of them
+#: resolve to a rule, and none carried anything but width. Listed rather than
+#: deleted so this guard can fail on NEW orphans today; each comes off the list
+#: as its component is converted.
+KNOWN_INERT = {
+    "ModelsTable": {"lbl"},
+    "NetworkPanel": {"errs", "linkspeed", "rate-col"},
+    "ProcessTable": {"mem", "modelcol", "pid", "runtimecol"},
+    "Settings": {"mono"},
+}
+
+
+def unscoped_in(css: str, token: str) -> bool:
+    """Does the built CSS define this class OUTSIDE any component's scope?
+
+    Scope-awareness is the whole point. `.count` existed in the built CSS the
+    entire time it was broken -- as ProcessTable's `.count.svelte-19agkpx`,
+    which says nothing about whether ModelsTable's `.count` resolves. A sweep
+    that ignored the hash reported the page clean while it was visibly wrong.
+    """
+    pattern = re.compile(r"\." + re.escape(token) + r"(?![\w-])")
+    for selectors in re.findall(r"([^{}]+)\{", css):
+        for part in selectors.split(","):
+            if pattern.search(part) and "svelte-" not in part:
+                return True
+    return False
+
+
+@pytest.mark.parametrize("component", sorted(KNOWN_INERT))
+def test_no_static_class_is_dead(component):
+    """A class in the markup with no rule behind it renders at the BROWSER
+    DEFAULT, not at anything anyone chose.
+
+    This is the failure mode of converting a component: the `<style>` block
+    goes, the `class="..."` attribute stays, and the class silently stops
+    meaning anything. It cost `.count` its `font-size: 11px` -- so the Models
+    summary line rendered at the UA's 16px, half again larger than the same
+    line in every other panel -- and `.scroll` its `overflow-x: auto`, which
+    is invisible on a wide monitor and means no horizontal scrolling at all on
+    a narrow one. Nothing errored, and nothing looked broken from the source.
+    """
+    built = sorted(DIST.glob("*.css"))
+    if not built:
+        pytest.skip("no built CSS to check against — run `npm run build` in frontend/")
+    # Backslashes stripped: Tailwind escapes `:` and `[` in selectors, so
+    # `hover:text-ink` is written `.hover\:text-ink` and a naive match finds
+    # none of the variant utilities. Getting this wrong makes the check pass
+    # everything rather than fail loudly.
+    css = built[-1].read_text().replace("\\", "")
+
+    src = (COMPONENTS / f"{component}.svelte").read_text()
+    style = re.search(r"<style>(.*?)</style>", src, re.S)
+    style_block = style.group(1) if style else ""
+    markup = src.split("</script>")[-1]
+
+    dead = set()
+    for attr in re.findall(r'class="([^"{}]*)"', markup):
+        for token in attr.split():
+            defined = re.compile(r"\." + re.escape(token) + r"(?![\w-])")
+            if defined.search(style_block) or defined.search(APP_CSS.read_text()):
+                continue
+            if unscoped_in(css, token):
+                continue
+            dead.add(token)
+
+    assert not (dead - KNOWN_INERT[component]), (
+        f"{component} carries class(es) {sorted(dead - KNOWN_INERT[component])} "
+        "that no rule defines — those elements render at browser defaults. "
+        "(If this fired right after an edit, rebuild the frontend first.)"
+    )

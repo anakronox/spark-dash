@@ -461,7 +461,7 @@
 <section class="panel">
   <header>
     <h2 class="eyebrow">Models</h2>
-    <span class="dim count">{summary || 'none registered'}</span>
+    <span class="text-ink-muted text-label">{summary || 'none registered'}</span>
     <!-- ROW filtering, so it takes the funnel — the glyph M4 deliberately left
          unspent when it built COLUMN visibility, so the two ideas would not
          end up sharing an icon.
@@ -484,7 +484,11 @@
   </header>
 
   {#if rows.length}
-    <div class="scroll">
+    <!-- `overflow-x-auto`, not the dead `.scroll` class this used to carry.
+         Its rule went with the style block and the class stayed in the markup,
+         which is silent on a wide monitor and means no horizontal scroll at
+         all on a narrow one. -->
+    <div class="overflow-x-auto">
       <!-- `table-fixed` is load-bearing, not styling: the colgroup widths above
            are only honoured under fixed layout, and in auto layout a dragged
            column springs back. Dropped by accident during this conversion and
@@ -562,7 +566,7 @@
     <Pager {view} total={rows.length} label="Models pages" />
 
   {:else}
-    <p class="empty">
+    <p class="px-4 pt-0 pb-[14px] text-body text-ink-2">
       No models registered. Check <code>LLAMA_ROUTER_URLS</code> on the node stack.
     </p>
   {/if}
