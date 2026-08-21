@@ -100,6 +100,19 @@ SLACK_TABLES = {
 }
 
 
+#: The Tailwind migration (roadmap AB) expresses these as utilities rather than
+#: CSS, and the migration is deliberately phased — so during it these guards
+#: must accept BOTH forms. That is a real cost of the migration worth recording:
+#: every guard written against CSS text has to learn a second spelling, and a
+#: guard that only knew the old one would go quietly green on a converted
+#: component while the behaviour was gone.
+def slack_cells(src: str) -> tuple[int, int]:
+    """(headers, cells) marking the trailing slack column, either spelling."""
+    ths = src.count('<th class="slack">') + src.count("<th class={SLACK}>")
+    tds = src.count('<td class="slack">') + src.count("<td class={SLACK}>")
+    return ths, tds
+
+
 @pytest.mark.parametrize("table,count", sorted(SLACK_TABLES.items()))
 def test_header_and_body_agree_on_the_slack_column(table, count):
     """One `<th class="slack">` per table, and exactly one matching `<td>`.
@@ -108,8 +121,7 @@ def test_header_and_body_agree_on_the_slack_column(table, count):
     cell misaligns every border on the last column, and an extra body cell
     silently widens rows past their header."""
     src = (COMPONENTS / f"{table}.svelte").read_text()
-    ths = src.count('<th class="slack">')
-    tds = src.count('<td class="slack">')
+    ths, tds = slack_cells(src)
     assert ths == tds == count, (
         f"{table}: {ths} slack headers, {tds} slack cells, expected {count} of each"
     )
@@ -120,10 +132,16 @@ def test_the_slack_column_is_excluded_from_the_sizing_rule(table):
     """Real columns size to their content; the slack column must not, or there
     is nothing left to absorb the surplus and the gap comes straight back."""
     src = (COMPONENTS / f"{table}.svelte").read_text()
-    assert "th:not(.slack)" in src and "td:not(.slack)" in src, (
-        f"{table} sizes columns without excluding the slack column"
+    css_form = "th:not(.slack)" in src and "td:not(.slack)" in src
+    # Converted form: clipping lives on the cell constants and the slack column
+    # is the only one left unsized.
+    util_form = "const SLACK" in src and "w-auto" in src
+    assert css_form or util_form, (
+        f"{table} sizes columns without leaving the slack column to absorb the surplus"
     )
-    assert "width: auto" in src, f"{table}'s slack column does not absorb anything"
+    assert "width: auto" in src or "w-auto" in src, (
+        f"{table}'s slack column does not absorb anything"
+    )
 
 
 @pytest.mark.parametrize("table", sorted(SLACK_TABLES))
@@ -161,7 +179,13 @@ def without_comments(src: str) -> str:
 @pytest.mark.parametrize("table", TABLES)
 def test_layout_is_fixed_so_declared_widths_apply(table):
     src = without_comments((COMPONENTS / f"{table}.svelte").read_text())
-    assert "table-layout: fixed;" in src, (
+    # `table-fixed` is the utility spelling. Comments are stripped first for
+    # the same reason as before: the explanation mentions the property, and
+    # this exact check once passed against a file where only the comment
+    # survived. It caught a real regression during the AB migration, where the
+    # `table` rule was dropped wholesale and the widths silently stopped
+    # applying.
+    assert "table-layout: fixed;" in src or "table-fixed" in src, (
         f"{table} declares column widths that auto layout is free to ignore"
     )
     assert "<colgroup>" in src, f"{table} has no colgroup to carry the widths"
