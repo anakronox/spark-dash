@@ -805,7 +805,9 @@
      "as many as fit", which is 3 at this container width. */
   .node-grid.compact {
     grid-template-columns: minmax(0, 1fr);
-    align-items: start;
+    /* The two zones take the band's full height rather than their own, which
+       is what gives the shorter side slack to share. */
+    align-items: stretch;
   }
 
 
@@ -934,7 +936,15 @@
     position: relative;
     display: grid;
     gap: 16px;
-    align-content: start;
+    /* STRETCH, so a band's two columns end on the same line.
+       `start` left each column at its content height, which is what made a
+       band read as two unrelated stacks that happened to be adjacent rather
+       than as one row. Where a column holds several cards the slack is shared
+       between them, which is what `stretch` does by default and is the only
+       distribution that needs no rule to explain it.
+       A full-width band is unaffected: its zone is already exactly as tall as
+       its content, so there is no slack to share. */
+    align-content: stretch;
     /* Same reason as .sections — an implicit `auto` track sizes to content. */
     grid-template-columns: minmax(0, 1fr);
   }

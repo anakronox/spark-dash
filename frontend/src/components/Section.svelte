@@ -361,6 +361,13 @@
 <style>
   .slot {
     position: relative;
+    /* A grid so the panel inside FILLS the slot. The slot already stretches to
+       its row — grid items do by default — but the panel is a child of the
+       slot rather than of the zone, so without this it kept its own height and
+       the band's columns still ended on different lines.
+       The handle is absolutely positioned, so the panel is the only thing this
+       lays out. */
+    display: grid;
   }
 
   .slot.grabbed {
