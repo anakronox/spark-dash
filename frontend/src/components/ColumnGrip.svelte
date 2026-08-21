@@ -99,8 +99,8 @@
        variants, but each state carries its own inset, width and colour, so the
        result is a class string longer than the rule it replaces with the
        geometry scattered across variants instead of stated once.
-     - `prefers-reduced-motion` is available as a variant but has to stack onto
-       the pseudo-element: `motion-reduce:after:transition-none`.
+     - `prefers-reduced-motion` is available as a variant but has to stack the
+       motion-reduce and after- prefixes onto one pseudo-element utility.
 
      The comment you are reading is the actual finding. Originally the
      reasoning — why 8px of grab area for a 2px cue, why invisible until

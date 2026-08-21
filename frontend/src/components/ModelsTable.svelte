@@ -584,7 +584,7 @@
      selector does. */
 
   /* Structural: the last row drops its rule so the table ends on data rather
-     than on a line. As a variant this is `[&:last-child>td]:border-b-0` on
+     than on a line. As a variant it is a `:last-child` selector spelled out on
      every row, which is longer and says less. */
   tbody tr:last-child td {
     border-bottom: none;

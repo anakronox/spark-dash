@@ -592,8 +592,8 @@
      per-element utility can express. */
 
   /* The last row drops its rule so each table ends on data rather than a line.
-     Both tables, one rule -- as a variant this is `[&:last-child>td]:border-b-0`
-     on every row of both. */
+     Both tables, one rule -- as a variant it is a `:last-child` selector spelled
+     out on every row of both. */
   tbody tr:last-child td {
     border-bottom: none;
   }

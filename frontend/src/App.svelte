@@ -686,9 +686,10 @@
      Every rule below is one where an ANCESTOR's state decides a DESCENDANT's
      layout, at up to four custom breakpoints each: `.node-grid.compact
      .cluster .nodes` is three levels of context before a single declaration.
-     Utilities can express that — `[.node-grid.compact_&]:min-[2320px]:grid-cols-8`
-     is valid — but it inverts the reading order, putting the context in the
-     child and repeating it once per breakpoint, four times, per element.
+     Utilities can express that — an ancestor-selector variant, nesting the
+     whole `.node-grid.compact` context inside the child's own class and
+     stacking a breakpoint prefix on top — but it inverts the reading order and
+     repeats that context once per breakpoint, four times, per element.
 
      The dividing rule, and it is worth stating because it is the one judgement
      call in this migration: AN ELEMENT WHOSE CLASS IS A SELECTOR HOOK FOR AN
