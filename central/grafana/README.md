@@ -44,7 +44,11 @@ and they reset only on host reboot, which `rate()` already handles.
 
 **llama.cpp throughput is a gauge, not a counter.**
 `sparkdash_llama_model_tokens_per_second` is a rate the agent computed over its
-own ~1s poll and then published, sampled at Prometheus's 15s. You cannot
+own ~1s poll and then published, sampled at Prometheus's 15s. Note that this
+family is prefill and decode ADDED TOGETHER, and is kept only so recorded
+history stays readable — build panels on `..._generation_tokens_per_second`
+(decode) instead, or a single prompt landing inside one poll window will spike
+the panel to five figures while the model generates fifty tokens a second. You cannot
 recompute it over a window of your choosing. vLLM and SGLang publish real token
 counters and are scraped natively, so for those engines you can.
 
