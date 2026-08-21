@@ -69,9 +69,9 @@
      rather than "is THIS box serving?" — and on a multi-node cluster the two
      diverge completely. Summed the same way App does it. */
   const nodeTokensPerSec = $derived(
-    (node.runtimes?.llama_cpp ?? []).reduce((a, r) => a + r.tokens_per_sec, 0) +
+    (node.runtimes?.llama_cpp ?? []).reduce((a, r) => a + (r.generation_tokens_per_sec ?? 0), 0) +
       engines(node.runtimes).reduce(
-        (a, [, list]) => a + list.reduce((n, v) => n + v.tokens_per_sec, 0),
+        (a, [, list]) => a + list.reduce((n, v) => n + (v.generation_tokens_per_sec ?? 0), 0),
         0,
       ),
   );

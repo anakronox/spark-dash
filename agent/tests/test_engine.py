@@ -168,6 +168,50 @@ class TestSglang:
         assert result is not None
         assert result.kv_cache_pct is None
 
+    def test_prefill_and_decode_are_reported_separately(self):
+        """THE defect this split exists for.
+
+        Measured on the live cluster 2026-08-21: the combined figure reached
+        47,672 tok/s while `rate(generation_tokens[5m])` peaked at 47.9. Both
+        are arithmetically correct — a large prompt landing inside one poll
+        window really is that fast to ingest — but only one is what a reader
+        means by throughput, and a stat panel showing the sum is wrong by three
+        orders of magnitude exactly when someone is watching a request arrive.
+        """
+        url = "http://sglang:30000/metrics"
+        collector = EngineCollector(SPECS["sglang"], [url])
+        collector._collect_one(
+            httpx.Client(transport=transport_for(SGLANG_BODY)), url, Budget(5.0)
+        )
+        # A big prompt and a little generation, the shape of a prefill burst.
+        later = SGLANG_BODY.replace("8000.0", "808000.0").replace("20000.0", "20050.0")
+        result = collector._collect_one(
+            httpx.Client(transport=transport_for(later)), url, Budget(5.0)
+        )
+        assert result is not None
+        assert result.prompt_tokens_per_sec > result.generation_tokens_per_sec * 100, (
+            "the fixture should represent a prefill burst"
+        )
+        # The legacy sum is still reported, and still dominated by prefill —
+        # which is exactly why it is not the number anything leads with.
+        assert result.tokens_per_sec == pytest.approx(
+            result.generation_tokens_per_sec + result.prompt_tokens_per_sec
+        )
+
+    def test_the_fallback_gauge_counts_as_decode_not_as_a_total(self):
+        """`sglang:gen_throughput` is generation throughput by definition, so
+        when it stands in for missing counters it must land in the decode
+        field. Filing it as a combined total would put a decode number in a
+        column that means something else."""
+        body = (
+            "# TYPE sglang:gen_throughput gauge\n"
+            'sglang:gen_throughput{model_name="deepseek-v3"} 137.5\n'
+        )
+        _, result = collect_one("sglang", body, "http://sglang:30000/metrics")
+        assert result is not None
+        assert result.generation_tokens_per_sec == pytest.approx(137.5)
+        assert result.prompt_tokens_per_sec == 0.0
+
     def test_throughput_is_derived_from_counters_not_the_gauge(self):
         """`sglang:gen_throughput` is instantaneous decode throughput; the node
         card SUMS tokens/sec across every runtime, and that sum only means
@@ -176,6 +220,8 @@ class TestSglang:
         sample, so the honest answer is 0 rather than the gauge's 137.5."""
         _, result = collect_one("sglang", SGLANG_BODY, "http://sglang:30000/metrics")
         assert result is not None
+        assert result.generation_tokens_per_sec == 0.0
+        assert result.prompt_tokens_per_sec == 0.0
         assert result.tokens_per_sec == 0.0
         assert result.prompt_tokens_total == 8000
         assert result.generation_tokens_total == 20000
@@ -191,7 +237,7 @@ class TestSglang:
             httpx.Client(transport=transport_for(later)), url, Budget(5.0)
         )
         assert result is not None
-        assert result.tokens_per_sec > 0
+        assert result.generation_tokens_per_sec > 0
 
     def test_gauge_is_the_fallback_when_counters_are_absent(self):
         """A build that publishes no token counters still reports throughput —
@@ -205,7 +251,7 @@ class TestSglang:
         )
         _, result = collect_one("sglang", body, "http://sglang:30000/metrics")
         assert result is not None
-        assert result.tokens_per_sec == pytest.approx(137.5)
+        assert result.generation_tokens_per_sec == pytest.approx(137.5)
 
     def test_unreachable_endpoint_is_reported_for_sglang_too(self):
         collector = EngineCollector(SPECS["sglang"], ["http://down:30000/metrics"])

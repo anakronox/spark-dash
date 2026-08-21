@@ -520,7 +520,17 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         # One series per state, matching the pattern used for clock and health:
         # alerting rules match on the label rather than decoding an enum.
         state = _g("llama_model_state", "Model lifecycle state (1 for active)", [*rml, "state"])
-        tps = _g("llama_model_tokens_per_second", "Token throughput", rml)
+        tps = _g("llama_model_tokens_per_second", "Prefill and decode combined", rml)
+        gen_tps = _g(
+            "llama_model_generation_tokens_per_second",
+            "Decode throughput — tokens generated per second",
+            rml,
+        )
+        prompt_tps = _g(
+            "llama_model_prompt_tokens_per_second",
+            "Prefill throughput — prompt tokens ingested per second",
+            rml,
+        )
         kv = _g("llama_model_kv_cache_percent", "KV cache utilization", rml)
         running = _g("llama_model_requests_running", "In-flight requests", rml)
         waiting = _g("llama_model_requests_waiting", "Queued requests", rml)
@@ -559,6 +569,12 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
                 # indistinguishable from an idle-but-loaded model.
                 if model.state is ModelState.ACTIVE:
                     tps.add_metric([node, label, model.name], model.tokens_per_sec or 0.0)
+                    gen_tps.add_metric(
+                        [node, label, model.name], model.generation_tokens_per_sec or 0.0
+                    )
+                    prompt_tps.add_metric(
+                        [node, label, model.name], model.prompt_tokens_per_sec or 0.0
+                    )
                     if model.kv_cache_pct is not None:
                         kv.add_metric([node, label, model.name], model.kv_cache_pct)
                     running.add_metric([node, label, model.name], float(model.requests_running))
@@ -575,6 +591,8 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             params,
             ctx,
             tps,
+            gen_tps,
+            prompt_tps,
             kv,
             running,
             waiting,
@@ -589,16 +607,34 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
     for runtime, instances in snap.runtimes.engines.items():
         if not instances:
             continue
-        tps = _g(f"{runtime}_tokens_per_second", "Token throughput", ["node", "model"])
+        # THREE series, not one renamed. `tokens_per_second` is prefill and
+        # decode added together and is kept because recorded history, the
+        # history queries and the Grafana dashboard are written against it —
+        # renaming it in place would orphan every stored sample. The two below
+        # are what should be read: measured 2026-08-21, the combined figure hit
+        # 47,672 tok/s while generation peaked at 47.9.
+        tps = _g(f"{runtime}_tokens_per_second", "Prefill and decode combined", ["node", "model"])
+        gen_tps = _g(
+            f"{runtime}_generation_tokens_per_second",
+            "Decode throughput — tokens generated per second",
+            ["node", "model"],
+        )
+        prompt_tps = _g(
+            f"{runtime}_prompt_tokens_per_second",
+            "Prefill throughput — prompt tokens ingested per second",
+            ["node", "model"],
+        )
         kv = _g(f"{runtime}_kv_cache_percent", "KV cache utilization", ["node", "model"])
         running = _g(f"{runtime}_requests_running", "In-flight requests", ["node", "model"])
         waiting = _g(f"{runtime}_requests_waiting", "Queued requests", ["node", "model"])
 
         for instance in instances:
             tps.add_metric([node, instance.model], instance.tokens_per_sec)
+            gen_tps.add_metric([node, instance.model], instance.generation_tokens_per_sec)
+            prompt_tps.add_metric([node, instance.model], instance.prompt_tokens_per_sec)
             if instance.kv_cache_pct is not None:
                 kv.add_metric([node, instance.model], instance.kv_cache_pct)
             running.add_metric([node, instance.model], float(instance.requests_running))
             waiting.add_metric([node, instance.model], float(instance.requests_waiting))
 
-        yield from (tps, kv, running, waiting)
+        yield from (tps, gen_tps, prompt_tps, kv, running, waiting)

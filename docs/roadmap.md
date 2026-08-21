@@ -463,10 +463,13 @@ pieces that already exist:
   enforced it. The tolerance now scales with the step, taking that window from
   34 marks to 14 with nothing repeated — and fixing the alert history view at
   coarse steps, where the same fragmentation was latent.
-- [ ] **E6.** Cluster outlier detection, once nodes 2 and 3 land: same model,
-  three nodes, one slower. Needs per-node comparison rather than aggregates,
-  and the `cluster` label (C1) is what keeps "compare within the pooled
-  cluster, not across clusters" expressible.
+- [ ] **E6.** Cluster outlier detection — **taken up as [Y](#y--straggler-detection-in-a-pooled-cluster-was-e6),
+  where the premise is corrected.** Written as "same model, three nodes, one
+  slower", which is not the shape the cluster took: `danflashes` runs ONE
+  distributed model across two nodes, and only the head node reports throughput
+  at all. The `cluster` label (C1) is still what makes the comparison
+  expressible; what changed is that there is nothing per-node to compare on the
+  inference side, so it has to be answered from hardware signals.
 
 **The question this cluster can now answer that it could not before:**
 
@@ -3270,6 +3273,251 @@ intended.
 **Sequence: W1, then W2, then W3 and W4 together.** W1 stands alone and improves
 the panel whether or not the rest lands; W3 has nothing to join against without
 W2; W4's editor cannot write a shape W2 has not defined.
+
+### X — Grafana as a first-class consumer
+
+Planned and built 2026-08-21, from a question worth answering in the repo: if
+someone would rather build their own views than use the bundled frontend, is
+that easy? It nearly was. Prometheus already holds everything, is published
+without auth on `:9090`, and keeps 180 days — but a newcomer had no way to know
+what any of the 73 `sparkdash_*` series meant, because
+[docs/metrics.md](metrics.md) documents what vLLM and llama.cpp expose
+UPSTREAM, not what this agent emits.
+
+**The surface, measured 2026-08-21:** 896 metric names in the TSDB — 73
+`sparkdash_*`, ~314 `node_*`, ~106 `vllm:`/`sglang:`. Worth stating plainly:
+because the engines are scraped DIRECTLY rather than proxied through the agent,
+a Grafana user has strictly more to work with than the frontend shows.
+`vllm:time_to_first_token_seconds`, `vllm:e2e_request_latency_seconds` and the
+per-request success/failure counters are all already stored and have never been
+rendered anywhere.
+
+- [x] **X1. A starter dashboard**, `central/grafana/spark-dash-overview.json`.
+  29 panels over six sections, `$node` templated, importable into any Grafana:
+  the datasource is declared as an `__inputs` entry rather than a hardcoded
+  uid, so it lands without editing.
+
+  **Every panel carries a description** saying what it means and where it
+  misleads. That is doing double duty on purpose — until X2 exists, the
+  dashboard IS the catalog for this metric surface, and a description that only
+  restates the title would be wasted space.
+
+  **All 32 queries were run against the live Prometheus before shipping.**
+  Grafana's transformations were not, because that needs Grafana itself; the
+  README says so rather than implying the whole file was exercised.
+
+- [x] **X2. The traps, written down** in `central/grafana/README.md`. These are
+  not general PromQL advice — each one is specific to this deployment and would
+  otherwise be found the hard way:
+
+  - **Never sum a memory pool across nodes.** GB10 has no separate VRAM, so
+    three nodes' pools added together describe a single 384 GB space nobody can
+    allocate from. The pool panel repeats per node rather than aggregating,
+    which is the same reasoning that keeps `cluster` off standalone nodes.
+  - **`sum(A) + sum(B)` is not one sum over two families.** Binary `+` keeps
+    only label sets present on BOTH sides, so a node running one engine
+    contributes nothing and charts flat zero while it serves. This was a live
+    bug in `HISTORY_QUERIES`, found during [V](#v--more-inference-runtimes-sglang-and-atlas)
+    and fixed there; the dashboard would have reproduced it exactly.
+  - **Some `_total` series are typed as gauges.** The network byte counters are
+    monotonic sysfs counters exported through a gauge family, so Grafana will
+    not suggest `rate()` and a linter may object. `rate()` is correct on them.
+  - **llama.cpp throughput is a pre-computed gauge**, not a counter, so it
+    cannot be re-rated over a window of the reader's choosing. vLLM and SGLang
+    can, because their native counters are scraped directly.
+  - **States are one series per state**, not an encoded enum — filter on the
+    label, there is nothing to decode.
+  - **Thresholds are metrics.** `sparkdash_gpu_temp_{warning,critical}_celsius`
+    are derived per node from NVML's own slowdown threshold, so a panel draws
+    its bands from the silicon rather than hardcoding 82/86.
+
+  **One claim in the first draft was wrong and was corrected by measurement:**
+  that `gpu_process_memory_bytes` emits both a per-runtime total and per-model
+  rows, so `sum by (node)` double-counts. It does not. The aggregation key is
+  `(runtime, model, server)`, so the partition is disjoint — hand-summed
+  against `sum by (node)` on a live node to confirm. An empty `model` is a
+  router parent holding its own overhead, not a subtotal.
+
+- [ ] **X3. Fold the catalog into [docs/metrics.md](metrics.md).** The panel
+  descriptions and the README cover the surface a dashboard uses, which is not
+  all 73 series — `agent_collect_*`, the `*_info` metrics and the PSI
+  `avg60` variants have no panel. The doc still describes only upstream
+  engines, and that gap is the actual answer to "is this easy": the data was
+  always there, the description of it was not.
+
+- [ ] **X4. Decide whether Grafana gets a container here.** Deliberately not
+  done. `central/compose.yaml` has a hand-maintained deploy copy that drifts by
+  design, so a new service is two edits in two repos, and Grafana brings its
+  own state directory to back up. Pointing an existing Grafana at `:9090` costs
+  nothing and is what the README documents. Revisit only if the frontend stops
+  being the primary view.
+
+**Not planned: replacing the frontend with Grafana.** Two things it cannot do.
+Per-process GPU detail with pids is aggregated away before it reaches
+Prometheus — a deliberate cardinality trade (see [B](#b--per-workload-gpu-memory-history))
+— and lives only in the agent's live snapshot. And the frontend polls agents
+directly for sub-2s liveness, where Prometheus scrapes at 15s. Grafana is the
+better tool for history and for questions nobody anticipated; the frontend is
+the better tool for what is happening right now.
+
+### Y — Straggler detection in a pooled cluster (was E6)
+
+Planned 2026-08-21, taking up [E6](#e--more-signal-and-correlating-it) now that
+`danflashes` is real and serving. **E6's premise did not survive contact with
+the cluster**, and the reframing is most of the work.
+
+**E6 assumed: same model, three nodes, one slower.** The deployment is not that
+shape. `sparky` is standalone on llama.cpp; `sparketa` and `sparkjr` are one
+cluster running a **single distributed vLLM model**, `deepseek-v4-flash-0731`,
+96.8 GiB resident on each of them. They are not three peers serving the same
+thing — they are two halves of one thing.
+
+**The consequence, measured: throughput exists on the head node only.**
+`sparkjr` has no vLLM series at all — no endpoint, because a tensor-parallel
+worker does not serve an API. Comparing tokens/sec per node, which is what E6
+proposed, is not merely hard here; there is nothing to compare. The 5 series
+that exist on `sparketa` and not `sparkjr` are exactly the engine ones.
+
+So the question changes from *which node is slower* to **is one node holding the
+other back** — and it has to be answered from the signals that do exist per
+node: clock, temperature, power, PSI, RDMA.
+
+**Why SM utilisation is NOT one of those signals.** The obvious approach is to
+compare `gpu_process_sm_percent` and flag the low node. It does not work for
+tensor-parallel inference: NCCL collectives **busy-wait**, so a node stalled
+waiting on a straggling peer burns SM identically to one doing useful work.
+Measured over 90 minutes on `danflashes`, both nodes peak at 96% and track each
+other closely. SM says the cluster is busy; it cannot say who is late.
+
+- [x] **Y1. Make "tokens per second" mean one thing.** Shipped 2026-08-21.
+
+  Found while looking for a comparison baseline. `sparkdash_vllm_tokens_per_second`
+  is the agent's own rate over its ~1s poll of `prompt_tokens_total +
+  generation_tokens_total`, so it mixes **prefill** and **decode** — two rates
+  that differ by three orders of magnitude. Measured over 3 hours of real
+  serving:
+
+  | | |
+  |---|---|
+  | reported `tokens_per_second`, non-zero samples | 28, 31, 33, …, 79, then **6583, 7046, 8565, 10603, 14837, 17994, 47672** |
+  | `rate(vllm:generation_tokens_total[5m])` | mean 6.2/s, **max 47.9/s** |
+  | `rate(vllm:prompt_tokens_total[5m])` | mean 619/s, max 3375/s |
+
+  The dashboard's headline Throughput stat can therefore read **47,672 tok/s
+  while the model is generating 48 tok/s**. Both numbers are arithmetically
+  correct; only one is what anyone means by throughput. The spikes are a large
+  prompt landing inside a one-second window, which is prefill, and prefill is
+  not a rate anyone is trying to read off a stat panel.
+
+  Split them: report generation and prompt rates as separate series and let the
+  headline be generation. **Do not redefine the existing series in place** — it
+  is what recorded history, the history queries and the Grafana starter are
+  written against, and silently changing its meaning is worse than adding to it.
+
+  **Verified, and the answer was the convenient one:** llama.cpp does exactly
+  the same thing — `tokens_predicted_total + prompt_tokens_total` — so both
+  engines conflated identically, the cluster-wide sum was at least consistent,
+  and one treatment fixes both.
+
+  **What shipped.** `generation_tokens_per_sec` and `prompt_tokens_per_sec` on
+  `EngineMetrics` and `RouterModel`, exported as
+  `sparkdash_{engine}_generation_tokens_per_second` and
+  `..._prompt_tokens_per_second`. The combined `_tokens_per_second` series is
+  **kept and still emitted** — recorded history, the history chip and the
+  Grafana starter are written against it, and renaming it in place would orphan
+  every stored sample for no gain.
+
+  Everything that leads with a number now reads decode: the header stat, the
+  node cards, `/api/cluster/summary`, the Models table's `tok/s` column and the
+  Throughput history chip. Prefill gained its own column and its own chip
+  rather than being dropped, because a signal collected and never shown is the
+  thing [S](#s--three-signals-already-collected-and-not-shown) exists to
+  prevent.
+
+  **A small alignment worth noting:** SGLang's `gen_throughput` gauge — the
+  fallback when counters are missing from a scrape — is decode throughput by
+  definition, so it now lands in the generation field rather than in a combined
+  total it never matched.
+
+- [ ] **Y2. Sustained divergence, with thresholds derived from measurement.**
+
+  The naive rule — flag a node whose value deviates from its cluster peers right
+  now — is unusable, and the data says so plainly. Instantaneous spread across
+  a **healthy** `danflashes` over 90 minutes:
+
+  | metric | instantaneous spread | 15-minute average |
+  |---|---|---|
+  | GPU clock | −117 … +110 MHz | **−2.0 … +2.0 MHz** |
+  | GPU temperature | −13 … +15 °C | **−1.2 … +1.2 °C** |
+  | GPU power | −34 … +56 W | **−1.2 … +1.2 W** |
+
+  A threshold loose enough to survive the instantaneous column would miss any
+  real straggler; averaged over 15 minutes the same healthy pair collapses into
+  a band roughly **50× tighter**. So the comparison is between smoothed values,
+  and the thresholds can then be tight while staying silent:
+
+  ```promql
+  avg_over_time(sparkdash_gpu_clock_mhz{cluster=~".+"}[15m])
+    - on(cluster) group_left()
+      avg by (cluster) (avg_over_time(sparkdash_gpu_clock_mhz{cluster=~".+"}[15m]))
+    < -50
+  ```
+
+  Roughly 25× the observed healthy band for clock; 5 °C and 10 W are the
+  equivalents for the other two. **These are starting points from one pair over
+  90 minutes, not settled numbers** — they need a week and a second cluster
+  before anyone should trust them, and the roadmap should say so rather than
+  presenting them as derived constants the way the temperature bands genuinely
+  are.
+
+  **Gate on the cluster working.** At idle, clocks and power drop
+  independently and the smoothed offset means nothing. The cluster was busy in
+  only 46 of 181 samples over 90 minutes, so an ungated rule would spend most of
+  its life comparing idle noise.
+
+  **Restrict to `cluster=~".+"` and require 2+ members.** A standalone node is
+  its own maximum and its own mean, so every deviation is exactly zero — the
+  rule would evaluate to nothing useful for `sparky` while looking like it
+  covered it. `count by (cluster) (sparkdash_node_up) > 1` is the guard, and it
+  is also what keeps the whole thing dormant on a single-node deployment.
+
+- [ ] **Y3. Direction is per metric, because n=2 cannot vote.**
+
+  With two nodes there is no majority: a divergence says the pair disagrees, not
+  which one is wrong. Outlier detection in the statistical sense needs n≥3, and
+  `danflashes` has two.
+
+  What rescues it is that the useful metrics are **directional** — the metric's
+  own semantics say which side is bad, with no voting required:
+
+  | signal | bad direction | what it means |
+  |---|---|---|
+  | GPU clock | lower | this node is the one setting the pace |
+  | GPU temperature | higher | cooling or placement, and it will throttle next |
+  | `gpu_clock_state{state="THROTTLED"}` | set | no comparison needed at all |
+  | RDMA errors | higher | the interconnect, not the node |
+
+  Power is deliberately **not** in that table: lower power can mean stalled or
+  merely idle, and higher can mean working hard or leaking. It is worth
+  charting and not worth alerting on.
+
+  At n≥3 a median-based rule becomes available and should replace the
+  mean-based one — the mean is dragged by the outlier it is trying to find,
+  which is tolerable at 2 and misleading at 5.
+
+- [ ] **Y4. Surface it where the cluster is already grouped.** The node cards
+  are already grouped by cluster, so a straggler badge belongs on the card
+  rather than in a new panel. Nothing here should touch node health: a node
+  clocking 60 MHz below its partner is not unhealthy on its own terms, and
+  saying so would repeat the mistake [W](#w--choosing-which-interfaces-are-monitored--shipped-2026-08-21)
+  avoided — an indicator that fires on something nobody can act on.
+
+**What this cannot see, stated so it is not rediscovered.** If the interconnect
+itself is the bottleneck, every node looks equally busy and equally warm, and
+none of the above fires. The RDMA counters catch *errors*, not *saturation*, and
+memory bandwidth is unreachable on GB10 at all — the closed question at the top
+of [E](#e--more-signal-and-correlating-it). A straggler caused by fabric
+contention is outside what this design can detect.
 
 ### J — Single-host profile (everything on one GB10)
 

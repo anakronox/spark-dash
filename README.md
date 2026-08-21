@@ -93,6 +93,15 @@ images](docs/deployment.md#building-and-shipping-images). It needs
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
   stays untouched) and the per-node/central Compose service breakdown.
 
+## Bring your own dashboard
+
+Prometheus holds everything the UI shows and 180 days of it, so building your
+own views instead is a supported path rather than a workaround — the inference
+engines are scraped *directly*, so latency histograms and per-request counters
+the bundled frontend never renders are already stored.
+[central/grafana/](central/grafana/) has an importable starter dashboard and,
+more usefully, the list of ways this particular metric surface will mislead you.
+
 [docs/roadmap.md](docs/roadmap.md) is the authoritative task list. Issue
 tracking mirrors it on a LAN-internal Forgejo instance that is not reachable
 from outside the network, so the roadmap file is the copy to read.

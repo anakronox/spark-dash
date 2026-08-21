@@ -338,6 +338,9 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             max_instances=props.get("max_instances"),
             autoload=props.get("models_autoload"),
             tokens_per_sec=sum(m.tokens_per_sec or 0.0 for m in models),
+            generation_tokens_per_sec=sum(
+                m.generation_tokens_per_sec or 0.0 for m in models
+            ),
         )
 
     def _fetch_props(self, client: httpx.Client, base_url: str, budget: Budget) -> dict:
@@ -436,9 +439,20 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
 
         # Rate keys are namespaced by router: the same model name can be
         # registered with more than one router on a node.
-        model.tokens_per_sec = self._rates.rate(
+        #
+        # DECODE AND PREFILL SEPARATELY. llama.cpp conflates them exactly as
+        # vLLM does — `tokens_predicted_total` is generation, `prompt_tokens_total`
+        # is ingest — and adding them made the reported figure spike three
+        # orders of magnitude above the decode rate whenever a large prompt
+        # landed inside one poll window. `tokens_per_sec` keeps the old sum
+        # because recorded history is written against it.
+        model.generation_tokens_per_sec = self._rates.rate(
             f"{base_url}:{model.name}:predicted", metrics.get(_M_PREDICTED_TOKENS, 0.0)
-        ) + self._rates.rate(f"{base_url}:{model.name}:prompt", metrics.get(_M_PROMPT_TOKENS, 0.0))
+        )
+        model.prompt_tokens_per_sec = self._rates.rate(
+            f"{base_url}:{model.name}:prompt", metrics.get(_M_PROMPT_TOKENS, 0.0)
+        )
+        model.tokens_per_sec = model.generation_tokens_per_sec + model.prompt_tokens_per_sec
 
 
 def _label_for(base_url: str) -> str:

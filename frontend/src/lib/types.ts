@@ -136,7 +136,13 @@ export interface RouterModel {
    *  rows leave this empty rather than showing a number that reads as how full
    *  the cache is. */
   kv_cache_pct: number | null;
+  /** Prefill and decode combined. Kept for continuity; read the generation
+   *  rate instead — see EngineMetrics. */
   tokens_per_sec: number | null;
+  /** Decode: tokens generated per second. THE throughput number. */
+  generation_tokens_per_sec: number | null;
+  /** Prefill: prompt tokens ingested per second. */
+  prompt_tokens_per_sec: number | null;
   requests_running: number;
   requests_waiting: number;
   /** From llama.cpp's `meta`. Null on vLLM and on older builds — null means
@@ -154,7 +160,10 @@ export interface LlamaRouterMetrics {
   models: RouterModel[];
   max_instances: number | null;
   autoload: boolean | null;
+  /** Router roll-up, prefill and decode combined. */
   tokens_per_sec: number;
+  /** Router roll-up of decode only — what the cards and the header sum. */
+  generation_tokens_per_sec: number;
 }
 
 /** One vLLM or SGLang instance. They answer the same questions in the same
@@ -171,7 +180,16 @@ export interface EngineMetrics {
   requests_running: number;
   requests_waiting: number;
   kv_cache_pct: number | null;
+  /** Prefill and decode added together. Kept because recorded history and the
+   *  Grafana dashboard are written against it, but it is not the number to
+   *  show: measured on a live cluster this read 47,672 tok/s while the model
+   *  was generating 48. A big prompt inside one poll window is a real ingest
+   *  rate and is not what "throughput" means. */
   tokens_per_sec: number;
+  /** Decode: tokens generated per second. THE throughput number. */
+  generation_tokens_per_sec: number;
+  /** Prefill: prompt tokens ingested per second. */
+  prompt_tokens_per_sec: number;
   prompt_tokens_total: number;
   generation_tokens_total: number;
 }

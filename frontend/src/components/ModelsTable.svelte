@@ -38,6 +38,7 @@
     state: ModelState;
     rawStatus: string;
     tokensPerSec: number | null;
+    promptTokensPerSec: number | null;
     kvCachePct: number | null;
     running: number;
     waiting: number;
@@ -118,7 +119,10 @@
             model: m.name,
             state: m.state,
             rawStatus: m.raw_status,
-            tokensPerSec: m.tokens_per_sec,
+            /* DECODE. `tokens_per_sec` is prefill+decode and reads three
+               orders of magnitude high while a prompt is being ingested. */
+            tokensPerSec: m.generation_tokens_per_sec,
+            promptTokensPerSec: m.prompt_tokens_per_sec,
             kvCachePct: m.kv_cache_pct,
             running: m.requests_running,
             waiting: m.requests_waiting,
@@ -142,7 +146,8 @@
             model: v.model,
             state: 'active',
             rawStatus: '',
-            tokensPerSec: v.tokens_per_sec,
+            tokensPerSec: v.generation_tokens_per_sec,
+            promptTokensPerSec: v.prompt_tokens_per_sec,
             // Null on an SGLang row, deliberately — see EngineMetrics.
             kvCachePct: v.kv_cache_pct,
             running: v.requests_running,
@@ -172,6 +177,7 @@
     { key: 'node', value: (r) => r.node },
     { key: 'server', value: (r) => r.server },
     { key: 'tok', value: (r) => r.tokensPerSec },
+    { key: 'pre', value: (r) => r.promptTokensPerSec },
     { key: 'kv', value: (r) => r.kvCachePct },
     { key: 'run', value: (r) => r.running },
     { key: 'wait', value: (r) => r.waiting },
@@ -193,6 +199,11 @@
     { key: 'node', label: 'node' },
     { key: 'server', label: 'server:port' },
     { key: 'tok', label: 'tok/s', right: true },
+    /* Prefill, as its own column rather than folded into tok/s. It is what
+       used to be silently added into the column to its left, and hiding it
+       entirely would leave a signal collected and never shown. Switchable off
+       through the column menu like any other. */
+    { key: 'pre', label: 'prefill', right: true },
     { key: 'kv', label: 'kv', right: true },
     { key: 'run', label: 'run', right: true },
     { key: 'wait', label: 'wait', right: true },
@@ -254,6 +265,8 @@
          be indistinguishable from a loaded-but-idle model, so absent data stays
          absent. -->
     <td class="r num toks">{row.state === 'active' ? num(row.tokensPerSec, 1) : '—'}</td>
+  {:else if c.key === 'pre'}
+    <td class="r num toks dim">{row.state === 'active' ? num(row.promptTokensPerSec, 0) : '—'}</td>
   {:else if c.key === 'kv'}
     <td class="r num pct">
       {row.state === 'active' && row.kvCachePct != null ? `${num(row.kvCachePct)}%` : '—'}

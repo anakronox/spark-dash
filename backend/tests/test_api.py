@@ -67,9 +67,15 @@ def node(node_id: str, *, up: bool = True, util: float = 50.0) -> NodeSnapshot:
                     ],
                     max_instances=3,
                     tokens_per_sec=41.2,
+                    generation_tokens_per_sec=12.4,
                 )
             ],
-            vllm=[EngineMetrics(model="llama-3.3-70b", tokens_per_sec=88.5)],
+            vllm=[EngineMetrics(
+                model="llama-3.3-70b",
+                tokens_per_sec=88.5,
+                generation_tokens_per_sec=31.0,
+                prompt_tokens_per_sec=57.5,
+            )],
             sglang=[EngineMetrics(model="deepseek-v3", server="192.168.50.61:30000")],
         )
         if up
@@ -111,12 +117,48 @@ def test_nodes_lists_inventory_with_liveness(client):
     assert body["nodes"][1]["up"] is False
 
 
-def test_cluster_summary_aggregates(client):
+def test_cluster_summary_reports_decode_not_decode_plus_prefill(client):
+    """The headline number is DECODE throughput.
+
+    Adding prefill in made it unreadable: measured on a live cluster
+    2026-08-21, the combined figure hit 47,672 tok/s while the model generated
+    48. A large prompt landing inside one poll window really is that fast to
+    ingest, and it is not what anyone reads a throughput stat to learn.
+    """
     body = client.get("/api/cluster/summary").json()
     assert body["nodes_total"] == 2
     assert body["nodes_up"] == 1
-    # 41.2 from llama.cpp + 88.5 from vLLM on the one live node.
-    assert body["tokens_per_second"] == pytest.approx(129.7)
+    # 12.4 (llama.cpp) + 31.0 (vLLM) on the one live node. NOT 129.7, which is
+    # what the same fixture sums to with prefill folded in.
+    assert body["tokens_per_second"] == pytest.approx(43.4)
+
+
+def test_a_prefill_burst_does_not_reach_the_headline():
+    """The live defect, reproduced with the numbers it was measured at.
+
+    On `danflashes` 2026-08-21, `rate(vllm:prompt_tokens_total[5m])` peaked at
+    3375/s while generation peaked at 47.9/s, and single-poll samples of the
+    combined figure reached 47,672. A reader glancing at Throughput during
+    prefill saw a number three orders of magnitude off what the model was
+    producing.
+    """
+    from spark_dash_common.models import EngineMetrics, NodeSnapshot, Runtimes
+
+    snap = NodeSnapshot(
+        node_id="sparketa",
+        ts=datetime.now(UTC),
+        up=True,
+        runtimes=Runtimes(vllm=[EngineMetrics(
+            model="deepseek-v4-flash-0731",
+            generation_tokens_per_sec=47.9,
+            prompt_tokens_per_sec=47624.1,
+            tokens_per_sec=47672.0,
+        )]),
+    )
+    assert snap.total_generation_tokens_per_sec == pytest.approx(47.9)
+    # The combined series is still reported — it is what history is written
+    # against — it is simply not what the headline reads.
+    assert snap.total_tokens_per_sec == pytest.approx(47672.0)
 
 
 def test_largest_free_block_is_per_cluster_not_a_total(client):

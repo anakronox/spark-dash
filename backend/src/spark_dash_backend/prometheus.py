@@ -153,9 +153,21 @@ HISTORY_QUERIES: dict[str, str] = {
     # Selecting the families by `__name__` and summing once has no matching
     # step at all, so a node contributes whatever it runs, and an engine added
     # later joins by name rather than by another term.
+    # DECODE ONLY. The `_tokens_per_second` families are prefill and decode
+    # added together, which spiked to 47,672 tok/s on a live cluster while the
+    # model generated 48 — a large prompt landing inside one poll window is a
+    # real ingest rate and is not what a throughput chart means. The combined
+    # series is still recorded; it is just not what this chip plots.
     "tokens_per_second": (
         "sum by (node) ({__name__=~"
-        '"sparkdash_(llama_model|vllm|sglang)_tokens_per_second"})'
+        '"sparkdash_(llama_model|vllm|sglang)_generation_tokens_per_second"})'
+    ),
+    # Prefill, offered separately rather than folded in. It answers "how fast
+    # are requests being accepted", which is a real question and a different
+    # one.
+    "prompt_tokens_per_second": (
+        "sum by (node) ({__name__=~"
+        '"sparkdash_(llama_model|vllm|sglang)_prompt_tokens_per_second"})'
     ),
     # --- From node_exporter rather than the agent -------------------------
     #

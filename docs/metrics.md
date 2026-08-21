@@ -115,6 +115,16 @@ Key metrics to surface on the dashboard:
 - `vllm:num_requests_running`, `vllm:num_requests_waiting` — in-flight vs. queued
 - `vllm:kv_cache_usage_perc` — KV cache pressure (0-1)
 - `vllm:prompt_tokens_total`, `vllm:generation_tokens_total` (→ derive tokens/sec)
+
+  **Derive them SEPARATELY.** Adding the two rates together is what the agent
+  originally did, and it made the reported figure meaningless: measured on the
+  live cluster 2026-08-21, the combined number hit 47,672 tok/s while
+  generation peaked at 47.9/s. Prefill and decode differ by orders of magnitude
+  and answer different questions -- how fast a request is *accepted* against
+  how fast it is *answered*. llama.cpp has the identical trap
+  (`tokens_predicted_total` + `prompt_tokens_total`), so both are now reported
+  as separate series and the combined one is kept only so recorded history is
+  not orphaned.
 - `vllm:time_to_first_token_seconds` (histogram)
 - `vllm:e2e_request_latency_seconds` (histogram)
 - `vllm:request_success_total` / failure counters
@@ -184,6 +194,15 @@ Metrics to surface:
   (same shape as vLLM where available — llama.cpp's server metrics are modeled
   similarly)
 - Slot usage (`/slots` endpoint) — concurrent request slots in use vs. available
+
+## What the agent itself exports
+
+This document describes what the ENGINES and exporters expose upstream. What
+the agent re-publishes from them — the 73 `sparkdash_*` series — is not
+catalogued here yet (roadmap X3). Until it is, the closest thing is
+[central/grafana/README.md](../central/grafana/README.md), which lists the
+traps, and the panel descriptions in the starter dashboard beside it, which
+explain each series in place.
 
 ## 4. Derived / cluster-level
 

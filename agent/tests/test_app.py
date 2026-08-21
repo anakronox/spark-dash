@@ -326,6 +326,46 @@ def test_each_engine_gets_its_own_metric_family():
     assert 'sparkdash_sglang_requests_waiting{model="deepseek-v3",node="gx10-1"} 5.0' in text
 
 
+def test_decode_and_prefill_get_their_own_series():
+    """Three series, not one renamed. `tokens_per_second` is kept because
+    recorded history and the Grafana dashboard are written against it — the two
+    new ones are what should be read."""
+    snap = make_snapshot(
+        runtimes=Runtimes(vllm=[EngineMetrics(
+            model="dsv4",
+            generation_tokens_per_sec=47.9,
+            prompt_tokens_per_sec=3375.0,
+            tokens_per_sec=3422.9,
+        )])
+    )
+    text = render(snap)
+    assert 'sparkdash_vllm_generation_tokens_per_second{model="dsv4",node="gx10-1"} 47.9' in text
+    assert 'sparkdash_vllm_prompt_tokens_per_second{model="dsv4",node="gx10-1"} 3375.0' in text
+    # The legacy sum survives, so nothing already recorded is orphaned.
+    assert 'sparkdash_vllm_tokens_per_second{model="dsv4",node="gx10-1"} 3422.9' in text
+
+
+def test_llama_models_split_the_same_way():
+    """llama.cpp conflates prefill and decode exactly as vLLM does
+    (`tokens_predicted_total + prompt_tokens_total`), so the same split applies
+    — otherwise the cluster-wide sum would add two different things."""
+    snap = make_snapshot(
+        runtimes=Runtimes(llama_cpp=[LlamaRouterMetrics(
+            endpoint="http://r:8001", name="r:8001",
+            generation_tokens_per_sec=12.0,
+            models=[RouterModel(
+                name="qwen", state=ModelState.ACTIVE,
+                tokens_per_sec=112.0,
+                generation_tokens_per_sec=12.0,
+                prompt_tokens_per_sec=100.0,
+            )],
+        )])
+    )
+    text = render(snap)
+    assert "sparkdash_llama_model_generation_tokens_per_second" in text
+    assert "sparkdash_llama_model_prompt_tokens_per_second" in text
+
+
 def test_engine_reporting_no_kv_occupancy_emits_no_kv_series():
     """An SGLang row leaves KV empty rather than borrowing `cache_hit_rate`,
     which answers a different question. A series of zeroes would be worse than

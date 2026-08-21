@@ -236,7 +236,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if snap.memory:
                 g["memory_total_bytes"] += snap.memory.total_bytes
                 g["memory_used_bytes"] += snap.memory.used_bytes
-            g["tokens_per_second"] += snap.total_tokens_per_sec
+            # DECODE, not decode+prefill. See NodeSnapshot.
+            g["tokens_per_second"] += snap.total_generation_tokens_per_sec
 
         for g in clusters.values():
             g["memory_free_bytes"] = max(0, g["memory_total_bytes"] - g["memory_used_bytes"])
@@ -253,7 +254,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "ts": snapshot.ts,
             "nodes_total": len(inventory.nodes()),
             "nodes_up": snapshot.nodes_up,
-            "tokens_per_second": snapshot.total_tokens_per_sec,
+            "tokens_per_second": snapshot.total_generation_tokens_per_sec,
             "clusters": [
                 {"key": key, **value} for key, value in sorted(clusters.items())
             ],
@@ -280,7 +281,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "model": model.name,
                             "state": model.state.value,
                             "raw_status": model.raw_status,
-                            "tokens_per_second": model.tokens_per_sec,
+                            "tokens_per_second": model.generation_tokens_per_sec,
+                            "prompt_tokens_per_second": model.prompt_tokens_per_sec,
                             "kv_cache_pct": model.kv_cache_pct,
                             "requests_running": model.requests_running,
                             "requests_waiting": model.requests_waiting,
@@ -296,7 +298,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "model": instance.model,
                             "state": "active",
                             "raw_status": "",
-                            "tokens_per_second": instance.tokens_per_sec,
+                            "tokens_per_second": instance.generation_tokens_per_sec,
+                            "prompt_tokens_per_second": instance.prompt_tokens_per_sec,
                             "kv_cache_pct": instance.kv_cache_pct,
                             "requests_running": instance.requests_running,
                             "requests_waiting": instance.requests_waiting,

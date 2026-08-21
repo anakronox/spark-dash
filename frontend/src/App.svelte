@@ -220,9 +220,9 @@
     let up = 0;
     for (const node of nodes) {
       if (node.up) up += 1;
-      for (const r of node.runtimes.llama_cpp) tokensPerSec += r.tokens_per_sec;
+      for (const r of node.runtimes.llama_cpp) tokensPerSec += r.generation_tokens_per_sec ?? 0;
       for (const [, list] of engines(node.runtimes))
-        for (const v of list) tokensPerSec += v.tokens_per_sec;
+        for (const v of list) tokensPerSec += v.generation_tokens_per_sec ?? 0;
     }
 
     /* The largest block one model could actually occupy: the best any single

@@ -190,6 +190,7 @@ class EngineCollector(Collector[list[EngineMetrics]]):
         prompt = values.get(spec.prompt_tokens, 0.0)
         generation = values.get(spec.generation_tokens, 0.0)
         kv = values.get(spec.kv_cache) if spec.kv_cache else None
+        gen_rate, prompt_rate = self._throughput(url, values, prompt, generation)
 
         return EngineMetrics(
             model=model_name or url,
@@ -201,34 +202,42 @@ class EngineCollector(Collector[list[EngineMetrics]]):
             requests_waiting=int(values.get(spec.waiting, 0)),
             # Reported as a 0-1 fraction; the UI wants percent.
             kv_cache_pct=kv * 100.0 if kv is not None else None,
-            tokens_per_sec=self._throughput(url, values, prompt, generation),
+            generation_tokens_per_sec=gen_rate,
+            prompt_tokens_per_sec=prompt_rate,
+            # The legacy sum, kept because history is written against it.
+            tokens_per_sec=gen_rate + prompt_rate,
             prompt_tokens_total=int(prompt),
             generation_tokens_total=int(generation),
         )
 
     def _throughput(
         self, url: str, values: dict[str, float], prompt: float, generation: float
-    ) -> float:
-        """Tokens/sec, from the counters where possible.
+    ) -> tuple[float, float]:
+        """(decode, prefill) tokens per second, from the counters where possible.
 
-        DERIVED, NOT READ, even though SGLang publishes `gen_throughput`
-        directly. The node card sums this across every runtime on the node, and
-        that sum is only meaningful if each term measures the same thing:
-        `gen_throughput` is instantaneous DECODE throughput over the engine's
-        last batch, while the counter rate is prompt+generation over the poll
-        interval, which is what vLLM and the llama.cpp routers already
-        contribute. Adding the two together would produce a total that is
-        neither.
+        REPORTED SEPARATELY, and that is the whole point. Adding them was the
+        old behaviour and it made the summary unreadable: measured on a live
+        cluster 2026-08-21, the combined figure spiked to 47,672 tok/s while
+        `rate(generation_tokens[5m])` peaked at 47.9. Both numbers are real. A
+        large prompt landing inside a one-second poll window IS that fast to
+        ingest, and it is not what anyone means by throughput, so a stat panel
+        showing the sum is wrong by three orders of magnitude exactly when
+        someone is watching a request come in.
 
-        The gauge is still the better answer than nothing, so it is used when
-        the counters are missing from a scrape — an engine build that does not
-        publish them, or one scraped before it has served a request.
+        DERIVED FROM COUNTERS, not read from a gauge, even where the engine
+        publishes one. SGLang's `gen_throughput` is instantaneous decode
+        throughput over its last batch, while the counter rate covers the poll
+        interval — the node card sums across runtimes, and a sum of terms
+        measuring different windows is neither. The gauge is the fallback when
+        the counters are absent from a scrape, and it maps to DECODE
+        specifically, which is what it measures.
         """
         spec = self._spec
         if spec.prompt_tokens in values or spec.generation_tokens in values:
-            return self._rates.rate(f"{url}:prompt", prompt) + self._rates.rate(
-                f"{url}:generation", generation
+            return (
+                self._rates.rate(f"{url}:generation", generation),
+                self._rates.rate(f"{url}:prompt", prompt),
             )
         if spec.throughput_gauge:
-            return values.get(spec.throughput_gauge, 0.0)
-        return 0.0
+            return values.get(spec.throughput_gauge, 0.0), 0.0
+        return 0.0, 0.0

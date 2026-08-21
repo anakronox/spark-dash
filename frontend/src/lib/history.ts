@@ -45,6 +45,10 @@ export const METRICS: MetricSpec[] = [
   { key: 'gpu_temperature', label: 'GPU temperature', unit: '°C', scaleMax: 100 },
   { key: 'memory_used_percent', label: 'Memory used', unit: '%', percent: true },
   { key: 'tokens_per_second', label: 'Throughput', unit: 'tok/s' },
+  /* Prefill as its own chip. It was previously added INTO Throughput, which
+     made that chart spike three orders of magnitude while a prompt was being
+     ingested — the chart said 47,672 while the model generated 48. */
+  { key: 'prompt_tokens_per_second', label: 'Prefill', unit: 'tok/s' },
   // The GB10 idles ~12W and peaks well under 300W.
   { key: 'gpu_power', label: 'GPU power', unit: 'W', scaleMax: 300 },
   // max_sm_clock as NVML reports it. Note the part actually runs ~2411MHz,

@@ -357,7 +357,15 @@ class RouterModel(BaseModel):
     slots_used: int = 0
     slots_total: int = 0
     kv_cache_pct: float | None = None
-    tokens_per_sec: float | None = None
+    tokens_per_sec: float | None = Field(
+        default=None,
+        description="Prefill and decode added together — see the same field on "
+        "`EngineMetrics`. llama.cpp conflates them exactly as vLLM does "
+        "(`tokens_predicted_total + prompt_tokens_total`), so the split below "
+        "applies identically and the cluster-wide sum stays comparable.",
+    )
+    generation_tokens_per_sec: float | None = None
+    prompt_tokens_per_sec: float | None = None
     requests_running: int = 0
     requests_waiting: int = 0
 
@@ -389,7 +397,10 @@ class LlamaRouterMetrics(BaseModel):
     max_instances: int | None = None
     autoload: bool | None = None
 
+    #: Router-level roll-up of its models. Combined prefill+decode, matching
+    #: the per-model field of the same name.
     tokens_per_sec: float = 0.0
+    generation_tokens_per_sec: float = 0.0
 
     @property
     def active_models(self) -> list[RouterModel]:
@@ -439,6 +450,21 @@ class EngineMetrics(BaseModel):
     )
     requests_running: int = 0
     requests_waiting: int = 0
+
+    generation_tokens_per_sec: float = Field(
+        default=0.0,
+        description="Decode throughput — tokens the model GENERATED, per "
+        "second. This is what 'tokens/sec' means to a reader, and the number "
+        "the UI leads with.",
+    )
+    prompt_tokens_per_sec: float = Field(
+        default=0.0,
+        description="Prefill throughput — prompt tokens INGESTED, per second.\n\n"
+        "Kept apart from generation because the two differ by orders of "
+        "magnitude and answer different questions: prefill is how fast a "
+        "request is accepted, generation is how fast it is answered.",
+    )
+
     kv_cache_pct: float | None = Field(
         default=None,
         description="How full the KV cache is, as a percentage.\n\n"
@@ -449,7 +475,17 @@ class EngineMetrics(BaseModel):
         "a number that reads as occupancy and is not, so an SGLang row leaves "
         "this empty. An empty cell is honest; a wrong one is not.",
     )
-    tokens_per_sec: float = 0.0
+    tokens_per_sec: float = Field(
+        default=0.0,
+        description="Prefill AND decode added together. Kept because recorded "
+        "history, the history queries and the Grafana dashboard are written "
+        "against it — but it is not the number to read.\n\n"
+        "Measured on a live cluster 2026-08-21: this reported 47,672 tok/s "
+        "while the model was generating 48 tok/s. Both are arithmetically "
+        "correct. A large prompt landing inside one poll window is a real "
+        "prefill rate and is not what anyone means by throughput, so the two "
+        "are now reported separately and this is the legacy sum.",
+    )
     prompt_tokens_total: int = 0
     generation_tokens_total: int = 0
 
@@ -628,10 +664,27 @@ class NodeSnapshot(BaseModel):
 
     @property
     def total_tokens_per_sec(self) -> float:
+        """Prefill and decode combined. Kept for the callers that predate the
+        split; `total_generation_tokens_per_sec` is the one to read."""
         return (
             sum(v.tokens_per_sec for v in self.runtimes.vllm)
             + sum(s.tokens_per_sec for s in self.runtimes.sglang)
             + sum(r.tokens_per_sec for r in self.runtimes.llama_cpp)
+        )
+
+    @property
+    def total_generation_tokens_per_sec(self) -> float:
+        """Decode throughput across every runtime on this node.
+
+        THE headline number. Prefill is excluded on purpose: a large prompt
+        landing inside one poll window produces a real prefill rate three
+        orders of magnitude above the decode rate, and adding the two together
+        made the summary read 47,672 tok/s while the model generated 48.
+        """
+        return (
+            sum(v.generation_tokens_per_sec for v in self.runtimes.vllm)
+            + sum(s.generation_tokens_per_sec for s in self.runtimes.sglang)
+            + sum(r.generation_tokens_per_sec for r in self.runtimes.llama_cpp)
         )
 
 
@@ -652,3 +705,7 @@ class ClusterSnapshot(BaseModel):
     @property
     def total_tokens_per_sec(self) -> float:
         return sum(n.total_tokens_per_sec for n in self.nodes)
+
+    @property
+    def total_generation_tokens_per_sec(self) -> float:
+        return sum(n.total_generation_tokens_per_sec for n in self.nodes)
