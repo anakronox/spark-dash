@@ -4,6 +4,7 @@
   import AlertHistory from './components/AlertHistory.svelte';
   import Settings from './components/Settings.svelte';
   import Section from './components/Section.svelte';
+  import NodeGroup from './components/NodeGroup.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
   import NetworkPanel from './components/NetworkPanel.svelte';
@@ -91,7 +92,12 @@
         g.processes.push(...node.processes);
       }
     }
-    return [...byKey.values()];
+    /* The reader's arrangement, applied over inventory order. Sorting HERE
+       rather than in the markup keeps one list: the cards, the handle's "n of
+       m" and the drag's own reckoning all read the same sequence. */
+    const groups = [...byKey.values()];
+    const seq = layout.orderGroups(groups.map((g) => g.key));
+    return groups.slice().sort((a, b) => seq.indexOf(a.key) - seq.indexOf(b.key));
   });
 
   /* Identity slot per node: its position in the INVENTORY, which is the order
@@ -595,7 +601,15 @@
          way, each grid would contain exactly one card and the cards would span
          the full width no matter how small they got. -->
     <div class="node-grid" class:compact={layout.compactCards}>
-    {#each clusters as cluster (cluster.key)}
+    {#each clusters as cluster, gi (cluster.key)}
+      <NodeGroup
+        {layout}
+        groupKey={cluster.key}
+        label={cluster.name ?? cluster.nodes[0]?.node_id ?? cluster.key}
+        position={`${gi + 1} of ${clusters.length}`}
+        all={clusters.map((c) => c.key)}
+        framed={!!cluster.name}
+      >
       {#if cluster.name}
         <!-- A frame only where clustering is real. Clustered nodes pool memory,
              so their combined free space is a capacity number in its own
@@ -642,7 +656,15 @@
           {/each}
         </div>
       {/if}
+      </NodeGroup>
     {/each}
+
+    <!-- Where a release would put the card being dragged. Inside the grid and
+         absolutely positioned, like the sections' line — a placeholder taking
+         up space would push the cards it is measured against. -->
+    {#if layout.nodeDrop}
+      <div class="drop-line" style:top="{layout.nodeDrop.y}px"></div>
+    {/if}
     </div>
 
     <!-- Sections are arrangeable and collapsible; both live in localStorage.
@@ -791,6 +813,7 @@
   /* Full mode: unchanged, a column of full-width cards. Compact turns this
      into the shared grid the cards flow through. */
   .node-grid {
+    position: relative;
     display: grid;
     gap: 12px;
   }
@@ -838,22 +861,23 @@
 
 
 
-  /* DIRECT children only. These are the standalone wrappers — one per node,
-     since a standalone node is a cluster of one — and they stop generating
-     boxes so their cards become items of .node-grid itself. Without the child
-     combinator this also caught the wrappers INSIDE a framed cluster, which
-     promoted those cards into the cluster's own single-column grid and left
-     them full width and stacked. */
-  .node-grid.compact > .nodes {
-    display: contents;
-  }
+  /* The `display: contents` that used to sit here is gone with the wrapper.
+     It existed so a standalone node's `.nodes` box stopped generating a frame
+     and its card became an item of `.node-grid` itself. A standalone group
+     holds exactly one card — a standalone node is a cluster of one — so a
+     wrapper occupying one cell renders identically, and the drag handle needs
+     a real box to be positioned against. */
 
 
 
   /* A framed cluster keeps its frame and spans the full row: the frame means
      "these pool memory", and one covering part of a row would say something
      untrue about which nodes are grouped. */
-  .node-grid.compact .cluster {
+  /* :global because the element is NodeGroup's, not this component's. The
+     wrapper is the grid item now that every group carries a drag handle, so
+     the span has to move to it — left on `.cluster` it would apply to
+     something that is no longer a grid item and silently do nothing. */
+  .node-grid.compact > :global([data-group-framed]) {
     grid-column: 1 / -1;
   }
 

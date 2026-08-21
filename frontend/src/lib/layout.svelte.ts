@@ -27,6 +27,7 @@ const ROWS_KEY = 'spark-dash.section-rows.v1';
 const COLUMN_KEY = 'spark-dash.section-column.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
 const PLACEMENT_KEY = 'spark-dash.section-placement.v1';
+const NODE_ORDER_KEY = 'spark-dash.node-order.v1';
 
 /** Which of the page's three zones a section sits in.
  *
@@ -55,6 +56,27 @@ const PLACEMENT_KEY = 'spark-dash.section-placement.v1';
 export type Zone = 'full' | 'left' | 'right';
 
 export const ZONES: Zone[] = ['full', 'left', 'right'];
+
+/** Where a node/cluster card sits, when the reader has said.
+ *
+ * KEYS ARE LIVE DATA, unlike the five section ids. A key is a cluster name or
+ * a standalone node's id, so hardware appearing, disappearing or being
+ * reclustered changes the set underneath a saved order. Reconciled on read
+ * rather than trusted: unknown keys are dropped, and anything the saved list
+ * has never seen is APPENDED in inventory order. Failing that way round means
+ * a node added to cluster.yml shows up rather than being silently withheld
+ * because a months-old ordering did not mention it.
+ */
+function readNodeOrder(): string[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NODE_ORDER_KEY) ?? 'null');
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((k): k is string => typeof k === 'string');
+  } catch {
+    // A page in inventory order is fine; a page that will not render is not.
+    return [];
+  }
+}
 
 /** One horizontal slice of the page.
  *
@@ -374,6 +396,58 @@ export class Layout {
    * animation bookkeeping, and no way for a reorder to feed back into the
    * targeting that caused it. */
   drop = $state<DropTarget | null>(null);
+
+  /** Reader-chosen order of the node/cluster cards, as keys. Empty means
+   *  inventory order, which is `cluster.yml`'s. */
+  nodeOrder = $state<string[]>(readNodeOrder());
+
+  /** The group being dragged, and where a release would put it. Separate from
+   *  the section drag state because the gestures differ: a node card has one
+   *  axis and no half-width, so there is no zone, no band and no pairing. */
+  nodeDragKey = $state<string | null>(null);
+  nodeDrop = $state<{ anchorKey: string | null; before: boolean; y: number } | null>(null);
+
+  /** Inventory order, with the reader's arrangement applied over it.
+   *
+   * Takes the keys AS THE PAGE FOUND THEM so the fallback is always the order
+   * of cluster.yml — the same list that decides a node's colour, which is why
+   * dragging cards repaints nothing.
+   */
+  orderGroups(keys: string[]): string[] {
+    if (!this.nodeOrder.length) return keys;
+    const known = new Set(keys);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const k of this.nodeOrder) {
+      if (known.has(k) && !seen.has(k)) {
+        out.push(k);
+        seen.add(k);
+      }
+    }
+    // Anything the saved order never mentioned keeps its inventory position
+    // relative to the rest, appended rather than dropped.
+    for (const k of keys) if (!seen.has(k)) out.push(k);
+    return out;
+  }
+
+  /** Move a group to sit before or after another. Anchored on a card for the
+   *  same reason a section drag is: it is the card the affordance drew. */
+  moveGroup(key: string, anchorKey: string | null, before: boolean, all: string[]) {
+    const current = this.orderGroups(all);
+    const next = current.filter((k) => k !== key);
+    let at = next.length;
+    if (anchorKey) {
+      const i = next.indexOf(anchorKey);
+      if (i !== -1) at = before ? i : i + 1;
+    }
+    next.splice(at, 0, key);
+    this.nodeOrder = next;
+    try {
+      localStorage.setItem(NODE_ORDER_KEY, JSON.stringify(next));
+    } catch {
+      // Still applied for this session.
+    }
+  }
 
   #save() {
     this.commit();
@@ -733,6 +807,7 @@ export class Layout {
     this.placement = {};
     this.lastColumn = {};
     this.rows = {};
+    this.nodeOrder = [];
     /* Switched-off columns go too. Same unrecoverability rule as hidden
        sections: anything that can remove a thing from the page must have one
        control that puts everything back, or a reader who forgets what they hid
@@ -743,6 +818,7 @@ export class Layout {
     try {
       localStorage.removeItem(COLUMN_KEY);
       localStorage.removeItem(ROWS_KEY);
+      localStorage.removeItem(NODE_ORDER_KEY);
     } catch {
       // Still applied for this session.
     }
@@ -774,6 +850,7 @@ export class Layout {
       this.hidden.length === 0 &&
       Object.keys(this.placement).length === 0 &&
       Object.keys(this.rows).length === 0 &&
+      this.nodeOrder.length === 0 &&
       !columnStore.customised &&
       !this.compactCards
     );
