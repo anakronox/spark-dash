@@ -323,7 +323,6 @@
     'pb-1 border-b border-rule';
   const BRAND = 'flex items-baseline gap-[10px]';
   const H1 = 'text-[15px] font-bold tracking-[0.02em]';
-  const BRAND_TAG = 'text-ink-muted text-micro tracking-[0.14em] uppercase';
   const RIGHT = 'flex items-center gap-[14px]';
 
   const MUTED = 'text-ink-muted';
@@ -404,7 +403,6 @@
   <header class={TOP}>
     <div class={BRAND}>
       <h1 class={H1}>spark<span class={MUTED}>-dash</span></h1>
-      <span class={BRAND_TAG}>GB10 nodes</span>
     </div>
 
     <div class={RIGHT}>
@@ -702,12 +700,17 @@
     <p class={notice()}>Waiting for the first frame…</p>
   {/if}
 
-  <footer class={FOOTER}>
-    <span class={MUTED}>read-only · never loads or unloads a model</span>
-    {#if !layout.isDefault}
+  <!-- Only when it has something in it. The footer carries a top border, so
+       with its text gone and the reset button absent — which is the usual
+       state — it would draw a rule across the bottom of the page with nothing
+       underneath it. `justify-end` because the button is now the only thing
+       here: under `justify-between` a lone child goes to the LEFT, moving a
+       control that has always sat on the right. -->
+  {#if !layout.isDefault}
+    <footer class="{FOOTER} justify-end">
       <button class={RESET} onclick={() => layout.reset()}>reset layout</button>
-    {/if}
-  </footer>
+    </footer>
+  {/if}
 </div>
 
 <!-- One zone renderer for every zone in every band, so the drop affordances
