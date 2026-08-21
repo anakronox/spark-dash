@@ -76,3 +76,58 @@ def test_aggregations_are_not_marked_filterable():
             assert key not in NODE_FILTERABLE, (
                 f"{key} is an aggregation and cannot take an appended node matcher"
             )
+
+
+APP_SVELTE = Path(__file__).resolve().parent.parent / "frontend" / "src" / "App.svelte"
+
+
+def cluster_sum_block() -> str:
+    """The body of the `cluster` derivation, comments stripped.
+
+    Comments here quote the numbers that motivate the rule (`47,672`,
+    `tokens_per_sec`), so a check that did not strip them would match its own
+    reasoning rather than the code — the failure mode this suite has hit four
+    times."""
+    src = APP_SVELTE.read_text()
+    start = src.index("const cluster = $derived.by(")
+    end = src.index("return { tokensPerSec", start)
+    block = src[start:end]
+    block = re.sub(r"/\*.*?\*/", "", block, flags=re.S)
+    return re.sub(r"//[^\n]*", "", block)
+
+
+def test_the_headline_sums_decode_only():
+    """Y1's whole finding: prefill and decode differ by three orders of
+    magnitude, and adding them made the headline read 47,672 tok/s while the
+    model generated 48. The combined `tokens_per_sec` field still exists and is
+    still emitted — recorded history is written against it — so nothing stops
+    someone summing it here by reaching for the obvious name."""
+    block = cluster_sum_block()
+    assert "generation_tokens_per_sec" in block, "the headline no longer sums decode"
+    assert re.search(r"(?<!generation_)(?<!prompt_)\btokens_per_sec\b", block) is None, (
+        "the cluster headline sums the COMBINED tokens_per_sec — that is the "
+        "number that reads 47,672 while the model generates 48"
+    )
+
+
+def test_prefill_is_summed_separately_from_the_headline():
+    """Reported beside the headline, never into it."""
+    block = cluster_sum_block()
+    assert "prompt_tokens_per_sec" in block, "prefill is not collected"
+    for line in block.splitlines():
+        if "prompt_tokens_per_sec" in line:
+            assert "tokensPerSec" not in line, (
+                f"prefill is being added to the headline: {line.strip()}"
+            )
+
+
+def test_prefill_reads_as_a_state_not_a_bare_rate():
+    """Non-zero 1% of the time and five to six digits when it fires. A bare
+    number here reads '0' nearly always and then dwarfs the decode figure
+    beside it, which is Y1's bug in a smaller font."""
+    src = APP_SVELTE.read_text()
+    marker = "<dt class={DT}>prefill</dt>"
+    assert marker in src, "no prefill entry in the summary row"
+    facts = src[src.index(marker) :][:600]
+    assert "idle" in facts, "prefill shows no resting state"
+    assert "compact(" in facts, "prefill renders a full-precision rate"

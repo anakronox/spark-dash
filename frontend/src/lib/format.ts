@@ -25,6 +25,20 @@ export function ratioPct(part: number, whole: number): number {
   return whole > 0 ? (part / whole) * 100 : 0;
 }
 
+/** Short form for a number nobody reads digit by digit.
+ *
+ * For prefill specifically. Measured over six hours on `danflashes`, prefill is
+ * non-zero 1% of the time and peaks at 110,571 tok/s — so the only question it
+ * ever answers is "what order of magnitude", and rendering all six digits beside
+ * a two-digit decode rate makes the smaller, more meaningful number look like
+ * the incidental one.
+ */
+export function compact(value: number): string {
+  if (value >= 999_500) return `${(value / 1e6).toFixed(1)}M`;
+  if (value >= 999.5) return `${Math.round(value / 1000)}k`;
+  return String(Math.round(value));
+}
+
 export function num(value: number | null | undefined, digits = 0, dash = '—'): string {
   if (value === null || value === undefined || Number.isNaN(value)) return dash;
   return value.toFixed(digits);

@@ -20,7 +20,7 @@
   import { pageFocus } from './lib/focus.svelte';
   import { AlertFeed } from './lib/alerts.svelte';
   import { fetchWithTimeout } from './lib/request';
-  import { gib, num } from './lib/format';
+  import { compact, gib, num } from './lib/format';
   import type { NodeSnapshot, ProcessInfo } from './lib/types';
   import { engines, isEngineJob } from './lib/types';
 
@@ -253,12 +253,28 @@
 
   const cluster = $derived.by(() => {
     let tokensPerSec = 0;
+    /* Prefill, summed separately and NEVER added to the above -- that sum is
+       what made the headline read 47,672 tok/s while the model generated 48
+       (Y1). It is reported as a state rather than a rate because it behaves
+       like one: measured over six hours, non-zero 1% of the time, peaking at
+       110,571 tok/s. There is no moment at which watching it as a number tells
+       you anything a two-digit decode rate does not tell you better. */
+    let prefillPerSec = 0;
     let up = 0;
     for (const node of nodes) {
       if (node.up) up += 1;
-      for (const r of node.runtimes.llama_cpp) tokensPerSec += r.generation_tokens_per_sec ?? 0;
-      for (const [, list] of engines(node.runtimes))
-        for (const v of list) tokensPerSec += v.generation_tokens_per_sec ?? 0;
+      for (const r of node.runtimes.llama_cpp) {
+        tokensPerSec += r.generation_tokens_per_sec ?? 0;
+        /* Asymmetric on purpose: the router rolls decode up for us but reports
+           no prefill of its own, so this comes from its models. */
+        for (const m of r.models) prefillPerSec += m.prompt_tokens_per_sec ?? 0;
+      }
+      for (const [, list] of engines(node.runtimes)) {
+        for (const v of list) {
+          tokensPerSec += v.generation_tokens_per_sec ?? 0;
+          prefillPerSec += v.prompt_tokens_per_sec ?? 0;
+        }
+      }
     }
 
     /* The largest block one model could actually occupy: the best any single
@@ -275,7 +291,7 @@
       }
     }
 
-    return { tokensPerSec, largestFreeBytes, largestFreeWhere, up, total: nodes.length };
+    return { tokensPerSec, prefillPerSec, largestFreeBytes, largestFreeWhere, up, total: nodes.length };
   });
 
 
@@ -533,7 +549,7 @@
            here that legitimately sums across the cluster. -->
       <div class={FIGURE}>
         <span class={VALUE}>{num(cluster.tokensPerSec, 1)}</span>
-        <span class={CAPTION}>tokens/sec</span>
+        <span class={CAPTION}>decode tok/s</span>
       </div>
 
       <dl class={FACTS}>
@@ -550,6 +566,24 @@
           <dt class={DT}>nodes up</dt>
           <dd class={cluster.up < cluster.total ? DD_ALERT : DD}>
             {cluster.up}<span class={MUTED}>/{cluster.total}</span>
+          </dd>
+        </div>
+        <!-- PREFILL AS A STATE, not a rate, and LAST in the row.
+             A state because that is what it is: non-zero 1% of the time and
+             five to six digits when it fires, so a live number here would read
+             "0" nearly always and then briefly dwarf the decode figure it sits
+             beside — which is the misreading Y1 removed, reintroduced in a
+             smaller font. Last in the row because "ingesting 110k" is wider
+             than "idle", and at the end of a flex row a widening value has
+             nothing after it to push. -->
+        <div class={FACT}>
+          <dt class={DT}>prefill</dt>
+          <dd class={DD}>
+            {#if cluster.prefillPerSec > 0}
+              ingesting <span class={NUM}>{compact(cluster.prefillPerSec)}</span>
+            {:else}
+              <span class={MUTED}>idle</span>
+            {/if}
           </dd>
         </div>
       </dl>

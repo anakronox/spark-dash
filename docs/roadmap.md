@@ -3629,7 +3629,35 @@ other closely. SM says the cluster is busy; it cannot say who is late.
   thing [S](#s--three-signals-already-collected-and-not-shown) exists to
   prevent.
 
-  **A small alignment worth noting:** SGLang's `gen_throughput` gauge — the
+  **Y1a. Say which rate the headline is.** Shipped 2026-08-21.
+
+  Y1 fixed the arithmetic and left the caption alone. The headline read
+  `tokens/sec` — the same words it used when it meant prefill + decode — so
+  nothing on the page distinguished the corrected number from the one it
+  replaced. Every other surface had already moved to the convention (`tok/s`
+  means decode, `prefill` is its own column); the most prominent number on the
+  page was the last one still using the vague name.
+
+  The caption is now `decode tok/s`, and prefill joins the summary row.
+
+  **As a STATE, not a rate, and that is the whole design.** Measured over six
+  hours on `danflashes`: prefill is non-zero **1% of the time** and peaks at
+  **110,571 tok/s**. A live number there would read `0` almost always, then
+  briefly render six digits beside a two-digit decode rate — Y1's exact
+  misreading, reintroduced in a smaller font. So it reads `idle`, or
+  `ingesting 110k` while a prompt is landing, and the magnitude is all it
+  claims to give.
+
+  Placed last in the flex row because `ingesting 110k` is wider than `idle` and
+  at the end of the row a widening value has nothing after it to push.
+
+  Guarded three ways, each verified against the mutation it describes: the
+  headline must sum `generation_tokens_per_sec` and never the combined field
+  (which still exists, still ships, and is still the obvious name to reach
+  for); prefill must never be added into the headline sum; and it must render
+  through `compact()` with a resting state rather than as a bare rate.
+
+**A small alignment worth noting:** SGLang's `gen_throughput` gauge — the
   fallback when counters are missing from a scrape — is decode throughput by
   definition, so it now lands in the generation field rather than in a combined
   total it never matched.
