@@ -490,99 +490,119 @@
   --chart-8: #e34948;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  background: var(--page);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  /* Monospace runs wide; a slightly tighter tracking keeps dense rows from
-     feeling gappy without hurting legibility. */
-  letter-spacing: -0.01em;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* Every number in this interface is compared against another number, either
-   across a column or across a tick. Tabular figures stop values from jittering
-   horizontally as they update. */
-body {
-  font-variant-numeric: tabular-nums;
-}
-
-h1,
-h2,
-h3,
-p,
-figure {
-  margin: 0;
-}
-
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-:focus-visible {
-  outline: 2px solid var(--series-1);
-  outline-offset: 2px;
-  border-radius: var(--radius);
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
-/* Shared primitives ------------------------------------------------------ */
-
-.eyebrow {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
-
-/* A panel's own title, as opposed to the labels inside it.
+/* @layer base — AND THIS IS LOAD-BEARING, not tidiness.
  *
- * The eyebrow and a table's `th` had become the SAME declaration — 10px,
- * weight 500, uppercase, --ink-muted — so "GPU PROCESSES" and the "PROCESS"
- * column heading two lines below it were indistinguishable, and the card read
- * as one more row of column labels rather than as a titled thing.
+ * Unlayered CSS beats EVERY layered rule, at any specificity. Tailwind's
+ * utilities live in `@layer utilities`, so while these element rules sat
+ * unlayered they silently outranked every utility on the elements they match:
+ * `button { font: inherit; border: none }` beat `text-label` and `border-rule`
+ * on both header buttons, which rendered at the UA's 16px with no border while
+ * carrying the classes that say otherwise.
  *
- * Weight AND colour, not just weight. At 10px uppercase, 500 to 700 alone is a
- * subtle shift; lifting the title to full --ink while the column headings stay
- * muted is what actually establishes which one is the heading.
+ * Nothing errored and the class attributes looked right in the DOM — the
+ * winning rule was in a different file. Found by diffing computed styles
+ * against a pre-conversion snapshot.
  *
- * Keyed on the h2 rather than a new class because that is already exactly the
- * distinction being drawn: every card and fly-out title is an h2.eyebrow, and
- * every label within one is an h3, a span, or carries `dim`.
+ * The variable blocks above stay UNLAYERED on purpose: they define custom
+ * properties rather than compete for declarations, and `@theme inline` emits
+ * its own `--font-mono: var(--font-mono)` in the theme layer that the
+ * unlayered definition has to win.
  */
-h2.eyebrow {
-  font-weight: 700;
-  color: var(--ink);
-}
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-}
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    /* Monospace runs wide; a slightly tighter tracking keeps dense rows from
+       feeling gappy without hurting legibility. */
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+  }
 
-.num {
-  font-variant-numeric: tabular-nums;
-}
+  /* Every number in this interface is compared against another number, either
+     across a column or across a tick. Tabular figures stop values from jittering
+     horizontally as they update. */
+  body {
+    font-variant-numeric: tabular-nums;
+  }
 
-.dim {
-  color: var(--ink-muted);
+  h1,
+  h2,
+  h3,
+  p,
+  figure {
+    margin: 0;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--series-1);
+    outline-offset: 2px;
+    border-radius: var(--radius);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  /* Shared primitives ------------------------------------------------------ */
+
+  .eyebrow {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+
+  /* A panel's own title, as opposed to the labels inside it.
+   *
+   * The eyebrow and a table's `th` had become the SAME declaration — 10px,
+   * weight 500, uppercase, --ink-muted — so "GPU PROCESSES" and the "PROCESS"
+   * column heading two lines below it were indistinguishable, and the card read
+   * as one more row of column labels rather than as a titled thing.
+   *
+   * Weight AND colour, not just weight. At 10px uppercase, 500 to 700 alone is a
+   * subtle shift; lifting the title to full --ink while the column headings stay
+   * muted is what actually establishes which one is the heading.
+   *
+   * Keyed on the h2 rather than a new class because that is already exactly the
+   * distinction being drawn: every card and fly-out title is an h2.eyebrow, and
+   * every label within one is an h3, a span, or carries `dim`.
+   */
+  h2.eyebrow {
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dim {
+    color: var(--ink-muted);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

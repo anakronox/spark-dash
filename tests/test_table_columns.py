@@ -493,3 +493,41 @@ def test_the_slack_cell_is_an_ordinary_cell_apart_from_its_width(table):
             f"{table}'s {name} sets no bottom rule — every cell derived from "
             "it, slack included, loses the line between rows"
         )
+
+
+def test_app_css_element_rules_are_layered():
+    """Unlayered CSS beats EVERY layered rule, at any specificity.
+
+    Tailwind's utilities live in `@layer utilities`. While app.css's element
+    resets sat unlayered they silently outranked every utility on the elements
+    they match — `button { font: inherit; border: none }` beat `text-label` and
+    `border-rule` on both header buttons, which rendered at the UA's 16px with
+    no border while carrying the classes that say otherwise. Nothing errored,
+    and the DOM showed the right class attributes; the winning rule was in
+    another file.
+
+    The `:root` variable blocks must stay OUT of the layer: they define custom
+    properties rather than compete for declarations, and the unlayered
+    definition is what beats `@theme inline`'s own `--font-mono`.
+    """
+    # Comments stripped FIRST. The comment above this layer explains the bug by
+    # quoting `button { font: inherit; border: none }`, and the un-stripped
+    # search found THAT copy at a lower offset and failed. Fourth time in this
+    # suite a check has matched its own documentation instead of the code —
+    # twice passing vacuously, twice failing spuriously.
+    css = re.sub(r"/\*.*?\*/", "", APP_CSS.read_text(), flags=re.S)
+    layer_at = css.find("@layer base {")
+    assert layer_at != -1, "app.css declares no base layer — utilities lose to its element rules"
+
+    for rule in ("button {", "table {", ":focus-visible {"):
+        at = css.find(rule)
+        assert at > layer_at, (
+            f"app.css's `{rule.strip(' {')}` rule sits outside @layer base, so it "
+            "outranks every Tailwind utility on that element"
+        )
+
+    # And the variables must NOT have been swept in with them.
+    assert css.find(":root {") < layer_at, (
+        "the :root variable block was moved into @layer base — it has to stay "
+        "unlayered to win against @theme inline's own definitions"
+    )
