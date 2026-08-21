@@ -3883,7 +3883,7 @@ lived on one node, and `danflashes` serves **one** vLLM model across two.
   `SwapThrashing` reads swap I/O; both remain, and a test asserts they do.
   Headroom and harm are different questions, and only the first was unclearable.
 
-### AA — Column widths: sane defaults, then draggable
+### AA — Column widths: sane defaults, then draggable — **shipped 2026-08-21**
 
 Reported 2026-08-21: the Models table shows a large gap between `model` and the
 column to its right. All 26 single letters are used, so sections continue as
@@ -4037,6 +4037,12 @@ orphaned CSS classes were left behind.
 Sorting, pagination and column visibility were each built once in
 `TableView`/`ColumnView` and applied everywhere, and a table that resizes while
 its neighbour does not is the kind of inconsistency that reads as a bug.
+
+**Deployed and confirmed 2026-08-21.** All four items on the cluster, verified
+in a browser: the reported gap is gone and the handles work. The two things no
+test could settle — whether an 8px target beside a full-cell sort button is
+actually hittable, and whether the clipped names read acceptably now that fixed
+layout stops columns growing — both came back fine in use.
 
 **Not planned: auto-fit to content.** A double-click-to-fit gesture is the
 obvious companion and is a different feature — it needs measuring rendered text
