@@ -15,7 +15,14 @@
 const STORAGE_KEY = 'spark-dash.theme.v1';
 
 /** A theme that actually exists as a block of CSS custom properties. */
-export type PaletteId = 'dark' | 'light' | 'cyberpunk' | 'forest';
+export type PaletteId =
+  | 'dark'
+  | 'light'
+  | 'cyberpunk'
+  | 'forest'
+  | 'contrast'
+  | 'slate'
+  | 'paper';
 
 /** What the reader can choose. `auto` is a rule, not a palette. */
 export type ThemeId = PaletteId | 'auto';
@@ -36,9 +43,21 @@ export const THEMES: ThemeDef[] = [
   { id: 'light', label: 'Light', dark: false },
   { id: 'cyberpunk', label: 'Cyberpunk', dark: true },
   { id: 'forest', label: 'Forest', dark: true },
+  { id: 'slate', label: 'Slate', dark: true },
+  { id: 'paper', label: 'Paper', dark: false },
+  // Last, and deliberately: it is the only entry here chosen for a reason
+  // other than taste, so it reads as the end of the list rather than as one
+  // more colour scheme among the others.
+  { id: 'contrast', label: 'High contrast', dark: true },
 ];
 
-const DARK_PALETTES = new Set<PaletteId>(['dark', 'cyberpunk', 'forest']);
+const DARK_PALETTES = new Set<PaletteId>([
+  'dark',
+  'cyberpunk',
+  'forest',
+  'slate',
+  'contrast',
+]);
 const IDS = new Set<string>(THEMES.map((t) => t.id));
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';

@@ -205,6 +205,164 @@
   --chart-8: #e66767;
 }
 
+:root[data-theme='contrast'] {
+  color-scheme: dark;
+
+  /* HIGH CONTRAST — the only theme here with a functional rather than an
+     aesthetic purpose, and the one place the house style is deliberately
+     overruled.
+
+     app.css argues against pure black, and forest answers that objection by
+     keeping the cast in the chrome. This theme answers it differently: pure
+     black is the point. Every other value is chosen to be as far from it as
+     the gamut allows, and "restraint" is not a property this theme is trying
+     to have. */
+  --page: #000000;
+  --panel: #000000;
+  --panel-raised: #141414;
+
+  /* RULES ARE VISIBLE HERE, not implied. Everywhere else a border is a hint
+     and separation comes from surface lift; at low vision that lift is exactly
+     what disappears, so structure has to be drawn rather than suggested. */
+  --rule: #6e6e6e;
+  --track: #262626;
+
+  --ink: #ffffff;
+  --ink-2: #e6e6e6;
+  /* "Muted" ink still clears 7:1. The muted role survives as a HIERARCHY
+     signal — it is a step down, not a fade out — because a theme for low
+     vision cannot have a tier that is hard to read on purpose. */
+  --ink-muted: #b8b8b8;
+
+  --series-1: #65e0ca;
+  --series-2: #ffd0a7;
+  --series-3: #8ca4f0;
+
+  /* Status keeps its ORDER and its hue families so meaning transfers from
+     every other theme, at lightnesses this surface can carry. */
+  --good: #6ee06e;
+  --warning: #ffc740;
+  --serious: #ff9d5c;
+  --critical: #ff7b7b;
+
+  /* STEPPED, NOT DERIVED — the roadmap's requirement, and the reason this
+     palette is not the dark set pushed apart. The dark set's worst adjacent
+     pair is dE 8.4, barely over the floor of 8, so there is no headroom to
+     borrow: separation had to be built rather than stretched.
+
+     The technique is a LIGHTNESS LADDER. Protanopia and deuteranopia collapse
+     red-green hue difference almost completely, but lightness difference
+     survives both intact — so eight lightness steps carry the separation and
+     hue is free to add rather than obliged to carry. The ladder is then
+     INTERLEAVED across the slots: assigned in order, adjacent slots would be
+     one step apart and the whole point would be lost. Measured: monotonic
+     gives dE 10.2, interleaved gives 21.0.
+
+     Hue spacing is constrained to 25 degrees minimum, which costs separation
+     (25.0 unconstrained, 21.0 with it) and buys a real spectrum. Worth it:
+     with four blues nobody can say WHICH series they mean out loud, and a
+     theme for accessibility that defeats verbal description has traded one
+     barrier for another.
+
+     The ladder stops at L 0.88. Above roughly that, sRGB cannot hold C 0.12
+     for warm hues, so the requested chroma CLIPS and the slot renders grey —
+     which the chroma floor exists to catch and did, on a first attempt whose
+     amber came back at C 0.076. The checker measures rendered chroma, not
+     requested, which is the only reason that was visible.
+
+     Validated by scripts/palette_check.py against this surface:
+     adjacent CVD dE 20.6 (floor 8; the dark theme manages 8.4), adjacent
+     normal-vision dE 24.6 (floor 15), minimum contrast 4.8:1 (floor 3),
+     minimum rendered chroma 0.116 (floor 0.10). */
+  --chart-1: #ab67a5; /* rose    L 0.61 */
+  --chart-2: #65f0f0; /* cyan    L 0.88 */
+  --chart-3: #9e80d1; /* violet  L 0.66 */
+  --chart-4: #c9c261; /* olive   L 0.80 */
+  --chart-5: #849ded; /* indigo  L 0.71 */
+  --chart-6: #ffb777; /* amber   L 0.83 */
+  --chart-7: #008a63; /* teal    L 0.56 */
+  --chart-8: #62bbf5; /* azure   L 0.76 */
+}
+
+:root[data-theme='slate'] {
+  color-scheme: dark;
+
+  /* CHROME ONLY. Same validated chart slots as dark, a cooler ground — the
+     cheap, taste-driven kind of variant, and the surface-contrast check is the
+     one thing it can break on its own, so it is re-run rather than assumed. */
+  --page: #0d1117;
+  --panel: #12181f;
+  --panel-raised: #1a222c;
+  --rule: #2a3441;
+  --track: #1a222c;
+
+  --ink: #e4eaf2;
+  --ink-2: #b3bfcd;
+  --ink-muted: #8695a6;
+
+  --series-1: #3987e5;
+  --series-2: #da5c2b;
+  --series-3: #199e70;
+
+  --good: #35b87a;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #e56a6a;
+
+  /* The dark theme's validated set, unchanged. A cooler surface is exactly the
+     kind of change that can fail contrast without touching the palette, which
+     is why this is checked and not assumed. */
+  --chart-1: #3987e5;
+  --chart-2: #da5c2b;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+}
+
+:root[data-theme='paper'] {
+  color-scheme: light;
+
+  /* THE GAP THIS FILLS is not taste. There were three dark themes and one
+     light one, so a reader who works in daylight had a choice of exactly one
+     and no way to opt out of a cool near-white.
+
+     Warm ground, warm rules, same light chart slots. */
+  --page: #f4f1e9;
+  --panel: #fbf9f4;
+  --panel-raised: #f0ece1;
+  --rule: #ddd6c7;
+  --track: #ebe6da;
+
+  --ink: #241f18;
+  --ink-2: #4a4238;
+  --ink-muted: #6f6557;
+
+  --series-1: #1f6fd0;
+  --series-2: #c2450f;
+  --series-3: #14835c;
+
+  --good: #147a3d;
+  --warning: #8a6100;
+  --serious: #b8531c;
+  --critical: #b3352c;
+
+  /* The light theme's validated set. Its two accepted contrast allowances
+     (amber and pink, discharged by the always-present chart legend) apply here
+     too and are recorded against this theme in the checker rather than
+     inherited silently. */
+  --chart-1: #1f6fd0;
+  --chart-2: #ca4714;
+  --chart-3: #14835c;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #2e7d32;
+  --chart-7: #6a5acd;
+  --chart-8: #d0453b;
+}
+
 :root[data-theme='light'] {
   color-scheme: light;
   --page: #f9f9f7;

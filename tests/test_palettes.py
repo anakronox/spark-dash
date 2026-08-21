@@ -13,9 +13,11 @@ from pathlib import Path
 
 import pytest
 from palette_check import (
+    BAND_OVERRIDE,
     CONTRAST_ALLOWANCES,
     ThemeBlock,
     check,
+    contrast,
     delta_e,
     parse_themes,
 )
@@ -110,3 +112,106 @@ def test_delta_e_is_symmetric_and_zero_for_identical_colours():
     assert delta_e("#3987e5", "#da5c2b") == pytest.approx(
         delta_e("#da5c2b", "#3987e5"), abs=1e-9
     )
+
+
+# --- chrome, which the palette checker does not cover -----------------------
+#
+# `check()` validates the eight CHART slots against the surface. Nothing
+# validated the tokens everything else is drawn in: body text, the muted tier,
+# and the four status colours. A theme could pass every palette check and still
+# render unreadable prose, which is most of the page.
+
+APP_CSS = REPO / "frontend" / "src" / "app.css"
+
+#: WCAG AA for normal-size text. The status colours are held to it too: they
+#: are rendered as text (health reasons, the process table's runtime names),
+#: not only as swatches.
+TEXT_MIN = 4.5
+
+TEXT_TOKENS = (
+    "--ink",
+    "--ink-2",
+    "--ink-muted",
+    "--good",
+    "--warning",
+    "--serious",
+    "--critical",
+)
+
+
+def theme_tokens() -> dict[str, dict[str, str]]:
+    """Every theme's fully-resolved token set, base values included.
+
+    Read from the stylesheet for the same reason `parse_themes` is: a theme
+    cannot be added to the CSS and quietly skipped by the check.
+    """
+    text = APP_CSS.read_text()
+    blocks = re.findall(r":root(?:\[data-theme='([a-z]+)'\])?\s*\{(.*?)\n\}", text, re.S)
+    base: dict[str, str] = {}
+    out: dict[str, dict[str, str]] = {}
+    for name, body in blocks:
+        tok = {k: v.strip() for k, v in re.findall(r"(--[a-z0-9-]+):\s*([^;]+);", body)}
+        if not name:
+            base = tok
+            continue
+        out[name] = {**base, **tok}
+    return out
+
+
+@pytest.mark.parametrize("name", sorted(theme_tokens()))
+def test_text_and_status_clear_aa_on_every_theme(name):
+    """Body text, the muted tier and the status ramp, against the panel they
+    are actually drawn on. The status colours count as text here because they
+    ARE text on this page — a health reason and a runtime name are printed in
+    them, not just dotted."""
+    tokens = theme_tokens()[name]
+    panel = tokens["--panel"]
+    failures = [
+        (t, tokens[t], round(contrast(tokens[t], panel), 2))
+        for t in TEXT_TOKENS
+        if contrast(tokens[t], panel) < TEXT_MIN
+    ]
+    assert not failures, f"{name}: below {TEXT_MIN}:1 on {panel} -> {failures}"
+
+
+def test_high_contrast_actually_is_the_highest_contrast():
+    """The theme's whole justification. If it does not beat the others at
+    separation it is just another dark theme with a misleading name, and a
+    reader who chose it for a reason has been sold nothing.
+
+    Its rules are checked too: everywhere else a border is a hint and
+    separation comes from surface lift, which is exactly what disappears at low
+    vision — so here structure has to be drawn."""
+    tokens = theme_tokens()
+
+    worst = {}
+    for theme in parse_themes():
+        pairs = zip(theme.slots, theme.slots[1:], strict=False)
+        worst[theme.name] = min(
+            min(delta_e(a, b, "protan"), delta_e(a, b, "deutan")) for a, b in pairs
+        )
+    others = {k: v for k, v in worst.items() if k != "contrast"}
+    assert worst["contrast"] > max(others.values()) * 1.5, (
+        f"high contrast separates at dE {worst['contrast']:.1f}; "
+        f"the rest reach {max(others.values()):.1f} — it is not earning its name"
+    )
+
+    hc_rule = contrast(tokens["contrast"]["--rule"], tokens["contrast"]["--panel"])
+    rest = [
+        contrast(t["--rule"], t["--panel"])
+        for n, t in tokens.items()
+        if n != "contrast"
+    ]
+    assert hc_rule > max(rest) * 1.5, (
+        f"rules at {hc_rule:.2f}:1 are not visibly stronger than the rest "
+        f"(best {max(rest):.2f}:1) — structure is still only implied"
+    )
+
+
+def test_band_overrides_name_real_themes():
+    """A typo here silently disables the lightness band for a theme that does
+    not exist while leaving the real one unchecked — the failure mode is a
+    check that passes because it never ran."""
+    names = {t.name for t in parse_themes()}
+    unknown = sorted(set(BAND_OVERRIDE) - names)
+    assert not unknown, f"BAND_OVERRIDE names themes that do not exist: {unknown}"

@@ -2941,21 +2941,81 @@ that mould is nearly free, while a genuinely new data palette is not.
   falls through to the default and the reader experiences "my setting was
   forgotten" rather than "that theme has a new name".
 
-- [ ] **U3. High contrast.** The only theme on this list with a functional
-  rather than aesthetic purpose, and the one worth real effort.
+- [x] **U3. High contrast.** Shipped 2026-08-21 as `contrast`.
 
-  Must be stepped for maximum separation rather than derived by pushing dark's
-  values apart: the current worst adjacent pair is already only ΔE 8.4, so
-  there is no headroom to borrow. Target well above every floor, and expect to
-  give up some hue variety to get it.
+  **Built by search, not by taste.** The requirement was "stepped for maximum
+  separation rather than derived by pushing dark's values apart", and the
+  measurement behind it holds: the dark set's worst adjacent pair is ΔE 8.4
+  against a floor of 8, so there was no headroom to borrow and separation had
+  to be constructed.
 
-- [ ] **U4. Chrome-only variants**, in cyberpunk's mould — same validated chart
-  slots, different surfaces and chrome. Cheap and taste-driven. Each still
-  needs the surface-contrast check re-run, because that is the one check a new
-  surface can break on its own.
+  **The technique is a lightness ladder.** Protanopia and deuteranopia collapse
+  red-green hue difference almost completely; lightness difference survives
+  both intact. So eight lightness steps carry the separation and hue is free to
+  add rather than obliged to carry it.
 
-**Order: U1, U2, then U3.** U1 makes the rest checkable, U2 is the highest
-value for the least risk, U3 is the one that needs care.
+  **Interleaved, not monotonic** — the step that made it work. Assigned in
+  order, adjacent slots sit one rung apart and most of the benefit is lost.
+  Measured: monotonic ΔE 10.2, interleaved **20.6**.
+
+  | | dark | contrast |
+  |---|---|---|
+  | adjacent CVD ΔE | 8.4 | **20.6** |
+  | adjacent normal ΔE | 19.3 | **24.6** |
+  | min contrast vs surface | 3.0+ | **4.8:1** |
+  | worst text vs panel | 5.1–6.0:1 | **8.4:1** |
+  | rule vs panel | ~1.5:1 | **4.1:1** |
+
+  **Hue spacing was constrained to 25°, and it cost separation.** Unconstrained
+  the search reached ΔE 25.0; requiring 25° between hues drops it to 20.6 and
+  buys a real spectrum instead of four blues. Worth it: with four blues nobody
+  can say *which* series they mean out loud, and an accessibility theme that
+  defeats verbal description has traded one barrier for another.
+
+  **The band check had to learn an exception, and that is a real cost.** The
+  lightness band exists so no slot vanishes or glares, and it doubles as a
+  uniformity rule — slots at one lightness carry equal visual weight. This
+  theme trades that away deliberately, so `BAND_OVERRIDE` widens it to
+  0.55–0.90 for `contrast` alone, with the reasoning recorded next to it. Its
+  slots are **not** equally weighted; that is the price of the separation.
+
+  **A first attempt failed the chroma floor, which is why the floor measures
+  RENDERED chroma.** The ladder originally ran to L 0.93, and above roughly
+  0.85 sRGB cannot hold C 0.12 for warm hues — so the requested chroma clipped
+  and the amber slot came back at C 0.076, a grey. The checker measures what
+  the colour actually is rather than what was asked for, which is the only
+  reason that was visible.
+
+  **Rules are drawn here, not implied.** Everywhere else a border is a hint and
+  separation comes from surface lift — precisely what disappears at low vision.
+  4.1:1 against 1.5:1 elsewhere, asserted by test rather than left to taste.
+
+- [x] **U4. Chrome-only variants.** Shipped 2026-08-21: `slate` and `paper`.
+
+  Cheap and taste-driven as predicted, with the surface-contrast check re-run
+  because that is the one thing a new surface can break on its own. Both pass
+  unchanged palettes.
+
+  - **`slate`** — cool blue-grey ground, the dark theme's validated slots.
+  - **`paper`** — warm off-white, the light theme's slots. **This one fills a
+    real gap rather than a taste one:** there were three dark themes and one
+    light, so anyone working in daylight had a choice of exactly one and no way
+    to opt out of a cool near-white. Its two contrast allowances (amber and
+    pink, discharged by the always-present legend) are recorded against it
+    explicitly rather than inherited silently from `light`.
+
+  **The validator gained the check it was missing.** `check()` only ever
+  covered the eight chart slots against the surface — nothing validated body
+  text, the muted tier or the four status colours, so a theme could pass every
+  palette check and still render unreadable prose, which is most of the page.
+  `tests/test_palettes.py` now holds all seven text tokens to 4.5:1 against the
+  panel they are actually drawn on, across every theme. The status ramp counts
+  as text because it *is* text here — health reasons and runtime names are
+  printed in those colours, not merely dotted with them.
+
+**Order followed: U1, U2, then U3/U4.** U1 made the rest checkable — and paid
+for itself twice over, catching the clipped-chroma grey in U3's first palette
+and the missing chrome check that U4 added.
 
 ### V — More inference runtimes: SGLang, and Atlas — **V1/V2a/V3 shipped 2026-08-21**
 

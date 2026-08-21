@@ -47,6 +47,24 @@ APP_CSS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "app.css
 
 # --- thresholds -------------------------------------------------------------
 BAND = {"light": (0.43, 0.77), "dark": (0.48, 0.67)}  # OKLCH L
+
+#: Themes whose lightness band is deliberately different, and why.
+#:
+#: The band exists so no slot vanishes into the surface or glares off it, and
+#: it doubles as a UNIFORMITY rule: slots at one lightness carry equal visual
+#: weight, so none reads as more important than another.
+#:
+#: `contrast` trades exactly that property away on purpose. Protanopia and
+#: deuteranopia collapse red-green hue difference almost completely, and
+#: lightness difference is what survives — so a theme whose entire job is
+#: separation has to step lightness, and a uniform band would forbid the one
+#: technique that works. The result is that its slots are NOT equally weighted,
+#: which is a real cost accepted for a real gain: adjacent CVD separation goes
+#: from the dark theme's 8.4 to 20.6.
+#:
+#: Every other check still applies, including the contrast floor the widened
+#: band could otherwise hide behind.
+BAND_OVERRIDE = {"contrast": (0.55, 0.90)}
 CHROMA_FLOOR = 0.10
 CVD_TARGET = 8.0  # OKLab ΔE×100, min(protan, deutan), adjacent pairs
 NORMAL_FLOOR = 15.0
@@ -61,6 +79,10 @@ CONTRAST_MIN = 3.0
 #: unexplained pass, so that if the legend ever became optional this allowance
 #: is the thing that has to be revisited.
 CONTRAST_ALLOWANCES: dict[str, dict[str, str]] = {
+    "paper": {
+        "--chart-4": "amber on warm near-white; discharged by the always-present chart legend",
+        "--chart-5": "pink on warm near-white; discharged by the always-present chart legend",
+    },
     "light": {
         "--chart-4": "amber on near-white; discharged by the always-present chart legend",
         "--chart-5": "pink on near-white; discharged by the always-present chart legend",
@@ -194,7 +216,7 @@ class Finding:
 
 
 def check(theme: ThemeBlock) -> list[Finding]:
-    lo, hi = BAND[theme.mode]
+    lo, hi = BAND_OVERRIDE.get(theme.name, BAND[theme.mode])
     out: list[Finding] = []
 
     lch = [oklch(c) for c in theme.slots]
