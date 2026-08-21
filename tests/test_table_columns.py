@@ -379,7 +379,9 @@ DIST = FRONTEND / "dist" / "assets"
 KNOWN_INERT = {
     "ModelsTable": {"lbl"},
     "NetworkPanel": {"errs", "linkspeed", "rate-col"},
-    "ProcessTable": {"mem", "modelcol", "pid", "runtimecol"},
+    # Cleared by the phase-3 conversion, which is when these were always
+    # meant to go -- the classes went with the markup they were attached to.
+    "ProcessTable": set(),
     "Settings": {"mono"},
 }
 

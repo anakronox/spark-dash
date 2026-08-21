@@ -41,6 +41,16 @@
   --color-serious: var(--serious);
   --color-critical: var(--critical);
 
+  /* THE CHART SERIES, mapped so the tables can name them too. These are one
+     palette with two jobs: a line on the history chart and the runtime that
+     drew it are the same colour on purpose, which is what lets someone match
+     a spike to a process without a legend. Utilities only generate for tokens
+     named here, so leaving them out would have pushed every use into an
+     arbitrary value and quietly broken that link. */
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+
   --font-mono: var(--font-mono);
 
   /* THE TYPE SCALE AB1 IDENTIFIED, which the migration needs anyway: four
