@@ -805,9 +805,7 @@
      "as many as fit", which is 3 at this container width. */
   .node-grid.compact {
     grid-template-columns: minmax(0, 1fr);
-    /* The two zones take the band's full height rather than their own, which
-       is what gives the shorter side slack to share. */
-    align-items: stretch;
+    align-items: start;
   }
 
 
@@ -959,7 +957,9 @@
        table on a laptop is unreadable, and honouring the arrangement there
        would be obeying the letter of it against the point. */
     grid-template-columns: minmax(0, 1fr);
-    align-items: start;
+    /* The two zones take the band's full height rather than their own, which
+       is what gives the shorter side slack to share. */
+    align-items: stretch;
   }
 
 
