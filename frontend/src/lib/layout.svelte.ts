@@ -77,7 +77,19 @@ export const ZONES: Zone[] = ['full', 'left', 'right'];
  */
 export type Band =
   | { kind: 'full'; id: string }
-  | { kind: 'cols'; left: string[]; right: string[]; last: string };
+  | {
+      kind: 'cols';
+      left: string[];
+      right: string[];
+      last: string;
+      /** How many ROWS the band has — the longer of its two columns.
+       *
+       * A band is a grid of rows, not two stacks that happen to end together.
+       * Without this the columns filled independently and the second card on
+       * the left began beside the middle of the first card on the right, which
+       * is two lists side by side rather than a row. */
+      rows: number;
+    };
 
 /** What a release would do. TWO SHAPES, because there are two gestures.
  *
@@ -453,10 +465,13 @@ export class Layout {
 
     const flush = () => {
       if (!run.length) return;
+      const left = run.filter((id) => this.zoneOf(id) === 'left');
+      const right = run.filter((id) => this.zoneOf(id) === 'right');
       out.push({
         kind: 'cols',
-        left: run.filter((id) => this.zoneOf(id) === 'left'),
-        right: run.filter((id) => this.zoneOf(id) === 'right'),
+        left,
+        right,
+        rows: Math.max(left.length, right.length),
         /* The anchor for a drop into this band's EMPTY side. Without it such a
            drop has no card to position against and would fall to the end of
            the page — the very bug bands exist to fix, reappearing in the one

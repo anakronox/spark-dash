@@ -669,7 +669,7 @@
         {#if band.kind === 'full'}
           {@render zone('full', i, [band.id], null)}
         {:else}
-          <div class="cols">
+          <div class="cols" style:--band-rows={band.rows}>
             {@render zone('left', i, band.left, band.last)}
             {@render zone('right', i, band.right, band.last)}
           </div>
@@ -985,6 +985,23 @@
   @media (min-width: 1100px) {
     .cols {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      /* THE BAND IS A GRID OF ROWS, and this is the line that makes it one.
+         Without explicit rows the two columns are independent stacks: they
+         end together but nothing inside them lines up, so the second card on
+         the left starts beside the middle of the first card on the right.
+         `--band-rows` is the longer column's length, set per band. */
+      grid-template-rows: repeat(var(--band-rows, 1), auto);
+    }
+
+    /* Each column spans every row of the band and takes its ROW TRACKS from
+       it, so left[n] and right[n] share a row and a height. `subgrid` is what
+       lets the columns stay separate elements — which the drag targeting
+       needs, since it aims at a zone — while still sharing the band's rows.
+       The alternative, one flat grid of cards, would have no column to aim
+       at. */
+    .cols > .zone {
+      grid-row: 1 / -1;
+      grid-template-rows: subgrid;
     }
   }
 
