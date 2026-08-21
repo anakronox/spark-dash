@@ -77,3 +77,59 @@ def test_every_declared_column_is_sortable(table):
     defined, _, sortable = lists(table)
     unsortable = sorted(defined - sortable)
     assert not unsortable, f"{table} declares {unsortable} with no sort value"
+
+
+# --- the slack column -------------------------------------------------------
+#
+# `app.css` sets `table { width: 100% }`, so an auto-layout table always has
+# surplus to give away, and it gives it to whichever columns can grow — in
+# proportion to content, which hands most of it to the column with the longest
+# strings. That is what opened a large gap beside `model` (AA).
+#
+# A trailing empty column with no width constraint absorbs it instead. The
+# hazard is the same one M4 designed the ColumnDef loops to prevent: a header
+# and a body that disagree about how many cells a row has. Here it would be one
+# extra `<th>` with no matching `<td>`, which shifts nothing visibly at first
+# and misaligns the last column's borders.
+
+SLACK_TABLES = {
+    "ModelsTable": 1,
+    "ProcessTable": 1,
+    # Two tables in one component: RDMA ports and interfaces.
+    "NetworkPanel": 2,
+}
+
+
+@pytest.mark.parametrize("table,count", sorted(SLACK_TABLES.items()))
+def test_header_and_body_agree_on_the_slack_column(table, count):
+    """One `<th class="slack">` per table, and exactly one matching `<td>`.
+
+    Unbalanced is the failure that matters: an extra header cell with no body
+    cell misaligns every border on the last column, and an extra body cell
+    silently widens rows past their header."""
+    src = (COMPONENTS / f"{table}.svelte").read_text()
+    ths = src.count('<th class="slack">')
+    tds = src.count('<td class="slack">')
+    assert ths == tds == count, (
+        f"{table}: {ths} slack headers, {tds} slack cells, expected {count} of each"
+    )
+
+
+@pytest.mark.parametrize("table", sorted(SLACK_TABLES))
+def test_the_slack_column_is_excluded_from_the_sizing_rule(table):
+    """Real columns size to their content; the slack column must not, or there
+    is nothing left to absorb the surplus and the gap comes straight back."""
+    src = (COMPONENTS / f"{table}.svelte").read_text()
+    assert "th:not(.slack)" in src and "td:not(.slack)" in src, (
+        f"{table} sizes columns without excluding the slack column"
+    )
+    assert "width: auto" in src, f"{table}'s slack column does not absorb anything"
+
+
+@pytest.mark.parametrize("table", sorted(SLACK_TABLES))
+def test_slack_is_not_a_declared_column(table):
+    """It carries no data, so it must not appear in ColumnDef — a reader could
+    otherwise hide it from the column menu and get the gap back with no way to
+    understand why."""
+    defined, rendered, sortable = lists(table)
+    assert "slack" not in defined | rendered | sortable

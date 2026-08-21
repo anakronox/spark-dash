@@ -349,6 +349,20 @@
                 <SortButton view={rdmaView} id={c.key} label={c.label} />
               </th>
             {/each}
+            <!-- SLACK PARKS HERE. `table { width: 100% }` in app.css forces the
+                 table to fill its container, and in an auto-layout table that
+                 surplus is handed to whichever columns can grow — in
+                 proportion to their content, so the column with the longest
+                 strings takes most of it. That is what opened a large gap
+                 beside `model` once M3 added three more content-sized numeric
+                 columns and left even more slack to redistribute.
+
+                 An empty final column with no width constraint absorbs it
+                 instead, so every real column sizes to its own content. Not
+                 `aria-hidden`: an empty `th`/`td` pair is already announced as
+                 an empty cell, and hiding it would leave the row's cell count
+                 disagreeing with the header's. -->
+            <th class="slack"></th>
           </tr>
         </thead>
         <tbody>
@@ -358,6 +372,7 @@
               {#each rdmaCols.visible() as c (c.key)}
                 {@render rdmaCell(c, p)}
               {/each}
+              <td class="slack"></td>
             </tr>
           {/each}
         </tbody>
@@ -377,6 +392,20 @@
                 <SortButton view={ifaceView} id={c.key} label={c.label} />
               </th>
             {/each}
+            <!-- SLACK PARKS HERE. `table { width: 100% }` in app.css forces the
+                 table to fill its container, and in an auto-layout table that
+                 surplus is handed to whichever columns can grow — in
+                 proportion to their content, so the column with the longest
+                 strings takes most of it. That is what opened a large gap
+                 beside `model` once M3 added three more content-sized numeric
+                 columns and left even more slack to redistribute.
+
+                 An empty final column with no width constraint absorbs it
+                 instead, so every real column sizes to its own content. Not
+                 `aria-hidden`: an empty `th`/`td` pair is already announced as
+                 an empty cell, and hiding it would leave the row's cell count
+                 disagreeing with the header's. -->
+            <th class="slack"></th>
           </tr>
         </thead>
         <tbody>
@@ -385,6 +414,7 @@
               {#each ifaceCols.visible() as c (c.key)}
                 {@render ifaceCell(c, i)}
               {/each}
+              <td class="slack"></td>
             </tr>
           {/each}
         </tbody>
@@ -493,12 +523,9 @@
     background: var(--panel-raised);
   }
 
-  th.r,
-  td.r {
-    width: 1%;
-    white-space: nowrap;
-  }
-
+  /* Width and nowrap now come from the `:not(.slack)` rule below, which
+     covers every column rather than only the numeric ones. This keeps the
+     alignment, which is all it was ever uniquely doing. */
   .r {
     text-align: right;
   }
@@ -616,4 +643,31 @@
   code {
     color: var(--ink);
   }
+
+  /* Real columns size to their content; the trailing `.slack` column takes
+     whatever `width: 100%` leaves over. `width: 1%` with nowrap is the
+     auto-layout idiom for "as narrow as your content allows" — the numeric
+     columns already used it, and applying it to the text columns too is what
+     stops one of them absorbing the entire surplus.
+
+     A pathological name still gets its full width rather than being truncated,
+     which is why there is no ellipsis here: this is a monitoring table, and a
+     model you cannot read the name of is not better than a wide column. If a
+     name is long enough to force horizontal scroll, the `.scroll` wrapper
+     handles it.
+
+     AA2 replaces all of this with `table-layout: fixed` and explicit
+     per-column widths; until then this is the smallest change that makes the
+     default readable. */
+  th:not(.slack),
+  td:not(.slack) {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  th.slack,
+  td.slack {
+    width: auto;
+  }
+
 </style>

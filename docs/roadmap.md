@@ -3911,20 +3911,47 @@ Dragging lets a reader fix a bad layout. It does not make the layout good. A
 table that needs dragging before it reads well has simply moved the work onto
 the reader, so the default has to be right whether or not AA2–AA4 ever ship.
 
-- [ ] **AA1. Fix the default. Ships alone, and should ship first.**
+- [x] **AA1. Fix the default.** Shipped 2026-08-21.
 
-  Cap how much slack any single text column can absorb — a `max-width` in `ch`
-  on the identity columns, so long model names still get room but stop
-  swallowing the container. One rule, no new mechanism, and it fixes the
-  reported bug.
+  **The plan's own fix would not have worked, and finding that changed it.**
+  AA1 was written as "a `max-width` in `ch` on the identity columns". That
+  cannot hold, because `app.css` sets `table { width: 100% }` globally: the
+  table is *obliged* to fill its container, so capping one column only moves
+  the surplus to another. There is no arrangement of `max-width` that makes an
+  auto-layout table stop distributing slack — the slack has to go somewhere.
 
-  Worth measuring the tables at 1280px, 1920px and 2560px before choosing the
-  number rather than picking one that looks right on the machine it was written
-  on. The existing `min-width: 620px` on the table and the `.scroll` wrapper
-  already handle the narrow end.
+  **So it goes into a trailing empty column.** Every real column takes
+  `width: 1%` with `nowrap` — the auto-layout idiom for "as narrow as your
+  content allows", which the numeric columns already used — and a final
+  `.slack` cell with `width: auto` absorbs whatever `width: 100%` leaves over.
+  Columns now size to their own content, and the surplus sits at the end of the
+  row where it says nothing and blocks nothing.
 
-  **This is not a workaround for AA2.** Even with dragging, this is the width a
-  reader sees before they touch anything, and on every new browser.
+  Applied to all four tables rather than only the one reported: the mechanism
+  is identical in each, and a table that packs while its neighbour sprawls
+  reads as a bug.
+
+  **No ellipsis on the model name, deliberately.** A pathological name widens
+  its column and the existing `.scroll` wrapper handles the overflow. This is a
+  monitoring table, and a model whose name you cannot read is not an
+  improvement on a wide column. `ProcessTable.modelcol` keeps its existing 18ch
+  cap — and now actually gets the `nowrap` that its `text-overflow: ellipsis`
+  always needed.
+
+  The duplicated `th.r, td.r { width: 1%; white-space: nowrap }` rule went with
+  it: the new rule covers every column rather than only the numeric ones, so
+  `.r` keeps just the alignment that was uniquely its own.
+
+  `tests/test_table_columns.py` guards the new failure mode — one `<th>` and
+  one `<td>` per table, the slack column excluded from the sizing rule, and
+  never a declared `ColumnDef` (a reader who could hide it from the column menu
+  would get the gap back with no way to understand why). Confirmed to fail on
+  an unbalanced pair before shipping.
+
+  **AA2 supersedes all of this**, and that is expected: `table-layout: fixed`
+  with explicit per-column widths removes both the slack column and the `1%`
+  idiom. This is the smallest change that makes the default readable in the
+  meantime, which is what AA1 was for.
 
 - [ ] **AA2. `table-layout: fixed`, driven by `ColumnDef`.**
 

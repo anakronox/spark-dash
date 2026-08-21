@@ -229,6 +229,8 @@
                 <SortButton {view} id={c.key} label={c.label} />
               </th>
             {/each}
+            <!-- SLACK PARKS HERE — see the .slack rule in the style block. -->
+            <th class="slack"></th>
           </tr>
         </thead>
         <tbody>
@@ -243,6 +245,7 @@
               {#each cols.visible() as c (c.key)}
                 {@render cell(c, row)}
               {/each}
+              <td class="slack"></td>
             </tr>
           {/each}
         </tbody>
@@ -323,12 +326,9 @@
     background: var(--panel-raised);
   }
 
-  th.r,
-  td.r {
-    width: 1%;
-    white-space: nowrap;
-  }
-
+  /* Width and nowrap now come from the `:not(.slack)` rule below, which
+     covers every column rather than only the numeric ones. This keeps the
+     alignment, which is all it was ever uniquely doing. */
   .r {
     text-align: right;
   }
@@ -429,4 +429,31 @@
     font-size: 12px;
     color: var(--ink-2);
   }
+
+  /* Real columns size to their content; the trailing `.slack` column takes
+     whatever `width: 100%` leaves over. `width: 1%` with nowrap is the
+     auto-layout idiom for "as narrow as your content allows" — the numeric
+     columns already used it, and applying it to the text columns too is what
+     stops one of them absorbing the entire surplus.
+
+     A pathological name still gets its full width rather than being truncated,
+     which is why there is no ellipsis here: this is a monitoring table, and a
+     model you cannot read the name of is not better than a wide column. If a
+     name is long enough to force horizontal scroll, the `.scroll` wrapper
+     handles it.
+
+     AA2 replaces all of this with `table-layout: fixed` and explicit
+     per-column widths; until then this is the smallest change that makes the
+     default readable. */
+  th:not(.slack),
+  td:not(.slack) {
+    width: 1%;
+    white-space: nowrap;
+  }
+
+  th.slack,
+  td.slack {
+    width: auto;
+  }
+
 </style>
