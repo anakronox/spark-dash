@@ -3983,6 +3983,21 @@ models use. See [[gb10-unified-memory-constraint]].
   Prometheus cannot answer: zero is a claim that monitoring is free, which is
   the one answer that is never true.
 
+**Multi-arch images: considered and declined 2026-08-21.** The single-host path
+is where a published amd64 backend would meet an arm64 GB10, so it is the right
+place to have asked. Declined because every documented install BUILDS rather
+than pulls, and the registry path is reached only by deliberately setting
+`BACKEND_IMAGE` — an explicit choice about which image you want. Manifest lists
+would reintroduce the buildx/QEMU machinery that native building exists to
+avoid, for a case that only arises off the documented path.
+
+The case that does exist belongs to the maintainer, not a user: these stacks
+deploy `:latest` with `PULL_POLICY=always`, so building the backend on a GB10
+while testing single-host and pushing it would have the amd64 VM pull arm64 on
+its next deploy. `publish-images.sh`'s architecture guard is the answer to that
+— which makes the two decisions mutually supporting rather than alternatives.
+Reasoning in full at [docs/deployment.md](deployment.md#building-and-shipping-images).
+
 **Pairs with H.** "Runs on one box" is the first thing anyone evaluating a
 public repo will try, so J1–J3 are effectively part of a credible quickstart
 (H4).

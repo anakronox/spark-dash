@@ -372,6 +372,31 @@ all**, so the first version silently passed everything. It uses `--verbose`.
 GB10, both arm64, and never touch a registry. That is why the quickstart uses
 `build-images.sh`.
 
+**Multi-arch manifest lists were considered and declined, 2026-08-21.** One tag
+serving both architectures is the textbook answer, and it is the wrong trade
+here:
+
+- **Every documented install builds rather than pulls.** The registry path is
+  reached only by deliberately setting `AGENT_IMAGE` / `BACKEND_IMAGE`, which
+  is already an explicit choice about which image you want. Nobody arrives at a
+  mismatched pull by following the instructions.
+- **It would reintroduce exactly what native building removed** — buildx plus
+  QEMU emulation or two coordinated builders, in exchange for a case that only
+  arises off the documented path.
+- **Knowing your own architecture is a reasonable thing to assume**, and where
+  it is not, it is cheaper to document than to engineer around.
+
+**The case that does exist is the maintainer's, and the guard is the answer to
+it.** These stacks deploy `:latest` with `PULL_POLICY=always`. Build the
+backend on a GB10 while testing single-host, push it, and the amd64 monitoring
+VM pulls arm64 on its next deploy and will not start — a self-inflicted outage
+with an opaque message. That is one command away, and it is the scenario
+`--allow-arch-change` exists to make you type out.
+
+So the two decisions hold each other up: **declining multi-arch is what makes
+the guard necessary, and the guard is what makes declining multi-arch safe.**
+Revisit only if people start pulling these images rather than building them.
+
 **Built natively, never cross-built.** The GX10s are arm64 and the monitoring
 VM is amd64. Building each image where it will run avoids QEMU and buildx
 multi-arch entirely, and takes seconds rather than many minutes. The cost is
