@@ -4,6 +4,7 @@
   import AlertHistory from './components/AlertHistory.svelte';
   import Settings from './components/Settings.svelte';
   import Section from './components/Section.svelte';
+  import NodeGroup from './components/NodeGroup.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
   import NetworkPanel from './components/NetworkPanel.svelte';
@@ -91,7 +92,12 @@
         g.processes.push(...node.processes);
       }
     }
-    return [...byKey.values()];
+    /* The reader's arrangement, applied over inventory order. Sorting HERE
+       rather than in the markup keeps one list: the cards, the handle's "n of
+       m" and the drag's own reckoning all read the same sequence. */
+    const groups = [...byKey.values()];
+    const seq = layout.orderGroups(groups.map((g) => g.key));
+    return groups.slice().sort((a, b) => seq.indexOf(a.key) - seq.indexOf(b.key));
   });
 
   /* Identity slot per node: its position in the INVENTORY, which is the order
@@ -595,7 +601,15 @@
          way, each grid would contain exactly one card and the cards would span
          the full width no matter how small they got. -->
     <div class="node-grid" class:compact={layout.compactCards}>
-    {#each clusters as cluster (cluster.key)}
+    {#each clusters as cluster, gi (cluster.key)}
+      <NodeGroup
+        {layout}
+        groupKey={cluster.key}
+        label={cluster.name ?? cluster.nodes[0]?.node_id ?? cluster.key}
+        position={`${gi + 1} of ${clusters.length}`}
+        all={clusters.map((c) => c.key)}
+        framed={!!cluster.name}
+      >
       {#if cluster.name}
         <!-- A frame only where clustering is real. Clustered nodes pool memory,
              so their combined free space is a capacity number in its own
@@ -642,7 +656,15 @@
           {/each}
         </div>
       {/if}
+      </NodeGroup>
     {/each}
+
+    <!-- Where a release would put the card being dragged. Inside the grid and
+         absolutely positioned, like the sections' line — a placeholder taking
+         up space would push the cards it is measured against. -->
+    {#if layout.nodeDrop}
+      <div class="drop-line" style:top="{layout.nodeDrop.y}px"></div>
+    {/if}
     </div>
 
     <!-- Sections are arrangeable and collapsible; both live in localStorage.
@@ -655,12 +677,26 @@
          beneath it — measured here at 324px between `models` and `processes`,
          enough for two more sections. Independent columns need to be separate
          elements: there is no row for their contents to align to. -->
+    <!-- THE PAGE IS A SEQUENCE OF BANDS. It used to be one full-width band
+         above two columns, and that could not express "a full-width card below
+         a pair" — every column card rendered under every full-width one, so
+         columning a card dropped it to the bottom of the page however its
+         order read. The order was right; there was nowhere to draw it.
+
+         A band is one full-width card, or a run of consecutive column-placed
+         cards. Both come from the `order` and `placement` already stored, so
+         nothing new is persisted and an older saved layout opens correctly. -->
     <div class="sections" class:dragging={layout.dragId !== null}>
-      {@render dropZone('full')}
-      <div class="cols">
-        {@render dropZone('left')}
-        {@render dropZone('right')}
-      </div>
+      {#each layout.bands as band, i (i)}
+        {#if band.kind === 'full'}
+          {@render zone('full', i, [band.id], null)}
+        {:else}
+          <div class="cols" style:--band-rows={band.rows}>
+            {@render zone('left', i, band.left, band.last)}
+            {@render zone('right', i, band.right, band.last)}
+          </div>
+        {/if}
+      {/each}
     </div>
   {:else if feed.state !== 'offline'}
     <p class={notice()}>Waiting for the first frame…</p>
@@ -674,11 +710,21 @@
   </footer>
 </div>
 
-<!-- One zone renderer for all three, so the drop affordances cannot drift
-     apart between them. -->
-{#snippet dropZone(z: Zone)}
-  {@const ids = layout.inZone(z)}
-  <div class="zone" data-zone={z} class:empty={ids.length === 0}>
+<!-- One zone renderer for every zone in every band, so the drop affordances
+     cannot drift apart between them.
+
+     `bandLast` is the anchor for a drop into an EMPTY column: there is no card
+     to position against, and without it such a drop would fall to the end of
+     the page, which is the bug bands exist to fix showing up in the one case
+     with nothing visible to aim at. -->
+{#snippet zone(z: Zone, band: number, ids: string[], bandLast: string | null)}
+  <div
+    class="zone"
+    data-zone={z}
+    data-band={band}
+    data-band-last={bandLast}
+    class:empty={ids.length === 0}
+  >
     {#each ids as id (id)}
       <Section {layout} {id}>
         {#if id === 'models'}
@@ -707,8 +753,25 @@
          inserted into the flow: a placeholder that takes up space would push
          the cards it is measured against, and the measurement would chase
          itself. -->
-    {#if layout.drop?.zone === z}
+    {#if layout.drop?.band === band && layout.drop.zone === z && layout.drop.kind === 'line'}
       <div class="drop-line" style:top="{layout.drop.y}px"></div>
+    {/if}
+
+    <!-- The pair affordance, and it is a BLOCK rather than a line on purpose.
+         This gesture changes the width of two cards, which a 3px rule cannot
+         say. Drawn at the exact half the dragged card will occupy, so the
+         answer to "what happens if I let go here" is the shape under the
+         pointer. The target card keeps the other half and needs no marker of
+         its own — the empty half beside a filled one reads as the pair. -->
+    {#if layout.drop?.band === band && layout.drop.zone === z && layout.drop.kind === 'pair'}
+      <div
+        class="pair-target"
+        data-side={layout.drop.side}
+        style:left="{layout.drop.rect.x}px"
+        style:top="{layout.drop.rect.y}px"
+        style:width="{layout.drop.rect.w}px"
+        style:height="{layout.drop.rect.h}px"
+      ></div>
     {/if}
   </div>
 {/snippet}
@@ -750,6 +813,7 @@
   /* Full mode: unchanged, a column of full-width cards. Compact turns this
      into the shared grid the cards flow through. */
   .node-grid {
+    position: relative;
     display: grid;
     gap: 12px;
   }
@@ -797,22 +861,23 @@
 
 
 
-  /* DIRECT children only. These are the standalone wrappers — one per node,
-     since a standalone node is a cluster of one — and they stop generating
-     boxes so their cards become items of .node-grid itself. Without the child
-     combinator this also caught the wrappers INSIDE a framed cluster, which
-     promoted those cards into the cluster's own single-column grid and left
-     them full width and stacked. */
-  .node-grid.compact > .nodes {
-    display: contents;
-  }
+  /* The `display: contents` that used to sit here is gone with the wrapper.
+     It existed so a standalone node's `.nodes` box stopped generating a frame
+     and its card became an item of `.node-grid` itself. A standalone group
+     holds exactly one card — a standalone node is a cluster of one — so a
+     wrapper occupying one cell renders identically, and the drag handle needs
+     a real box to be positioned against. */
 
 
 
   /* A framed cluster keeps its frame and spans the full row: the frame means
      "these pool memory", and one covering part of a row would say something
      untrue about which nodes are grouped. */
-  .node-grid.compact .cluster {
+  /* :global because the element is NodeGroup's, not this component's. The
+     wrapper is the grid item now that every group carries a drag handle, so
+     the span has to move to it — left on `.cluster` it would apply to
+     something that is no longer a grid item and silently do nothing. */
+  .node-grid.compact > :global([data-group-framed]) {
     grid-column: 1 / -1;
   }
 
@@ -893,7 +958,15 @@
     position: relative;
     display: grid;
     gap: 16px;
-    align-content: start;
+    /* STRETCH, so a band's two columns end on the same line.
+       `start` left each column at its content height, which is what made a
+       band read as two unrelated stacks that happened to be adjacent rather
+       than as one row. Where a column holds several cards the slack is shared
+       between them, which is what `stretch` does by default and is the only
+       distribution that needs no rule to explain it.
+       A full-width band is unaffected: its zone is already exactly as tall as
+       its content, so there is no slack to share. */
+    align-content: stretch;
     /* Same reason as .sections — an implicit `auto` track sizes to content. */
     grid-template-columns: minmax(0, 1fr);
   }
@@ -908,7 +981,9 @@
        table on a laptop is unreadable, and honouring the arrangement there
        would be obeying the letter of it against the point. */
     grid-template-columns: minmax(0, 1fr);
-    align-items: start;
+    /* The two zones take the band's full height rather than their own, which
+       is what gives the shorter side slack to share. */
+    align-items: stretch;
   }
 
 
@@ -934,6 +1009,23 @@
   @media (min-width: 1100px) {
     .cols {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      /* THE BAND IS A GRID OF ROWS, and this is the line that makes it one.
+         Without explicit rows the two columns are independent stacks: they
+         end together but nothing inside them lines up, so the second card on
+         the left starts beside the middle of the first card on the right.
+         `--band-rows` is the longer column's length, set per band. */
+      grid-template-rows: repeat(var(--band-rows, 1), auto);
+    }
+
+    /* Each column spans every row of the band and takes its ROW TRACKS from
+       it, so left[n] and right[n] share a row and a height. `subgrid` is what
+       lets the columns stay separate elements — which the drag targeting
+       needs, since it aims at a zone — while still sharing the band's rows.
+       The alternative, one flat grid of cards, would have no column to aim
+       at. */
+    .cols > .zone {
+      grid-row: 1 / -1;
+      grid-template-rows: subgrid;
     }
   }
 
@@ -1020,5 +1112,36 @@
 
   .drop-line::after {
     right: 0;
+  }
+
+  /* Same accent as the drop line, filled rather than drawn, because this
+     gesture is about a SIZE and a line has none. Kept faint: it sits on top of
+     a card that is still readable underneath, and the card being carried is
+     already on screen at full opacity. */
+  .pair-target {
+    position: absolute;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--series-1) 14%, transparent);
+    border: 1px solid var(--series-1);
+    pointer-events: none;
+    z-index: 6;
+    /* Slides between the two halves instead of jumping, which is what makes
+       the two destinations legible while the pointer is still moving —
+       the same reasoning as the drop line's `top` transition. */
+    transition:
+      left 90ms ease-out,
+      top 90ms ease-out,
+      width 90ms ease-out,
+      height 90ms ease-out;
+  }
+
+  /* The outer edge is the one that says which column you land in, so it is the
+     one that gets weight. */
+  .pair-target[data-side='left'] {
+    border-left-width: 3px;
+  }
+
+  .pair-target[data-side='right'] {
+    border-right-width: 3px;
   }
 </style>

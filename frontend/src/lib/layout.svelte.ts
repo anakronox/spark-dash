@@ -27,6 +27,7 @@ const ROWS_KEY = 'spark-dash.section-rows.v1';
 const COLUMN_KEY = 'spark-dash.section-column.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
 const PLACEMENT_KEY = 'spark-dash.section-placement.v1';
+const NODE_ORDER_KEY = 'spark-dash.node-order.v1';
 
 /** Which of the page's three zones a section sits in.
  *
@@ -55,6 +56,99 @@ const PLACEMENT_KEY = 'spark-dash.section-placement.v1';
 export type Zone = 'full' | 'left' | 'right';
 
 export const ZONES: Zone[] = ['full', 'left', 'right'];
+
+/** Where a node/cluster card sits, when the reader has said.
+ *
+ * KEYS ARE LIVE DATA, unlike the five section ids. A key is a cluster name or
+ * a standalone node's id, so hardware appearing, disappearing or being
+ * reclustered changes the set underneath a saved order. Reconciled on read
+ * rather than trusted: unknown keys are dropped, and anything the saved list
+ * has never seen is APPENDED in inventory order. Failing that way round means
+ * a node added to cluster.yml shows up rather than being silently withheld
+ * because a months-old ordering did not mention it.
+ */
+function readNodeOrder(): string[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(NODE_ORDER_KEY) ?? 'null');
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((k): k is string => typeof k === 'string');
+  } catch {
+    // A page in inventory order is fine; a page that will not render is not.
+    return [];
+  }
+}
+
+/** One horizontal slice of the page.
+ *
+ * THE PAGE IS A SEQUENCE, not a full-width band above two columns. It was the
+ * latter, and that structure could not express "a full-width card BELOW a
+ * pair": every column card rendered under every full-width card, so sending a
+ * card to a column dropped it to the bottom of the page no matter where its
+ * order said it belonged. The order was right the whole time; there was
+ * nowhere to draw it.
+ *
+ * A band is either one full-width card, or a maximal RUN of consecutive
+ * column-placed cards sharing a left/right split. Deriving the run from the
+ * existing order means nothing new is stored — the same `order` and
+ * `placement` that were already saved now render in the right places.
+ *
+ * The columns still fill INDEPENDENTLY within a band, which is the property
+ * that stops a short section stranding space beside a tall one. That was the
+ * reason for the old structure and it survives; what changes is that the
+ * stranding is now bounded by the band instead of applying to the whole page.
+ */
+export type Band =
+  | { kind: 'full'; id: string }
+  | {
+      kind: 'cols';
+      left: string[];
+      right: string[];
+      last: string;
+      /** How many ROWS the band has — the longer of its two columns.
+       *
+       * A band is a grid of rows, not two stacks that happen to end together.
+       * Without this the columns filled independently and the second card on
+       * the left began beside the middle of the first card on the right, which
+       * is two lists side by side rather than a row. */
+      rows: number;
+    };
+
+/** What a release would do. TWO SHAPES, because there are two gestures.
+ *
+ * `line` is the original: insert into a stack at an index, drawn as a
+ * horizontal rule between cards.
+ *
+ * `pair` is the one aimed at the outer third of a full-width card. It turns
+ * TWO cards into halves at once — the one being dragged and the one aimed at —
+ * which no zone-plus-index can express, because it moves a card that is not
+ * being dragged. Carrying the target's id is what makes that possible, and
+ * carrying the rect is what lets the affordance be drawn at the size the card
+ * will actually land at, rather than as a line saying "somewhere here".
+ */
+export type DropTarget =
+  | {
+      kind: 'line';
+      zone: Zone;
+      /** Which band's zone, since several zones now share a `zone` name. */
+      band: number;
+      /** The card the line is drawn against, and which side of it. An ANCHOR
+       *  rather than an index: with the page a sequence of bands, an index
+       *  within a zone no longer says where in the page-wide order the card
+       *  goes, and an anchor says it exactly. Null only for an empty column. */
+      anchorId: string | null;
+      before: boolean;
+      y: number;
+    }
+  | {
+      kind: 'pair';
+      zone: Zone;
+      band: number;
+      targetId: string;
+      /** The column the DRAGGED card takes; the target takes the other. */
+      side: 'left' | 'right';
+      /** Relative to the zone's box, like `y` above. */
+      rect: { x: number; y: number; w: number; h: number };
+    };
 
 export const ZONE_LABEL: Record<Zone, string> = {
   full: 'full width',
@@ -301,7 +395,59 @@ export class Layout {
    * is both calmer to use and drastically simpler: no compensation, no
    * animation bookkeeping, and no way for a reorder to feed back into the
    * targeting that caused it. */
-  drop = $state<{ zone: Zone; index: number; y: number } | null>(null);
+  drop = $state<DropTarget | null>(null);
+
+  /** Reader-chosen order of the node/cluster cards, as keys. Empty means
+   *  inventory order, which is `cluster.yml`'s. */
+  nodeOrder = $state<string[]>(readNodeOrder());
+
+  /** The group being dragged, and where a release would put it. Separate from
+   *  the section drag state because the gestures differ: a node card has one
+   *  axis and no half-width, so there is no zone, no band and no pairing. */
+  nodeDragKey = $state<string | null>(null);
+  nodeDrop = $state<{ anchorKey: string | null; before: boolean; y: number } | null>(null);
+
+  /** Inventory order, with the reader's arrangement applied over it.
+   *
+   * Takes the keys AS THE PAGE FOUND THEM so the fallback is always the order
+   * of cluster.yml — the same list that decides a node's colour, which is why
+   * dragging cards repaints nothing.
+   */
+  orderGroups(keys: string[]): string[] {
+    if (!this.nodeOrder.length) return keys;
+    const known = new Set(keys);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const k of this.nodeOrder) {
+      if (known.has(k) && !seen.has(k)) {
+        out.push(k);
+        seen.add(k);
+      }
+    }
+    // Anything the saved order never mentioned keeps its inventory position
+    // relative to the rest, appended rather than dropped.
+    for (const k of keys) if (!seen.has(k)) out.push(k);
+    return out;
+  }
+
+  /** Move a group to sit before or after another. Anchored on a card for the
+   *  same reason a section drag is: it is the card the affordance drew. */
+  moveGroup(key: string, anchorKey: string | null, before: boolean, all: string[]) {
+    const current = this.orderGroups(all);
+    const next = current.filter((k) => k !== key);
+    let at = next.length;
+    if (anchorKey) {
+      const i = next.indexOf(anchorKey);
+      if (i !== -1) at = before ? i : i + 1;
+    }
+    next.splice(at, 0, key);
+    this.nodeOrder = next;
+    try {
+      localStorage.setItem(NODE_ORDER_KEY, JSON.stringify(next));
+    } catch {
+      // Still applied for this session.
+    }
+  }
 
   #save() {
     this.commit();
@@ -382,6 +528,45 @@ export class Layout {
     }
   }
 
+  /** The page, as the sequence of bands it renders as.
+   *
+   * Derived, never stored: `order` and `placement` already contain everything
+   * this needs, so a layout saved before bands existed opens correctly.
+   */
+  get bands(): Band[] {
+    const out: Band[] = [];
+    let run: string[] = [];
+
+    const flush = () => {
+      if (!run.length) return;
+      const left = run.filter((id) => this.zoneOf(id) === 'left');
+      const right = run.filter((id) => this.zoneOf(id) === 'right');
+      out.push({
+        kind: 'cols',
+        left,
+        right,
+        rows: Math.max(left.length, right.length),
+        /* The anchor for a drop into this band's EMPTY side. Without it such a
+           drop has no card to position against and would fall to the end of
+           the page — the very bug bands exist to fix, reappearing in the one
+           case that has no visible card to aim at. */
+        last: run[run.length - 1],
+      });
+      run = [];
+    };
+
+    for (const id of this.visible) {
+      if (this.zoneOf(id) === 'full') {
+        flush();
+        out.push({ kind: 'full', id });
+      } else {
+        run.push(id);
+      }
+    }
+    flush();
+    return out;
+  }
+
   /** The visible sections of one zone, in order.
    *
    * Derived from the single `order` array rather than stored per zone. Because
@@ -460,6 +645,32 @@ export class Layout {
     return this.inZone('left').length <= this.inZone('right').length ? 'left' : 'right';
   }
 
+
+  /** Place a dragged card against an ANCHOR card rather than at an index.
+   *
+   * `place()` below still serves the keyboard, where "up one within my column"
+   * is genuinely an index. A drag is not: it aims at a specific card, and with
+   * the page a sequence of bands the same index means different things in
+   * different bands. Anchoring on the card under the pointer says exactly one
+   * thing, and it is the thing the affordance drew.
+   */
+  placeAt(id: string, zone: Zone, anchorId: string | null, before: boolean) {
+    if (zone !== 'full') this.#rememberColumn(id, zone);
+    const next = this.order.filter((x) => x !== id);
+
+    let at = next.length;
+    if (anchorId) {
+      const k = next.indexOf(anchorId);
+      if (k !== -1) at = before ? k : k + 1;
+    }
+
+    next.splice(at, 0, id);
+    this.order = next;
+    this.placement = { ...this.placement, [id]: zone };
+    this.#savePlacement();
+    this.#save();
+  }
+
   place(id: string, zone: Zone, index: number) {
     if (zone !== 'full') this.#rememberColumn(id, zone);
     const others = this.inZone(zone).filter((x) => x !== id);
@@ -473,6 +684,44 @@ export class Layout {
     next.splice(at, 0, id);
     this.order = next;
     this.placement = { ...this.placement, [id]: zone };
+    this.#savePlacement();
+    this.#save();
+  }
+
+  /** Make two full-width cards into a left/right pair, in one move.
+   *
+   * The gesture this serves: drag a full-width card onto the outer third of
+   * another full-width card. Going from the default single stack to two
+   * columns previously meant aiming at a column that was empty, zero-height
+   * and therefore invisible until a drag was already under way — you had to
+   * know it was there. Aiming at a card you can see is the whole point.
+   *
+   * IT MOVES A CARD NOBODY DRAGGED, which is why it cannot be expressed as a
+   * `place()`. The target becomes the other half. That is the behaviour asked
+   * for and it is the only one that leaves the page consistent: sending the
+   * dragged card to a column and leaving the target full width would put a
+   * half-width card beside a full-width one with nothing across from it.
+   *
+   * The left card leads in `order` so the page-wide list reads the way the row
+   * does. Note that adjacency in `order` does not by itself guarantee the two
+   * render level with each other — the columns fill INDEPENDENTLY, which is
+   * the property that stops a short section stranding space beside a tall one
+   * — so a pair made while the columns already hold other cards lands adjacent
+   * in order without necessarily lining up on screen.
+   */
+  pairWith(id: string, targetId: string, side: 'left' | 'right') {
+    if (id === targetId) return;
+    const other: Zone = side === 'left' ? 'right' : 'left';
+    this.#rememberColumn(id, side);
+    this.#rememberColumn(targetId, other);
+
+    const next = this.order.filter((x) => x !== id);
+    const at = next.indexOf(targetId);
+    if (at === -1) return;
+    next.splice(side === 'left' ? at : at + 1, 0, id);
+
+    this.order = next;
+    this.placement = { ...this.placement, [id]: side, [targetId]: other };
     this.#savePlacement();
     this.#save();
   }
@@ -498,8 +747,14 @@ export class Layout {
     const i = ZONES.indexOf(this.zoneOf(id));
     const j = i + delta;
     if (j < 0 || j >= ZONES.length) return;
-    const zone = ZONES[j];
-    this.place(id, zone, this.inZone(zone).filter((x) => x !== id).length);
+    /* setZone, NOT place: it changes the column and leaves `order` alone, so
+       the card stays where it is in the sequence and simply becomes half
+       width there. The old version appended to the end of the target zone,
+       which under the previous structure sent the card to the bottom of the
+       page — the keyboard's version of the bug bands fix, and it went
+       unnoticed because the comment describing it called appending the only
+       position that always exists. Under bands, staying put always exists. */
+    this.setZone(id, ZONES[j]);
   }
 
   isHidden(id: string): boolean {
@@ -552,6 +807,7 @@ export class Layout {
     this.placement = {};
     this.lastColumn = {};
     this.rows = {};
+    this.nodeOrder = [];
     /* Switched-off columns go too. Same unrecoverability rule as hidden
        sections: anything that can remove a thing from the page must have one
        control that puts everything back, or a reader who forgets what they hid
@@ -562,6 +818,7 @@ export class Layout {
     try {
       localStorage.removeItem(COLUMN_KEY);
       localStorage.removeItem(ROWS_KEY);
+      localStorage.removeItem(NODE_ORDER_KEY);
     } catch {
       // Still applied for this session.
     }
@@ -593,6 +850,7 @@ export class Layout {
       this.hidden.length === 0 &&
       Object.keys(this.placement).length === 0 &&
       Object.keys(this.rows).length === 0 &&
+      this.nodeOrder.length === 0 &&
       !columnStore.customised &&
       !this.compactCards
     );
