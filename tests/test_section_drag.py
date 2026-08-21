@@ -150,3 +150,67 @@ def test_drop_indicators_are_matched_to_their_band():
         assert "drop?.band === band" in block, (
             f"the '{kind}' affordance is not scoped to its band"
         )
+
+
+LAYOUT_SRC = LAYOUT.read_text()
+NODE_GROUP = FRONTEND / "components" / "NodeGroup.svelte"
+
+
+def test_a_saved_node_order_tolerates_hardware_changing():
+    """Node keys are LIVE DATA, unlike the five section ids: a key is a cluster
+    name or a standalone node's id, so adding, removing or reclustering
+    hardware changes the set under a saved order.
+
+    Both directions matter and they fail differently. An unknown key kept would
+    render a card for hardware that is gone; a new key dropped would HIDE a
+    node that exists, because a months-old ordering never mentioned it. The
+    second is the dangerous one on a monitoring dashboard."""
+    src = without_comments(LAYOUT_SRC)
+    body = src[src.index("orderGroups(") :][:900]
+    assert "known.has(k)" in body, "unknown keys are not filtered out"
+    assert re.search(r"for \(const k of keys\) if \(!seen\.has\(k\)\) out\.push\(k\)", body), (
+        "keys the saved order has never seen are not appended — a node added to "
+        "cluster.yml would be hidden by an old ordering"
+    )
+
+
+def test_reset_layout_clears_the_node_order_too():
+    """The unrecoverability rule this codebase applies everywhere: anything that
+    rearranges the page must be undone by the one control that puts it back."""
+    src = without_comments(LAYOUT_SRC)
+    body = src[src.index("  reset() {") :][:900]
+    assert "this.nodeOrder = []" in body, "reset leaves the node card order in place"
+    assert "NODE_ORDER_KEY" in body, "reset does not clear the stored node order"
+    default = src[src.index("get isDefault()") :][:600]
+    assert "this.nodeOrder.length === 0" in default, (
+        "isDefault ignores the node order, so 'reset layout' would stay hidden "
+        "after the cards had been rearranged"
+    )
+
+
+def test_the_cluster_frame_still_spans_the_row_in_compact_mode():
+    """A frame means "these nodes pool memory", so one covering part of a row
+    would say something untrue about which nodes are grouped.
+
+    The drag handle made the WRAPPER the grid item. Left on `.cluster`, the
+    span would apply to something that is no longer a grid item and silently do
+    nothing — the frame would shrink to one cell and the claim would be wrong.
+    """
+    app = without_comments(APP.read_text())
+    assert re.search(r"\.node-grid\.compact > :global\(\[data-group-framed\]\)", app), (
+        "the compact row-span is not on the group wrapper"
+    )
+    assert not re.search(r"\.node-grid\.compact \.cluster \{", app), (
+        "the span is still on .cluster, which is no longer the grid item"
+    )
+    group = without_comments(NODE_GROUP.read_text())
+    assert "data-group-framed" in group, "the wrapper never marks a framed cluster"
+
+
+def test_node_dragging_aims_on_the_axis_the_layout_actually_uses():
+    """Full width is one column; compact grids the cards 1/2/4/8 across four
+    breakpoints. Aiming by y alone would be wrong at three of them, and reading
+    the track count is what keeps it right without hardcoding a breakpoint."""
+    group = without_comments(NODE_GROUP.read_text())
+    assert "gridTemplateColumns" in group, "the aim never reads the grid's track count"
+    assert re.search(r"tracks > 1", group), "the aim does not switch axis when gridded"
