@@ -4261,6 +4261,56 @@ the tables (phase 3), not during.
   13px — and `tests/test_palettes.py` already shows the shape of the guard that
   could.
 
+- [ ] **AB2. The migration, taken anyway — and what it has actually cost.**
+
+  AB1 above concluded the migration was not worth it and the type scale was
+  the cheap 80%. That call was reversed deliberately: the type scale went in
+  as part of the spike, the spike tested well in a live container, and the
+  decision was to finish rather than keep two spellings indefinitely.
+
+  Phases: 1–2 (tokens, conventions) and 3a–3b (ModelsTable, ProcessTable) are
+  done on `spike/tailwind`. Remaining: NetworkPanel, then App.svelte (phase 4,
+  which owns the `section`/`header` chrome the tables currently borrow), then
+  the cleanup pass.
+
+  **THE COST IS ONE FAILURE MODE, and it is worth writing down because it
+  recurred five times before it was understood.** Utilities carry only what is
+  written on the element. Every declaration that used to reach an element from
+  somewhere *else* is lost silently when its `class` attribute is rewritten:
+
+  | lost | from | showed up as |
+  |---|---|---|
+  | `tabular-nums` | global `.num` in app.css | digits reflowing on every poll |
+  | `padding-top: 0` | the `th {...}` element selector | header row 1px low |
+  | truncation | `th:not(.slack), td:not(.slack)` | headers overflow, no ellipsis |
+  | `font-size: 11px` | `.count` in the style block | **rendered at the UA's 16px** |
+  | `overflow-x: auto` | `.scroll` in the style block | no horizontal scroll |
+  | the whole cell base | `th {...}` / `td {...}` | rules stopping short of the edge |
+
+  None of these errored. None was visible in a diff. Two were caught by tests,
+  one by the user's eye, three by instrumentation added afterwards.
+
+  **The instrumentation is the deliverable, not the conversions.** Two things
+  make this tractable and both should outlive the migration:
+
+  - A **scope-aware dead-class sweep**. A class the markup keeps after its rule
+    is deleted renders at browser defaults — and because `app.css` sets a font
+    *family* on `body` but never a *size*, a dropped `font-size` lands on 16px
+    rather than on the 12px everything else inherits. Scope-awareness is not
+    optional: `.count` was present in the built CSS the entire time it was
+    broken, as another component's scoped rule.
+  - A **before/after computed-style diff**. Snapshot the panel's rendered
+    styles keyed by DOM position (not by class — classes are what changes),
+    convert, then diff. It found the slack-cell regression within a minute of
+    the ProcessTable conversion landing. Keyed by position it also reports live
+    data changes as noise, so filter to cells that hold no text of their own.
+
+  **What to do before converting anything else:** list every declaration that
+  reaches the component from outside its own class attributes — global helpers,
+  element selectors, the style block, UA defaults — and name each one in a
+  constant. For ProcessTable that list was five items and the conversion landed
+  with zero structural diffs against its baseline.
+
 **Revisit if the audience changes.** These reasons are about a project whose
 CSS is read more often than it is written, by people who need to know *why*.
 A published project attracting drive-by contributions weighs that differently —
