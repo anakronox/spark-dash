@@ -125,6 +125,19 @@ nodes:
     #     - enP2p1s0f1np1   # 200Gb f1, cabled to the switch and pulled
     #     - enp1s0f1np1
 
+  # A CLUSTER WORKER NEEDS NO `runtimes:` BLOCK AT ALL.
+  #
+  # In distributed inference one node runs the API and the others are workers
+  # holding weights with no endpoint of their own. There is nothing to
+  # configure for a worker and there never will be, so listing it with no
+  # runtimes is correct and complete — the dashboard treats a runtime as
+  # collected if ANY node in the same cluster collects it, and stays quiet
+  # about the workers.
+  #
+  # That stays honest in the other direction: remove the head node's endpoint
+  # and every node in the cluster reports the runtime as unmonitored again,
+  # because then nothing is collecting it.
+
   # When nodes 2 and 3 arrive they are additions here and nothing else — no
   # per-node file to edit, and nothing node-specific in the node stack.
   #

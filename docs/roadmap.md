@@ -3519,6 +3519,94 @@ memory bandwidth is unreachable on GB10 at all — the closed question at the to
 of [E](#e--more-signal-and-correlating-it). A straggler caused by fabric
 contention is outside what this design can detect.
 
+### Z — Distributed inference is one workload, not N nodes
+
+Opened 2026-08-21 from the cluster running for real. Every item here is the
+same defect wearing a different hat: the dashboard was built when a runtime
+lived on one node, and `danflashes` serves **one** vLLM model across two.
+
+- [x] **Z1. Stop flagging cluster workers as unmonitored.** Shipped 2026-08-21.
+
+  `sparkjr` holds 96.8 GiB of a tensor-parallel model and exposes no API,
+  because that is what a worker is. `UnmonitoredInferenceRuntime` fired on it
+  every poll and **no configuration could ever clear it** — there is no
+  endpoint to add. It was being silenced by hand daily, which is the loop
+  [W](#w--choosing-which-interfaces-are-monitored--shipped-2026-08-21) broke
+  for interfaces reappearing on a different alert.
+
+  This is the exact condition `COLLECTIBLE_RUNTIMES` already exists to avoid
+  for Atlas, TGI and ollama — *"with no collector to configure, flagging them
+  would produce a warning that can never be resolved, which trains the reader
+  to ignore the whole indicator"* — arriving by a route nobody had anticipated.
+
+  **The fix is a scope change, not a new rule.** `detect_unmonitored_runtimes`
+  already documented its own principle: flag a runtime only when *nothing at
+  all* is configured for it. What changed is what "nothing at all" ranges over
+  — this node, or this node's cluster. A runtime collected by any peer in the
+  same cluster is not flagged.
+
+  **Computed by the backend, not inferred on the node**, because the agent
+  cannot: `cluster` is stamped onto its snapshot by the poller *after* the
+  fetch (`poller.py`), so a node genuinely does not know it belongs to one. The
+  backend is the only party that can see a node's peers, and it already has a
+  channel — `/api/agent-config`, the same path W's interface list rides.
+
+  Sent as `cluster_collected_runtimes`, deliberately **not** merged into
+  `runtimes`: those are endpoints the node must poll, and these live on another
+  host. "Someone else is already collecting this" is a different fact with a
+  different consumer, and merging them would have the agent try to scrape a
+  peer's address.
+
+  **It stays honest in the other direction.** Retire the head node's endpoint
+  and every node in the cluster flags again, because then no peer is collecting
+  it either — pinned by a test, since a suppression that cannot re-arm is just
+  a mute with extra steps. Per runtime, too: a cluster collecting vLLM says
+  nothing about an unmonitored SGLang server on one of its nodes.
+
+  **The cost, accepted:** a second, genuinely unmonitored vLLM on a cluster
+  node is now hidden. The agent already cannot tell two instances apart — a
+  process's listening port is not readable across the network namespace, which
+  is why the rule was coarse to begin with — so this widens an existing blind
+  spot rather than creating one.
+
+  A worker therefore needs no `runtimes:` block at all, which is what
+  `cluster.yml.example` now says.
+
+- [ ] **Z2. A distributed model should read as one model.** The real gap, and
+  the one a reader notices.
+
+  `deepseek-v4-flash-0731` occupies 96.8 GiB on each of two nodes — 193.6 GiB
+  of weights. The Models table shows **one row at 96.8 GiB** on `sparketa`,
+  because that is the node with the API. `sparkjr`'s identical 96.8 GiB carries
+  `model=<none>, server=<none>` and reads as anonymous vLLM memory.
+
+  So "what is running where" understates a distributed model by however many
+  workers it has, and the memory band cannot say which model is responsible for
+  the largest single allocation on the node.
+
+  The join is available and is not currently made: a worker's memory belongs to
+  whichever model its cluster's head node is serving, when the cluster serves
+  exactly one. With several, the same ambiguity rule the rest of the codebase
+  uses applies — attribute when unambiguous, leave unset otherwise, never
+  guess.
+
+  Open question worth settling first: should the table show one row for the
+  model with its total footprint and a node breakdown, or a row per node? The
+  first answers "what is loaded", the second "what is this box doing", and the
+  table is currently the second.
+
+- [ ] **Z3. `MemoryNearlyFull` cannot be cleared on a node that is doing its
+  job.** Both cluster nodes sit at ~87% because they hold a 193 GiB model
+  resident, and the rule's own description already concedes the case: *"a node
+  deliberately full of weights looks like this."*
+
+  Same pathology as Z1 — an alert firing on an intended steady state, silenced
+  by hand daily. Unlike Z1 the answer is not obvious, because the condition is
+  genuinely worth knowing: there is no headroom to load anything else. Options
+  are a higher threshold for clustered nodes, gating on *change* rather than
+  level, or accepting that "full of weights" is a state the dashboard should
+  show rather than alert on. Needs a decision before code.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

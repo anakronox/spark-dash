@@ -755,9 +755,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=500, detail=f"cluster config: {exc}") from exc
 
         match = next((c for c in cluster if c.node_id == node), None)
+
+        # RUNTIMES COLLECTED ELSEWHERE IN THIS NODE'S CLUSTER.
+        #
+        # A distributed model is served by the CLUSTER, not by a node. Its
+        # workers hold weights and expose no API at all — there is no endpoint
+        # to configure for them, ever — so the agent's own "running with
+        # nothing configured to collect it" check fires on a state nobody can
+        # resolve. That is the exact failure `COLLECTIBLE_RUNTIMES` already
+        # avoids for Atlas and ollama, arriving by a different route.
+        #
+        # Sent from here rather than inferred on the node because the agent
+        # does not know it is in a cluster: `cluster` is stamped onto its
+        # snapshot by the poller, after the fact. The backend is the only
+        # party that can see a node's peers.
+        peer_runtimes: list[str] = []
+        if match and match.cluster:
+            for peer in cluster:
+                if peer.cluster != match.cluster or peer.node_id == match.node_id:
+                    continue
+                peer_runtimes.extend(r for r, urls in peer.runtimes.engines.items() if urls)
+                if peer.runtimes.llama_routers:
+                    peer_runtimes.append("llama.cpp")
+
         return {
             "node": node,
             "configured": match is not None,
+            # Deliberately NOT merged into `runtimes`: these are endpoints this
+            # node must not poll — they live on another host. This says only
+            # "someone else is already collecting this", which is a different
+            # fact with a different consumer.
+            "cluster_collected_runtimes": sorted(set(peer_runtimes)),
             "runtimes": (
                 match.runtimes.as_dict() if match else NodeRuntimes().as_dict()
             ),

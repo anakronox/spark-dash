@@ -402,6 +402,86 @@ class TestCopyYamlRoundTrip:
         assert node.runtimes.vllm == []
 
 
+class TestClusterCollectedRuntimes:
+    """What the backend tells a worker node about its peers.
+
+    Computed here because the agent cannot: `cluster` is stamped onto its
+    snapshot by the poller after the fetch, so a node does not know it belongs
+    to one. The backend is the only party that can see a node's peers.
+    """
+
+    PAIR = (
+        "nodes:\n"
+        "- id: sparketa\n  host: 192.168.50.62\n  cluster: danflashes\n"
+        "  runtimes:\n    vllm:\n      - 8000\n"
+        "- id: sparkjr\n  host: 192.168.50.63\n  cluster: danflashes\n"
+        "- id: sparky\n  host: 192.168.50.61\n"
+        "  runtimes:\n    llama_routers:\n      - port: 8001\n"
+    )
+
+    def _config(self, tmp_path, text, node):
+        from fastapi.testclient import TestClient
+        from spark_dash_backend.app import create_app
+        from spark_dash_backend.config import Settings
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(text)
+        app = create_app(
+            Settings(
+                spark_nodes="sparketa=192.168.50.62",
+                cluster_config=path,
+                prometheus_targets_dir=None,
+            )
+        )
+        with TestClient(app) as c:
+            return c.get("/api/agent-config", params={"node": node}).json()
+
+    def test_a_worker_is_told_its_peer_collects_vllm(self, tmp_path):
+        """sparkjr runs a tensor-parallel worker with no endpoint of its own.
+        Nothing can be configured for it, so the cluster having vLLM covered is
+        what stops an unresolvable warning."""
+        body = self._config(tmp_path, self.PAIR, "sparkjr")
+        assert body["cluster_collected_runtimes"] == ["vllm"]
+
+    def test_the_head_node_is_not_told_about_itself(self, tmp_path):
+        """Its own endpoint already counts. Including it would make a
+        single-node cluster self-satisfying and hide a genuine gap."""
+        body = self._config(tmp_path, self.PAIR, "sparketa")
+        assert body["cluster_collected_runtimes"] == []
+
+    def test_a_standalone_node_has_no_peers(self, tmp_path):
+        """sparky is in no cluster, so nothing is excused there."""
+        body = self._config(tmp_path, self.PAIR, "sparky")
+        assert body["cluster_collected_runtimes"] == []
+
+    def test_retiring_the_only_endpoint_re_arms_every_node(self, tmp_path):
+        """The property that keeps this honest rather than merely quiet."""
+        text = self.PAIR.replace("  runtimes:\n    vllm:\n      - 8000\n", "")
+        assert self._config(tmp_path, text, "sparkjr")["cluster_collected_runtimes"] == []
+
+    def test_another_cluster_does_not_count(self, tmp_path):
+        """Collection is pooled within a cluster, never across them — the same
+        boundary that stops free memory being summed across clusters."""
+        text = (
+            "nodes:\n"
+            "- id: a1\n  host: 10.0.0.1\n  cluster: alpha\n"
+            "  runtimes:\n    vllm:\n      - 8000\n"
+            "- id: b1\n  host: 10.0.0.2\n  cluster: beta\n"
+        )
+        assert self._config(tmp_path, text, "b1")["cluster_collected_runtimes"] == []
+
+    def test_llama_routers_count_too(self, tmp_path):
+        """Routers are configured differently from engines but are collected
+        just the same, so a peer running one covers the cluster for llama.cpp."""
+        text = (
+            "nodes:\n"
+            "- id: a1\n  host: 10.0.0.1\n  cluster: alpha\n"
+            "  runtimes:\n    llama_routers:\n      - port: 8001\n"
+            "- id: a2\n  host: 10.0.0.2\n  cluster: alpha\n"
+        )
+        assert self._config(tmp_path, text, "a2")["cluster_collected_runtimes"] == ["llama.cpp"]
+
+
 class TestInterfaceExclusions:
     """Which interfaces alerting watches, round-tripped through the file.
 

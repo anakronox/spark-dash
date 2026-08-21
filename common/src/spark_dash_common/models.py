@@ -630,7 +630,14 @@ class NodeSnapshot(BaseModel):
         "with no collector to configure, flagging them would produce a warning "
         "that can never be resolved, which trains the reader to ignore the "
         "whole indicator. They are still classified as LLM runtimes, so their "
-        "memory is attributed to models rather than to `other gpu`.",
+        "memory is attributed to models rather than to `other gpu`.\n\n"
+        "SCOPED TO THE CLUSTER, not to the node. A distributed model is served "
+        "by the cluster: one node runs the API and the rest are workers "
+        "holding weights with no endpoint of their own, which nothing can ever "
+        "be configured for. So a runtime collected by any peer in the same "
+        "cluster is not flagged here — and if that peer's endpoint is retired, "
+        "every node in the cluster starts flagging again, because then nobody "
+        "is collecting it.",
     )
 
     temp_bands: TempBands | None = Field(

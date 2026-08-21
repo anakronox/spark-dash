@@ -197,7 +197,10 @@ def detect_unmonitored_runtimes(
     warning for a transient scrape failure.
 
     `configured` holds runtime names, spelled as `ProcessInfo.runtime` spells
-    them, for runtimes with at least one endpoint configured.
+    them, for runtimes with at least one endpoint configured — ANYWHERE IN THIS
+    NODE'S CLUSTER, not merely on this node. A tensor-parallel worker exposes
+    no API and never can, so scoping this to the node alone raised a warning
+    that no configuration could clear.
 
     Deliberately does NOT try to match listening ports against configured
     ports. A process's port is not readable across the network namespace — the
@@ -347,6 +350,26 @@ class SnapshotBuilder:
             )
             if endpoints:
                 configured.add(runtime)
+
+        # COLLECTED AT CLUSTER SCOPE, NOT NODE SCOPE.
+        #
+        # A distributed model is served by the cluster: one node runs the API
+        # and the rest are workers holding weights with no endpoint of their
+        # own. Nothing can ever be configured for a worker, so flagging it
+        # produces a warning that cannot be resolved — the same reason Atlas
+        # and ollama are outside `COLLECTIBLE_RUNTIMES`, reached by a different
+        # route.
+        #
+        # This EXTENDS the rule the docstring already states rather than
+        # bending it: flag a runtime only when nothing at all is configured for
+        # it. What changed is the scope of "nothing at all", from this node to
+        # this node's cluster.
+        #
+        # It also stays honest when the head node goes away: retire the only
+        # configured endpoint and every node in the cluster starts flagging
+        # again, because no peer is collecting it either.
+        if applied:
+            configured.update(applied.cluster_collected_runtimes)
         return configured
 
     def _config_status(self) -> ConfigStatus:

@@ -550,6 +550,65 @@ class TestInterfacePolicy:
         assert network[0].monitored is True
 
 
+class TestClusterScopedCollection:
+    """A distributed model is served by the CLUSTER, not by a node.
+
+    `danflashes` runs one vLLM model across sparketa and sparkjr. sparketa
+    holds the API; sparkjr is a tensor-parallel worker holding 96.8 GiB with no
+    endpoint of its own — and there is no endpoint to configure for it, ever.
+    Scoped to the node, the gap check flagged it every poll and no edit could
+    clear the warning, which is exactly what `COLLECTIBLE_RUNTIMES` excludes
+    Atlas and ollama to avoid.
+    """
+
+    def _builder(self, **cfg):
+        from spark_dash_agent.remote_config import NodeConfig
+
+        builder = SnapshotBuilder(Settings(node_id="sparkjr"))
+        builder._applied = NodeConfig(**cfg)
+        return builder
+
+    def test_a_peer_collecting_it_counts_as_configured(self):
+        builder = self._builder(cluster_collected_runtimes=["vllm"])
+        assert builder._configured_runtimes() == {"vllm"}
+        procs = [ProcessInfo(pid=1, name="VLLM::EngineCore", gpu_mem_bytes=1, runtime="vllm")]
+        assert detect_unmonitored_runtimes(
+            procs, configured=builder._configured_runtimes()
+        ) == []
+
+    def test_retiring_the_head_node_re_arms_the_warning(self):
+        """The property that keeps this honest. If the only configured endpoint
+        in the cluster is removed, no peer is collecting it either, so every
+        node starts flagging again rather than staying quiet forever."""
+        builder = self._builder(cluster_collected_runtimes=[])
+        procs = [ProcessInfo(pid=1, name="VLLM::EngineCore", gpu_mem_bytes=1, runtime="vllm")]
+        assert detect_unmonitored_runtimes(
+            procs, configured=builder._configured_runtimes()
+        ) == ["vllm"]
+
+    def test_a_standalone_node_is_unaffected(self):
+        """`sparky` is in no cluster, so it has no peers and nothing is
+        suppressed — an unmonitored runtime there is still a real gap."""
+        builder = self._builder(llama_routers=["http://r:8001"])
+        procs = [ProcessInfo(pid=1, name="python", gpu_mem_bytes=1, runtime="vllm")]
+        assert detect_unmonitored_runtimes(
+            procs, configured=builder._configured_runtimes()
+        ) == ["vllm"]
+
+    def test_a_peer_collecting_one_engine_does_not_excuse_another(self):
+        """Per runtime, not a blanket cluster exemption. A cluster collecting
+        vLLM says nothing about an unmonitored SGLang server on one of its
+        nodes."""
+        builder = self._builder(cluster_collected_runtimes=["vllm"])
+        procs = [
+            ProcessInfo(pid=1, name="VLLM::EngineCore", gpu_mem_bytes=1, runtime="vllm"),
+            ProcessInfo(pid=2, name="python", gpu_mem_bytes=1, runtime="sglang"),
+        ]
+        assert detect_unmonitored_runtimes(
+            procs, configured=builder._configured_runtimes()
+        ) == ["sglang"]
+
+
 class TestIgnoredInterfacesComeFromCentralConfig:
     def test_central_config_supplies_the_list(self):
         from spark_dash_agent.remote_config import NodeConfig

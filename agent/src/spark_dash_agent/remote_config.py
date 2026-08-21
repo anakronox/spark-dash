@@ -54,6 +54,11 @@ class NodeConfig:
     #: Interfaces excluded from alerting, by name. Empty means watch
     #: everything, which is also what an unconfigured node gets.
     ignored_interfaces: list[str] = field(default_factory=list)
+    #: Runtimes a PEER in this node's cluster is already collecting from.
+    #: A distributed model is served by the cluster, so a worker holding
+    #: weights with no API of its own is accounted for even though nothing on
+    #: this node polls it. Empty for a standalone node.
+    cluster_collected_runtimes: list[str] = field(default_factory=list)
 
     @property
     def vllm(self) -> list[str]:
@@ -205,11 +210,18 @@ class RemoteConfig:
                 if str(i).strip()
             ]
 
+        cluster_collected = [
+            str(r).strip()
+            for r in (payload.get("cluster_collected_runtimes") or [])
+            if str(r).strip()
+        ]
+
         updated = NodeConfig(
             llama_routers=routers,
             metrics_allowlist=allowlist,
             engines=engines,
             ignored_interfaces=ignored,
+            cluster_collected_runtimes=cluster_collected,
         )
         if updated != self._runtimes:
             log.info(
@@ -223,6 +235,11 @@ class RemoteConfig:
             if ignored:
                 log.info(
                     "interfaces excluded from alerting: %s", ", ".join(ignored)
+                )
+            if cluster_collected:
+                log.info(
+                    "collected by a cluster peer, so not flagged here: %s",
+                    ", ".join(cluster_collected),
                 )
         self._runtimes = updated
         self._configured = True
