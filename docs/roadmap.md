@@ -1006,10 +1006,55 @@ gets built:
 
   Still to add here as they land: compact cards (K), and a home for anything
   new that has no natural place on the page.
-- [ ] **L2 — server state that cannot reach outward.** Silences already live
-  here and are already written from the UI (G), which set the test worth
-  reusing: a silence *"cannot repoint an agent, load a model or touch a
-  process"*. Any candidate for L2 has to pass that same sentence.
+- [x] **L2 — server state that cannot reach outward. CLOSED 2026-08-21 as
+  absorbed, with nothing left to build.**
+
+  L2 was a *tier* with a test, never a feature: a silence *"cannot repoint an
+  agent, load a model or touch a process"*, and any candidate had to pass that
+  same sentence. Reviewed against what now exists, every qualifying piece has
+  shipped — it just arrived under other letters, which is why this checkbox
+  outlived its contents.
+
+  | what | arrived as |
+  |---|---|
+  | Alertmanager silences — the original exemplar | [G](#g--clearing-an-alarm) |
+  | `cluster.yml` runtimes and ports | [L3](#l--a-settings-fly-out) |
+  | Interface alert exclusions | [W](#w--choosing-which-interfaces-are-monitored--shipped-2026-08-21) |
+  | Engine endpoints (vLLM, SGLang) | [V](#v--more-inference-runtimes-sglang-and-atlas--v1v2av3-shipped-2026-08-21) |
+
+  **What is left over either fails the test or is a trap**, and is recorded
+  here so it is not proposed again:
+
+  - **Alert thresholds.** Already flagged below as a trap and it has only got
+    truer: [A](#a--alerting-correctness)'s finding was that hardcoded
+    thresholds were the bug, and [Z3](#z--distributed-inference-is-one-workload-not-n-nodes)
+    repeated the lesson from the other direction — a *level* that cannot be
+    cleared. A field where someone types 80°C re-introduces exactly what made
+    `GpuTemperatureCritical` unable to fire. Offsets from the derived value
+    would be defensible; nothing has asked for them.
+  - **`PROM_RETENTION`.** A container environment variable. The backend cannot
+    write it and Prometheus needs a restart to read it, so it is not reachable
+    from a settings panel at all — not a decision, a fact about where it lives.
+  - **The ntfy URL.** A credential, deliberately kept in a file outside git so
+    it is absent from the published surface. Writing it from the UI inverts the
+    reason it lives there.
+  - **Poll intervals, TTLs, timeouts.** Tuning knobs nobody has wanted to
+    touch, and each one exposed is a way to make the dashboard worse with no
+    way to notice.
+
+  **One control already sits on the line, and it arrived without being weighed
+  against this sentence.** The cluster editor ships a `scrape_metrics` checkbox
+  per router (L3). Enabling it has the agent issue `/metrics?model=`, which
+  **loads the model** on an autoload router — the one dashboard action that
+  reaches into a node and changes its state, and a plain failure of "cannot
+  load a model" read literally.
+
+  What saves it is a gate elsewhere: the agent only scrapes models NVML reports
+  as BUSY, so an idle model is never woken and its router's sleep timer expires
+  normally. The capability is real, the composed behaviour is safe, and the two
+  facts live in different files. Recorded here because the test is stated as
+  absolute, and the next person to check a candidate against it should know
+  that the existing set clears it by a mechanism rather than by construction.
 - [x] **L3 — cluster membership, editable. Shipped 2026-08-17**, overriding
   F's blanket read-only stance. The distinction that settles it: "read-only" is
   a property of AGENT DATA — the dashboard observes nodes and never drives
@@ -1045,20 +1090,22 @@ gets built:
   comments do not survive a UI save. Stated in the file's own header and in the
   panel, with `cluster.yml.example` named as the documented reference.
 
-**L3 needs an answer, not a form.** Options, roughly in order of preference:
+**L3 needed an answer before a form, and got one — recorded because the
+options were weighed and two were rejected.** This paragraph predates the
+shipped L3 above and read as open long after it was settled.
 
-  1. **Read-only display of `cluster.yml` plus a copy-to-clipboard snippet.**
-     Covers most of the real need — "what is configured, and what do I paste to
-     add a node" — with no write path at all. This is F6/F9 already.
-  2. **Write, but constrain the value space.** Ports from an allowlist, hosts
-     matched against RFC1918, no free-text URLs. Turns an arbitrary-URL
-     primitive into a much narrower one.
-  3. **Write, but not through the tunnel.** Bind the mutating endpoints to the
-     LAN interface only, so the published surface stays read-only. Costs a
-     second listener and some compose work; keeps the security property intact
-     rather than trading it away.
-
-  Decide this before building L3. The other tiers do not depend on it.
+  1. **Read-only display plus a copy-to-clipboard snippet.** Covers most of the
+     real need with no write path at all — and it already exists as F6/F9, which
+     is why it was not enough on its own: retiring a decommissioned endpoint
+     still meant an SSH session.
+  2. **Write, but constrain the value space.** ← **chosen.** Ports rather than
+     URLs, hosts validated against RFC1918, off-node runtimes shown read-only.
+     Turns an arbitrary-URL primitive into a much narrower one without refusing
+     the feature.
+  3. **Write, but not through the tunnel** — bind the mutating endpoints to the
+     LAN only. Rejected as a second listener and compose work for a property
+     option 2 already buys, on a service that sits behind OAuth at the edge
+     regardless.
 
 **Alert thresholds are a trap, and the uncertainty about them is correct.**
 Workstream A's whole finding was that hardcoded thresholds were wrong and the
