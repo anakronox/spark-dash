@@ -483,7 +483,7 @@
       onclick={() => (pageFocus.hideIdleModels = !pageFocus.hideIdleModels)}
     >
       <span aria-hidden="true">▽</span>
-      <span class="lbl">loaded only</span>
+      <span>loaded only</span>
     </button>
     <ColumnMenu groups={[{ view: cols }]} of="Models" />
   </header>

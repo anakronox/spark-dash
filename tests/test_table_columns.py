@@ -385,14 +385,15 @@ DIST = FRONTEND / "dist" / "assets"
 #: resolve to a rule, and none carried anything but width. Listed rather than
 #: deleted so this guard can fail on NEW orphans today; each comes off the list
 #: as its component is converted.
-KNOWN_INERT = {
-    "ModelsTable": {"lbl"},
-    # Cleared by the phase-3 conversion, as ProcessTable's were.
+#: EMPTY, and it should stay that way. Every entry was a class the markup kept
+#: after its rule was deleted; each came off as its component was converted,
+#: and the last two (`lbl`, `mono`) went in the phase-5 cleanup. A new entry
+#: here is a regression being tolerated rather than fixed.
+KNOWN_INERT: dict[str, set[str]] = {
+    "ModelsTable": set(),
     "NetworkPanel": set(),
-    # Cleared by the phase-3 conversion, which is when these were always
-    # meant to go -- the classes went with the markup they were attached to.
     "ProcessTable": set(),
-    "Settings": {"mono"},
+    "Settings": set(),
 }
 
 

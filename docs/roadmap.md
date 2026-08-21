@@ -4268,10 +4268,20 @@ the tables (phase 3), not during.
   as part of the spike, the spike tested well in a live container, and the
   decision was to finish rather than keep two spellings indefinitely.
 
-  Phases: 1–2 (tokens, conventions) and 3a–3b (ModelsTable, ProcessTable) are
-  done on `spike/tailwind`. Remaining: NetworkPanel, then App.svelte (phase 4,
-  which owns the `section`/`header` chrome the tables currently borrow), then
-  the cleanup pass.
+  **All five phases are done on `spike/tailwind`**, verified against production
+  on `:8080` rather than only against the spike's own history.
+
+  Phase 4 (App.svelte) is the one that did NOT convert wholesale, and the rule
+  it established is the single judgement call in this migration: **an element
+  whose class is a selector hook for an ancestor-state rule keeps its styling
+  in CSS.** `.node-grid.compact .cluster .nodes` is three levels of context
+  before one declaration, at four custom breakpoints (600/900/1100/1160/2320,
+  none of them Tailwind's, each the width where a specific thing stops being
+  readable). Utilities can express it — `[.node-grid.compact_&]:min-[2320px]:grid-cols-8`
+  is valid — but it inverts the reading order and repeats the context once per
+  breakpoint per element. Those classes have to survive in the markup anyway,
+  so splitting one element's styling between an attribute and a rule is worse
+  than either alone. 521 CSS lines became 308, and that is the right number.
 
   **THE COST IS ONE FAILURE MODE, and it is worth writing down because it
   recurred five times before it was understood.** Utilities carry only what is
@@ -4286,9 +4296,24 @@ the tables (phase 3), not during.
   | `font-size: 11px` | `.count` in the style block | **rendered at the UA's 16px** |
   | `overflow-x: auto` | `.scroll` in the style block | no horizontal scroll |
   | the whole cell base | `th {...}` / `td {...}` | rules stopping short of the edge |
+  | 1px of type size | `.label` resolving across two rules | header labels a pixel large |
+
+  **And one that is the same failure inverted, which is the worst of them.**
+  `app.css` sat outside every cascade layer. Unlayered CSS beats EVERY layered
+  rule at any specificity, and Tailwind's utilities live in `@layer utilities`
+  — so `button { font: inherit; border: none }` silently outranked
+  `text-label` and `border-rule` on every button in the app. Both header
+  buttons rendered at the UA's 16px with no border **while carrying the classes
+  that say otherwise**. It had been true since phase 2 and only surfaced in
+  phase 4, because until then every converted component had had its competing
+  rules deleted; App.svelte's buttons were the first converted elements a
+  surviving global rule still matched. Pager had been quietly unstyled that
+  whole time. The element rules now live in `@layer base`; the `:root` blocks
+  deliberately do not, since they define custom properties rather than compete
+  for declarations.
 
   None of these errored. None was visible in a diff. Two were caught by tests,
-  one by the user's eye, three by instrumentation added afterwards.
+  one by the user's eye, the rest by instrumentation added afterwards.
 
   **The instrumentation is the deliverable, not the conversions.** Two things
   make this tractable and both should outlive the migration:
@@ -4304,6 +4329,12 @@ the tables (phase 3), not during.
     convert, then diff. It found the slack-cell regression within a minute of
     the ProcessTable conversion landing. Keyed by position it also reports live
     data changes as noise, so filter to cells that hold no text of their own.
+
+  **A baseline is only as good as the state it captured.** The phase-4 diff
+  flagged five Pager buttons as changed; they were the layering fix REPAIRING
+  them, and the snapshot had recorded the broken state as normal. Production on
+  `:8080` is the only reference that is not downstream of the migration, and
+  every phase should be checked against it before it is called done.
 
   **What to do before converting anything else:** list every declaration that
   reaches the component from outside its own class attributes — global helpers,
