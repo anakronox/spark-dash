@@ -83,6 +83,58 @@
     return best;
   }
 
+  /** How much of a full-width card's width, at each end, means "pair with me".
+   *
+   * The outer third rather than the half the gesture is described as. A half
+   * leaves no room to aim BETWEEN two full-width cards: insert-above and
+   * insert-below would only be reachable through the 16px gaps, and a 16px
+   * target for an everyday action is not a target. At a third, both gestures
+   * stay aimable and the edges — where you would naturally aim for "put it
+   * beside this" — do the new thing. */
+  const PAIR_EDGE = 0.3;
+
+  /** The pair gesture: a full-width card aimed at the end of another one.
+   *
+   * Returns null for every case that is not this gesture, so the caller falls
+   * through to ordinary line aiming. That includes the middle of a card, the
+   * gaps between cards, a card already in a column, and the dragged card
+   * itself — a card cannot pair with itself, and without that guard aiming at
+   * your own edge would silently half-width the thing in your hand.
+   */
+  function pairAt(
+    zoneEl: HTMLElement,
+    px: number,
+    py: number,
+  ): { targetId: string; side: 'left' | 'right'; rect: { x: number; y: number; w: number; h: number } } | null {
+    if (zoneEl.dataset.zone !== 'full') return null;
+    if (layout.zoneOf(id) !== 'full') return null;
+
+    const zr = zoneEl.getBoundingClientRect();
+    for (const el of zoneEl.querySelectorAll<HTMLElement>(':scope > [data-slot]')) {
+      const targetId = el.dataset.slot;
+      if (!targetId || targetId === id) continue;
+
+      const r = el.getBoundingClientRect();
+      if (py < r.top || py > r.bottom) continue;
+
+      const across = (px - r.left) / r.width;
+      const side = across < PAIR_EDGE ? 'left' : across > 1 - PAIR_EDGE ? 'right' : null;
+      if (!side) return null;
+
+      return {
+        targetId,
+        side,
+        rect: {
+          x: r.left - zr.left + (side === 'left' ? 0 : r.width / 2),
+          y: r.top - zr.top,
+          w: r.width / 2,
+          h: r.height,
+        },
+      };
+    }
+    return null;
+  }
+
   /** Where in a zone the pointer is aiming, and where to draw the line.
    *
    * Midpoint comparison down a single stack, which is exact — unlike the
@@ -170,8 +222,15 @@
     const zoneEl = zoneAt(event.clientX, event.clientY);
     if (!zoneEl) return;
     const z = zoneEl.dataset.zone as Zone;
+
+    const pair = pairAt(zoneEl, event.clientX, event.clientY);
+    if (pair) {
+      layout.drop = { kind: 'pair', zone: z, ...pair };
+      return;
+    }
+
     const { index, y } = aim(zoneEl, event.clientY);
-    layout.drop = { zone: z, index, y };
+    layout.drop = { kind: 'line', zone: z, index, y };
   }
 
   function finish() {
@@ -189,7 +248,9 @@
     // Read before finish() clears it; applied after, so the card lands in a
     // page that is no longer in a drag state.
     finish();
-    if (target) layout.place(id, target.zone, target.index);
+    if (!target) return;
+    if (target.kind === 'pair') layout.pairWith(id, target.targetId, target.side);
+    else layout.place(id, target.zone, target.index);
   }
 
   /** Abandon without moving anything. Free to offer now that the drag is only

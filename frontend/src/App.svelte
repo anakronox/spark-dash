@@ -707,8 +707,25 @@
          inserted into the flow: a placeholder that takes up space would push
          the cards it is measured against, and the measurement would chase
          itself. -->
-    {#if layout.drop?.zone === z}
+    {#if layout.drop?.zone === z && layout.drop.kind === 'line'}
       <div class="drop-line" style:top="{layout.drop.y}px"></div>
+    {/if}
+
+    <!-- The pair affordance, and it is a BLOCK rather than a line on purpose.
+         This gesture changes the width of two cards, which a 3px rule cannot
+         say. Drawn at the exact half the dragged card will occupy, so the
+         answer to "what happens if I let go here" is the shape under the
+         pointer. The target card keeps the other half and needs no marker of
+         its own — the empty half beside a filled one reads as the pair. -->
+    {#if layout.drop?.zone === z && layout.drop.kind === 'pair'}
+      <div
+        class="pair-target"
+        data-side={layout.drop.side}
+        style:left="{layout.drop.rect.x}px"
+        style:top="{layout.drop.rect.y}px"
+        style:width="{layout.drop.rect.w}px"
+        style:height="{layout.drop.rect.h}px"
+      ></div>
     {/if}
   </div>
 {/snippet}
@@ -1020,5 +1037,36 @@
 
   .drop-line::after {
     right: 0;
+  }
+
+  /* Same accent as the drop line, filled rather than drawn, because this
+     gesture is about a SIZE and a line has none. Kept faint: it sits on top of
+     a card that is still readable underneath, and the card being carried is
+     already on screen at full opacity. */
+  .pair-target {
+    position: absolute;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--series-1) 14%, transparent);
+    border: 1px solid var(--series-1);
+    pointer-events: none;
+    z-index: 6;
+    /* Slides between the two halves instead of jumping, which is what makes
+       the two destinations legible while the pointer is still moving —
+       the same reasoning as the drop line's `top` transition. */
+    transition:
+      left 90ms ease-out,
+      top 90ms ease-out,
+      width 90ms ease-out,
+      height 90ms ease-out;
+  }
+
+  /* The outer edge is the one that says which column you land in, so it is the
+     one that gets weight. */
+  .pair-target[data-side='left'] {
+    border-left-width: 3px;
+  }
+
+  .pair-target[data-side='right'] {
+    border-right-width: 3px;
   }
 </style>

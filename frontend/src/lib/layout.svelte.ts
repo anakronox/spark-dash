@@ -56,6 +56,30 @@ export type Zone = 'full' | 'left' | 'right';
 
 export const ZONES: Zone[] = ['full', 'left', 'right'];
 
+/** What a release would do. TWO SHAPES, because there are two gestures.
+ *
+ * `line` is the original: insert into a stack at an index, drawn as a
+ * horizontal rule between cards.
+ *
+ * `pair` is the one aimed at the outer third of a full-width card. It turns
+ * TWO cards into halves at once — the one being dragged and the one aimed at —
+ * which no zone-plus-index can express, because it moves a card that is not
+ * being dragged. Carrying the target's id is what makes that possible, and
+ * carrying the rect is what lets the affordance be drawn at the size the card
+ * will actually land at, rather than as a line saying "somewhere here".
+ */
+export type DropTarget =
+  | { kind: 'line'; zone: Zone; index: number; y: number }
+  | {
+      kind: 'pair';
+      zone: Zone;
+      targetId: string;
+      /** The column the DRAGGED card takes; the target takes the other. */
+      side: 'left' | 'right';
+      /** Relative to the zone's box, like `y` above. */
+      rect: { x: number; y: number; w: number; h: number };
+    };
+
 export const ZONE_LABEL: Record<Zone, string> = {
   full: 'full width',
   left: 'left column',
@@ -301,7 +325,7 @@ export class Layout {
    * is both calmer to use and drastically simpler: no compensation, no
    * animation bookkeeping, and no way for a reorder to feed back into the
    * targeting that caused it. */
-  drop = $state<{ zone: Zone; index: number; y: number } | null>(null);
+  drop = $state<DropTarget | null>(null);
 
   #save() {
     this.commit();
@@ -473,6 +497,44 @@ export class Layout {
     next.splice(at, 0, id);
     this.order = next;
     this.placement = { ...this.placement, [id]: zone };
+    this.#savePlacement();
+    this.#save();
+  }
+
+  /** Make two full-width cards into a left/right pair, in one move.
+   *
+   * The gesture this serves: drag a full-width card onto the outer third of
+   * another full-width card. Going from the default single stack to two
+   * columns previously meant aiming at a column that was empty, zero-height
+   * and therefore invisible until a drag was already under way — you had to
+   * know it was there. Aiming at a card you can see is the whole point.
+   *
+   * IT MOVES A CARD NOBODY DRAGGED, which is why it cannot be expressed as a
+   * `place()`. The target becomes the other half. That is the behaviour asked
+   * for and it is the only one that leaves the page consistent: sending the
+   * dragged card to a column and leaving the target full width would put a
+   * half-width card beside a full-width one with nothing across from it.
+   *
+   * The left card leads in `order` so the page-wide list reads the way the row
+   * does. Note that adjacency in `order` does not by itself guarantee the two
+   * render level with each other — the columns fill INDEPENDENTLY, which is
+   * the property that stops a short section stranding space beside a tall one
+   * — so a pair made while the columns already hold other cards lands adjacent
+   * in order without necessarily lining up on screen.
+   */
+  pairWith(id: string, targetId: string, side: 'left' | 'right') {
+    if (id === targetId) return;
+    const other: Zone = side === 'left' ? 'right' : 'left';
+    this.#rememberColumn(id, side);
+    this.#rememberColumn(targetId, other);
+
+    const next = this.order.filter((x) => x !== id);
+    const at = next.indexOf(targetId);
+    if (at === -1) return;
+    next.splice(side === 'left' ? at : at + 1, 0, id);
+
+    this.order = next;
+    this.placement = { ...this.placement, [id]: side, [targetId]: other };
     this.#savePlacement();
     this.#save();
   }
