@@ -146,29 +146,39 @@
    * and because the index counts only the OTHER cards, the gap it leaves behind
    * cannot shift the destination by one.
    */
-  function aim(zoneEl: HTMLElement, py: number): { index: number; y: number } {
+  function aim(
+    zoneEl: HTMLElement,
+    py: number,
+  ): { anchorId: string | null; before: boolean; y: number } {
     const cards = [...zoneEl.querySelectorAll<HTMLElement>(':scope > [data-slot]')].filter(
       (el) => el.dataset.slot !== id,
     );
     const zr = zoneEl.getBoundingClientRect();
 
-    if (!cards.length) return { index: 0, y: Math.min(24, zr.height / 2) };
+    /* An empty column anchors on its BAND rather than on nothing. Returning a
+       null anchor here would append to the end of the page-wide order, which
+       is exactly the fall-to-the-bottom this structure was changed to fix. */
+    if (!cards.length) {
+      return {
+        anchorId: zoneEl.dataset.bandLast || null,
+        before: false,
+        y: Math.min(24, zr.height / 2),
+      };
+    }
 
-    let index = cards.length;
-    for (let i = 0; i < cards.length; i++) {
-      const r = cards[i].getBoundingClientRect();
+    for (const el of cards) {
+      const r = el.getBoundingClientRect();
       if (py < r.top + r.height / 2) {
-        index = i;
-        break;
+        return { anchorId: el.dataset.slot ?? null, before: true, y: r.top - zr.top - 8 };
       }
     }
 
-    const y =
-      index < cards.length
-        ? cards[index].getBoundingClientRect().top - zr.top - 8
-        : cards[cards.length - 1].getBoundingClientRect().bottom - zr.top + 8;
-
-    return { index, y };
+    const last = cards[cards.length - 1];
+    return {
+      anchorId: last.dataset.slot ?? null,
+      before: false,
+      y: last.getBoundingClientRect().bottom - zr.top + 8,
+    };
   }
 
   /* Move and release are tracked on the WINDOW, not via setPointerCapture on
@@ -223,14 +233,16 @@
     if (!zoneEl) return;
     const z = zoneEl.dataset.zone as Zone;
 
+    const band = Number(zoneEl.dataset.band ?? 0);
+
     const pair = pairAt(zoneEl, event.clientX, event.clientY);
     if (pair) {
-      layout.drop = { kind: 'pair', zone: z, ...pair };
+      layout.drop = { kind: 'pair', zone: z, band, ...pair };
       return;
     }
 
-    const { index, y } = aim(zoneEl, event.clientY);
-    layout.drop = { kind: 'line', zone: z, index, y };
+    const { anchorId, before, y } = aim(zoneEl, event.clientY);
+    layout.drop = { kind: 'line', zone: z, band, anchorId, before, y };
   }
 
   function finish() {
@@ -250,7 +262,7 @@
     finish();
     if (!target) return;
     if (target.kind === 'pair') layout.pairWith(id, target.targetId, target.side);
-    else layout.place(id, target.zone, target.index);
+    else layout.placeAt(id, target.zone, target.anchorId, target.before);
   }
 
   /** Abandon without moving anything. Free to offer now that the drag is only

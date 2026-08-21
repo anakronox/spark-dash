@@ -91,10 +91,62 @@ def test_both_drop_shapes_are_rendered(kind):
     assert f"kind === '{kind}'" in src, f"App.svelte renders no affordance for a '{kind}' drop"
 
 
-@pytest.mark.parametrize("kind,method", [("pair", "pairWith"), ("line", "place")])
+@pytest.mark.parametrize("kind,method", [("pair", "pairWith"), ("line", "placeAt")])
 def test_release_dispatches_on_the_drop_shape(kind, method):
-    """A pair drop falling through to place() would move the dragged card and
-    silently leave the target full width."""
+    """A pair drop falling through to placeAt() would move the dragged card and
+    silently leave the target full width.
+
+    `placeAt`, not `place`: a drag anchors on the card it aimed at. `place`
+    still serves the keyboard, where "up one within my column" really is an
+    index — but an index within a zone no longer says where in the page-wide
+    order a card goes, now that several bands each have a left and a right."""
     src = without_comments(SECTION.read_text())
     up = src[src.index("function onPointerUp") :][:700]
     assert f"layout.{method}(" in up, f"release never calls {method} for a '{kind}' drop"
+
+
+def test_a_band_is_a_run_of_the_existing_order():
+    """Bands are DERIVED, never stored. A layout saved before bands existed has
+    to open correctly, which it only does if `order` and `placement` remain the
+    single source of truth."""
+    src = without_comments(LAYOUT.read_text())
+    assert "get bands()" in src, "no band derivation"
+    body = src[src.index("get bands()") :][:1200]
+    assert "this.visible" in body, "bands are not derived from the visible order"
+    assert "BAND_KEY" not in src and "bands = $state" not in src, (
+        "bands are being stored — a saved layout from before this change would "
+        "then open without them"
+    )
+
+
+def test_an_empty_column_still_anchors_on_its_band():
+    """The one case with no visible card to aim at. Without a band anchor the
+    drop falls to the end of the page-wide order — the exact bug bands fix,
+    resurfacing where nothing is drawn to aim at."""
+    src = without_comments(SECTION.read_text())
+    body = src[src.index("function aim") :][:1400]
+    assert "bandLast" in body, "an empty column does not anchor on its band"
+    app = without_comments(APP.read_text())
+    assert "data-band-last" in app, "the band anchor is never rendered for aim() to read"
+
+
+def test_the_keyboard_shift_keeps_its_place():
+    """Left/right arrow changes a card's column. It used to append to the end
+    of the target zone, which sent the card to the bottom of the page — the
+    keyboard's copy of the bug bands fix. Changing zone without touching order
+    is what keeps it where it is."""
+    src = without_comments(LAYOUT.read_text())
+    body = src[src.index("shiftZone(") :][:600]
+    assert "this.setZone(" in body, "shiftZone still reorders instead of re-zoning"
+    assert "this.place(" not in body, "shiftZone still appends to the target zone"
+
+
+def test_drop_indicators_are_matched_to_their_band():
+    """Zone names repeat once there are several bands, so an indicator keyed on
+    the zone alone would draw in every band at once."""
+    app = without_comments(APP.read_text())
+    for kind in ("line", "pair"):
+        block = app[app.index(f"kind === '{kind}'") - 200 : app.index(f"kind === '{kind}'") + 40]
+        assert "drop?.band === band" in block, (
+            f"the '{kind}' affordance is not scoped to its band"
+        )

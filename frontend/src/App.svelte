@@ -655,12 +655,26 @@
          beneath it — measured here at 324px between `models` and `processes`,
          enough for two more sections. Independent columns need to be separate
          elements: there is no row for their contents to align to. -->
+    <!-- THE PAGE IS A SEQUENCE OF BANDS. It used to be one full-width band
+         above two columns, and that could not express "a full-width card below
+         a pair" — every column card rendered under every full-width one, so
+         columning a card dropped it to the bottom of the page however its
+         order read. The order was right; there was nowhere to draw it.
+
+         A band is one full-width card, or a run of consecutive column-placed
+         cards. Both come from the `order` and `placement` already stored, so
+         nothing new is persisted and an older saved layout opens correctly. -->
     <div class="sections" class:dragging={layout.dragId !== null}>
-      {@render dropZone('full')}
-      <div class="cols">
-        {@render dropZone('left')}
-        {@render dropZone('right')}
-      </div>
+      {#each layout.bands as band, i (i)}
+        {#if band.kind === 'full'}
+          {@render zone('full', i, [band.id], null)}
+        {:else}
+          <div class="cols">
+            {@render zone('left', i, band.left, band.last)}
+            {@render zone('right', i, band.right, band.last)}
+          </div>
+        {/if}
+      {/each}
     </div>
   {:else if feed.state !== 'offline'}
     <p class={notice()}>Waiting for the first frame…</p>
@@ -674,11 +688,21 @@
   </footer>
 </div>
 
-<!-- One zone renderer for all three, so the drop affordances cannot drift
-     apart between them. -->
-{#snippet dropZone(z: Zone)}
-  {@const ids = layout.inZone(z)}
-  <div class="zone" data-zone={z} class:empty={ids.length === 0}>
+<!-- One zone renderer for every zone in every band, so the drop affordances
+     cannot drift apart between them.
+
+     `bandLast` is the anchor for a drop into an EMPTY column: there is no card
+     to position against, and without it such a drop would fall to the end of
+     the page, which is the bug bands exist to fix showing up in the one case
+     with nothing visible to aim at. -->
+{#snippet zone(z: Zone, band: number, ids: string[], bandLast: string | null)}
+  <div
+    class="zone"
+    data-zone={z}
+    data-band={band}
+    data-band-last={bandLast}
+    class:empty={ids.length === 0}
+  >
     {#each ids as id (id)}
       <Section {layout} {id}>
         {#if id === 'models'}
@@ -707,7 +731,7 @@
          inserted into the flow: a placeholder that takes up space would push
          the cards it is measured against, and the measurement would chase
          itself. -->
-    {#if layout.drop?.zone === z && layout.drop.kind === 'line'}
+    {#if layout.drop?.band === band && layout.drop.zone === z && layout.drop.kind === 'line'}
       <div class="drop-line" style:top="{layout.drop.y}px"></div>
     {/if}
 
@@ -717,7 +741,7 @@
          answer to "what happens if I let go here" is the shape under the
          pointer. The target card keeps the other half and needs no marker of
          its own — the empty half beside a filled one reads as the pair. -->
-    {#if layout.drop?.zone === z && layout.drop.kind === 'pair'}
+    {#if layout.drop?.band === band && layout.drop.zone === z && layout.drop.kind === 'pair'}
       <div
         class="pair-target"
         data-side={layout.drop.side}
