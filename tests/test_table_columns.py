@@ -387,7 +387,8 @@ DIST = FRONTEND / "dist" / "assets"
 #: as its component is converted.
 KNOWN_INERT = {
     "ModelsTable": {"lbl"},
-    "NetworkPanel": {"errs", "linkspeed", "rate-col"},
+    # Cleared by the phase-3 conversion, as ProcessTable's were.
+    "NetworkPanel": set(),
     # Cleared by the phase-3 conversion, which is when these were always
     # meant to go -- the classes went with the markup they were attached to.
     "ProcessTable": set(),
@@ -458,7 +459,7 @@ def test_no_static_class_is_dead(component):
 #: Tables converted to utilities. The CSS-spelled ones get the same guarantee
 #: from their `th {...}` / `td {...}` element selectors, which cannot miss a
 #: cell; these have to state it.
-CONVERTED = ("ModelsTable", "ProcessTable")
+CONVERTED = ("ModelsTable", "ProcessTable", "NetworkPanel")
 
 
 @pytest.mark.parametrize("table", CONVERTED)
