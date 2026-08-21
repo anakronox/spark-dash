@@ -22,57 +22,20 @@
      and with the cap set to "all" it must never appear, which falls out of the
      same test because nothing is ever greater than Infinity. -->
 {#if total > view.pageSize}
-  <nav class="pager" aria-label={label}>
+  <nav class="flex items-center justify-between gap-3 text-label pt-2 px-4" aria-label={label}>
     <!-- The RANGE, not the page number: the question is "how much am I not
          looking at", and "11–20 of 288" answers it where "page 2 of 29" makes
          you do arithmetic. -->
     <span class="dim">{view.range(total)}</span>
-    <span class="controls">
-      <button class="page" disabled={view.current(total) === 0} onclick={() => view.go(-1, total)}
+    <span class="inline-flex gap-1">
+      <button class="text-micro tracking-[0.08em] uppercase px-2 py-[2px] rounded-sm border border-rule text-ink-muted cursor-pointer hover:not-disabled:text-ink hover:not-disabled:border-ink-muted disabled:opacity-40 disabled:cursor-default" disabled={view.current(total) === 0} onclick={() => view.go(-1, total)}
         >prev</button
       >
       <button
-        class="page"
+        class="text-micro tracking-[0.08em] uppercase px-2 py-[2px] rounded-sm border border-rule text-ink-muted cursor-pointer hover:not-disabled:text-ink hover:not-disabled:border-ink-muted disabled:opacity-40 disabled:cursor-default"
         disabled={view.current(total) >= view.pageCount(total) - 1}
         onclick={() => view.go(1, total)}>next</button
       >
     </span>
   </nav>
 {/if}
-
-<style>
-  .pager {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 11px;
-    padding: 8px 16px 0;
-  }
-
-  .controls {
-    display: inline-flex;
-    gap: 4px;
-  }
-
-  .page {
-    font-size: 10px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 2px 8px;
-    border-radius: var(--radius);
-    border: 1px solid var(--rule);
-    color: var(--ink-muted);
-    cursor: pointer;
-  }
-
-  .page:hover:not(:disabled) {
-    color: var(--ink);
-    border-color: var(--ink-muted);
-  }
-
-  .page:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-</style>

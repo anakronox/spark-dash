@@ -320,14 +320,91 @@
       },
     };
   }
+
+  /* ---------------------------------------------------------------- styles
+   * Named class strings with their reasoning above them — see
+   * `lib/styles.md`. Eleven cell branches share eight of these, so naming
+   * them is forced by the table regardless of the comments.
+   */
+
+  /* Headers are quiet: small, uppercase, tracked, and muted. The data is the
+     loud part of a table and a header row competing with it is noise. Relative
+     positioning is the anchor for the AA resize grip, which sits on the column
+     boundary rather than inside the cell's text flow. */
+  /* SPLIT INTO A BASE plus the truncation, because the original CSS was three
+     rules and not one: `th {...}` styled EVERY header cell, `th:not(.slack)`
+     added the truncation, and `th.slack` only set a width. Collapsing that
+     into one constant and giving the slack cell `w-auto` alone dropped the
+     base off it -- so the header underline and every row's rule stopped short
+     of the table's right edge, and the slack header picked up the UA's bold
+     and centred defaults. Caught by diffing computed styles against a
+     snapshot taken before the conversion, not by reading the diff. */
+  const TH_BASE =
+    'relative text-left text-micro font-medium tracking-[0.1em] uppercase '  +
+    'text-ink-muted px-3 pt-0 pb-[6px] border-b border-rule whitespace-nowrap';
+
+  /* `pt-0` is not decoration: with no preflight the UA's own
+     `th { padding: 1px }` fills any silence the utilities leave. */
+  const TH = `${TH_BASE} overflow-hidden text-ellipsis`;
+
+  /* Body cells carry a 45%-opacity rule rather than the full one: at twelve
+     rows the full weight reads as a grid, and the row separation only needs to
+     be enough for the eye to track across. */
+  const TD_BASE =
+    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
+  const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
+
+  /* Numbers right-aligned AND tabular, so a column of readings scans as a
+     column and does not reflow as values change.
+
+     `tabular-nums` is not cosmetic here and dropping it was a real bug during
+     this conversion: `.num` is a GLOBAL helper in app.css, and replacing a
+     cell's whole class attribute silently took it away. Proportional digits
+     make `1.1` and `8.8` different widths, so every column shifted on every
+     frame. Nothing failed; it just looked wrong.
+
+     THE MIGRATION LESSON: converting a component drops the global classes it
+     was quietly relying on. `.num` and `.dim` in app.css are the two here, and
+     every component must be audited for them before its class attributes are
+     rewritten. */
+  const NUM = `${TD} text-right tabular-nums`;
+  const DIM = `${TD} text-ink-muted`;
+  const MODEL = `${TD} font-medium`;
+
+  /* The trailing column that absorbs whatever `width: 100%` leaves over (AA1).
+     Unsized on purpose: without it, fixed layout spreads the surplus across
+     every column in proportion to the widths just set, undoing the point of
+     setting them. Unsized is ALL it is, though -- it is an ordinary cell
+     otherwise, and it carries the rule out to the table's edge. It skips only
+     the clipping, having no content to clip. */
+  const SLACK_TH = `${TH_BASE} w-auto`;
+  const SLACK_TD = `${TD_BASE} w-auto`;
+
+  /* A quiet marker, not a badge: it qualifies the name beside it rather than
+     competing with the state column for attention. */
+  const SHARDS =
+    'text-micro px-1 border border-rule rounded-sm text-ink-muted whitespace-nowrap';
+
+  /* Model lifecycle, by state. Was four `[data-state]` rules; as utilities the
+     mapping has to become a lookup, so it is written as one. `unknown` and
+     `loading` share warning ink deliberately — both mean "not yet answering",
+     and giving them separate colours would imply a distinction the data does
+     not support. */
+  const STATE_TONE: Record<ModelState, string> = {
+    active: 'text-good',
+    sleeping: 'text-ink-2',
+    loading: 'text-warning',
+    unknown: 'text-warning',
+    unloaded: '',
+  };
 </script>
 
 {#snippet cell(c: ColumnDef, row: Row)}
   {#if c.key === 'model'}
-    <td class="model">{row.model}</td>
+    <td class={MODEL}>{row.model}</td>
   {:else if c.key === 'state'}
     <td>
-      <span class="state" data-state={row.state} title={row.rawStatus}>
+      <span class="inline-flex items-baseline gap-[5px] {STATE_TONE[row.state]}" title={row.rawStatus}>
         <span aria-hidden="true">{MODEL_GLYPH[row.state]}</span>
         {row.state}
       </span>
@@ -343,7 +420,7 @@
          never loaded has no `meta` to report. Measured on the production
          router 2026-08-19 — cydonia and qwen (both sleeping) carried size,
          gemma (never loaded) carried none. Null means unknown, never zero. -->
-    <td class="r num size" title={sizeDetail(row)}>
+    <td class={NUM} title={sizeDetail(row)}>
       {row.sizeBytes != null ? `${gib(row.sizeBytes)}G` : '—'}
     </td>
   {:else if c.key === 'load'}
@@ -352,44 +429,44 @@
          interval as its error bar. Rendered with a leading ~ so it is never
          read as a measurement. Empty when this model has not loaded inside the
          window, which is not the same as loading instantly. -->
-    <td class="r num load" title={loadDetail(row)}>
+    <td class={NUM} title={loadDetail(row)}>
       {loadTimes[row.model] ? `~${Math.round(loadTimes[row.model].seconds)}s` : '—'}
     </td>
   {:else if c.key === 'node'}
-    <td class="dim">
+    <td class={DIM}>
       {row.node}
       {#if row.shardNodes.length}
         <!-- The cluster is what SERVES the model; these are the boxes its
              shards actually sit on. Named rather than counted, because "2
              nodes" does not tell you which one to go and look at. -->
-        <span class="shards" title="Weights sharded across {row.shardNodes.join(', ')}"
+        <span class={SHARDS} title="Weights sharded across {row.shardNodes.join(', ')}"
           >{row.shardNodes.length}&times;</span>
       {/if}
     </td>
   {:else if c.key === 'server'}
-    <td class="dim">{row.server}</td>
+    <td class={DIM}>{row.server}</td>
   {:else if c.key === 'tok'}
     <!-- Throughput and cache exist only while a model is resident. A zero would
          be indistinguishable from a loaded-but-idle model, so absent data stays
          absent. -->
-    <td class="r num toks">{row.state === 'active' ? num(row.tokensPerSec, 1) : '—'}</td>
+    <td class={NUM}>{row.state === 'active' ? num(row.tokensPerSec, 1) : '—'}</td>
   {:else if c.key === 'pre'}
-    <td class="r num toks dim">{row.state === 'active' ? num(row.promptTokensPerSec, 0) : '—'}</td>
+    <td class="{NUM} text-ink-muted">{row.state === 'active' ? num(row.promptTokensPerSec, 0) : '—'}</td>
   {:else if c.key === 'kv'}
-    <td class="r num pct">
+    <td class={NUM}>
       {row.state === 'active' && row.kvCachePct != null ? `${num(row.kvCachePct)}%` : '—'}
     </td>
   {:else if c.key === 'run'}
-    <td class="r num queue">{row.state === 'active' ? row.running : '—'}</td>
+    <td class={NUM}>{row.state === 'active' ? row.running : '—'}</td>
   {:else if c.key === 'wait'}
-    <td class="r num queue">{row.state === 'active' ? row.waiting : '—'}</td>
+    <td class={NUM}>{row.state === 'active' ? row.waiting : '—'}</td>
   {/if}
 {/snippet}
 
 <section class="panel">
   <header>
     <h2 class="eyebrow">Models</h2>
-    <span class="dim count">{summary || 'none registered'}</span>
+    <span class="text-ink-muted text-label">{summary || 'none registered'}</span>
     <!-- ROW filtering, so it takes the funnel — the glyph M4 deliberately left
          unspent when it built COLUMN visibility, so the two ideas would not
          end up sharing an icon.
@@ -397,7 +474,7 @@
          Stays visible while active, like a hidden column: rows missing with no
          visible cause reads as the backend having lost them. -->
     <button
-      class="idle"
+      class="idle-toggle"
       class:on={pageFocus.hideIdleModels}
       aria-pressed={pageFocus.hideIdleModels}
       title={pageFocus.hideIdleModels
@@ -406,14 +483,23 @@
       onclick={() => (pageFocus.hideIdleModels = !pageFocus.hideIdleModels)}
     >
       <span aria-hidden="true">▽</span>
-      <span class="lbl">loaded only</span>
+      <span>loaded only</span>
     </button>
     <ColumnMenu groups={[{ view: cols }]} of="Models" />
   </header>
 
   {#if rows.length}
-    <div class="scroll">
-      <table>
+    <!-- `overflow-x-auto`, not the dead `.scroll` class this used to carry.
+         Its rule went with the style block and the class stayed in the markup,
+         which is silent on a wide monitor and means no horizontal scroll at
+         all on a narrow one. -->
+    <div class="overflow-x-auto">
+      <!-- `table-fixed` is load-bearing, not styling: the colgroup widths above
+           are only honoured under fixed layout, and in auto layout a dragged
+           column springs back. Dropped by accident during this conversion and
+           caught by tests/test_table_columns.py, which is what that guard is
+           for. -->
+      <table class="table-fixed text-body min-w-[620px]">
         <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed`
              the first row's widths decide the whole table, and a `<colgroup>`
              states them once instead of relying on whichever row happens to
@@ -436,7 +522,12 @@
         <thead>
           <tr>
             {#each cols.visible() as c (c.key)}
-              <th use:register={c.key} scope="col" class:r={c.right} aria-sort={view.ariaSort(c.key)}>
+              <th
+                use:register={c.key}
+                scope="col"
+                class="{TH} {c.right ? 'text-right' : ''}"
+                aria-sort={view.ariaSort(c.key)}
+              >
                 <SortButton {view} id={c.key} label={c.label} />
                 <ColumnGrip
                   label={c.label}
@@ -459,7 +550,7 @@
                  `aria-hidden`: an empty `th`/`td` pair is already announced as
                  an empty cell, and hiding it would leave the row's cell count
                  disagreeing with the header's. -->
-            <th class="slack"></th>
+            <th class={SLACK_TH}></th>
           </tr>
         </thead>
         <tbody>
@@ -470,7 +561,7 @@
               {#each cols.visible() as c (c.key)}
                 {@render cell(c, row)}
               {/each}
-              <td class="slack"></td>
+              <td class={SLACK_TD}></td>
             </tr>
           {/each}
         </tbody>
@@ -480,13 +571,43 @@
     <Pager {view} total={rows.length} label="Models pages" />
 
   {:else}
-    <p class="empty">
+    <p class="px-4 pt-0 pb-[14px] text-body text-ink-2">
       No models registered. Check <code>LLAMA_ROUTER_URLS</code> on the node stack.
     </p>
   {/if}
 </section>
 
 <style>
+  /* THE RESIDUAL, and it is deliberate — see `lib/styles.md`. Everything that
+     converted cleanly is a named constant in the script above, with its
+     reasoning attached. What is left is what utilities express worse than a
+     selector does. */
+
+  /* Structural: the last row drops its rule so the table ends on data rather
+     than on a line. As a variant it is a `:last-child` selector spelled out on
+     every row, which is longer and says less. */
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Row hover, and it earns its place: with identity columns on the left and
+     numbers on the right, the eye needs something to hold the line across the
+     gap between them. On the ROW rather than the cell, which no per-cell
+     utility can do. */
+  tbody tr:hover {
+    background: var(--panel-raised);
+  }
+
+  /* Unloaded models are context, not news — present so you know they exist,
+     recessive so they don't compete with what's running. A descendant selector
+     because the state is on the ROW and the colour belongs to its cells; the
+     alternative threads a flag into all eleven cell branches. */
+  tr.idle td {
+    color: var(--ink-muted);
+  }
+
+  /* Section chrome stays until phase 4 converts App.svelte, which owns the
+     layout these belong to. */
   section {
     padding: 14px 0 4px;
   }
@@ -499,97 +620,20 @@
     padding: 0 16px 10px;
   }
 
-  .count {
-    font-size: 11px;
-  }
+  /* Matches ColumnMenu's trigger beside it: hover-revealed, persistent
+     whenever it is actually filtering. Three selectors sharing one rule; as
+     variants that is an opacity chain plus a conditional, for the same
+     behaviour with more moving parts.
 
-  .scroll {
-    overflow-x: auto;
-  }
-
-  table {
-    font-size: 12px;
-    min-width: 620px;
-    /* Required for the colgroup widths to be honoured at all. */
-    table-layout: fixed;
-  }
-
-  th {
-    /* Positioning context for the resize grip, which sits on the column
-       boundary rather than inside the cell's text flow. */
-    position: relative;
-    text-align: left;
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    padding: 0 12px 6px;
-    border-bottom: 1px solid var(--rule);
-    white-space: nowrap;
-  }
-
-  td {
-    padding: 5px 12px;
-    border-bottom: 1px solid color-mix(in srgb, var(--rule) 45%, transparent);
-    white-space: nowrap;
-  }
-
-  tbody tr:last-child td {
-    border-bottom: none;
-  }
-
-  /* Unloaded models are context, not news — present so you know they exist,
-     recessive so they don't compete with what's running. */
-  tr.idle td {
-    color: var(--ink-muted);
-  }
-
-  .model {
-    font-weight: 500;
-  }
-
-  /* Column widths now come from the `<colgroup>` under `table-layout: fixed`
-     (AA2), not from the `width: 1%` idiom this comment used to describe. The
-     concern it recorded still holds and is what the declared widths are for:
-     numbers spread across a wide page drift so far from the row's identity
-     that tracking one across becomes unreliable. */
-  /* Row hover. Cheap, and it is what makes a wide table navigable: with the
-     identity columns on the left and the numbers on the right, the eye needs
-     something to hold the line across the gap between them. */
-  tbody tr:hover {
-    background: var(--panel-raised);
-  }
-
-  /* Width and nowrap now come from the `:not(.slack)` rule below, which
-     covers every column rather than only the numeric ones. This keeps the
-     alignment, which is all it was ever uniquely doing. */
-  .r {
-    text-align: right;
-  }
-
-  /* Reserved widths — see NetworkPanel. These columns are the most volatile on
-     the page: they swing between an em dash and a live reading every time a
-     model wakes or sleeps, which is a width change on every transition. */
-  /* A quiet marker, not a badge: it qualifies the name beside it rather than
-     competing with the state column for attention. */
-  .shards {
-    font-size: 10px;
-    padding: 0 4px;
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    color: var(--ink-muted);
-    white-space: nowrap;
-  }
-
-  /* Matches ColumnMenu's trigger beside it: hover-revealed, but persistent
-     whenever it is actually filtering. */
-  .idle {
+     Renamed from `.idle` — that name now belongs to the ROW state above, and
+     two different meanings under one class in one file is how a stylesheet
+     starts lying. */
+  .idle-toggle {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     font: inherit;
-    font-size: 11px;
+    font-size: var(--text-label);
     background: none;
     border: 1px solid transparent;
     border-radius: var(--radius);
@@ -598,84 +642,15 @@
     cursor: pointer;
     opacity: 0;
   }
-  header:hover .idle,
-  .idle:focus-visible,
-  .idle.on {
+
+  header:hover .idle-toggle,
+  .idle-toggle:focus-visible,
+  .idle-toggle.on {
     opacity: 1;
   }
-  .idle.on {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
 
-  .state {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 5px;
-  }
-
-  [data-state='active'] {
+  .idle-toggle.on {
     color: var(--good);
+    border-color: var(--good);
   }
-  [data-state='sleeping'] {
-    color: var(--ink-2);
-  }
-  [data-state='loading'] {
-    color: var(--warning);
-  }
-  [data-state='unknown'] {
-    color: var(--warning);
-  }
-
-  .empty {
-    padding: 0 16px 14px;
-    font-size: 12px;
-    color: var(--ink-2);
-  }
-
-  code {
-    color: var(--ink);
-  }
-
-  /* AA2: widths come from the `<colgroup>` above, which only `table-layout:
-     fixed` actually honours — in auto layout a specified width is a suggestion
-     and content can override it, so a dragged column would sometimes spring
-     back and read as the drag not working.
-
-     THE TRADE FIXED LAYOUT MAKES, and it reverses a decision AA1 took: a
-     column can no longer grow to fit its content, so a long value has to be
-     clipped rather than allowed to widen the table. AA1 argued against ellipsis
-     on the grounds that a model whose name you cannot read is worse than a wide
-     column — that was right while columns could grow. Now that they cannot, the
-     alternative to ellipsis is text visibly spilling across the neighbouring
-     cell, which is worse than either. The full value stays reachable: every
-     truncatable cell carries it as a `title`, and the reader can widen the
-     column and keep that width.
-
-     The `.slack` column stays unsized so it still absorbs whatever
-     `width: 100%` leaves over. Without it, fixed layout would spread the
-     surplus across every column in proportion to the widths just set, which
-     undoes the point of setting them. */
-
-  /* THE RESERVED MIN-WIDTHS ARE GONE (AA2). They existed because these columns
-     swing between an em dash and a live reading every time a model wakes or
-     sleeps, and in an auto-layout table that resized the whole row on every
-     transition. Under `table-layout: fixed` a column's width comes from the
-     colgroup and content cannot change it, so the jitter they defended against
-     is now impossible by construction rather than merely discouraged.
-
-     Clipping and ellipsis moved to the shared `:not(.slack)` rule, which
-     applies to every column rather than the few that happened to need it. */
-  th:not(.slack),
-  td:not(.slack) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  th.slack,
-  td.slack {
-    width: auto;
-  }
-
 </style>

@@ -147,19 +147,89 @@
       },
     };
   }
+
+  /* THE CLASS STRINGS, named and reasoned about here rather than inline --
+     see `lib/styles.md`. The audit that has to happen before any component is
+     converted (four regressions taught this) is: which declarations reach
+     these elements from somewhere OTHER than their own class attribute?
+     For this file they were `.num` and `.dim` from app.css, and `.count`,
+     `.empty` and `.scroll` from the style block below. All five are named
+     below; none is left to a class the markup carries and no rule defines. */
+
+  /* SPLIT INTO A BASE plus the truncation, because the original CSS was three
+     rules and not one: `th {...}` styled EVERY header cell, `th:not(.slack)`
+     added the truncation, and `th.slack` only set a width. Collapsing that
+     into one constant and giving the slack cell `w-auto` alone dropped the
+     base off it -- so the header underline and every row's rule stopped short
+     of the table's right edge, and the slack header picked up the UA's bold
+     and centred defaults. Caught by diffing computed styles against a
+     snapshot taken before the conversion, not by reading the diff. */
+  const TH_BASE =
+    'relative text-left text-micro font-medium tracking-[0.1em] uppercase '  +
+    'text-ink-muted px-3 pt-0 pb-[6px] border-b border-rule whitespace-nowrap';
+
+  /* `pt-0` is not decoration: with no preflight the UA's own
+     `th { padding: 1px }` fills any silence the utilities leave. */
+  const TH = `${TH_BASE} overflow-hidden text-ellipsis`;
+
+  /* Body cells carry the rule at 45% so the grid recedes behind the data. */
+  const TD_BASE =
+    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
+  const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
+
+  /* `tabular-nums` is the global `.num` helper, spelled out. Dropping it is
+     invisible until the numbers change and the column starts shifting. */
+  const NUM = `${TD} text-right tabular-nums`;
+  const DIM = `${TD} text-ink-muted`;
+  const NAME = `${TD} font-medium`;
+  const NUM_DIM = `${NUM} text-ink-muted`;
+
+  /* Reserved because this column carries an OPTIONAL second line (enc/dec)
+     that appears and disappears with the workload. Measured 114-120px. */
+  const COMPUTE = `${NUM} min-w-[120px]`;
+
+  /* Share is 34% by design -- the bar needs room to be readable as a
+     magnitude, which is the only reason this column exists. */
+  const SHARE = `${TD} w-[34%] min-w-[120px]`;
+  const SHARE_TH = `${TH} w-[34%] min-w-[120px]`;
+
+  /* Unsized so it still absorbs whatever `width: 100%` leaves over, but
+     otherwise a normal cell -- it carries the rule to the table's edge. */
+  const SLACK_TH = `${TH_BASE} w-auto`;
+  const SLACK_TD = `${TD_BASE} w-auto`;
+
+  const MUTED = 'text-ink-muted';
+
+  /* Monospace stated explicitly even though the page is already monospace:
+     this is an identifier the operator matches by eye against the models
+     table and against router logs, and it should survive a change to the
+     body font. */
+  const MODEL_NAME = 'font-mono text-label';
+  const SM = 'text-series-3 font-medium';
+  const CODEC = 'block text-micro tracking-[0.04em] text-ink-muted';
+
+  /* An LLM runtime and everything else get the SAME two colours here as on
+     the history chart, so a spike and the process that drew it match without
+     a legend. A lookup rather than `[data-kind]` rules, for the reason
+     StatusPill records: the mapping becomes greppable from the markup and
+     stops being exhaustive-by-adjacency. */
+  const RUNTIME_TONE = { llm: 'text-series-1', other: 'text-series-2' };
+  const BAR_TONE = { llm: 'bg-series-1', other: 'bg-series-2' };
+  const kind = (runtime: string | null): 'llm' | 'other' =>
+    runtime && LLM_RUNTIMES.has(runtime) ? 'llm' : 'other';
 </script>
 
 {#snippet cell(c: ColumnDef, row: Row)}
   {#if c.key === 'name'}
-    <td class="name">{row.name}</td>
+    <td class={NAME}>{row.name}</td>
   {:else if c.key === 'runtime'}
-    <td class="runtimecol">
+    <td class={TD}>
       {#if row.runtime}
-        <span class="runtime" data-kind={LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}>
+        <span class={RUNTIME_TONE[kind(row.runtime)]}>
           {row.runtime}
         </span>
       {:else}
-        <span class="dim">unlabelled</span>
+        <span class={MUTED}>unlabelled</span>
       {/if}
     </td>
   {:else if c.key === 'model'}
@@ -167,59 +237,58 @@
          holds only its own overhead. An em dash says that plainly rather than
          implying missing data. -->
     <td
-      class="modelcol"
+      class={TD}
       title={row.shard
         ? `${row.model} — shard of a model served by this node's cluster`
         : row.model || undefined}
     >
       {#if row.model}
-        <span class="model">{row.model}</span>
+        <span class={MODEL_NAME}>{row.model}</span>
         {#if row.shard}
           <!-- The name was filled in by the backend from the cluster's head
                node, not reported by the process. Marked so an inferred
                attribution is distinguishable from a self-reported one. -->
-          <span class="dim" aria-label="cluster shard">·shard</span>
+          <span class={MUTED} aria-label="cluster shard">·shard</span>
         {/if}
       {:else}
-        <span class="dim">—</span>
+        <span class={MUTED}>—</span>
       {/if}
     </td>
   {:else if c.key === 'node'}
-    <td class="dim">{row.node}</td>
+    <td class={DIM}>{row.node}</td>
   {:else if c.key === 'pid'}
-    <td class="r num dim pid">{row.pid}</td>
+    <td class={NUM_DIM}>{row.pid}</td>
   {:else if c.key === 'sm'}
-    <td class="r num compute">
+    <td class={COMPUTE}>
       {#if row.smPct > 0}
-        <span class="sm">{row.smPct.toFixed(0)}%</span>
+        <span class={SM}>{row.smPct.toFixed(0)}%</span>
       {:else}
         <!-- Absent from NVML's samples means idle, so this is a reading rather
              than missing data. Dimmed rather than blank: a resident-but-idle
              model is the interesting case, and a gap would read as
              "unknown". -->
-        <span class="dim">0%</span>
+        <span class={MUTED}>0%</span>
       {/if}
       {#if row.encPct > 0 || row.decPct > 0}
         <!-- Encoder/decoder are separate fixed-function blocks, so this work is
              NOT competing for SM. Shown small and apart so it explains a busy
              GPU without implying contention that isn't there. -->
-        <span class="codec dim" title="NVENC / NVDEC — separate from SM">
+        <span class={CODEC} title="NVENC / NVDEC — separate from SM">
           {row.encPct > 0 ? `enc ${row.encPct.toFixed(0)}%` : ''}
           {row.decPct > 0 ? `dec ${row.decPct.toFixed(0)}%` : ''}
         </span>
       {/if}
     </td>
   {:else if c.key === 'mem'}
-    <td class="r num mem">{gib(row.bytes)}</td>
+    <td class={NUM}>{gib(row.bytes)}</td>
   {:else if c.key === 'share'}
-    <td class="share">
+    <td class={SHARE}>
       <!-- An inline bar rather than a separate chart: the number and its
            magnitude belong in the same glance. -->
-      <span class="bar-track">
+      <span class="block h-[6px] bg-track rounded-[2px] overflow-hidden">
         <span
-          class="bar"
+          class="block h-full rounded-[2px] transition-[width] duration-[400ms] ease-[cubic-bezier(0.4,0,0.2,1)] {BAR_TONE[kind(row.runtime)]}"
           style:width={`${Math.max(row.sharePct, 0.4)}%`}
-          data-kind={row.runtime && LLM_RUNTIMES.has(row.runtime) ? 'llm' : 'other'}
         ></span>
       </span>
     </td>
@@ -229,15 +298,15 @@
 <section class="panel">
   <header>
     <h2 class="eyebrow">GPU processes</h2>
-    <span class="dim count">
+    <span class="text-ink-muted text-label">
       {gib(totals.llm)} GiB models · {gib(totals.other)} GiB other
     </span>
     <ColumnMenu groups={[{ view: cols }]} of="GPU processes" />
   </header>
 
   {#if rows.length}
-    <div class="scroll">
-      <table>
+    <div class="overflow-x-auto">
+      <table class="table-fixed text-body min-w-[620px]">
         <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed`
              the first row's widths decide the whole table, and a `<colgroup>`
              states them once instead of relying on whichever row happens to
@@ -262,8 +331,7 @@
             {#each cols.visible() as c (c.key)}
               <th use:register={c.key}
                 scope="col"
-                class:r={c.right}
-                class:share={c.cls === 'share'}
+                class={c.cls === 'share' ? SHARE_TH : c.right ? `${TH} text-right` : TH}
                 aria-sort={view.ariaSort(c.key)}
               >
                 <SortButton {view} id={c.key} label={c.label} />
@@ -275,8 +343,8 @@
                 />
               </th>
             {/each}
-            <!-- SLACK PARKS HERE — see the .slack rule in the style block. -->
-            <th class="slack"></th>
+            <!-- SLACK PARKS HERE. Its width is the point; its styling is ordinary. -->
+            <th class={SLACK_TH}></th>
           </tr>
         </thead>
         <tbody>
@@ -291,7 +359,7 @@
               {#each cols.visible() as c (c.key)}
                 {@render cell(c, row)}
               {/each}
-              <td class="slack"></td>
+              <td class={SLACK_TD}></td>
             </tr>
           {/each}
         </tbody>
@@ -300,11 +368,33 @@
 
     <Pager {view} total={rows.length} label="GPU process pages" />
   {:else}
-    <p class="empty">No processes are holding GPU memory.</p>
+    <p class="px-4 pt-0 pb-[14px] text-body text-ink-2">No processes are holding GPU memory.</p>
   {/if}
 </section>
 
 <style>
+  /* THE RESIDUAL, and it is deliberate -- see `lib/styles.md`. Everything that
+     converted cleanly is a named constant in the script above, with its
+     reasoning attached. What is left is what a selector says better than a
+     utility does. */
+
+  /* Structural: the last row drops its rule so the table ends on data rather
+     than on a line. As a variant it is a `:last-child` selector spelled out on
+     every row, which is longer and says less. */
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* Row hover, and it earns its place: with the identity columns on the left
+     and the numbers on the right, the eye needs something to hold the line
+     across the gap between them. On the ROW rather than the cell, which no
+     per-cell utility can do. */
+  tbody tr:hover {
+    background: var(--panel-raised);
+  }
+
+  /* Section chrome stays until phase 4 converts App.svelte, which owns the
+     layout these belong to. */
   section {
     padding: 14px 0 4px;
   }
@@ -316,187 +406,4 @@
     gap: 12px;
     padding: 0 16px 10px;
   }
-
-  .count {
-    font-size: 11px;
-  }
-
-  .scroll {
-    overflow-x: auto;
-  }
-
-  table {
-    font-size: 12px;
-    min-width: 620px;
-    /* Required for the colgroup widths to be honoured at all. */
-    table-layout: fixed;
-  }
-
-  th {
-    /* Positioning context for the resize grip, which sits on the column
-       boundary rather than inside the cell's text flow. */
-    position: relative;
-    text-align: left;
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    padding: 0 12px 6px;
-    border-bottom: 1px solid var(--rule);
-    white-space: nowrap;
-  }
-
-  td {
-    padding: 5px 12px;
-    border-bottom: 1px solid color-mix(in srgb, var(--rule) 45%, transparent);
-    white-space: nowrap;
-  }
-
-  tbody tr:last-child td {
-    border-bottom: none;
-  }
-
-  .name {
-    font-weight: 500;
-  }
-
-  /* Column widths now come from the `<colgroup>` under `table-layout: fixed`
-     (AA2), not from the `width: 1%` idiom this comment used to describe. The
-     concern it recorded still holds and is what the declared widths are for:
-     numbers spread across a wide page drift so far from the row's identity
-     that tracking one across becomes unreliable. */
-  /* Row hover. Cheap, and it is what makes a wide table navigable: with the
-     identity columns on the left and the numbers on the right, the eye needs
-     something to hold the line across the gap between them. */
-  tbody tr:hover {
-    background: var(--panel-raised);
-  }
-
-  /* Width and nowrap now come from the `:not(.slack)` rule below, which
-     covers every column rather than only the numeric ones. This keeps the
-     alignment, which is all it was ever uniquely doing. */
-  .r {
-    text-align: right;
-  }
-
-  .share {
-    width: 34%;
-    min-width: 120px;
-  }
-
-  .runtime[data-kind='llm'] {
-    color: var(--series-1);
-  }
-  .runtime[data-kind='other'] {
-    color: var(--series-2);
-  }
-
-  /* Monospace because it's an identifier the operator will match by eye
-     against the models table and against router logs. */
-  .model {
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11px;
-  }
-
-  /* Compute sits beside memory rather than in its own panel: the question
-     "who is competing" is only meaningful next to "who is resident". */
-  .compute {
-    /* Raised from 96px: this column carries an OPTIONAL second line (enc/dec),
-       so its content appears and disappears with the workload. Measured
-       114-120px in practice, and anything under that lets the column resize. */
-    min-width: 120px;
-  }
-
-  .sm {
-    color: var(--series-3);
-    font-weight: 500;
-  }
-
-  /* Reserved widths — see NetworkPanel for the full reasoning. A column that
-     resizes as its number grows drags every other column with it under auto
-     table layout. `.compute` above already reserves the SM column. */
-  /* Bounded, not just reserved. These two columns are sized by the widest value
-     currently on the page, and unlike a number that is a set of ROWS that comes
-     and goes — a transcode starting or a model unloading changes which strings
-     are present, so the column resizes and drags `share of pool` 27px with it.
-     A floor stops the common case shrinking it; a ceiling with ellipsis stops
-     an unusually long name expanding it. The full name is on the cell's
-     title. */
-  /* "107.5" — GiB to one decimal, room for a four-digit pool. */
-  .codec {
-    display: block;
-    font-size: 10px;
-    letter-spacing: 0.04em;
-  }
-
-  .bar-track {
-    display: block;
-    height: 6px;
-    background: var(--track);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .bar {
-    display: block;
-    height: 100%;
-    border-radius: 2px;
-    transition: width 400ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .bar[data-kind='llm'] {
-    background: var(--series-1);
-  }
-  .bar[data-kind='other'] {
-    background: var(--series-2);
-  }
-
-  .empty {
-    padding: 0 16px 14px;
-    font-size: 12px;
-    color: var(--ink-2);
-  }
-
-  /* AA2: widths come from the `<colgroup>` above, which only `table-layout:
-     fixed` actually honours — in auto layout a specified width is a suggestion
-     and content can override it, so a dragged column would sometimes spring
-     back and read as the drag not working.
-
-     THE TRADE FIXED LAYOUT MAKES, and it reverses a decision AA1 took: a
-     column can no longer grow to fit its content, so a long value has to be
-     clipped rather than allowed to widen the table. AA1 argued against ellipsis
-     on the grounds that a model whose name you cannot read is worse than a wide
-     column — that was right while columns could grow. Now that they cannot, the
-     alternative to ellipsis is text visibly spilling across the neighbouring
-     cell, which is worse than either. The full value stays reachable: every
-     truncatable cell carries it as a `title`, and the reader can widen the
-     column and keep that width.
-
-     The `.slack` column stays unsized so it still absorbs whatever
-     `width: 100%` leaves over. Without it, fixed layout would spread the
-     surplus across every column in proportion to the widths just set, which
-     undoes the point of setting them. */
-
-  /* THE RESERVED MIN-WIDTHS ARE GONE (AA2). They existed because these columns
-     swing between an em dash and a live reading every time a model wakes or
-     sleeps, and in an auto-layout table that resized the whole row on every
-     transition. Under `table-layout: fixed` a column's width comes from the
-     colgroup and content cannot change it, so the jitter they defended against
-     is now impossible by construction rather than merely discouraged.
-
-     Clipping and ellipsis moved to the shared `:not(.slack)` rule, which
-     applies to every column rather than the few that happened to need it. */
-  th:not(.slack),
-  td:not(.slack) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  th.slack,
-  td.slack {
-    width: auto;
-  }
-
 </style>

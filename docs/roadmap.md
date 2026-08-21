@@ -4169,6 +4169,68 @@ explains.
 type scale is the one thing the comparison showed missing; the rest of what
 Tailwind offers here is already provided by scoped styles and the token layer.
 
+**SPIKE RUN 2026-08-21 on `spike/tailwind` — phases 1 and 2, five leaf
+components.** Numbers rather than opinion, which was the point of doing it.
+
+| component | before | after | outcome |
+|---|---|---|---|
+| StatusPill | 49 ln / 27 css | 42 / 0 | full |
+| SortButton | 55 / 25 | 43 / 0 | full |
+| Pager | 78 / 36 | 41 / 0 | full |
+| ConnectionState | 86 / 47 | 89 / 15 | **hybrid, longer** |
+| ColumnGrip | 137 / 46 | 132 / 40 | **hybrid** |
+| **total** | **405 / 181** | **347 / 55** | −58 lines, −126 css |
+
+**Four findings worth keeping whatever is decided:**
+
+1. **Preflight must not be imported during a phased migration.**
+   `@import "tailwindcss"` pulls a global reset that rewrites margins, type,
+   borders and form elements everywhere — fine at the *end*, fatal in the
+   middle, because it perturbs every unconverted component and makes "did this
+   read better?" unanswerable. Importing the layers individually skips it. This
+   is the single thing that makes phase-by-phase possible at all.
+
+2. **The theme system survives untouched, and that was the main risk.**
+   `@theme inline` maps `--color-ink: var(--ink)` so utilities resolve to the
+   project's own tokens. It works *because every theme block targets `:root`* —
+   the indirection resolves on the same element the override lands on. All
+   seven themes still validate; `palette_check.py` and `test_palettes.py` keep
+   reading `app.css` as source, unchanged.
+
+3. **Simple presentational components get genuinely shorter** — Pager 78 → 41
+   lines, and the result reads well. **Components with a bespoke animation or
+   pseudo-element do not convert**, they go hybrid: `ConnectionState` came out
+   *longer* (86 → 89), and `ColumnGrip` kept 40 of its 46 CSS lines. That is
+   not a failure to be worked around; it is what a real migration looks like,
+   and roughly 40% of these five landed there.
+
+4. **The comment problem is real and reproduced exactly as predicted.**
+   `ColumnGrip`'s reasoning — why 8px of grab area for a 2px cue, why invisible
+   until wanted — sat above the declarations it explained. Utilities have
+   nowhere to put it, so it floated up into a block comment away from the code,
+   or would be lost. `StatusPill`'s four `[data-health]` rules became a
+   `Record` lookup: greppable from markup, but a missing case is now a silent
+   `undefined` in a class string where it used to be a visibly unstyled pill.
+
+**Cost signal:** bundled CSS grew 41 KB → 49 KB with three components fully
+converted, because the utility layer is additive while the hand-written CSS is
+still there. That reverses as the migration completes, but it does mean a
+half-done migration is strictly worse than either end.
+
+**Tried on the cluster 2026-08-21** — the spike build ran as a second backend
+on `:8081` against live data, alongside production on `:8080`. **No usability
+issues.** That is the expected result and worth saying so: five components
+converted correctly should look identical, so the visual test could only have
+disproved the migration, never justified it. What it does confirm is that the
+mechanics — themes, tokens, utilities, the hybrid components — all work in a
+real browser against real data.
+
+**Recommendation: keep the branch, do not merge yet.** The spike answered the
+question it was built for — the mechanics work, the themes are safe, and the
+gain is real on simple components and absent on complex ones. What it did not
+answer is where the reasoning goes, and that is the thing worth solving before
+the tables (phase 3), not during.
+
 - [ ] **AB1. Promote the type scale to tokens.**
 
   The measurement that makes the Tailwind question productive rather than
@@ -4198,6 +4260,87 @@ Tailwind offers here is already provided by scoped styles and the token layer.
   is currently invisible — nothing today would catch a new component using
   13px — and `tests/test_palettes.py` already shows the shape of the guard that
   could.
+
+- [ ] **AB2. The migration, taken anyway — and what it has actually cost.**
+
+  AB1 above concluded the migration was not worth it and the type scale was
+  the cheap 80%. That call was reversed deliberately: the type scale went in
+  as part of the spike, the spike tested well in a live container, and the
+  decision was to finish rather than keep two spellings indefinitely.
+
+  **All five phases are done on `spike/tailwind`**, verified against production
+  on `:8080` rather than only against the spike's own history.
+
+  Phase 4 (App.svelte) is the one that did NOT convert wholesale, and the rule
+  it established is the single judgement call in this migration: **an element
+  whose class is a selector hook for an ancestor-state rule keeps its styling
+  in CSS.** `.node-grid.compact .cluster .nodes` is three levels of context
+  before one declaration, at four custom breakpoints (600/900/1100/1160/2320,
+  none of them Tailwind's, each the width where a specific thing stops being
+  readable). Utilities can express it — `[.node-grid.compact_&]:min-[2320px]:grid-cols-8`
+  is valid — but it inverts the reading order and repeats the context once per
+  breakpoint per element. Those classes have to survive in the markup anyway,
+  so splitting one element's styling between an attribute and a rule is worse
+  than either alone. 521 CSS lines became 308, and that is the right number.
+
+  **THE COST IS ONE FAILURE MODE, and it is worth writing down because it
+  recurred five times before it was understood.** Utilities carry only what is
+  written on the element. Every declaration that used to reach an element from
+  somewhere *else* is lost silently when its `class` attribute is rewritten:
+
+  | lost | from | showed up as |
+  |---|---|---|
+  | `tabular-nums` | global `.num` in app.css | digits reflowing on every poll |
+  | `padding-top: 0` | the `th {...}` element selector | header row 1px low |
+  | truncation | `th:not(.slack), td:not(.slack)` | headers overflow, no ellipsis |
+  | `font-size: 11px` | `.count` in the style block | **rendered at the UA's 16px** |
+  | `overflow-x: auto` | `.scroll` in the style block | no horizontal scroll |
+  | the whole cell base | `th {...}` / `td {...}` | rules stopping short of the edge |
+  | 1px of type size | `.label` resolving across two rules | header labels a pixel large |
+
+  **And one that is the same failure inverted, which is the worst of them.**
+  `app.css` sat outside every cascade layer. Unlayered CSS beats EVERY layered
+  rule at any specificity, and Tailwind's utilities live in `@layer utilities`
+  — so `button { font: inherit; border: none }` silently outranked
+  `text-label` and `border-rule` on every button in the app. Both header
+  buttons rendered at the UA's 16px with no border **while carrying the classes
+  that say otherwise**. It had been true since phase 2 and only surfaced in
+  phase 4, because until then every converted component had had its competing
+  rules deleted; App.svelte's buttons were the first converted elements a
+  surviving global rule still matched. Pager had been quietly unstyled that
+  whole time. The element rules now live in `@layer base`; the `:root` blocks
+  deliberately do not, since they define custom properties rather than compete
+  for declarations.
+
+  None of these errored. None was visible in a diff. Two were caught by tests,
+  one by the user's eye, the rest by instrumentation added afterwards.
+
+  **The instrumentation is the deliverable, not the conversions.** Two things
+  make this tractable and both should outlive the migration:
+
+  - A **scope-aware dead-class sweep**. A class the markup keeps after its rule
+    is deleted renders at browser defaults — and because `app.css` sets a font
+    *family* on `body` but never a *size*, a dropped `font-size` lands on 16px
+    rather than on the 12px everything else inherits. Scope-awareness is not
+    optional: `.count` was present in the built CSS the entire time it was
+    broken, as another component's scoped rule.
+  - A **before/after computed-style diff**. Snapshot the panel's rendered
+    styles keyed by DOM position (not by class — classes are what changes),
+    convert, then diff. It found the slack-cell regression within a minute of
+    the ProcessTable conversion landing. Keyed by position it also reports live
+    data changes as noise, so filter to cells that hold no text of their own.
+
+  **A baseline is only as good as the state it captured.** The phase-4 diff
+  flagged five Pager buttons as changed; they were the layering fix REPAIRING
+  them, and the snapshot had recorded the broken state as normal. Production on
+  `:8080` is the only reference that is not downstream of the migration, and
+  every phase should be checked against it before it is called done.
+
+  **What to do before converting anything else:** list every declaration that
+  reaches the component from outside its own class attributes — global helpers,
+  element selectors, the style block, UA defaults — and name each one in a
+  constant. For ProcessTable that list was five items and the conversion landed
+  with zero structural diffs against its baseline.
 
 **Revisit if the audience changes.** These reasons are about a project whose
 CSS is read more often than it is written, by people who need to know *why*.

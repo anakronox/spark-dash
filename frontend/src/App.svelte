@@ -278,16 +278,114 @@
     return { tokensPerSec, largestFreeBytes, largestFreeWhere, up, total: nodes.length };
   });
 
+
+  /* PAGE CHROME as named class strings -- see `lib/styles.md`. The layout
+     ENGINE stays in CSS below, and the rule dividing them is stated there.
+
+     One thing the split fixed on its own: `.label` meant three different
+     things in this file -- the figure's caption, the settings button's word,
+     the alerts button's word -- with three different rules resolving by
+     specificity. Naming them separately is not tidying; it is the
+     "two meanings under one class is how a stylesheet starts lying" problem
+     that ModelsTable's `.idle` comment already names. */
+
+  const SHELL =
+    'mx-auto grid max-w-[2400px] gap-4 px-5 pt-5 pb-12 transition-opacity ' +
+    'duration-200 min-[1160px]:px-8';
+  /* The whole page recedes when data stops arriving -- a global, unmissable
+     signal that reading these numbers is a mistake. */
+  const STALE = 'opacity-[0.55]';
+
+  const TOP =
+    'flex flex-wrap items-baseline justify-between gap-x-4 gap-y-[10px] ' +
+    'pb-1 border-b border-rule';
+  const BRAND = 'flex items-baseline gap-[10px]';
+  const H1 = 'text-[15px] font-bold tracking-[0.02em]';
+  const BRAND_TAG = 'text-ink-muted text-micro tracking-[0.14em] uppercase';
+  const RIGHT = 'flex items-center gap-[14px]';
+
+  const MUTED = 'text-ink-muted';
+  const NUM = 'tabular-nums';
+
+  /* Two buttons that open two panels should not look like different kinds of
+     control, so these share everything but their resting border: alerts is
+     quiet until something is firing, settings is always outlined. */
+  const TRIGGER_BASE =
+    'inline-flex items-center gap-[6px] text-label px-2 py-[3px] rounded-sm border';
+  const SETTINGS_TRIGGER =
+    `${TRIGGER_BASE} border-rule text-ink-muted hover:text-ink hover:border-ink-muted`;
+  const SETTINGS_LABEL = 'text-micro tracking-[0.08em] uppercase';
+
+  /* Quiet by default -- a permanently loud alerts button on a healthy
+     dashboard trains you to ignore it. */
+  const ALERTS_TRIGGER =
+    `${TRIGGER_BASE} tracking-[0.08em] uppercase text-ink-muted border-transparent ` +
+    'hover:text-ink hover:border-rule';
+  const ALERTS_LOUD = 'text-ink border-rule';
+  /* 10px and 0.12em, NOT inherited from the button.
+     `.label` meant three things in this file, and these two spans resolved by
+     specificity across two of them: the standalone `.label` supplied the size
+     (10px) while `.alerts-trigger .label` supplied only what it overrode. Both
+     labels therefore rendered a pixel SMALLER than the button around them, and
+     letting them simply inherit changed two elements the split was supposed to
+     leave alone. Caught by the computed-style diff, not by reading.
+
+     The glyph and the count carry the button; the word is the first to go. */
+  const ALERTS_LABEL = 'text-micro tracking-[0.12em] uppercase max-[640px]:hidden';
+  const BADGE = 'px-[5px] rounded-full bg-rule text-ink tabular-nums';
+
+  const NOTICE = 'text-body px-3 py-[9px] rounded-sm bg-panel border border-rule text-ink-2';
+  /* `info` is neutral ink deliberately: being scoped is a state you chose, not
+     a problem. Borrowing the warning colour would put a filter in the same
+     visual class as a link that went down. */
+  const NOTICE_TONE: Record<string, string> = {
+    warning:
+      'text-warning [border-color:color-mix(in_srgb,var(--warning)_40%,var(--rule))]',
+    info: 'text-ink-muted border-rule',
+    critical:
+      'text-critical [border-color:color-mix(in_srgb,var(--critical)_40%,var(--rule))]',
+  };
+  const notice = (tone?: string | null) =>
+    tone && NOTICE_TONE[tone] ? `${NOTICE} ${NOTICE_TONE[tone]}` : NOTICE;
+
+  const RETIRE =
+    'text-micro tracking-[0.06em] px-[7px] py-px ml-1 rounded-sm border border-rule ' +
+    'text-ink-muted cursor-pointer hover:not-disabled:text-ink ' +
+    'hover:not-disabled:border-ink-muted disabled:opacity-50 disabled:cursor-default';
+
+  const SUMMARY = 'flex flex-wrap items-baseline gap-x-9 gap-y-3 pt-[2px] pb-[6px]';
+  const FACTS = 'flex flex-wrap gap-x-7 gap-y-[10px] m-0 text-body';
+  const FACT = 'flex flex-col gap-px';
+  const DT = 'text-micro tracking-[0.12em] uppercase text-ink-muted';
+  const DD = 'm-0 tabular-nums';
+  const DD_ALERT = `${DD} text-critical`;
+
+  /* One figure carries the hierarchy: throughput is the only quantity here
+     that legitimately sums across the cluster. */
+  const FIGURE = 'flex flex-col gap-px';
+  const VALUE = 'text-[30px] font-bold tracking-[-0.03em] leading-[1.05] tabular-nums';
+  const CAPTION = 'text-micro tracking-[0.12em] uppercase text-ink-muted';
+
+  const CLUSTER_HEAD =
+    'flex flex-wrap items-baseline justify-between gap-x-[14px] gap-y-1 text-label';
+  const CLUSTER_H2 = 'text-label font-medium tracking-[0.14em] uppercase text-ink-2';
+
+  const FOOTER =
+    'flex items-baseline justify-between gap-3 text-micro tracking-[0.1em] ' +
+    'uppercase pt-1 border-t border-rule';
+  const RESET =
+    'text-micro tracking-[0.1em] uppercase text-ink-muted px-[5px] py-[2px] ' +
+    'rounded-sm hover:text-ink';
 </script>
 
-<div class="shell" class:stale={feed.stale}>
-  <header class="top">
-    <div class="brand">
-      <h1>spark<span class="dim">-dash</span></h1>
-      <span class="dim tag">GB10 nodes</span>
+<div class="{SHELL} {feed.stale ? STALE : ''}">
+  <header class={TOP}>
+    <div class={BRAND}>
+      <h1 class={H1}>spark<span class={MUTED}>-dash</span></h1>
+      <span class={BRAND_TAG}>GB10 nodes</span>
     </div>
 
-    <div class="right">
+    <div class={RIGHT}>
       <ConnectionStateView
         state={feed.state}
         tick={feed.tick}
@@ -298,17 +396,18 @@
            healthy day. Understated when there's nothing firing; a counted
            badge when there is. -->
       <button
-        class="alerts-trigger"
-        data-severity={alertFeed.worst}
+        class="{ALERTS_TRIGGER} {alertFeed.worst === 'critical' || alertFeed.worst === 'warning'
+          ? ALERTS_LOUD
+          : ''}"
         aria-label={alertFeed.alerts.length
           ? `${alertFeed.alerts.length} alerts firing. Open alerts and history.`
           : 'Open alerts and history'}
         onclick={() => (historyOpen = true)}
       >
         <span aria-hidden="true">{alertFeed.alerts.length ? '■' : '▲'}</span>
-        <span class="label">alerts</span>
+        <span class={ALERTS_LABEL}>alerts</span>
         {#if alertFeed.alerts.length}
-          <span class="badge num">{alertFeed.alerts.length}</span>
+          <span class={BADGE}>{alertFeed.alerts.length}</span>
         {/if}
       </button>
 
@@ -316,24 +415,24 @@
            the header is the most valuable strip on the page, and a control you
            touch twice a year should not hold a permanent seat in it. -->
       <button
-        class="settings-trigger"
+        class={SETTINGS_TRIGGER}
         aria-label="Open settings"
         onclick={() => (settingsOpen = true)}
       >
         <span aria-hidden="true">⚙</span>
-        <span class="label">settings</span>
+        <span class={SETTINGS_LABEL}>settings</span>
       </button>
     </div>
   </header>
 
   {#if feed.state === 'offline' && !feed.snapshot}
-    <p class="notice" data-tone="critical">
+    <p class={notice('critical')}>
       Can't reach the dashboard backend. It retries automatically.
     </p>
   {:else if feed.stale}
     <!-- Stale data is called out rather than quietly rendered: numbers that
          look current but aren't are the failure this UI must not have. -->
-    <p class="notice" data-tone="warning">
+    <p class={notice('warning')}>
       Showing the last frame received {feed.secondsSinceFrame}s ago. These numbers are not current.
     </p>
   {/if}
@@ -350,9 +449,9 @@
        sections and hidden columns: whatever removes things from the page has
        to be visible ON that page, with the way back attached. -->
   {#if pageFocus.scoped}
-    <p class="notice" data-tone={focusedNodePresent ? 'info' : 'warning'}>
+    <p class={notice(focusedNodePresent ? 'info' : 'warning')}>
       {#if focusedNodePresent}
-        Showing <span class="num">{pageFocus.node}</span> only — every table on
+        Showing <span class={NUM}>{pageFocus.node}</span> only — every table on
         this page is scoped to it.
       {:else}
         <!-- The dead end this avoids: scope to a node, have it removed from
@@ -360,10 +459,10 @@
              something that no longer exists. Same lesson as clamping the pager
              index when the row count moves — the state outlived what it
              referred to, and saying so beats rendering nothing. -->
-        Scoped to <span class="num">{pageFocus.node}</span>, which the cluster
+        Scoped to <span class={NUM}>{pageFocus.node}</span>, which the cluster
         no longer reports — so every table below is empty.
       {/if}
-      <button class="retire" onclick={() => pageFocus.clear()}>show all nodes</button>
+      <button class={RETIRE} onclick={() => pageFocus.clear()}>show all nodes</button>
     </p>
   {/if}
 
@@ -372,13 +471,13 @@
          reports something MISSING, and a panel for absent data is a place
          nobody looks. The node otherwise reads as healthy, because everything
          being measured is. -->
-    <p class="notice" data-tone="warning">
+    <p class={notice('warning')}>
       Running but not collected:
       {#each unmonitored as [node, runtimes], i (node)}
-        {i > 0 ? ' · ' : ''}<span class="num">{runtimes.join(', ')}</span>
-        <span class="dim">on {node}</span>
+        {i > 0 ? ' · ' : ''}<span class={NUM}>{runtimes.join(', ')}</span>
+        <span class={MUTED}>on {node}</span>
       {/each}
-      <span class="dim">— no throughput, queue depth or cache metrics for these.</span>
+      <span class={MUTED}>— no throughput, queue depth or cache metrics for these.</span>
     </p>
   {/if}
 
@@ -386,21 +485,21 @@
     <!-- Named as what it IS and what it is not: a target down this long is
          either broken or retired, and nothing observable tells them apart.
          Saying so is more useful than picking one and being wrong. -->
-    <p class="notice" data-tone="warning">
+    <p class={notice('warning')}>
       Configured but absent:
       {#each absent as t (t.instance)}
-        <span class="num">{t.instance}</span>
-        <span class="dim">{t.job}{t.node ? ` on ${t.node}` : ''} · down {downFor(t.down_for_s)}</span>
+        <span class={NUM}>{t.instance}</span>
+        <span class={MUTED}>{t.job}{t.node ? ` on ${t.node}` : ''} · down {downFor(t.down_for_s)}</span>
         {#if isEngineJob(t.job)}
           <!-- Removal only, and only for inference. Hardware still exists, so
                being able to delete an environmental target would let someone
                permanently blind the dashboard to a real failure. -->
-          <button class="retire" disabled={retiring === t.instance} onclick={() => retire(t)}>
+          <button class={RETIRE} disabled={retiring === t.instance} onclick={() => retire(t)}>
             {retiring === t.instance ? 'removing…' : 'retire'}
           </button>
         {/if}
       {/each}
-      <span class="dim">— either broken or deliberately gone; nothing here can tell which.</span>
+      <span class={MUTED}>— either broken or deliberately gone; nothing here can tell which.</span>
     </p>
   {/if}
 
@@ -408,49 +507,49 @@
     <!-- Beside `unmonitored` rather than in a panel, for the same reason: it
          reports something ABSENT, and a panel for absent data is a place
          nobody looks. -->
-    <p class="notice" data-tone="warning">
+    <p class={notice('warning')}>
       Configured but not answering:
       {#each unreachable as u, i (u.node + u.endpoint)}
-        {i > 0 ? ' · ' : ''}<span class="num">{u.endpoint}</span>
-        <span class="dim">{u.runtime} on {u.node}</span>
+        {i > 0 ? ' · ' : ''}<span class={NUM}>{u.endpoint}</span>
+        <span class={MUTED}>{u.runtime} on {u.node}</span>
       {/each}
-      <span class="dim">— check the port in cluster.yml, or whether the server is running.</span>
+      <span class={MUTED}>— check the port in cluster.yml, or whether the server is running.</span>
     </p>
   {/if}
 
   {#if versionsDiverge}
-    <p class="notice" data-tone="warning">
+    <p class={notice('warning')}>
       Nodes are running different agent builds:
       {#each agentVersions as [version, ids], i (version)}
-        {i > 0 ? ' · ' : ''}<span class="num">{version}</span>
-        <span class="dim">({ids.join(', ')})</span>
+        {i > 0 ? ' · ' : ''}<span class={NUM}>{version}</span>
+        <span class={MUTED}>({ids.join(', ')})</span>
       {/each}
     </p>
   {/if}
 
   {#if feed.snapshot}
-    <section class="summary">
+    <section class={SUMMARY}>
       <!-- One figure carries the hierarchy. Throughput is the only quantity
            here that legitimately sums across the cluster. -->
-      <div class="figure">
-        <span class="value num">{num(cluster.tokensPerSec, 1)}</span>
-        <span class="label">tokens/sec</span>
+      <div class={FIGURE}>
+        <span class={VALUE}>{num(cluster.tokensPerSec, 1)}</span>
+        <span class={CAPTION}>tokens/sec</span>
       </div>
 
-      <dl class="facts">
-        <div>
-          <dt>largest free block</dt>
-          <dd>
-            <span class="num">{gib(cluster.largestFreeBytes)}</span> GiB
+      <dl class={FACTS}>
+        <div class={FACT}>
+          <dt class={DT}>largest free block</dt>
+          <dd class={DD}>
+            <span class={NUM}>{gib(cluster.largestFreeBytes)}</span> GiB
             {#if cluster.largestFreeWhere}
-              <span class="dim">on {cluster.largestFreeWhere}</span>
+              <span class={MUTED}>on {cluster.largestFreeWhere}</span>
             {/if}
           </dd>
         </div>
-        <div>
-          <dt>nodes up</dt>
-          <dd class="num" data-alert={cluster.up < cluster.total ? 'yes' : null}>
-            {cluster.up}<span class="dim">/{cluster.total}</span>
+        <div class={FACT}>
+          <dt class={DT}>nodes up</dt>
+          <dd class={cluster.up < cluster.total ? DD_ALERT : DD}>
+            {cluster.up}<span class={MUTED}>/{cluster.total}</span>
           </dd>
         </div>
       </dl>
@@ -469,9 +568,9 @@
              right; standalone nodes get no frame because there's nothing to
              combine. -->
         <section class="cluster">
-          <header class="cluster-head">
-            <h2>{cluster.name}</h2>
-            <span class="dim">{cluster.nodes.length} nodes pooled</span>
+          <header class={CLUSTER_HEAD}>
+            <h2 class={CLUSTER_H2}>{cluster.name}</h2>
+            <span class={MUTED}>{cluster.nodes.length} nodes pooled</span>
           </header>
           <!-- The pooled band, drawn exactly like a node's own. Honest here
                precisely because these nodes are clustered: a model can span
@@ -530,13 +629,13 @@
       </div>
     </div>
   {:else if feed.state !== 'offline'}
-    <p class="notice">Waiting for the first frame…</p>
+    <p class={notice()}>Waiting for the first frame…</p>
   {/if}
 
-  <footer>
-    <span class="dim">read-only · never loads or unloads a model</span>
+  <footer class={FOOTER}>
+    <span class={MUTED}>read-only · never loads or unloads a model</span>
     {#if !layout.isDefault}
-      <button class="reset" onclick={() => layout.reset()}>reset layout</button>
+      <button class={RESET} onclick={() => layout.reset()}>reset layout</button>
     {/if}
   </footer>
 </div>
@@ -581,155 +680,28 @@
 {/snippet}
 
 <style>
-  .shell {
-    /* Wide, but not unlimited. 1180px left a third of a 1555px window empty
-       and over 2000px of a 34" ultrawide, which is real estate this page can
-       use: the history chart gets more resolution per pixel of time, and the
-       compact grid fits more nodes per row.
-       Still capped, because the tables are the limit rather than the cards —
-       past roughly this width the columns of a models or process row drift so
-       far apart that tracking one row across them stops being reliable, which
-       is the failure a max-width exists to prevent. */
-    max-width: 2400px;
-    margin: 0 auto;
-    padding: 20px 20px 48px;
-    display: grid;
-    gap: 16px;
-    transition: opacity 200ms ease;
-  }
+  /* THE LAYOUT ENGINE — and the reason it is still CSS while the chrome above
+     is not.
 
-  /* More breathing room once the shell is actually using the window. At 20px
-     the content runs almost to the bezel on a wide monitor, which reads as
-     unfinished rather than spacious. */
-  @media (min-width: 1160px) {
-    .shell {
-      padding-left: 32px;
-      padding-right: 32px;
-    }
-  }
+     Every rule below is one where an ANCESTOR's state decides a DESCENDANT's
+     layout, at up to four custom breakpoints each: `.node-grid.compact
+     .cluster .nodes` is three levels of context before a single declaration.
+     Utilities can express that — an ancestor-selector variant, nesting the
+     whole `.node-grid.compact` context inside the child's own class and
+     stacking a breakpoint prefix on top — but it inverts the reading order and
+     repeats that context once per breakpoint, four times, per element.
 
-  /* The whole page recedes when data stops arriving — a global, unmissable
-     signal that reading these numbers is a mistake. */
-  .shell.stale {
-    opacity: 0.55;
-  }
+     The dividing rule, and it is worth stating because it is the one judgement
+     call in this migration: AN ELEMENT WHOSE CLASS IS A SELECTOR HOOK FOR AN
+     ANCESTOR-STATE RULE KEEPS ITS STYLING HERE. Those classes have to survive
+     in the markup regardless, and splitting one element's styling between a
+     class attribute and a rule is worse than either alone.
 
-  .top {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px 16px;
-    padding-bottom: 4px;
-    border-bottom: 1px solid var(--rule);
-  }
-
-  .brand {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-  }
-
-  h1 {
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-  }
-
-  .tag {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-  }
-
-  .right {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
+     The breakpoints (600/900/1100/1160/2320) are also none of Tailwind's, and
+     they are load-bearing: each is the width at which a specific thing stops
+     being readable, documented at its rule. */
 
 
-
-  /* Matches .alerts-trigger beside it — two buttons that open two panels
-     should not look like different kinds of control. */
-  .settings-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: var(--radius);
-    border: 1px solid var(--rule);
-    color: var(--ink-muted);
-  }
-
-  .settings-trigger:hover {
-    color: var(--ink);
-    border-color: var(--ink-muted);
-  }
-
-  .settings-trigger .label {
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-
-  .summary {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 12px 36px;
-    padding: 2px 0 6px;
-  }
-
-  .facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 28px;
-    margin: 0;
-    font-size: 12px;
-  }
-
-  .facts div {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .facts dt {
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-  }
-
-  .facts dd {
-    margin: 0;
-  }
-
-  .facts dd[data-alert='yes'] {
-    color: var(--critical);
-  }
-
-  .figure {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-  }
-
-  .value {
-    font-size: 30px;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.05;
-  }
-
-  .label {
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-  }
 
   .cluster {
     display: grid;
@@ -739,22 +711,7 @@
     border-radius: var(--radius);
   }
 
-  .cluster-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 4px 14px;
-    font-size: 11px;
-  }
 
-  .cluster-head h2 {
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-2);
-  }
 
   /* Full mode: unchanged, a column of full-width cards. Compact turns this
      into the shared grid the cards flow through. */
@@ -762,6 +719,8 @@
     display: grid;
     gap: 12px;
   }
+
+
 
   /* POWER-OF-TWO COLUMN COUNTS: 1, 2, 4 — never 3.
      Clusters scale in powers of two, so a 3-wide grid is the one that wastes a
@@ -774,17 +733,23 @@
     align-items: start;
   }
 
+
+
   @media (min-width: 600px) {
     .node-grid.compact {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
+
+
   @media (min-width: 1160px) {
     .node-grid.compact {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
+
+
 
   /* Eight only where a card still clears ~270px — the width at which the
      memory band's legend stays readable. Below that, more columns would buy
@@ -796,6 +761,8 @@
     }
   }
 
+
+
   /* DIRECT children only. These are the standalone wrappers — one per node,
      since a standalone node is a cluster of one — and they stop generating
      boxes so their cards become items of .node-grid itself. Without the child
@@ -806,12 +773,16 @@
     display: contents;
   }
 
+
+
   /* A framed cluster keeps its frame and spans the full row: the frame means
      "these pool memory", and one covering part of a row would say something
      untrue about which nodes are grouped. */
   .node-grid.compact .cluster {
     grid-column: 1 / -1;
   }
+
+
 
   /* Its members then grid among themselves, inside the frame, on the same
      power-of-two counts — a pooled cluster is exactly where sizes are powers
@@ -821,11 +792,15 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+
+
   @media (min-width: 600px) {
     .node-grid.compact .cluster .nodes {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
+
+
 
   @media (min-width: 1160px) {
     .node-grid.compact .cluster .nodes {
@@ -833,11 +808,15 @@
     }
   }
 
+
+
   @media (min-width: 2320px) {
     .node-grid.compact .cluster .nodes {
       grid-template-columns: repeat(8, minmax(0, 1fr));
     }
   }
+
+
 
   .nodes {
     display: grid;
@@ -848,127 +827,15 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+
+
   @media (min-width: 900px) {
     .nodes {
       grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
     }
   }
 
-  .retire {
-    font-size: 10px;
-    letter-spacing: 0.06em;
-    padding: 1px 7px;
-    margin-left: 4px;
-    border-radius: var(--radius);
-    border: 1px solid var(--rule);
-    color: var(--ink-muted);
-    cursor: pointer;
-  }
 
-  .retire:hover:not(:disabled) {
-    color: var(--ink);
-    border-color: var(--ink-muted);
-  }
-
-  .retire:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  .notice {
-    font-size: 12px;
-    padding: 9px 12px;
-    border-radius: var(--radius);
-    background: var(--panel);
-    border: 1px solid var(--rule);
-    color: var(--ink-2);
-  }
-
-  .notice[data-tone='warning'] {
-    color: var(--warning);
-    border-color: color-mix(in srgb, var(--warning) 40%, var(--rule));
-  }
-
-  /* Neutral ink, deliberately: being scoped is a state you chose, not a
-     problem. Borrowing the warning colour would put a filter in the same
-     visual class as a link that went down. */
-  .notice[data-tone='info'] {
-    color: var(--ink-muted);
-    border-color: var(--rule);
-  }
-
-  .notice[data-tone='critical'] {
-    color: var(--critical);
-    border-color: color-mix(in srgb, var(--critical) 40%, var(--rule));
-  }
-
-  footer {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding-top: 4px;
-    border-top: 1px solid var(--rule);
-  }
-
-  /* Only shown once the order has actually been changed — an always-present
-     reset for a layout you never touched is clutter. */
-  /* Sits with the connection state and theme picker: page-level controls,
-     not part of any panel. Quiet by default — a permanently loud alerts
-     button on a healthy dashboard trains you to ignore it. */
-  .alerts-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    padding: 3px 8px;
-    border-radius: var(--radius);
-    border: 1px solid transparent;
-  }
-
-  .alerts-trigger:hover {
-    color: var(--ink);
-    border-color: var(--rule);
-  }
-
-  .alerts-trigger[data-severity='critical'],
-  .alerts-trigger[data-severity='warning'] {
-    color: var(--ink);
-    border-color: var(--rule);
-  }
-
-  .alerts-trigger .badge {
-    padding: 0 5px;
-    border-radius: 999px;
-    background: var(--rule);
-    color: var(--ink);
-  }
-
-  @media (max-width: 640px) {
-    .alerts-trigger .label {
-      /* The glyph and count carry it; the word is the first thing to go. */
-      display: none;
-    }
-  }
-
-  .reset {
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    padding: 2px 5px;
-    border-radius: var(--radius);
-  }
-
-  .reset:hover {
-    color: var(--ink);
-  }
 
   /* TWO columns, never more. These are wide tables and a chart; at three
      across the columns collide and the history plot loses the time resolution
@@ -983,6 +850,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+
+
   /* A zone is a plain vertical stack, and that is the whole point: each fills
      to its own content's height, so a short section can sit under another
      short section regardless of how tall the other column has grown. */
@@ -995,6 +864,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+
+
   .cols {
     display: grid;
     gap: 16px;
@@ -1005,6 +876,8 @@
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
+
+
 
   /* minmax(0, 1fr), NEVER a bare 1fr — this is the whole of the dashboard's
      layout shift, and it is not obvious.
@@ -1030,6 +903,8 @@
     }
   }
 
+
+
   /* Empty zones are invisible and take no space until a drag starts, so the
      page is never decorated with placeholders for arrangements nobody asked
      for. */
@@ -1038,6 +913,8 @@
     border: 1px dashed var(--rule);
     border-radius: var(--radius);
   }
+
+
 
   .zone-hint {
     display: none;
@@ -1054,9 +931,13 @@
     pointer-events: none;
   }
 
+
+
   .sections.dragging .zone.empty .zone-hint {
     display: flex;
   }
+
+
 
   /* The destination, drawn where the section will land.
      An accent line rather than a ghost outline of the card: the card being
@@ -1080,6 +961,8 @@
     transition: top 90ms ease-out;
   }
 
+
+
   /* Caps, so the line reads as an insertion point between two things rather
      than as a rule belonging to the card below it. */
   .drop-line::before,
@@ -1093,9 +976,13 @@
     background: var(--series-1);
   }
 
+
+
   .drop-line::before {
     left: 0;
   }
+
+
 
   .drop-line::after {
     right: 0;

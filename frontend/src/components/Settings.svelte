@@ -662,7 +662,7 @@
                       onchange={(e) =>
                         setWatched(n, iface.name, (e.currentTarget as HTMLInputElement).checked)}
                     />
-                    <span class="mono">{iface.name}</span>
+                    <span>{iface.name}</span>
                     {#if !iface.observed}
                       <!-- Configured but not currently reported. Kept, not
                            dropped: the node may be down or the NIC renamed,
@@ -673,7 +673,7 @@
                   </label>
                 {/each}
                 <p class="hint dim">
-                  Unticked stops <span class="mono">NetworkLinkDown</span> and its
+                  Unticked stops <span>NetworkLinkDown</span> and its
                   RoCE port alerting. The interface keeps being collected and
                   charted.
                 </p>
