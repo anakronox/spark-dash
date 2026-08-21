@@ -3572,28 +3572,54 @@ lived on one node, and `danflashes` serves **one** vLLM model across two.
   A worker therefore needs no `runtimes:` block at all, which is what
   `cluster.yml.example` now says.
 
-- [ ] **Z2. A distributed model should read as one model.** The real gap, and
-  the one a reader notices.
+- [x] **Z2. A distributed model reads as one model.** Shipped 2026-08-21.
 
-  `deepseek-v4-flash-0731` occupies 96.8 GiB on each of two nodes — 193.6 GiB
-  of weights. The Models table shows **one row at 96.8 GiB** on `sparketa`,
-  because that is the node with the API. `sparkjr`'s identical 96.8 GiB carries
-  `model=<none>, server=<none>` and reads as anonymous vLLM memory.
+  `deepseek-v4-flash-0731` is 96.8 GiB on each of two nodes — **193.6 GiB of
+  weights**. The dashboard showed 96.8, and `sparkjr`'s identical half carried
+  `model=None, server=None` and read as anonymous vLLM memory.
 
-  So "what is running where" understates a distributed model by however many
-  workers it has, and the memory band cannot say which model is responsible for
-  the largest single allocation on the node.
+  **The process names carry the topology, which was better news than expected:**
+  `VLLM::Worker_TP0` on the head and `VLLM::Worker_TP1` on the worker — tensor
+  parallel ranks, declared by vLLM itself. Not relied on for the join (the
+  format is vLLM's to change), but it confirmed the shape.
 
-  The join is available and is not currently made: a worker's memory belongs to
-  whichever model its cluster's head node is serving, when the cluster serves
-  exactly one. With several, the same ambiguity rule the rest of the codebase
-  uses applies — attribute when unambiguous, leave unset otherwise, never
-  guess.
+  **The join happens in the backend poller**, for the same reason Z1's
+  suppression does: a node does not know it is in a cluster, and certainly not
+  what its peers are serving. `attribute_cluster_shards` runs once every node's
+  snapshot is in hand, which is the only place the answer exists.
 
-  Open question worth settling first: should the table show one row for the
-  model with its total footprint and a node breakdown, or a row per node? The
-  first answers "what is loaded", the second "what is this box doing", and the
-  table is currently the second.
+  **Only when unambiguous.** A cluster serving two models through one runtime
+  leaves its shards unnamed — the same wall the agent hits with two local
+  instances. Attributing 96.8 GiB to the wrong model is worse than leaving it
+  unlabelled, because the memory band would then confidently mis-state what is
+  holding the pool. An unreachable instance does not name shards either: its
+  `model` field carries the endpoint address as a placeholder, and that string
+  would otherwise propagate through the band as though it were a model.
+
+  **Attribution is flagged, not silent.** `ProcessInfo.shard` marks a name the
+  backend inferred rather than one the process reported, and the process table
+  shows it as `·shard`. A reader can tell the two apart.
+
+  **A mistake worth recording, caught while building.** The first design
+  collapsed multiple rows for one model into one. It was dead code: a worker has
+  no configured endpoint, so it never produced a row in the first place — the
+  model always had exactly one row, on the head node, with no size at all. Worse,
+  had it ever fired it would have summed **data-parallel replicas**, which are
+  copies rather than shards, reporting double the weights actually loaded. The
+  footprint is now computed from the GPU process table and summed per cluster,
+  which is correct for shards and never sees replicas because they each keep
+  their own row.
+
+  The Models table names the cluster rather than one shard's host when a model
+  spans nodes, with an `N×` marker whose tooltip lists the hosts — "2 nodes"
+  does not tell you which one to go and look at.
+
+  **Still open:** Prometheus does not get this. The `sparkdash_gpu_process_*`
+  series come from each agent's own `/metrics`, so a worker's shard is still
+  `model=""` there and Grafana sees it unattributed. Fixing that means pushing
+  peer model names down to the agent, and model names are live data on a 60s
+  config TTL — the lag would show. Noted in `central/grafana/README.md` rather
+  than papered over.
 
 - [x] **Z3. `MemoryNearlyFull` asked the wrong question.** Shipped 2026-08-21,
   replaced by `UnexplainedMemoryUse`.

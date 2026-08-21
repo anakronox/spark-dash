@@ -82,6 +82,17 @@ label; there is no enum to decode.
 a panel can draw its bands from the hardware instead of hardcoding 82/86. The
 GPU temperature panel plots them as dashed reference lines.
 
+**A distributed model's worker shards are unattributed here.** The
+`sparkdash_gpu_process_*` series come from each agent's own `/metrics`, and a
+tensor-parallel worker has no endpoint to learn its model name from — so on a
+cluster like `danflashes` the head node's shard carries
+`model="deepseek-v4-flash-0731"` and the worker's identical 96.8 GiB carries
+`model=""`. Summing by model therefore under-reports a distributed model's
+footprint by however many workers it has. The live dashboard fills this in from
+the cluster's head node (see `attribute_cluster_shards`); Prometheus does not,
+because the name is live data and the agent's config has a 60s TTL. To get the
+true footprint here, sum by cluster and runtime rather than by model.
+
 **GPU process memory is aggregated, never per-pid.** It carries `runtime` and
 `model`, not `pid` — a deliberate cardinality trade. Per-process detail with
 pids exists only in the agent's live `/snapshot`, and is not in Prometheus at

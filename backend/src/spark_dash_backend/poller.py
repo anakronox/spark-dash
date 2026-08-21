@@ -72,8 +72,63 @@ async def gather_cluster(
     if not nodes:
         return ClusterSnapshot(ts=datetime.now(UTC), nodes=[])
 
-    snapshots = await asyncio.gather(*(fetch_node(client, n) for n in nodes))
-    return ClusterSnapshot(ts=datetime.now(UTC), nodes=list(snapshots))
+    snapshots = list(await asyncio.gather(*(fetch_node(client, n) for n in nodes)))
+    attribute_cluster_shards(snapshots)
+    return ClusterSnapshot(ts=datetime.now(UTC), nodes=snapshots)
+
+
+def attribute_cluster_shards(snapshots: list[NodeSnapshot]) -> None:
+    """Name the model behind a distributed model's worker shards, in place.
+
+    In tensor-parallel inference one node runs the API and the rest hold shards
+    with no endpoint of their own. The agent attributes its own processes by
+    counting CONFIGURED instances, so a worker node -- which has none -- leaves
+    every shard unattributed: on `sparkjr` a 96.8 GiB `VLLM::Worker_TP1` read as
+    anonymous vLLM memory while its `TP0` twin on `sparketa` was named.
+
+    HERE RATHER THAN IN THE AGENT, for the same reason Z1's suppression is
+    computed here: a node does not know it is in a cluster (`cluster` is stamped
+    on above), and it certainly does not know what its peers are serving. The
+    backend holds every node's snapshot at once, which is the only place the
+    join is available.
+
+    ONLY WHEN UNAMBIGUOUS. If a cluster serves two models through one runtime
+    there is no way to tell which shard belongs to which -- the same wall the
+    agent hits with two local instances -- so nothing is attributed rather than
+    guessed. Attributing a 96.8 GiB block to the wrong model is worse than
+    leaving it unlabelled, because the memory band would then confidently
+    mis-state what is holding the pool.
+
+    Never overwrites: a process the agent already named keeps that name.
+    """
+    by_cluster: dict[str, list[NodeSnapshot]] = {}
+    for snap in snapshots:
+        if snap.cluster:
+            by_cluster.setdefault(snap.cluster, []).append(snap)
+
+    for members in by_cluster.values():
+        # runtime -> the models its configured instances serve, cluster-wide.
+        served: dict[str, set[str]] = {}
+        for snap in members:
+            for runtime, instances in snap.runtimes.engines.items():
+                for inst in instances:
+                    if inst.reachable and inst.model:
+                        served.setdefault(runtime, set()).add(inst.model)
+
+        for runtime, models in served.items():
+            if len(models) != 1:
+                log.debug(
+                    "cluster serves %d %s models; leaving shards unattributed",
+                    len(models),
+                    runtime,
+                )
+                continue
+            model = next(iter(models))
+            for snap in members:
+                for proc in snap.processes:
+                    if proc.runtime == runtime and not proc.model:
+                        proc.model = model
+                        proc.shard = True
 
 
 class LivePoller:

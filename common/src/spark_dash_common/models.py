@@ -255,6 +255,15 @@ class ProcessInfo(BaseModel):
         "per-model router metrics. None for a router parent (which serves no "
         "single model) and for non-LLM workloads.",
     )
+    shard: bool = Field(
+        default=False,
+        description="True when this process holds part of a model served by "
+        "the CLUSTER rather than by this node.\n\n"
+        "A tensor-parallel worker has no endpoint of its own, so the agent "
+        "cannot name what it is running; the backend fills the model in from "
+        "the cluster's head node. Flagged rather than silently merged so a "
+        "reader can tell an attributed shard from a process that named itself.",
+    )
     server: str | None = Field(
         default=None,
         description="host:port this model is served from.\n\n"

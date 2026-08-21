@@ -68,6 +68,11 @@ export interface ProcessInfo {
    * so a row here lines up with a row in the models table. Null for a router
    * parent (which serves every model and holds none) and for non-LLM work. */
   model: string | null;
+  /* True when this process holds part of a model served by the CLUSTER rather
+   * than by this node — a tensor-parallel worker with no endpoint of its own,
+   * whose model name the backend filled in from the head node. Flagged so an
+   * inferred name is distinguishable from one the process reported itself. */
+  shard: boolean;
   /* host:port this model is served from — a router for llama.cpp, the
    * instance's own endpoint for vLLM. See ProcessInfo.server in the agent. */
   server: string | null;

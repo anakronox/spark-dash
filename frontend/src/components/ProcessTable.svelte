@@ -34,6 +34,9 @@
     name: string;
     runtime: string | null;
     model: string | null;
+    /** The model name was inferred from the cluster's head node rather than
+     *  reported by the process itself. */
+    shard: boolean;
     bytes: number;
     sharePct: number;
     smPct: number;
@@ -53,6 +56,7 @@
           name: p.name,
           runtime: p.runtime,
           model: p.model,
+          shard: p.shard ?? false,
           bytes: p.gpu_mem_bytes,
           smPct: p.sm_pct,
           encPct: p.encoder_pct,
@@ -139,9 +143,20 @@
     <!-- A router parent legitimately has no model: it serves all of them and
          holds only its own overhead. An em dash says that plainly rather than
          implying missing data. -->
-    <td class="modelcol" title={row.model || undefined}>
+    <td
+      class="modelcol"
+      title={row.shard
+        ? `${row.model} — shard of a model served by this node's cluster`
+        : row.model || undefined}
+    >
       {#if row.model}
         <span class="model">{row.model}</span>
+        {#if row.shard}
+          <!-- The name was filled in by the backend from the cluster's head
+               node, not reported by the process. Marked so an inferred
+               attribution is distinguishable from a self-reported one. -->
+          <span class="dim" aria-label="cluster shard">·shard</span>
+        {/if}
       {:else}
         <span class="dim">—</span>
       {/if}

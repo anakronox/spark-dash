@@ -31,7 +31,13 @@
 
   interface Row {
     key: string;
+    /** The node, or the CLUSTER when a model spans one. A distributed model is
+     *  served by the cluster, so naming a single node would pick one shard's
+     *  host and call it the answer. */
     node: string;
+    /** Nodes this model's weights actually sit on, when there is more than
+     *  one. Empty for the ordinary single-node case. */
+    shardNodes: string[];
     runtime: string;
     server: string;
     model: string;
@@ -107,7 +113,44 @@
   };
 
   const rows = $derived.by<Row[]>(() => {
-    const out: Row[] = [];
+    /* WHERE A MODEL'S WEIGHTS ACTUALLY SIT, keyed by the thing that serves it.
+     *
+     * A tensor-parallel model is split across a cluster: on `danflashes`,
+     * `deepseek-v4-flash-0731` is 96.8 GiB on each of two nodes -- 193.6 GiB of
+     * weights. Only the head node has an endpoint, so only IT produces a row,
+     * and that row previously showed no size at all: the engines expose no
+     * equivalent of llama.cpp's `meta`, so a vLLM row's footprint has to come
+     * from the GPU process table.
+     *
+     * Summed over the CLUSTER, because the shards are parts of one model
+     * rather than copies of it. Keyed by cluster (falling back to the node) so
+     * a standalone node is unaffected.
+     *
+     * The worker's shard is in here at all only because the backend names it
+     * from the head node -- an agent on a worker has no endpoint to learn the
+     * model from. See `attribute_cluster_shards`. */
+    const footprint = new Map<string, { bytes: number; nodes: Set<string> }>();
+    for (const n of nodes) {
+      for (const proc of n.processes ?? []) {
+        if (!proc.model || !proc.runtime) continue;
+        const k = `${n.cluster ?? n.node_id}/${proc.runtime}/${proc.model}`;
+        const e = footprint.get(k) ?? { bytes: 0, nodes: new Set<string>() };
+        e.bytes += proc.gpu_mem_bytes;
+        e.nodes.add(n.node_id);
+        footprint.set(k, e);
+      }
+    }
+
+    /* Turns a footprint entry into the row fields describing WHERE the model
+       lives. One node reports that node and no shard list; a model spanning a
+       cluster reports the cluster and names its shards. */
+    const spread = (e: { bytes: number; nodes: Set<string> } | undefined) => {
+      if (!e) return { sizeBytes: null as number | null, shardNodes: [] as string[] };
+      const hosts = [...e.nodes].sort();
+      return { sizeBytes: e.bytes, shardNodes: hosts.length > 1 ? hosts : [] };
+    };
+
+    let out: Row[] = [];
     for (const node of nodes) {
       for (const router of node.runtimes.llama_cpp) {
         for (const m of router.models) {
@@ -115,6 +158,7 @@
             key: `${node.node_id}/${router.endpoint}/${m.name}`,
             node: node.node_id,
             runtime: 'llama.cpp',
+            shardNodes: [],
             server: router.name || router.endpoint,
             model: m.name,
             state: m.state,
@@ -136,8 +180,14 @@
       for (const [runtime, instances] of engines(node.runtimes)) {
         for (const v of instances) {
           out.push({
-            key: `${node.node_id}/${runtime}/${v.model}`,
-            node: node.node_id,
+            key: `${node.cluster ?? node.node_id}/${runtime}/${v.model}`,
+            /* The CLUSTER when the model spans one: naming a single node would
+               pick one shard's host and present it as the answer. */
+            node:
+              (footprint.get(`${node.cluster ?? node.node_id}/${runtime}/${v.model}`)?.nodes
+                .size ?? 1) > 1
+                ? (node.cluster ?? node.node_id)
+                : node.node_id,
             runtime,
             // Nothing fronts these engines, so an instance's own endpoint is
             // where the model is served from. Showing a dash here made it look
@@ -152,8 +202,7 @@
             kvCachePct: v.kv_cache_pct,
             running: v.requests_running,
             waiting: v.requests_waiting,
-            // Neither engine exposes an equivalent of llama.cpp's `meta`.
-            sizeBytes: null,
+            ...spread(footprint.get(`${node.cluster ?? node.node_id}/${runtime}/${v.model}`)),
             nParams: null,
             quantization: null,
             contextLength: null,
@@ -257,7 +306,16 @@
       {loadTimes[row.model] ? `~${Math.round(loadTimes[row.model].seconds)}s` : '—'}
     </td>
   {:else if c.key === 'node'}
-    <td class="dim">{row.node}</td>
+    <td class="dim">
+      {row.node}
+      {#if row.shardNodes.length}
+        <!-- The cluster is what SERVES the model; these are the boxes its
+             shards actually sit on. Named rather than counted, because "2
+             nodes" does not tell you which one to go and look at. -->
+        <span class="shards" title="Weights sharded across {row.shardNodes.join(', ')}"
+          >{row.shardNodes.length}&times;</span>
+      {/if}
+    </td>
   {:else if c.key === 'server'}
     <td class="dim">{row.server}</td>
   {:else if c.key === 'tok'}
@@ -407,6 +465,17 @@
   /* Reserved widths — see NetworkPanel. These columns are the most volatile on
      the page: they swing between an em dash and a live reading every time a
      model wakes or sleeps, which is a width change on every transition. */
+  /* A quiet marker, not a badge: it qualifies the name beside it rather than
+     competing with the state column for attention. */
+  .shards {
+    font-size: 10px;
+    padding: 0 4px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
   .toks {
     min-width: calc(7ch + 24px);
   }
