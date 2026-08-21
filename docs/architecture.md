@@ -114,12 +114,13 @@ requires a host kernel module.
   untouched; see [deployment.md](deployment.md). Also serves as the data source
   for the [live-view fast path](#live-view-fast-path) below, polled far more
   frequently than Prometheus scrapes it.
-- **Third-party GPU exporters (`dcgm-exporter` / `dgx-spark-prometheus`) are
-  deferred to Phase 4.** The agent reads NVML directly, and `dcgm-exporter`'s
-  headline advantage (GPU memory) is precisely what unified memory breaks on
-  GB10. Its remaining draw — SM/tensor-core activity, memory bandwidth — is
-  useful for inference tuning but not MVP-critical. See
-  [deployment.md](deployment.md#gpu-baseline-exporter--deferred-to-phase-4).
+- **Third-party GPU exporters (`dcgm-exporter` / `dgx-spark-prometheus`) will
+  not ship** — decided 2026-08-21 after three phases of deferral. The agent
+  reads NVML directly, and `dcgm-exporter`'s headline advantage (GPU memory) is
+  precisely what unified memory breaks on GB10. Its remaining draw is memory
+  bandwidth, which is a genuine blind spot and still not worth a resident
+  daemon on the inference node. See
+  [deployment.md](deployment.md#gpu-baseline-exporter--will-not-ship-decided-2026-08-21).
 - vLLM needs no sidecar — it already exposes `/metrics` natively; Prometheus
   scrapes it directly.
 

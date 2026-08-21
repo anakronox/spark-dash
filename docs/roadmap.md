@@ -359,8 +359,12 @@ size here.
 This matters more than a missing metric usually would: on a unified-memory part
 bandwidth is plausibly the real bottleneck, and we cannot see it. Everything
 below works around that rather than closing it. The only remaining route is DCGM
-profiling counters (`DCGM_FI_PROF_DRAM_ACTIVE`), which is a timeboxed spike with
-an uncertain answer, not a plan item. **Do not propose NVML for this again.**
+profiling counters (`DCGM_FI_PROF_DRAM_ACTIVE`), and **that route was closed
+2026-08-21: DCGM will not ship.** Memory bandwidth is therefore a known,
+accepted blind spot rather than an open question — see
+[H](#h--genericize-for-distribution) for the reasoning and for what a spike
+would look like if it ever becomes live. **Do not propose NVML for this
+again.**
 
 **There are 748 distinct metrics in the TSDB and the dashboard reads a
 fraction.** Three are already collected by node-exporter and worth surfacing:
@@ -4204,10 +4208,32 @@ header comment in `central/compose.yaml`.
   timeline component.
 - [ ] Optional Grafana pointed at the same Prometheus for ad hoc exploration.
 - [ ] Job-level drill-down (per-request tracing), if useful.
-- [ ] Evaluate `dcgm-exporter` / `dgx-spark-prometheus` for deep GPU profiling —
-  still deferred, and DCGM's memory reporting is broken by GB10 unified memory
-  anyway. If `dgx-spark-prometheus` is adopted, package it in our own Dockerfile
-  rather than its upstream systemd install path.
+- [x] **`dcgm-exporter` / `dgx-spark-prometheus` — WILL NOT SHIP.** Decided
+  2026-08-21, after being deferred through three phases. Closing it as a
+  decision is worth more than carrying it as a maybe.
+
+  DCGM's headline advantage is per-GPU memory accounting, which is exactly what
+  unified memory breaks on GB10 — a resident daemon for its weakest feature
+  here. What it would genuinely add is **memory bandwidth**, the one blind spot
+  left: NVML reports 0% memory utilization while the GPU sits at 96%, and
+  `DCGM_FI_PROF_DRAM_ACTIVE` is the only remaining route to it.
+
+  Three things settle it against:
+
+  - **Not installed, and would have to be.** Checked on a GB10 2026-08-21: no
+    `dcgmi`, no `nv-hostengine`, no `libdcgm`, driver 580.173.02. A daemon on
+    every node plus an exporter, not a container to add.
+  - **It spends the node budget on monitoring**, against a stack measured at
+    ~78 MiB per node precisely so the box stays free for models — and
+    profiling counters carry overhead on the GPU itself.
+  - **Whether GB10 exposes the counters at all is unknown**, so the work opens
+    with an experiment that might answer "no".
+
+  If the bandwidth question ever becomes live, the spike is one node and one
+  command: install DCGM on a single box, `dcgmi dmon -e` against the profiling
+  field IDs, and see whether DRAM activity is reported. "No" would be a real
+  result worth recording. Adding a daemon to chase a number nobody has needed
+  is the wrong direction until something is actually unexplained.
 
 ## Open decisions
 
@@ -4223,10 +4249,13 @@ get lost:
    sharing a failure domain with what it monitors loses exactly the history you
    need when a node dies. See
    [deployment.md](deployment.md#central-stack--a-dedicated-proxmox-vm-settled).
-3. ~~**`dcgm-exporter` vs. `dgx-spark-prometheus`.**~~ **Deferred to Phase 4**
-   rather than decided: `spark-dash-agent` reads NVML directly for the basics,
-   and DCGM's headline advantage (GPU memory) is what unified memory breaks on
-   GB10.
+3. ~~**`dcgm-exporter` vs. `dgx-spark-prometheus`.**~~ **Settled 2026-08-21:
+   neither. Will not ship.** `spark-dash-agent` reads NVML directly for the
+   basics, and DCGM's headline advantage (GPU memory) is what unified memory
+   breaks on GB10 — a resident daemon for its weakest feature here. Memory
+   bandwidth stays a known blind spot rather than being chased with one. See
+   [H](#h--genericize-for-distribution) and
+   [deployment.md](deployment.md#gpu-baseline-exporter--will-not-ship-decided-2026-08-21).
 4. **Cross-node orchestration** (still Compose-per-host vs. eventually Swarm/k8s)
    is out of scope for *this* project but affects how much Prometheus service
    discovery needs to do — revisit if orchestration changes.

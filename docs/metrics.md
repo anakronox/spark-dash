@@ -7,8 +7,8 @@ for exporter/scrape config once we start implementing.
 
 Collected by **`spark-dash-agent`** (ours to build) — one container per node,
 reading NVML directly plus the GB10-specific signals that nothing generic
-exposes correctly. Third-party GPU exporters are deferred to Phase 4 (see
-[below](#baseline-exporter--deferred-to-phase-4)).
+exposes correctly. Third-party GPU exporters will not ship (see
+[below](#baseline-exporter--will-not-ship-decided-2026-08-21)).
 The approach follows hard lessons already documented by
 [`sparkview`](https://github.com/parallelArchitect/sparkview) — a GB10-aware TUI
 monitor (see [related tools](https://github.com/parallelArchitect) — same author
@@ -16,16 +16,22 @@ also publishes `nvml-unified-shim`, `spark-gpu-throttle-check`, and
 `cuda-unified-memory-analyzer`) — and worth treating as the reference
 implementation rather than re-deriving these from scratch.
 
-### Baseline exporter — deferred to Phase 4
+### Baseline exporter — will not ship (decided 2026-08-21)
 
 [`dcgm-exporter`](https://github.com/NVIDIA/dcgm-exporter) and
 [`dgx-spark-prometheus`](https://github.com/ateska/dgx-spark-prometheus) are
-**not** in the Phase 1 stack. The agent reads NVML directly for
+**not shipped, and not planned.** The agent reads NVML directly for
 utilization/temp/power/clocks, and `dcgm-exporter`'s headline advantage (GPU
-memory) is exactly the number unified memory breaks on GB10. What DCGM would
-still add is deep profiling telemetry — SM/tensor-core activity, memory
-bandwidth — genuinely useful for inference tuning, but not MVP-critical and of
-uncertain GB10 support. Revisit in Phase 4.
+memory) is exactly the number unified memory breaks on GB10 — a daemon for its
+weakest feature here.
+
+What DCGM would still add is memory bandwidth, which is a real blind spot: NVML
+reports 0% memory utilization while the GPU is at 96%, and the profiling
+counters are the only remaining route to it. Not worth a resident daemon on the
+inference node, whose whole premise is costing that box as little as possible.
+Full reasoning, including what a spike would look like if the question ever
+becomes live, in
+[deployment.md](deployment.md#gpu-baseline-exporter--will-not-ship-decided-2026-08-21).
 
 `nvidia-smi` remains fine for ad hoc checks, but isn't a metrics source for the
 dashboard on its own.
@@ -81,8 +87,8 @@ workaround. Deliberately descoped to keep the base OS untouched (see
 [deployment.md](deployment.md)); revisit only if that priority changes.
 
 **Known GB10 caveat — time-slicing:** if GPU time-slicing is ever used (e.g.
-under k8s with `KUBERNETES_VIRTUAL_GPUS=true`), `dcgm-exporter` (should it be
-adopted in Phase 4) reports
+under k8s with `KUBERNETES_VIRTUAL_GPUS=true`), `dcgm-exporter` (were it ever
+adopted) reports
 utilization/power/temperature as identical across all virtual devices — i.e. it
 can't currently distinguish per-slice load on Blackwell GB10. Not relevant to
 the Docker Compose setup today, but worth remembering if the

@@ -67,17 +67,45 @@ One image to build and version, one config, one scrape target per node.
 Collectors stay separate modules internally, so splitting them back out later
 is cheap if there's ever a reason.
 
-### GPU baseline exporter — deferred to Phase 4
+### GPU baseline exporter — will not ship (decided 2026-08-21)
 
-`dcgm-exporter` / `dgx-spark-prometheus` are **not** in the Phase 1 stack. Our
-agent already reads NVML directly for utilization/temp/power/clocks, and
-`dcgm-exporter`'s headline advantage (GPU memory) is exactly the number that
-unified memory breaks on GB10. What DCGM would still add is deep profiling
-telemetry — SM/tensor-core activity, memory bandwidth — which is genuinely
-useful for inference tuning but is not MVP-critical and has uncertain GB10
-support. Revisit in Phase 4.
+`dcgm-exporter` / `dgx-spark-prometheus` are **not shipped, and are not
+planned.** This was deferred through three phases; closing it as a decision is
+more useful than carrying it as a maybe.
 
-If `dgx-spark-prometheus` is ever adopted, note that upstream ships a
+The agent already reads NVML directly for utilization, temperature, power and
+clocks, and `dcgm-exporter`'s headline advantage — per-GPU memory accounting —
+is exactly the number unified memory breaks on GB10. Adopting a daemon for its
+weakest feature here was never the trade.
+
+**What it would genuinely add is the one blind spot that remains:** memory
+bandwidth. `nvmlDeviceGetUtilizationRates().memory` reads 0% while the GPU is
+at 96% (measured 2026-08-16), and on a unified-memory part bandwidth is
+plausibly the real bottleneck. DCGM's profiling counters
+(`DCGM_FI_PROF_DRAM_ACTIVE`) are the only remaining route to it.
+
+**Three things make that not worth it here:**
+
+- **It is not installed, and would have to be.** Checked on a GB10 2026-08-21:
+  no `dcgmi`, no `nv-hostengine`, no `libdcgm`, on driver 580.173.02. This is a
+  resident daemon on every node plus an exporter against it — not a container
+  to add.
+- **It spends the node budget on monitoring.** The node stack is deliberately
+  two containers with no persistent state, measured at ~78 MiB, precisely so
+  the box stays free for models. DCGM is not free, and profiling counters carry
+  overhead on the GPU itself.
+- **Whether GB10 exposes the counters at all is unknown**, so the work starts
+  with an experiment whose answer might be "no".
+
+**If that blind spot ever becomes a real question**, the spike is one node and
+one command — install DCGM on a single box and run `dcgmi dmon -e` against the
+profiling field IDs to see whether DRAM activity is reported. Answering "no"
+would be a real result worth recording. Until something is actually
+unexplained, adding a daemon to chase a number nobody has needed is the wrong
+direction for a stack whose whole premise is costing the inference node as
+little as possible.
+
+If either is ever revisited, note that `dgx-spark-prometheus` upstream ships a
 systemd/host-binary install path (`go build`, `sudo cp` to `/usr/local/bin`, a
 `.service` file) which conflicts with the Docker-only rule. It's a
 self-contained static Go binary reading `/proc`, `/sys`, and `nvidia-smi`, so
