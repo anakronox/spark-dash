@@ -314,7 +314,7 @@
     'inline-flex items-center gap-[6px] text-label px-2 py-[3px] rounded-sm border';
   const SETTINGS_TRIGGER =
     `${TRIGGER_BASE} border-rule text-ink-muted hover:text-ink hover:border-ink-muted`;
-  const SETTINGS_LABEL = 'tracking-[0.08em] uppercase';
+  const SETTINGS_LABEL = 'text-micro tracking-[0.08em] uppercase';
 
   /* Quiet by default -- a permanently loud alerts button on a healthy
      dashboard trains you to ignore it. */
@@ -322,8 +322,16 @@
     `${TRIGGER_BASE} tracking-[0.08em] uppercase text-ink-muted border-transparent ` +
     'hover:text-ink hover:border-rule';
   const ALERTS_LOUD = 'text-ink border-rule';
-  /* The glyph and the count carry it; the word is the first thing to go. */
-  const ALERTS_LABEL = 'max-[640px]:hidden';
+  /* 10px and 0.12em, NOT inherited from the button.
+     `.label` meant three things in this file, and these two spans resolved by
+     specificity across two of them: the standalone `.label` supplied the size
+     (10px) while `.alerts-trigger .label` supplied only what it overrode. Both
+     labels therefore rendered a pixel SMALLER than the button around them, and
+     letting them simply inherit changed two elements the split was supposed to
+     leave alone. Caught by the computed-style diff, not by reading.
+
+     The glyph and the count carry the button; the word is the first to go. */
+  const ALERTS_LABEL = 'text-micro tracking-[0.12em] uppercase max-[640px]:hidden';
   const BADGE = 'px-[5px] rounded-full bg-rule text-ink tabular-nums';
 
   const NOTICE = 'text-body px-3 py-[9px] rounded-sm bg-panel border border-rule text-ink-2';
