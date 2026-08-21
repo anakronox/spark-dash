@@ -560,6 +560,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "loads": latest_by_model(summarise_loads(series, step_s=step_seconds(step))),
         }
 
+    @app.get("/api/monitoring-footprint")
+    async def api_monitoring_footprint() -> dict:
+        """What this monitoring stack costs, as a live number.
+
+        The footprint argument is the one J stands or falls on: monitoring a
+        GB10 should cost it as little as possible, and on a single host that
+        cost comes out of the SAME unified pool the models use. An argument
+        made in a README ages; a number the reader can watch does not.
+
+        Summed from components that measure THEMSELVES —
+        `process_resident_memory_bytes` is standard in every Prometheus client
+        — rather than from a collector guessing which processes are
+        "monitoring". A wrong guess there would bill someone's model to
+        monitoring, which is precisely the number this exists to make
+        trustworthy.
+
+        Returns null rather than zero when Prometheus cannot answer. Zero is a
+        claim that monitoring is free, which is the one answer that is never
+        true.
+        """
+        try:
+            series = await prom.query(HISTORY_QUERIES["monitoring_bytes"])
+            value = series[0].points[-1][1] if series and series[0].points else None
+        except Exception as exc:  # noqa: BLE001 — a missing figure is not an outage
+            log.debug("monitoring footprint unavailable", exc_info=True)
+            return {"bytes": None, "error": f"{type(exc).__name__}: {exc}"}
+        return {"bytes": value}
+
     @app.get("/api/cluster/config")
     async def api_cluster_config() -> dict:
         """The whole cluster as configured, for display. READ ONLY.

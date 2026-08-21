@@ -1,18 +1,16 @@
-# Central Prometheus — runs on the monitoring VM, never on a GX10.
+# Central Prometheus, SINGLE-HOST variant — everything on one GB10.
 #
-# Targets come from files rather than being listed here, so adding a node needs
-# no Prometheus config change and no restart — file_sd is re-read automatically.
+# Used only through compose.single-host.yaml, which points --config.file here.
 #
-# Targets come from two places, by who writes them:
-#   targets/             rendered by the backend from cluster.yml — never edited
-#   config/vllm-targets.yml   superseded; kept inert, see the file itself
+# `alerts.yml` is NOT duplicated: it stays shared through the same config/
+# mount. Only the one host-pinned storage rule has a variant, and only the
+# `node-exporter-central` job differs from prometheus.yml.
+# tests/test_single_host.py asserts exactly that, because a second copy of a
+# scrape config is a drift hazard and the drift should be checked rather than
+# hoped about.
 #
-# The hand-maintained ones live in config/ rather than a second targets
-# directory. Sharing one directory is not possible — the backend's mount would
-# hide the repo's own file — and a separate targets/static made the generated
-# directory need a path variable to stay distinct. Filing them by AUTHOR
-# instead of by purpose removes the collision: config/ is what git tracks,
-# targets/ is what the backend writes.
+# Read docs/deployment.md#single-host before using this: the failure domain
+# collapses, and that is an accepted trade rather than an oversight.
 
 global:
   scrape_interval: 15s
@@ -31,7 +29,7 @@ rule_files:
   - /etc/prometheus/config/alerts.yml
   # The one host-pinned rule, split out because the host it pins to
   # differs between layouts. See the file's own header.
-  - /etc/prometheus/config/alerts-storage.yml
+  - /etc/prometheus/config/alerts-storage.single-host.yml
 
 alerting:
   alertmanagers:
@@ -103,12 +101,18 @@ scrape_configs:
     static_configs:
       - targets: ['alertmanager:9093']
 
-  # This host's own metrics. Separate job name from the per-node exporters so
-  # rules can address the monitoring VM specifically — without it, a rule
-  # joining on `node_filesystem_*` picks up whichever host happens to report,
-  # which is how PrometheusStorageFillingUp ended up measuring the GX10's disk.
-  - job_name: node-exporter-central
-    static_configs:
-      - targets: ['node-exporter:9100']
-        labels:
-          node: sparkmon
+  # NO `node-exporter-central` JOB HERE, and that is the point of this file.
+  #
+  # The multi-host layout scrapes an exporter of its own inside the compose
+  # network, labelled `node: sparkmon`. On one box that would invent a node
+  # that does not exist — roughly 640 series describing the GB10 under a
+  # different machine's name, in the same label space as the real one, so every
+  # `by (node)` query gains a phantom member.
+  #
+  # It is not re-pointed at the node stack's exporter either: that exporter is
+  # already scraped by the `node-exporter` job above, and scraping one target
+  # under two job names duplicates ~4,750 series to no purpose.
+  #
+  # The rule that needed the job name (`PrometheusStorageFillingUp`) is loaded
+  # from alerts-storage.single-host.yml instead, which drops the pin because
+  # with one host there is exactly one root filesystem to compare against.

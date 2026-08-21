@@ -3907,23 +3907,81 @@ On a 121 GiB unified pool that is ~0.13% of memory — negligible against a
 model, but it is not zero, and on GB10 it comes out of the *same* pool the
 models use. See [[gb10-unified-memory-constraint]].
 
-- [ ] **J1.** `central/compose.single-host.yaml` (or a compose profile) that
-  drops `sparkdash-central-node-exporter`. On one box it duplicates the node
-  stack's exporter on `:9100`, producing near-identical series for the same
-  host; point the `node-exporter-central` job at the node stack's instead.
-- [ ] **J2.** A `cluster.yml` example for self-addressing. The backend polls
-  each node's `host` from inside a container, so `localhost` does not work —
-  it needs the host's LAN IP. Currently an undocumented gotcha that would stop
-  a first-time single-host user cold.
-- [ ] **J3.** README section stating the trade honestly: the failure domain
-  collapses. The whole reason central lives elsewhere is that "node down" is a
-  primary alert, so hosting Prometheus on the node means a crash destroys both
-  the node and the history explaining why. Single-host users accept that; they
-  should not discover it during an outage.
-- [ ] **J4.** Surface the cost in the dashboard itself. The GPU process table
-  already attributes memory per process, so a single-host install can show what
-  monitoring costs *on this box* — turning the footprint argument into a live
-  number the user can watch. This is the feature that keeps J honest.
+- [x] **J1. `central/compose.single-host.yaml`.** Shipped 2026-08-21, and it
+  turned out to be a correctness fix rather than a footprint one.
+
+  The roadmap said the central exporter "duplicates the node stack's". It is
+  worse: `prometheus.yml` hardcodes `node: sparkmon` on that job, so on one box
+  it invents **a node that does not exist** — ~640 series describing the GB10
+  under another machine's name, in the same label space as the real one, giving
+  every `by (node)` query a phantom member.
+
+  **An overlay, not a second stack**, using `deploy.replicas: 0` to drop the
+  service. Both mechanisms were dry-run on a node first: a `profiles` override
+  works too, but would have to be declared in `compose.yaml`, and every
+  existing deployment would silently lose the exporter the first time it
+  deployed without the profile set. `replicas: 0` leaves the base file
+  untouched, so multi-host installs cannot regress.
+
+  **The job is dropped, not re-pointed** — my first attempt pointed it at the
+  node stack's exporter, which would have scraped one target under two job
+  names and duplicated ~4,750 series to no purpose.
+
+  **`PrometheusStorageFillingUp` moved to its own rule file**, because it pins
+  itself to the host holding the TSDB by job name and that host differs. Only
+  that one rule is duplicated; `alerts.yml` stays shared through the same
+  mount. The single-host variant drops the pin, which is safe there and only
+  there: with one host, `{mountpoint="/"}` matches exactly one series.
+
+  **The two are not interchangeable, and it is loud.** Running the single-host
+  rule against the live three-node Prometheus returns `found duplicate series
+  for the match group {}` and stops evaluating — which is the original bug the
+  job pin was added to fix, reproduced deliberately to confirm the guard.
+
+- [x] **J2. `cluster.yml.single-host.example`.** Shipped 2026-08-21.
+
+  One file, one purpose: `host:` must be the machine's LAN IP, never
+  `localhost`. The backend resolves it from inside a container, so `localhost`
+  is the container — and the failure is the most misleading available:
+  everything starts cleanly and the dashboard reports the box you are sitting
+  at as unreachable, apparently blaming the agent. `BACKEND_URL` in the node
+  stack's `.env` crosses the same boundary.
+
+- [x] **J3. The trade, stated in docs/deployment.md.** Shipped 2026-08-21,
+  directly under *Why not on a GX10* so the two are read together — that
+  section is not wrong on one box, it is **accepted**.
+
+  The footprint is a measured table rather than a claim, re-measured on the
+  running three-node install: node stack ~78 MiB, central stack ~178 MiB, a
+  single-host total of **~220 MiB — about 0.18% of a 121.7 GiB pool**. The
+  original figures (2026-08-16, one node) are superseded; the TSDB has grown
+  from 79 MB / 4.3k series to 285 MB / 9.2k.
+
+- [x] **J4. The cost, live in the dashboard.** Shipped 2026-08-21 — **after
+  discovering the roadmap's premise for it was wrong.**
+
+  J4 assumed "the GPU process table already attributes memory per process, so a
+  single-host install can show what monitoring costs". It cannot: that table
+  lists **NVML** processes, and the monitoring stack holds no GPU memory at
+  all. Checked against a live node — nine GPU processes, every one of them
+  ComfyUI or llama.cpp.
+
+  What made it cheap instead: **every component already measures itself.**
+  `process_resident_memory_bytes` is standard in every Prometheus client, and
+  Prometheus, Alertmanager and node_exporter all exported it already. The agent
+  was the only gap, because a bare `CollectorRegistry` does not carry what the
+  default registry does — one line.
+
+  **Self-reporting is the design, not a shortcut.** The alternative — a
+  collector identifying "the monitoring processes" by name — is the ComfyUI
+  problem again: `python` names nothing, and a wrong match would bill someone's
+  model to monitoring, which is precisely the number this exists to make
+  trustworthy.
+
+  Shown in the settings fly-out, where the deployment's other facts live, and
+  it reads **194.7 MiB** on the live install. Null rather than zero when
+  Prometheus cannot answer: zero is a claim that monitoring is free, which is
+  the one answer that is never true.
 
 **Pairs with H.** "Runs on one box" is the first thing anyone evaluating a
 public repo will try, so J1–J3 are effectively part of a credible quickstart

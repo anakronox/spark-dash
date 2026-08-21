@@ -757,30 +757,6 @@ groups:
     rules:
       # Prometheus watching its own disk. If this fills, history stops and the
       # first you'd know is a gap in the charts.
-      # PINNED TO THIS HOST via job="node-exporter-central". The previous version
-      # joined with a bare `on()` against node_filesystem_size_bytes{mountpoint="/"},
-      # and since only the GX10 ran node-exporter it compared the TSDB against
-      # 85% of a 3.6TB filesystem — about 3.1TB, on a 50GB disk. It could never
-      # have fired, which is worse than having no rule, because it looked like
-      # coverage.
-      #
-      # NodeDiskFillingUp now watches this host's disk generally. This rule is
-      # narrower on purpose: it attributes the growth to the TSDB and names the
-      # lever (retention), which a generic disk alert can't.
-      - alert: PrometheusStorageFillingUp
-        expr: >-
-          predict_linear(prometheus_tsdb_storage_blocks_bytes[6h], 7 * 24 * 3600) >
-          on() (
-            node_filesystem_size_bytes{job="node-exporter-central", mountpoint="/"} * 0.85
-          )
-        for: 1h
-        labels:
-          severity: warning
-        annotations:
-          summary: "Prometheus storage on track to fill within a week"
-          description: >-
-            Reduce PROM_RETENTION or grow the disk. Predicted from the last 6
-            hours of growth, so a one-off spike won't trigger it.
 
       # INFRASTRUCTURE targets — nodes, exporters, Prometheus itself. These
       # never age out: the hardware still exists, so a target that stays down

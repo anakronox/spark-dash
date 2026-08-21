@@ -133,6 +133,71 @@ The correct failure mode falls out of this: if the monitoring VM dies, you lose
 visibility but inference keeps running; if a GX10 dies, you still have the
 history. Neither failure takes the other down.
 
+### Single-host — everything on one GB10
+
+**Supported, opt-in, and the trade is stated here rather than discovered.**
+Not everyone has a spare machine, and "you need a second box" is a worse answer
+than "here is what it costs".
+
+```bash
+cd central
+cp cluster.yml.single-host.example cluster/cluster.yml
+$EDITOR cluster/cluster.yml     # one edit: this machine's LAN IP
+docker compose -f compose.yaml -f compose.single-host.yaml up -d
+```
+
+**What you give up is the section above.** Everything in *Why not on a GX10*
+still applies — it is not wrong on one box, it is accepted:
+
+- **The failure domain collapses.** "Node down" is a primary alert, and now the
+  box that goes down is the box holding the record of why. You keep the alert
+  and lose the post-mortem, which is exactly backwards from what you want at
+  the moment it matters.
+- **Nothing changes about attack surface** if you do not publish the dashboard.
+  If you do, `cloudflared` now runs on the inference node.
+- **Resource contention remains the weakest objection**, and now it is
+  measured. See below.
+
+**What it costs, measured 2026-08-21 on a running three-node install:**
+
+| | memory |
+|---|---|
+| node stack | ~78 MiB (agent 69, node-exporter 9) |
+| central stack | ~178 MiB (backend 67, Prometheus 84, Alertmanager 19, exporter 8) |
+| single-host total | **~220 MiB** — one node's worth of series, minus the dropped exporter |
+
+On a 121.7 GiB unified pool that is **~0.18%**. The TSDB was 285 MB for 9,205
+series across three nodes; one node is roughly a third of that. Negligible
+against a model — but on GB10 it comes out of the *same pool the models use*,
+which is why it is a number here rather than a shrug.
+
+**What the overlay actually changes**, and nothing else:
+
+- **Drops the central `node-exporter`.** Not for the 8 MiB. That exporter is
+  scraped as `node-exporter-central`, a job which hardcodes `node: sparkmon` —
+  on one box that invents a node that does not exist, roughly 640 series
+  describing the GB10 under another machine's name, in the same label space as
+  the real one. Every `by (node)` query would gain a phantom member.
+- **Points Prometheus at `prometheus.single-host.yml`**, which is that same
+  file minus that one job. `alerts.yml` is shared, not copied.
+- **Swaps one alert rule.** `PrometheusStorageFillingUp` pins itself to the
+  host holding the TSDB by job name, and that host is different here. The
+  single-host variant drops the pin because with one host there is exactly one
+  root filesystem to compare against.
+
+**The two files are not interchangeable, and getting it wrong is loud.** Using
+the single-host storage rule on a multi-host install produces
+`found duplicate series for the match group {}` and the rule stops evaluating —
+verified against a live three-node instance. `tests/test_single_host.py` checks
+the variants stay in step.
+
+**The one thing that will stop you: `host:` cannot be `localhost`.** The
+backend resolves it from inside a container, so `localhost` is the container.
+Everything starts cleanly and the dashboard reports the machine you are sitting
+at as unreachable, blaming the agent. Use the LAN IP —
+`ip route get 1 | awk '{print $7; exit}'`. The same applies to `BACKEND_URL` in
+the node stack's `.env`.
+
 ### Services
 
 | Service | Image | Notes |

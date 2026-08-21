@@ -1,0 +1,47 @@
+# The one rule that has to know WHICH HOST holds the TSDB.
+#
+# Split out of alerts.yml because that host differs between layouts, and this
+# is the only rule that cares. Everything else in alerts.yml is layout-neutral
+# and stays in exactly one file — rules are the last thing anyone wants two
+# versions of, so the split is kept to the single rule that needs it.
+#
+# SINGLE-HOST VARIANT, and the job filter is dropped rather than
+# re-pointed. Read the comment below first: a bare `on()` is exactly the bug
+# that comment records, because on a multi-host install several hosts publish a
+# root filesystem and the rule compared the TSDB against the wrong one.
+#
+# On ONE box that reasoning inverts. There is a single node-exporter, so
+# `{mountpoint="/"}` matches exactly one series — the machine actually holding
+# the TSDB — which is what `on()` needs. The pin becomes unnecessary rather
+# than missing.
+#
+# USING THIS FILE ON A MULTI-HOST INSTALL WOULD REINTRODUCE THE ORIGINAL BUG.
+# tests/test_single_host.py checks the two files differ only in this selector.
+
+groups:
+  - name: storage
+    rules:
+      # PINNED TO THIS HOST via job="node-exporter-central". The previous version
+      # joined with a bare `on()` against node_filesystem_size_bytes{mountpoint="/"},
+      # and since only the GX10 ran node-exporter it compared the TSDB against
+      # 85% of a 3.6TB filesystem — about 3.1TB, on a 50GB disk. It could never
+      # have fired, which is worse than having no rule, because it looked like
+      # coverage.
+      #
+      # NodeDiskFillingUp now watches this host's disk generally. This rule is
+      # narrower on purpose: it attributes the growth to the TSDB and names the
+      # lever (retention), which a generic disk alert can't.
+      - alert: PrometheusStorageFillingUp
+        expr: >-
+          predict_linear(prometheus_tsdb_storage_blocks_bytes[6h], 7 * 24 * 3600) >
+          on() (
+            node_filesystem_size_bytes{mountpoint="/"} * 0.85
+          )
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus storage on track to fill within a week"
+          description: >-
+            Reduce PROM_RETENTION or grow the disk. Predicted from the last 6
+            hours of growth, so a one-off spike won't trigger it.

@@ -21,7 +21,14 @@ HISTORY_TS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "lib"
 #: Queries deliberately not offered as a chip. `memory_used_bytes` backs the
 #: absolute figure the tooltip shows beside the percentage chart, so it is
 #: fetched without ever being a chip of its own.
-QUERIES_WITHOUT_CHIPS = {"memory_used_bytes"}
+QUERIES_WITHOUT_CHIPS = {
+    "memory_used_bytes",
+    # A property of the DEPLOYMENT, not of a node: it sums components that run
+    # on the monitoring host and carries no `node` label, so it cannot be a
+    # per-node chart. Read once in the settings panel, where the rest of the
+    # deployment's facts already live.
+    "monitoring_bytes",
+}
 
 
 def chip_keys() -> list[str]:

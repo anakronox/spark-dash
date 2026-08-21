@@ -1,0 +1,41 @@
+# The cluster — SINGLE-HOST variant, everything on one GB10.
+#
+#   cp cluster.yml.single-host.example cluster/cluster.yml
+#
+# The full reference with every option explained is cluster.yml.example beside
+# this. This file exists for ONE reason: the host address.
+#
+# ===========================================================================
+# `host:` MUST BE THIS MACHINE'S LAN IP. NOT `localhost`, NOT `127.0.0.1`.
+# ===========================================================================
+#
+# The backend resolves this address from INSIDE a container, where `localhost`
+# is the container itself — so it would poll nothing and every node would read
+# as down, with the dashboard blaming the agent. The agent is fine; the address
+# is unreachable from where it is used.
+#
+# This is the single thing that stops a first-time single-host install, and it
+# fails in the most misleading way available: everything starts cleanly and the
+# dashboard reports the box you are sitting at as unreachable.
+#
+# `ip route get 1 | awk '{print $7; exit}'` prints the address to use.
+#
+# The same applies to the node stack's BACKEND_URL in node/.env: it also
+# crosses a container boundary, so it needs the LAN IP too.
+
+nodes:
+  - id: CHANGE-ME          # the machine's hostname; the agent derives its own
+    host: 192.168.1.100    # <-- THIS MACHINE's LAN IP, never localhost
+
+    # One node, so no `cluster:` key. A cluster of one is a standalone node,
+    # and naming it would only add a heading to group a single card under.
+
+    runtimes:
+      # Whatever this box actually serves. Ports, not URLs — the host above is
+      # filled in when this is served to the agent.
+      llama_routers:
+        - port: 8001
+          scrape_metrics: true
+
+      # vllm:
+      #   - 8000

@@ -1,0 +1,44 @@
+# Single-host overlay — everything on one GB10.
+#
+#   docker compose -f compose.yaml -f compose.single-host.yaml up -d
+#
+# Read docs/deployment.md#single-host before using this. The failure domain
+# collapses: the box being monitored is the box holding the history, so a crash
+# takes the node AND the record explaining why. That is an accepted trade, not
+# an oversight, and it is the reason the default layout puts this stack
+# somewhere else.
+#
+# AN OVERLAY, NOT A SECOND STACK. Every service, mount and port is inherited
+# from compose.yaml unchanged, so there is exactly one place a port or a volume
+# is defined. A separate full compose file would drift the moment either
+# changed — this repo already carries one hand-maintained copy that drifts by
+# design, and one is enough.
+
+services:
+  # DROPPED ON A SINGLE HOST, and not merely to save 8 MiB.
+  #
+  # This exporter is scraped by the `node-exporter-central` job, which pins
+  # `node: sparkmon` as a hardcoded label. On a separate monitoring host that
+  # is correct and useful. On one box it invents a NODE THAT DOES NOT EXIST:
+  # ~640 series describing the GB10 while claiming to be a different machine,
+  # sitting in the same label space as the real node. Every "by (node)" query
+  # then has a phantom member.
+  #
+  # `deploy.replicas: 0` rather than a profile, because a profile would have to
+  # be declared in compose.yaml and every existing deployment would silently
+  # lose the service the first time it was deployed without the profile set.
+  # This way the base file is untouched and multi-host installs cannot regress.
+  node-exporter:
+    deploy:
+      replicas: 0
+
+  prometheus:
+    # A SIBLING CONFIG, so alerts.yml stays shared. `config/` is a directory
+    # mount and the rules live in it; pointing at a whole second directory
+    # would mean a second copy of the rules as well, and rules are the file you
+    # least want two versions of.
+    command:
+      - '--config.file=/etc/prometheus/config/prometheus.single-host.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=${PROM_RETENTION:-30d}'
+      - '--web.enable-lifecycle'

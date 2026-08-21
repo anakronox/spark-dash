@@ -20,7 +20,12 @@ import time
 from dataclasses import dataclass
 
 from fastapi import FastAPI, Response
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    ProcessCollector,
+    generate_latest,
+)
 from spark_dash_common.models import NodeSnapshot
 
 from spark_dash_agent.config import Settings
@@ -202,6 +207,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     registry = CollectorRegistry()
     registry.register(SnapshotMetricsCollector(cache.get))
     registry.register(CollectionStatsCollector(cache.stats, builder.node_id))
+    # WHAT THE AGENT ITSELF COSTS, in the standard shape every other component
+    # here already uses: Prometheus, Alertmanager and node_exporter all export
+    # `process_resident_memory_bytes` about themselves, and this was the one
+    # gap in that set.
+    #
+    # A DEDICATED REGISTRY MEANS OPTING IN. The default registry carries this
+    # automatically; a bare CollectorRegistry does not, which is why the agent
+    # was the only process here unable to say what it weighed.
+    #
+    # Each process measuring ITSELF is what makes the footprint answerable at
+    # all. The alternative -- one collector identifying "the monitoring
+    # processes" by name -- is the ComfyUI problem again: `python` tells you
+    # nothing, and a wrong match would attribute someone's model to monitoring.
+    # Registers itself into the registry passed here; there is no separate
+    # `.register()` call. It is a no-op off Linux (it reads /proc), which is
+    # why this cannot be verified on a dev laptop and is checked on a node.
+    ProcessCollector(registry=registry)
 
     app = FastAPI(
         title="spark-dash-agent",

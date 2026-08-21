@@ -152,6 +152,11 @@
 
   type Cfg = { source: string; path: string; nodes: ConfiguredNode[] };
 
+  /** Bytes, or null when Prometheus could not answer. Never 0 on failure —
+   *  zero would be a claim that monitoring is free, which is the one answer
+   *  that is never true. */
+  let footprint = $state<number | null>(null);
+
   let cfg = $state<Cfg | null>(null);
   let draft = $state<ConfiguredNode[] | null>(null);
   let cfgError = $state<string | null>(null);
@@ -271,6 +276,15 @@
     }
   }
 
+  async function loadFootprint() {
+    try {
+      const resp = await fetchWithTimeout('/api/monitoring-footprint');
+      footprint = resp.ok ? ((await resp.json()).bytes ?? null) : null;
+    } catch {
+      footprint = null;
+    }
+  }
+
   async function loadConfig() {
     try {
       const resp = await fetchWithTimeout('/api/cluster/config');
@@ -365,6 +379,7 @@
       // Fetched on open only. It changes when someone edits a file on the VM,
       // not on a timer, so polling it would be pure waste.
       loadConfig();
+      loadFootprint();
     } else if (!open && dialog.open) dialog.close();
   });
 </script>
@@ -719,6 +734,27 @@
 
     <!-- Where this lives -->
     <section class="block">
+      <h3 class="eyebrow dim">Monitoring footprint</h3>
+      <!-- J4: the number that keeps the single-host argument honest.
+           Monitoring a GB10 should cost it as little as possible, and on one
+           box that cost comes out of the SAME unified pool the models use — so
+           the claim is shown as a live figure rather than left in a README to
+           age.
+
+           Summed from components that measure THEMSELVES; nothing here guesses
+           which processes are "monitoring". -->
+      <p class="note">
+        {#if footprint === null}
+          <span class="dim">unavailable — Prometheus did not answer</span>
+        {:else}
+          <span class="num">{(footprint / 1024 ** 2).toFixed(0)} MiB</span>
+          <span class="dim">
+            resident, for Prometheus, Alertmanager and the monitoring host's
+            exporter. Each agent's own cost is reported per node.
+          </span>
+        {/if}
+      </p>
+
       <h3 class="eyebrow dim">Storage</h3>
       <!-- Said plainly because the alternative is discovering it: these do not
            follow you to another browser or machine, and there is no account to

@@ -169,6 +169,23 @@ HISTORY_QUERIES: dict[str, str] = {
         "sum by (node) ({__name__=~"
         '"sparkdash_(llama_model|vllm|sglang)_prompt_tokens_per_second"})'
     ),
+    # WHAT MONITORING COSTS, summed from every component that measures
+    # ITSELF. Prometheus, Alertmanager and node_exporter export
+    # `process_resident_memory_bytes` as standard; the agent now does too.
+    #
+    # SELF-REPORTED IS THE WHOLE DESIGN. The alternative — one collector
+    # identifying "the monitoring processes" by name — is the ComfyUI problem
+    # again: `python` names nothing, and a wrong match would bill someone's
+    # model to monitoring, which is the exact number this is supposed to make
+    # trustworthy.
+    #
+    # `spark-dash-agent` is excluded from the job filter deliberately: on a
+    # multi-host install its RSS belongs to the node it runs on, not to the
+    # monitoring host. The per-node figure is `agent_resident_memory_bytes`.
+    "monitoring_bytes": (
+        'sum(process_resident_memory_bytes{job=~"prometheus|alertmanager|'
+        'node-exporter-central"})'
+    ),
     # --- From node_exporter rather than the agent -------------------------
     #
     # These four carry a `node` label already, because the file_sd targets are
