@@ -4061,6 +4061,91 @@ obvious companion and is a different feature — it needs measuring rendered tex
 per column, and the widths would then change as data arrives, which is the
 jitter the reserved widths were added to stop.
 
+### AB — Tailwind, weighed and declined; the type scale it would have imposed
+
+Asked 2026-08-21: would Tailwind make this more editable and modular, and was
+plain CSS chosen out of ignorance? Measured before answering, because the
+question deserves numbers rather than preference.
+
+**What is actually there:** 530 lines in `app.css`, 2,860 across component
+`<style>` blocks. **442 of those are comments** — 15% overall, and 26–36% in
+the table components.
+
+**Declined, and not out of habit. Three reasons specific to this codebase:**
+
+1. **Svelte already solves what Tailwind mostly solves.** The classic case for
+   utilities is a global namespace: styles leak, names collide, nobody dares
+   delete a rule. Scoped `<style>` blocks make that impossible by construction,
+   so the main benefit is already banked.
+
+2. **The duplication Tailwind would remove is 7.6%.** Of 370 rules, 28 are
+   byte-identical across files, and they are one-liners — `.scroll {
+   overflow-x: auto }`, `.r { text-align: right }`. The duplication that
+   actually matters here is structural, not utility: `AlertHistory` and
+   `Settings` share a fly-out shell, and a comment already records the decision
+   not to extract it at two users. Tailwind would not have touched that.
+
+3. **The comments are the thing, and utilities have nowhere to put them.**
+   442 lines of CSS carry the reasoning for the rule beside them — why a
+   reserved width existed, why the numbers must not spread, why one theme
+   overrules the house style on pure black. Those are not decoration; they are
+   how a decision survives the six months until someone questions it. In a
+   `class="w-24 truncate text-right"` string there is nowhere to say *"this
+   column swings between an em dash and a live reading every time a model wakes,
+   which resized the whole row on every transition"* — and this session
+   repeatedly depended on exactly that kind of note being where the code was.
+
+**One more, weaker but real:** `scripts/palette_check.py` parses `app.css`
+directly to validate all seven themes for CVD separation, chroma and contrast.
+Tailwind v4 handles CSS variables, so the token blocks would survive — but the
+validator's contract is "read the stylesheet", and that is simplest when the
+stylesheet is the source rather than a build output.
+
+**Where Tailwind would genuinely have helped**, stated so this is not a
+one-sided answer:
+
+- **Specificity.** Utilities have none of it. This project has had real
+  collisions — `.r { width: 1% }` against `th:not(.slack)` during AA, and a
+  documented incident of section rules fighting each other over padding.
+- **Consistency by construction.** Which is the finding below, and the part of
+  the question worth acting on.
+
+- [ ] **AB1. Promote the type scale to tokens.**
+
+  The measurement that makes the Tailwind question productive rather than
+  academic. `app.css` already tokenises spacing (`--step`) and corners
+  (`--radius`) and every colour — but **not type**, and the literals betray a
+  scale that exists in practice and nowhere in code:
+
+  | size | uses |
+  |---|---|
+  | `11px` | 36 |
+  | `10px` | 30 |
+  | `12px` | 21 |
+  | `9px` | 9 |
+  | 8, 15, 19, 20, 22, 30px | 1–2 each |
+
+  Four sizes carry 96 of 103 uses. That is a scale nobody wrote down, which is
+  exactly what Tailwind would have imposed for free — and it can be had here
+  for the cost of five tokens, without a migration.
+
+  Name them for role rather than size (`--text-body`, `--text-label`), so the
+  eventual answer to "should labels be 10 or 11px" is one edit rather than
+  thirty. The seven one-offs are the interesting part of the exercise: each is
+  either a considered exception worth a comment or a drift worth folding in,
+  and deciding which is the actual work.
+
+  **Not a refactor for its own sake.** It removes a class of inconsistency that
+  is currently invisible — nothing today would catch a new component using
+  13px — and `tests/test_palettes.py` already shows the shape of the guard that
+  could.
+
+**Revisit if the audience changes.** These reasons are about a project whose
+CSS is read more often than it is written, by people who need to know *why*.
+A published project attracting drive-by contributions weighs that differently —
+utilities lower the cost of a first patch. That is the condition to watch, and
+it is [H](#h--genericize-for-distribution)'s question rather than this one's.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
