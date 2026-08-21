@@ -1235,32 +1235,81 @@ tables being under-specified for the space now available.
   scrapes models NVML reports as busy, so an active-but-idle one is left alone
   and its tok/s is absent rather than zero. That is the behaviour, not a gap.
 
-- [ ] **M2. Filtering, but as one interaction rather than a widget per
-  section.** The high-value filter is by node, and the page already has a
-  natural control for it: the node cards. Clicking one to scope every table to
-  that node beats four separate filter boxes, and it is the interaction people
-  already expect from a card that represents a thing.
+- [x] **M2. Filtering, as one interaction.** Shipped 2026-08-21.
+  `lib/focus.svelte.ts` holds it: one store, every table reads it.
 
-  The other filter that pays immediately is hiding `unloaded` models — 32 of 36
-  rows today. Probably a toggle rather than a general predicate.
+  **Scope by clicking a node's name**, which scopes the Models, GPU process and
+  both Network tables at once. Clicking it again clears — the control that sets
+  a filter has to unset it, or the only way back is a reload.
 
-- [ ] **M3. More columns, chosen — NOT a column picker.** This is where I would
-  push back on the original suggestion.
+  **A button on the name, not a click handler on the card**, which deviates
+  from the sketch above and is better. In compact mode the card is already
+  `role="group"` with a tabindex for the hover-reveal; layering a second
+  interaction onto that element would make a group clickable and give Enter two
+  meanings. A real button gets keyboard access, an accessible name and pressed
+  state from the platform, and the name is the obvious target anyway.
 
-  Configurable columns are the move you make when you cannot decide what
-  matters. Every column in these tables earned its place and most carry a
-  comment explaining why; handing that decision to each user turns a curated
-  view into an assembly kit, adds persistent state to maintain, and means no
-  two people see the same dashboard when comparing notes.
+  **Filtering happens at the source**, before rows are built, so the header
+  count ("3 active · 2 sleeping") agrees with the table. Filtering afterwards
+  would leave the summary describing rows that are not there.
 
-  The legitimate kernel is real though: there IS room now, and data the agent
-  already collects is not shown. The answer is to decide what else is worth a
-  column and show it to everyone — per-process SM% is already collected, model
-  size and last-used would help ranking, per-node throughput exists. Pick, do
-  not delegate.
+  **The page says it is scoped, and that is not decoration.** Without the
+  banner a filtered page is indistinguishable from a cluster that lost two
+  nodes: every table short, every count low, nothing explaining why. Same
+  unrecoverability rule as hidden sections and hidden columns — whatever
+  removes things from the page has to be visible ON that page with the way back
+  attached. It carries neutral ink rather than the warning colour, because
+  being scoped is a state you chose, not a problem.
 
-  Revisit only if two users genuinely need different columns for different
-  jobs, which is not the case for one operator and a homelab.
+  **Scoping to a node that then leaves `cluster.yml`** is called out by name
+  ("...which the cluster no longer reports"), rather than silently rendering
+  four empty tables. A node that is merely DOWN still has rows worth showing
+  and is untouched by this. Same lesson as clamping the pager index when the
+  row count moves.
+
+  **NOT persisted, deliberately.** A filter is where you happen to be looking,
+  not how you like the page. Returning tomorrow to a dashboard silently showing
+  one node of three is the same failure as a silence outliving the memory of
+  setting it. Theme and section order persist; this does not.
+
+  **`loaded only` on the Models card** handles the other half — 32 of 36 rows
+  were `unloaded` at four nodes. A toggle rather than a general predicate,
+  because "is it actually loaded" is the only row filter anyone has wanted.
+  `sleeping` survives it: a slept model holds a process and comes back fast,
+  which is operationally different from cold. It takes the **funnel glyph** M4
+  deliberately left unspent, and stays visible while active for the same reason
+  a hidden column does.
+
+- [x] **M3. Two columns that were already decided, and never wired up.**
+  Closed 2026-08-21 — as a bug, not a feature.
+
+  M3 asked what else deserves a column. The audit answered something else
+  first: **`size` and `load` had shipped as dead code.** T1 added the size cell
+  snippet, its sort value, its tooltip helper and its CSS; T2 did the same for
+  load, including a fetch to the load-times endpoint on every poll. Neither
+  added the `ColumnDef`. The rows are driven by that array, so both columns
+  never reached the DOM — two roadmap items, reviewed and documented, rendering
+  nothing for two days.
+
+  **It is M4's hazard one step quieter.** There the fear was the header list and
+  the cell list disagreeing about ORDER, which shifts every value sideways and
+  looks like corrupted data. This is the same two lists disagreeing about
+  EXISTENCE, which looks like nothing at all — no error, no blank column, just
+  a feature that is absent.
+
+  `tests/test_table_columns.py` now checks all three lists against each other
+  across every table, in all three directions: a renderer without a def is an
+  invisible column, a def without a renderer is a blank one, and a def without
+  a sort value is a header button that does nothing when clicked. Removing the
+  `size` line reproduces the original bug and fails the test.
+
+  **Nothing else was added, and M3's original argument is why.** With size and
+  load restored the Models table carries 11 columns, the process table 8. The
+  remaining uncollected-but-unshown fields are `encoder_pct`/`decoder_pct`
+  (zero on every node here — no transcoding workload), `physical_state` (the
+  `state` column already says ACTIVE/DOWN) and `raw_status` (already the
+  `state` cell's tooltip). Adding them would be accumulating columns rather
+  than choosing them, which is the thing M3 was written to resist.
 
 - [x] **M4. Column visibility, controlled from the card — shipped 2026-08-17.**
   Designed and built the same day; a control on each card, not a page in

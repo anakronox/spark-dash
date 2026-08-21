@@ -13,6 +13,7 @@
   import { nodeColorVar } from '../lib/theme';
   import type { NodeSnapshot } from '../lib/types';
   import { engines } from '../lib/types';
+  import { pageFocus } from '../lib/focus.svelte';
 
   interface Props {
     node: NodeSnapshot;
@@ -96,6 +97,7 @@
   class="node panel"
   class:down={!node.up}
   class:dense
+  class:focused={pageFocus.node === node.node_id}
   style:--accent={accent}
   role={dense ? 'group' : undefined}
   aria-label={dense ? `${node.node_id} details` : undefined}
@@ -104,7 +106,25 @@
   <header>
     <h2>
       <span class="mark" aria-hidden="true"></span>
-      {node.node_id}
+      <!-- SCOPES THE WHOLE PAGE to this node. A real button rather than a
+           click handler on the card: in compact mode the card is already
+           `role="group"` with a tabindex for the hover-reveal, and layering a
+           second interaction onto that element would make a group clickable
+           and give it two different meanings for Enter. The name is the
+           obvious target anyway, and a button gets keyboard access, a real
+           accessible name and pressed state from the platform.
+
+           Pressing it again clears — the control that sets the filter is the
+           one that unsets it, so there is always a way back from the page it
+           is hidden on. -->
+      <button
+        class="focus"
+        aria-pressed={pageFocus.node === node.node_id}
+        title={pageFocus.node === node.node_id
+          ? 'Showing this node only — click to show all'
+          : 'Show only this node'}
+        onclick={() => pageFocus.toggle(node.node_id)}
+      >{node.node_id}</button>
     </h2>
     <div class="meta">
       <StatusPill health={node.health} reasons={node.health_reasons} />
@@ -296,6 +316,29 @@
   /* Warning ink, not critical: this is "look at this node before the next
      run", never "something is broken now". It sits beside the status pill
      rather than inside it so the two cannot be confused. */
+  /* Inherits the heading's type entirely — this reads as the node's name,
+     which happens to be clickable, not as a button that contains a name. */
+  .focus {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    border-bottom: 1px solid transparent;
+  }
+  .focus:hover,
+  .focus[aria-pressed='true'] {
+    border-bottom-color: var(--accent);
+  }
+
+  /* The scoped card carries its own accent so it is obvious WHICH node the
+     page is showing, from the cards rather than only from the banner. */
+  .node.focused {
+    border-color: var(--accent);
+  }
+
   .straggler {
     font-size: 10px;
     letter-spacing: 0.04em;

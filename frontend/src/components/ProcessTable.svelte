@@ -18,6 +18,7 @@
   import { ColumnView } from '../lib/columns.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
   import { LLM_RUNTIMES } from '../lib/types';
+  import { pageFocus } from '../lib/focus.svelte';
   import type { NodeSnapshot } from '../lib/types';
 
   interface Props {
@@ -47,6 +48,7 @@
   const rows = $derived.by<Row[]>(() => {
     const out: Row[] = [];
     for (const node of nodes) {
+      if (!pageFocus.includes(node.node_id)) continue;
       const total = node.memory?.total_bytes ?? 0;
       for (const p of node.processes) {
         out.push({

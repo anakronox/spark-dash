@@ -17,6 +17,7 @@
   import { nodeSlots } from './lib/theme';
   import { Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
+  import { pageFocus } from './lib/focus.svelte';
   import { AlertFeed } from './lib/alerts.svelte';
   import { fetchWithTimeout } from './lib/request';
   import { gib, num } from './lib/format';
@@ -233,6 +234,13 @@
     ClusterNodeRunningHot: 'running hot',
   };
 
+  /* Whether the node the page is scoped to still exists. A node that is DOWN
+     is still present and still has rows worth showing; this is about one that
+     has left the cluster file entirely. */
+  const focusedNodePresent = $derived(
+    !pageFocus.scoped || nodes.some((n) => n.node_id === pageFocus.node),
+  );
+
   const stragglers = $derived.by(() => {
     const out = new Map<string, string[]>();
     for (const a of alertFeed.alerts) {
@@ -335,6 +343,29 @@
   <Alerts feed={alertFeed} />
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
   <Settings {theme} {layout} open={settingsOpen} onclose={() => (settingsOpen = false)} />
+
+  <!-- SCOPED, AND SAYING SO. Without this a filtered page is indistinguishable
+       from a cluster that lost two nodes — every table short, every count low,
+       nothing explaining why. The same unrecoverability rule as hidden
+       sections and hidden columns: whatever removes things from the page has
+       to be visible ON that page, with the way back attached. -->
+  {#if pageFocus.scoped}
+    <p class="notice" data-tone={focusedNodePresent ? 'info' : 'warning'}>
+      {#if focusedNodePresent}
+        Showing <span class="num">{pageFocus.node}</span> only — every table on
+        this page is scoped to it.
+      {:else}
+        <!-- The dead end this avoids: scope to a node, have it removed from
+             cluster.yml, and every table goes empty with a banner naming
+             something that no longer exists. Same lesson as clamping the pager
+             index when the row count moves — the state outlived what it
+             referred to, and saying so beats rendering nothing. -->
+        Scoped to <span class="num">{pageFocus.node}</span>, which the cluster
+        no longer reports — so every table below is empty.
+      {/if}
+      <button class="retire" onclick={() => pageFocus.clear()}>show all nodes</button>
+    </p>
+  {/if}
 
   {#if unmonitored.length}
     <!-- Sits with the other cross-cutting notices rather than in a panel: it
@@ -856,6 +887,14 @@
   .notice[data-tone='warning'] {
     color: var(--warning);
     border-color: color-mix(in srgb, var(--warning) 40%, var(--rule));
+  }
+
+  /* Neutral ink, deliberately: being scoped is a state you chose, not a
+     problem. Borrowing the warning colour would put a filter in the same
+     visual class as a link that went down. */
+  .notice[data-tone='info'] {
+    color: var(--ink-muted);
+    border-color: var(--rule);
   }
 
   .notice[data-tone='critical'] {

@@ -21,6 +21,7 @@
   import type { ColumnDef } from '../lib/table.svelte';
   import type { NodeSnapshot, ModelState } from '../lib/types';
   import { engines } from '../lib/types';
+  import { pageFocus } from '../lib/focus.svelte';
 
   interface Props {
     nodes: NodeSnapshot[];
@@ -152,6 +153,10 @@
 
     let out: Row[] = [];
     for (const node of nodes) {
+      /* Page-level scope, applied at the source rather than after the rows are
+         built: a row that is filtered out should not reach sorting, paging or
+         the "N models" count, or the header would disagree with the table. */
+      if (!pageFocus.includes(node.node_id)) continue;
       for (const router of node.runtimes.llama_cpp) {
         for (const m of router.models) {
           out.push({
@@ -210,6 +215,16 @@
         }
       }
     }
+    /* IDLE MODELS, hidden on request. Measured at four nodes: 32 of 36 rows
+       were `unloaded` — registered with a router and holding nothing. They are
+       worth being able to see (that is how you know a model exists at all) and
+       worth being able to hide, which is why this is a toggle and not a
+       permanent filter. `sleeping` survives it: a slept model holds a process
+       and comes back fast, which is operationally different from cold. */
+    if (pageFocus.hideIdleModels) {
+      out = out.filter((r) => r.state !== 'unloaded');
+    }
+
     // Active first: what's serving right now is what you came to see.
     return out.sort(
       (a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.model.localeCompare(b.model),
@@ -230,6 +245,10 @@
     { key: 'kv', value: (r) => r.kvCachePct },
     { key: 'run', value: (r) => r.running },
     { key: 'wait', value: (r) => r.waiting },
+    { key: 'size', value: (r) => r.sizeBytes },
+    /* Sorts on the DURATION, not the formatted string: "~90s" and "~120s" sort
+       the wrong way as text, and this column exists to find the slow loads. */
+    { key: 'load', value: (r) => loadTimes[r.model]?.seconds ?? null },
   ]);
 
   /* $effect.pre, not $effect: it runs BEFORE the DOM is updated, so the first
@@ -256,6 +275,16 @@
     { key: 'kv', label: 'kv', right: true },
     { key: 'run', label: 'run', right: true },
     { key: 'wait', label: 'wait', right: true },
+    /* SIZE AND LOAD SHIPPED WITHOUT THESE TWO LINES (T1, T2) and rendered
+       nothing for two days: the cell snippets, the sort values, the tooltip
+       helpers and the `/api/models/loads` fetch all existed, but the rows are
+       driven by this array, so a key absent here is a column that never
+       reaches the DOM. The inverse of the hazard M4 called out — there the
+       fear was cells and headers disagreeing about ORDER; here they disagree
+       about EXISTENCE, which is quieter because nothing looks wrong.
+       `tests/test_table_columns.py` now fails on either. */
+    { key: 'size', label: 'size', right: true },
+    { key: 'load', label: 'load', right: true },
   ];
 
   const cols = new ColumnView('models', COLUMNS);
@@ -340,6 +369,24 @@
   <header>
     <h2 class="eyebrow">Models</h2>
     <span class="dim count">{summary || 'none registered'}</span>
+    <!-- ROW filtering, so it takes the funnel — the glyph M4 deliberately left
+         unspent when it built COLUMN visibility, so the two ideas would not
+         end up sharing an icon.
+
+         Stays visible while active, like a hidden column: rows missing with no
+         visible cause reads as the backend having lost them. -->
+    <button
+      class="idle"
+      class:on={pageFocus.hideIdleModels}
+      aria-pressed={pageFocus.hideIdleModels}
+      title={pageFocus.hideIdleModels
+        ? 'Showing loaded models only — click to include unloaded'
+        : 'Hide models that hold no weights'}
+      onclick={() => (pageFocus.hideIdleModels = !pageFocus.hideIdleModels)}
+    >
+      <span aria-hidden="true">▽</span>
+      <span class="lbl">loaded only</span>
+    </button>
     <ColumnMenu groups={[{ view: cols }]} of="Models" />
   </header>
 
@@ -474,6 +521,32 @@
     border-radius: var(--radius);
     color: var(--ink-muted);
     white-space: nowrap;
+  }
+
+  /* Matches ColumnMenu's trigger beside it: hover-revealed, but persistent
+     whenever it is actually filtering. */
+  .idle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font: inherit;
+    font-size: 11px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    padding: 1px 6px;
+    color: var(--ink-muted);
+    cursor: pointer;
+    opacity: 0;
+  }
+  header:hover .idle,
+  .idle:focus-visible,
+  .idle.on {
+    opacity: 1;
+  }
+  .idle.on {
+    color: var(--accent);
+    border-color: var(--accent);
   }
 
   .toks {

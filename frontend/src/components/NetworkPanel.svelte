@@ -18,6 +18,7 @@
   import { ColumnView } from '../lib/columns.svelte';
   import type { ColumnDef } from '../lib/table.svelte';
   import type { NodeSnapshot } from '../lib/types';
+  import { pageFocus } from '../lib/focus.svelte';
 
   interface Props {
     nodes: NodeSnapshot[];
@@ -58,7 +59,7 @@
   }
 
   const interfaces = $derived.by<IfaceRow[]>(() =>
-    nodes.flatMap((n) =>
+    nodes.filter((n) => pageFocus.includes(n.node_id)).flatMap((n) =>
       (n.network ?? []).map((i) => ({
         key: `${n.node_id}/${i.name}`,
         node: n.node_id,
@@ -98,7 +99,7 @@
   const reported = $derived(nodes.some((n) => Array.isArray(n.network)));
 
   const rdma = $derived.by<RdmaRow[]>(() =>
-    nodes.flatMap((n) =>
+    nodes.filter((n) => pageFocus.includes(n.node_id)).flatMap((n) =>
       (n.rdma ?? []).map((p) => ({
         key: `${n.node_id}/${p.device}/${p.port}`,
         node: n.node_id,
