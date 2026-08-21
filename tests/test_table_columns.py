@@ -309,3 +309,59 @@ def test_numeric_cells_keep_tabular_figures(table):
         f"{table} has numeric columns with neither `.num` nor `tabular-nums` — "
         "digits will be proportional and columns will shift as values change"
     )
+
+
+def header_declarations(table: str) -> str:
+    """Everything that styles this table's HEADER cells, in whichever spelling
+    the component currently uses -- the `const TH` utility string once it has
+    been converted, or the `th` rules in its `<style>` block while it has not.
+
+    Header and body cells were one rule in the original CSS
+    (`th:not(.slack), td:not(.slack)`), and converting per-cell-type is exactly
+    how half of it went missing. This reads the header half on its own so a
+    guard cannot be satisfied by the body half still being right."""
+    src = without_comments((COMPONENTS / f"{table}.svelte").read_text())
+
+    const = re.search(r"const TH =(.*?);", src, re.S)
+    style = re.search(r"<style>(.*?)</style>", src, re.S)
+    parts = [const.group(1)] if const else []
+    if style:
+        for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style.group(1)):
+            # A bare `th`, optionally narrowed by :not() -- not `th.slack`,
+            # which is the column deliberately exempted from both rules below.
+            if any(
+                re.fullmatch(r"th(:not\([^)]*\))?", part.strip())
+                for part in selectors.split(",")
+            ):
+                parts.append(body)
+    return "\n".join(parts)
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_header_cells_truncate_like_body_cells(table):
+    """Under `table-layout: fixed` a header that cannot truncate overflows its
+    column instead of shortening, so a long label runs into its neighbour at
+    exactly the widths the reader dragged it to."""
+    declarations = header_declarations(table)
+    utilities = "overflow-hidden" in declarations and "text-ellipsis" in declarations
+    css = "overflow: hidden" in declarations and "text-overflow: ellipsis" in declarations
+    assert utilities or css, (
+        f"{table} header cells have no truncation — long labels will overflow "
+        "their column rather than ellipsing"
+    )
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_header_padding_is_explicit_on_every_side(table):
+    """`padding: 0 12px 6px` says "no padding above" out loud. Utilities do not
+    inherit that zero from anywhere, and with no preflight the UA's own
+    `th { padding: 1px }` fills the silence — one pixel, enough to drop this
+    table's header row below every other table's on the same screen."""
+    declarations = header_declarations(table)
+    if re.search(r"padding:\s*[^;]+;", declarations):
+        return  # the shorthand sets all four sides by definition
+    for axis, pattern in (("top", r"\bpt-"), ("bottom", r"\bpb-"), ("sides", r"\bpx-")):
+        assert re.search(pattern, declarations), (
+            f"{table} header cells set no {axis} padding — the browser default "
+            "applies instead of the value this table was designed with"
+        )

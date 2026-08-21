@@ -332,8 +332,17 @@
      positioning is the anchor for the AA resize grip, which sits on the column
      boundary rather than inside the cell's text flow. */
   const TH =
+    /* `pt-0` and the truncation pair are both here because they were LOST in
+       the first conversion, and both failures were invisible in a diff.
+       `padding: 0 12px 6px` is one declaration; as utilities the zero has to
+       be said out loud, or the UA's own `th { padding: 1px }` fills the gap
+       and this table's header row sits a pixel below every other table's.
+       The truncation came from `th:not(.slack), td:not(.slack)` -- ONE rule
+       covering both cells -- and converting per-cell-type quietly kept the td
+       half and dropped the th half. */
     'relative text-left text-micro font-medium tracking-[0.1em] uppercase ' +
-    'text-ink-muted px-3 pb-[6px] border-b border-rule whitespace-nowrap';
+    'text-ink-muted px-3 pt-0 pb-[6px] border-b border-rule ' +
+    'whitespace-nowrap overflow-hidden text-ellipsis';
 
   /* Body cells carry a 45%-opacity rule rather than the full one: at twelve
      rows the full weight reads as a grid, and the row separation only needs to
