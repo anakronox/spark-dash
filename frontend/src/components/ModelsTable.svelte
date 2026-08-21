@@ -342,8 +342,20 @@
     'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] ' +
     'whitespace-nowrap overflow-hidden text-ellipsis';
 
-  /* Numbers right-aligned so a column of readings scans as a column. */
-  const NUM = `${TD} text-right`;
+  /* Numbers right-aligned AND tabular, so a column of readings scans as a
+     column and does not reflow as values change.
+
+     `tabular-nums` is not cosmetic here and dropping it was a real bug during
+     this conversion: `.num` is a GLOBAL helper in app.css, and replacing a
+     cell's whole class attribute silently took it away. Proportional digits
+     make `1.1` and `8.8` different widths, so every column shifted on every
+     frame. Nothing failed; it just looked wrong.
+
+     THE MIGRATION LESSON: converting a component drops the global classes it
+     was quietly relying on. `.num` and `.dim` in app.css are the two here, and
+     every component must be audited for them before its class attributes are
+     rewritten. */
+  const NUM = `${TD} text-right tabular-nums`;
   const DIM = `${TD} text-ink-muted`;
   const MODEL = `${TD} font-medium`;
 

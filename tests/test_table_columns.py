@@ -269,3 +269,43 @@ def test_stored_widths_are_clamped_where_they_are_read():
     assert "Math.min" in read_fn and "Math.max" in read_fn, (
         "readWidths does not clamp what a previous browser wrote"
     )
+
+
+# --- global helper classes the Tailwind migration can silently drop ----------
+#
+# `app.css` defines `.num { font-variant-numeric: tabular-nums }` and
+# `.dim { color: var(--ink-muted) }` as global helpers. Converting a component
+# rewrites whole `class` attributes, which takes those away without any error:
+# the page renders, nothing fails, and a table of readings quietly gets
+# proportional digits so every column shifts as values change width.
+#
+# That happened for real to ModelsTable during roadmap AB phase 3 and was
+# caught by eye, not by a test. This is the test.
+
+APP_CSS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "app.css"
+
+
+def test_the_global_helpers_still_exist():
+    """If these are ever removed from app.css the check below is meaningless,
+    so it fails loudly rather than passing vacuously."""
+    css = APP_CSS.read_text()
+    assert ".num {" in css and "tabular-nums" in css
+    assert ".dim {" in css
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_numeric_cells_keep_tabular_figures(table):
+    """Either spelling: the global `.num` class, or `tabular-nums` on the
+    converted constant. A numeric table with neither has proportional digits
+    and reflows on every update."""
+    # Comments stripped FIRST. Without that this passed against a file with
+    # `tabular-nums` deleted, because the comment explaining why it matters
+    # still said the word — the third time in this suite that a guard matched
+    # its own documentation instead of the code.
+    src = without_comments((COMPONENTS / f"{table}.svelte").read_text())
+    has_num_class = "num" in " ".join(re.findall(r'class="([^"]*)"', src))
+    has_utility = "tabular-nums" in src
+    assert has_num_class or has_utility, (
+        f"{table} has numeric columns with neither `.num` nor `tabular-nums` — "
+        "digits will be proportional and columns will shift as values change"
+    )
