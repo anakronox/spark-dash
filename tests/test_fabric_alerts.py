@@ -95,3 +95,33 @@ def test_link_down_rules_keep_the_previously_up_guard():
         ("RdmaPortDown", "sparkdash_rdma_port_active"),
     ):
         assert f"max_over_time({series}[7d]) == 1" in rules[name]
+
+
+def test_memory_alerting_asks_whether_the_use_is_explained():
+    """`MemoryNearlyFull` was a LEVEL rule and could not be cleared on a node
+    doing its job: two cluster nodes hold one 193 GiB model and sit at ~87%
+    forever. It fired on the nodes whose memory was most accounted for and
+    stayed quiet on the one with three times the unexplained footprint.
+
+    Its replacement subtracts resident model weights, so "full of weights" is
+    silent and "full of something nobody can name" is not.
+    """
+    rules = fabric_rules()
+    assert "MemoryNearlyFull" not in rules, (
+        "the level rule is back; it cannot be cleared on a node full of weights"
+    )
+    expr = rules["UnexplainedMemoryUse"]
+    assert "sparkdash_gpu_process_memory_bytes" in expr, "model weights are not subtracted"
+    assert "or (0 * sum by (node) (sparkdash_gpu_utilization_percent))" in expr, (
+        "the fallback must be a WITNESS that the GPU collector ran -- a bare "
+        "`or 0` makes missing attribution look like unexplained memory, which "
+        "inflated the observed peak from 25.8% to 39.4%"
+    )
+
+
+def test_harm_alerts_survive_alongside_it():
+    """Headroom and harm are different questions. Replacing the level rule must
+    not leave actual memory pressure uncovered."""
+    rules = fabric_rules()
+    for name in ("MemoryPressureHigh", "MemoryPressureCritical", "SwapThrashing"):
+        assert name in rules, f"{name} has gone missing"

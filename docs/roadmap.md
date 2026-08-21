@@ -3595,17 +3595,48 @@ lived on one node, and `danflashes` serves **one** vLLM model across two.
   first answers "what is loaded", the second "what is this box doing", and the
   table is currently the second.
 
-- [ ] **Z3. `MemoryNearlyFull` cannot be cleared on a node that is doing its
-  job.** Both cluster nodes sit at ~87% because they hold a 193 GiB model
-  resident, and the rule's own description already concedes the case: *"a node
-  deliberately full of weights looks like this."*
+- [x] **Z3. `MemoryNearlyFull` asked the wrong question.** Shipped 2026-08-21,
+  replaced by `UnexplainedMemoryUse`.
 
-  Same pathology as Z1 — an alert firing on an intended steady state, silenced
-  by hand daily. Unlike Z1 the answer is not obvious, because the condition is
-  genuinely worth knowing: there is no headroom to load anything else. Options
-  are a higher threshold for clustered nodes, gating on *change* rather than
-  level, or accepting that "full of weights" is a state the dashboard should
-  show rather than alert on. Needs a decision before code.
+  The old rule fired at >85% used and could not be cleared on a node doing
+  exactly what it was built for: `danflashes` holds one 193 GiB model across two
+  nodes, so both sit at ~87% indefinitely. Its own description conceded the case
+  — *"a node deliberately full of weights looks like this"* — and it was being
+  silenced by hand daily, the same loop [W](#w--choosing-which-interfaces-are-monitored--shipped-2026-08-21)
+  broke for interfaces and Z1 broke for cluster workers.
+
+  **Measured before replacing it.** Non-model memory — used, minus what
+  resident model weights explain — separates the two cases cleanly:
+
+  | node | used | model weights | non-model |
+  |---|---|---|---|
+  | sparketa | 87.8% | 96.8 GiB | **8.2%** |
+  | sparkjr | 86.7% | 96.8 GiB | **7.2%** |
+  | sparky | 44.5% | 27.5 GiB | **21.9%** |
+
+  The level rule fired on the two nodes whose memory was *most* accounted for
+  and stayed quiet on the one with three times the unexplained footprint. PSI
+  was 0.00 on all three, so nothing was suffering.
+
+  **Threshold 40%, and it is PROVISIONAL.** Over 7 days, restricted to samples
+  where attribution actually exists, non-model never exceeded 25.8% on any node
+  — so 40% is ~1.5× the worst observed. That is 7 days of one node plus hours of
+  the other two, not a derived constant like the temperature bands, and the rule
+  says so in its own comment.
+
+  **The fallback is a witness, and getting that wrong was the trap.** A naive
+  `or 0` for "this node has no LLM processes" makes a *missing* GPU-process
+  scrape indistinguishable from genuinely zero model memory — which inflated
+  sparky's apparent peak from 25.8% to **39.4%**, almost into the threshold,
+  entirely from windows where attribution was absent. The `or` branch is now
+  `0 * sparkdash_gpu_utilization_percent`: present whenever the GPU collector
+  ran, absent when it failed. So "no LLM processes" yields zero and "collection
+  failed" yields no series at all — because missing attribution must not
+  manufacture a memory alert. `CollectorFailing` reports the failure itself.
+
+  **Harm coverage is untouched.** `MemoryPressureHigh`/`Critical` read PSI and
+  `SwapThrashing` reads swap I/O; both remain, and a test asserts they do.
+  Headroom and harm are different questions, and only the first was unclearable.
 
 ### J — Single-host profile (everything on one GB10)
 

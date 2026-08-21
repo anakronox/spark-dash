@@ -368,22 +368,69 @@ groups:
       # evicted during some past squeeze sit in swap indefinitely because Linux
       # never faults them back proactively. On the GX10 it sat unchanged at
       # 6.13-6.40 GiB across 24h while memory never passed 42%, so the conjunct
-      # was ~always true — a no-op that made the rule look more specific than it
-      # was.
+      # was ~always true -- a no-op that made the rule look more specific than
+      # it was.
       #
-      # Pressure is PSI's job (above). This is the different, useful question of
-      # whether there is room to load another model.
-      - alert: MemoryNearlyFull
-        expr: 100 * sparkdash_memory_used_bytes / sparkdash_memory_total_bytes > 85
-        for: 10m
+      # SECOND CORRECTION, 2026-08-21: the level itself was the wrong question.
+      #
+      # `MemoryNearlyFull` fired at >85% used and could not be cleared on a node
+      # doing exactly what it was built for. `danflashes` holds one 193 GiB
+      # model across two nodes, so both sit at ~87% indefinitely, and the rule's
+      # own description conceded it -- "a node deliberately full of weights
+      # looks like this". It was being silenced by hand every day, which is the
+      # same loop W broke for interfaces and Z1 broke for cluster workers.
+      #
+      # Measured before replacing it. Non-model memory -- what is used and NOT
+      # explained by resident model weights -- separates the two cases cleanly:
+      #
+      #   sparketa  87.8% used   96.8 GiB models    8.2% non-model
+      #   sparkjr   86.7% used   96.8 GiB models    7.2% non-model
+      #   sparky    44.5% used   27.5 GiB models   21.9% non-model
+      #
+      # The old rule fired on the two nodes whose memory was MOST accounted for
+      # and stayed quiet on the one with three times the unexplained footprint.
+      # Over 7 days, restricted to samples where attribution exists, non-model
+      # never exceeded 25.8% on any node.
+      #
+      # 40% is therefore ~1.5x the worst observed. PROVISIONAL: 7 days of one
+      # node plus hours of the other two, not a derived constant like the
+      # temperature bands. Revisit once the cluster has run a fuller mix.
+      #
+      # THE `or` BRANCH IS A WITNESS, NOT A CONSTANT ZERO. It supplies 0 models
+      # only when the GPU collector RAN and found no LLM process, which is
+      # genuinely zero. When GPU collection fails there is no witness, so no
+      # series and no alert -- because "attribution is missing" must not
+      # manufacture a memory alert. Measured: with a naive `or 0` fallback,
+      # sparky's apparent non-model peak was 39.4%, entirely from windows where
+      # process data was absent; with the witness it is 25.8%. `CollectorFailing`
+      # is what reports the collection failure itself.
+      #
+      # Harm, as opposed to headroom, is covered twice already: MemoryPressure
+      # High/Critical read PSI, and SwapThrashing reads swap I/O. This rule is
+      # the remaining question -- is the memory explained -- and a node full of
+      # weights is not a fault.
+      - alert: UnexplainedMemoryUse
+        expr: >-
+          100 * (
+            sum by (node) (sparkdash_memory_used_bytes)
+            - (
+              sum by (node) (sparkdash_gpu_process_memory_bytes{runtime=~"vllm|llama.cpp|sglang|atlas"})
+              or (0 * sum by (node) (sparkdash_gpu_utilization_percent))
+            )
+          ) / sum by (node) (sparkdash_memory_total_bytes) > 40
+        for: 1h
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.node }} above 85% memory"
+          summary: "{{ $labels.node }}: memory not explained by model weights"
           description: >-
-            Little headroom left in the unified pool. Loading another model will
-            likely fail or evict something. Not necessarily a problem — a node
-            deliberately full of weights looks like this — but it is the ceiling.
+            Over 40% of the unified pool is held by something other than
+            resident model weights. A node full of weights is expected and does
+            not trigger this; a node full of something nobody can name is worth
+            looking at. Check the GPU process table for a runtime holding memory
+            it should have released, and the host for a non-GPU leak. Held for
+            an hour before firing, so an agent restart or a brief attribution
+            gap cannot trip it.
 
       # Swap I/O is the flow that swap_used isn't. On a unified-memory box
       # sustained swap-out means model weights heading to disk, which turns
