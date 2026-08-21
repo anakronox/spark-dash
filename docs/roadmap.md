@@ -3439,71 +3439,61 @@ other closely. SM says the cluster is busy; it cannot say who is late.
   definition, so it now lands in the generation field rather than in a combined
   total it never matched.
 
-- [ ] **Y2. Sustained divergence, with thresholds derived from measurement.**
+- [x] **Y2/Y3. Sustained divergence, directional by construction.** Shipped
+  2026-08-21 as the `cluster` alert group: `ClusterNodeClockLagging` and
+  `ClusterNodeRunningHot`.
 
-  The naive rule — flag a node whose value deviates from its cluster peers right
-  now — is unusable, and the data says so plainly. Instantaneous spread across
-  a **healthy** `danflashes` over 90 minutes:
+  **The naive rule is unusable and the data says so.** Instantaneous spread
+  across a *healthy* pair, against the same pair averaged over 15 minutes:
 
-  | metric | instantaneous spread | 15-minute average |
+  | metric | instantaneous | 15-minute average |
   |---|---|---|
-  | GPU clock | −117 … +110 MHz | **−2.0 … +2.0 MHz** |
+  | GPU clock | −117 … +110 MHz | **−4.7 … +4.7 MHz** |
   | GPU temperature | −13 … +15 °C | **−1.2 … +1.2 °C** |
-  | GPU power | −34 … +56 W | **−1.2 … +1.2 W** |
+  | GPU power | −34 … +56 W | **−1.6 … +1.6 W** |
 
-  A threshold loose enough to survive the instantaneous column would miss any
-  real straggler; averaged over 15 minutes the same healthy pair collapses into
-  a band roughly **50× tighter**. So the comparison is between smoothed values,
-  and the thresholds can then be tight while staying silent:
+  A threshold loose enough to survive the left column would miss any real
+  straggler. Averaged, the band is ~25× tighter, and 50 MHz / 5 °C sit about
+  10× above it.
 
-  ```promql
-  avg_over_time(sparkdash_gpu_clock_mhz{cluster=~".+"}[15m])
-    - on(cluster) group_left()
-      avg by (cluster) (avg_over_time(sparkdash_gpu_clock_mhz{cluster=~".+"}[15m]))
-    < -50
-  ```
+  **Compared against the best peer, not the cluster mean** — a correction made
+  while building. With two nodes the mean sits exactly between them, so each
+  deviates by *half* the real gap and a 50 MHz threshold would silently mean
+  100 MHz. Against `max` (clock) or `min` (temperature) the number is the full
+  gap at any cluster size.
 
-  Roughly 25× the observed healthy band for clock; 5 °C and 10 W are the
-  equivalents for the other two. **These are starting points from one pair over
-  90 minutes, not settled numbers** — they need a week and a second cluster
-  before anyone should trust them, and the roadmap should say so rather than
-  presenting them as derived constants the way the temperature bands genuinely
-  are.
+  **Directional, because n=2 cannot vote** (Y3). Two nodes disagreeing says the
+  pair differs, not which one is wrong; statistical outlier detection needs
+  n≥3. What rescues it is that each metric's own semantics name the bad side: a
+  lower clock *is* the node setting the pace, a higher temperature *is* the one
+  about to throttle. **Power is deliberately absent** — lower can mean stalled
+  or merely idle, higher can mean working hard or leaking. Worth charting, not
+  worth alerting on.
 
-  **Gate on the cluster working.** At idle, clocks and power drop
-  independently and the smoothed offset means nothing. The cluster was busy in
-  only 46 of 181 samples over 90 minutes, so an ungated rule would spend most of
-  its life comparing idle noise.
+  **The clock rule is gated on the cluster working; the thermal one is not.**
+  At idle clocks drop independently and the comparison is meaningless — only
+  ~15% of a measured 48h window had the cluster busy at all. Temperature is
+  different: a node hotter than its peers *at idle* has a cooling problem that
+  will only be worse under load, and that is worth knowing before the next run
+  rather than during it.
 
-  **Restrict to `cluster=~".+"` and require 2+ members.** A standalone node is
-  its own maximum and its own mean, so every deviation is exactly zero — the
-  rule would evaluate to nothing useful for `sparky` while looking like it
-  covered it. `count by (cluster) (sparkdash_node_up) > 1` is the guard, and it
-  is also what keeps the whole thing dormant on a single-node deployment.
+  `ClusterNodeRunningHot` is deliberately distinct from `GpuTemperatureHigh`.
+  That one asks whether a node is near its own limit; this asks whether it is
+  out of step with peers doing identical work, and fires long before the
+  absolute threshold does.
 
-- [ ] **Y3. Direction is per metric, because n=2 cannot vote.**
+  **THRESHOLDS ARE PROVISIONAL and the rule says so.** Roughly four hours of
+  genuinely *paired* data — `sparkjr` joined recently, and for most of the
+  longer window the "cluster" was `sparketa` compared against itself, which
+  makes every deviation trivially zero. Revisit after a week of two-node
+  history.
 
-  With two nodes there is no majority: a divergence says the pair disagrees, not
-  which one is wrong. Outlier detection in the statistical sense needs n≥3, and
-  `danflashes` has two.
+  Both rules were run against the live Prometheus: they parse, and they are
+  quiet on the healthy pair.
 
-  What rescues it is that the useful metrics are **directional** — the metric's
-  own semantics say which side is bad, with no voting required:
-
-  | signal | bad direction | what it means |
-  |---|---|---|
-  | GPU clock | lower | this node is the one setting the pace |
-  | GPU temperature | higher | cooling or placement, and it will throttle next |
-  | `gpu_clock_state{state="THROTTLED"}` | set | no comparison needed at all |
-  | RDMA errors | higher | the interconnect, not the node |
-
-  Power is deliberately **not** in that table: lower power can mean stalled or
-  merely idle, and higher can mean working hard or leaking. It is worth
-  charting and not worth alerting on.
-
-  At n≥3 a median-based rule becomes available and should replace the
-  mean-based one — the mean is dragged by the outlier it is trying to find,
-  which is tolerable at 2 and misleading at 5.
+  **Not added: a cluster-specific throttle rule.** `GpuThrottled` already fires
+  per node, and in a pooled cluster that is the same information arriving by a
+  shorter route. A second rule would double-alert on one event.
 
 - [ ] **Y4. Surface it where the cluster is already grouped.** The node cards
   are already grouped by cluster, so a straggler badge belongs on the card

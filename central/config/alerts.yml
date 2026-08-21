@@ -474,6 +474,111 @@ groups:
             metrics reach the dashboard. Add it to that node's configuration.
 
   # ------------------------------------------------------------------- fabric
+  # -------------------------------------------------------------- cluster
+  #
+  # Nodes pooled for distributed inference, compared against EACH OTHER. Every
+  # rule above asks whether a node is healthy on its own terms; these ask
+  # whether one member is holding the rest back, which is a question that only
+  # exists once a model spans machines.
+  #
+  # WHY NOT COMPARE THROUGHPUT, the obvious approach: in tensor-parallel
+  # inference only the head node has an API, so `sparkjr` publishes no
+  # throughput at all. There is nothing per-node to compare on the inference
+  # side, which is why these read hardware instead.
+  #
+  # WHY NOT COMPARE SM UTILISATION either: NCCL collectives BUSY-WAIT, so a node
+  # stalled waiting on a straggling peer burns SM identically to one doing
+  # useful work. Measured over 90 minutes on `danflashes`, both nodes peak at
+  # 96% and track each other closely. SM says the cluster is busy; it cannot say
+  # who is late.
+  #
+  # EVERYTHING HERE IS 15-MINUTE AVERAGED, and that is load-bearing rather than
+  # smoothing for taste. Instantaneous spread across a HEALTHY pair, measured:
+  #
+  #             instantaneous          15-minute average
+  #   clock     -117 .. +110 MHz       -4.7 .. +4.7 MHz
+  #   temp       -13 .. +15 C          -1.2 .. +1.2 C
+  #   power      -34 .. +56 W          -1.6 .. +1.6 W
+  #
+  # A threshold loose enough to survive the left column would miss any real
+  # straggler; averaged, the same healthy pair collapses into a band ~25x
+  # tighter. The thresholds below are roughly 10x the averaged band.
+  #
+  # PROVISIONAL. Roughly four hours of genuinely PAIRED data -- sparkjr joined
+  # recently, and for most of the longer window the "cluster" was sparketa
+  # compared against itself -- of which ~15% was busy. Revisit after a week.
+  #
+  # COMPARED AGAINST THE BEST PEER, not the cluster mean. With two nodes the
+  # mean sits exactly between them, so each deviates by half the real gap and a
+  # threshold would mean double what it appears to. Against max (clock) or min
+  # (temperature) the number is the full gap at any cluster size.
+  #
+  # DIRECTIONAL BY CONSTRUCTION, because n=2 cannot vote. Two nodes disagreeing
+  # says the pair differs, not which one is wrong; statistical outlier
+  # detection needs n>=3 and `danflashes` has two. What rescues it is that each
+  # metric's own semantics name the bad side -- a lower clock IS the node
+  # setting the pace, a higher temperature IS the one about to throttle. Power
+  # is deliberately absent for exactly this reason: lower can mean stalled or
+  # merely idle, and higher can mean working hard or leaking, so it is worth
+  # charting and not worth alerting on.
+  - name: cluster
+    rules:
+      - alert: ClusterNodeClockLagging
+        expr: >-
+          (
+            max by (cluster) (avg_over_time(sparkdash_gpu_clock_mhz{cluster=~".+"}[15m]))
+            - on(cluster) group_right()
+              avg_over_time(sparkdash_gpu_clock_mhz{cluster=~".+"}[15m])
+          ) > 50
+          and on(cluster) (count by (cluster) (sparkdash_node_up{cluster=~".+"}) > 1)
+          and on(cluster) (
+            max by (cluster) (
+              avg_over_time(sparkdash_gpu_utilization_percent{cluster=~".+"}[15m])
+            ) > 40
+          )
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.node }} is clocking below its cluster"
+          description: >-
+            Sustained more than 50MHz under the fastest node in {{ $labels.cluster }}
+            while the cluster was working. In tensor-parallel inference every step
+            synchronises, so the slowest node sets the pace for the whole model and
+            the head node's throughput drops without saying why. Check this node's
+            temperature, its power cap, and whether an operator locked its clocks.
+        # The busy gate matters: at idle, clocks drop independently and the
+        # comparison is meaningless. Only ~15% of a measured 48h window had the
+        # cluster working at all, so an ungated rule would spend most of its
+        # life comparing idle noise.
+
+      - alert: ClusterNodeRunningHot
+        expr: >-
+          (
+            avg_over_time(sparkdash_gpu_temperature_celsius{cluster=~".+"}[15m])
+            - on(cluster) group_left()
+              min by (cluster) (
+                avg_over_time(sparkdash_gpu_temperature_celsius{cluster=~".+"}[15m])
+              )
+          ) > 5
+          and on(cluster) (count by (cluster) (sparkdash_node_up{cluster=~".+"}) > 1)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.node }} runs hotter than its cluster"
+          description: >-
+            Sustained more than 5C above the coolest node in {{ $labels.cluster }},
+            on identical hardware doing identical work. That is airflow, dust or
+            placement rather than load, and it is the node that will throttle first
+            — which in a pooled cluster slows the whole model. Distinct from
+            GpuTemperatureHigh, which asks whether a node is near its own limit;
+            this asks whether it is out of step with its peers, and fires long
+            before the absolute threshold does.
+        # NOT busy-gated, deliberately. A node that is hotter than its peers at
+        # IDLE has a cooling problem that will only be worse under load, and
+        # that is worth knowing before the next run rather than during it.
+
   - name: fabric
     rules:
       # TWO FILTERS, answering two different questions.
