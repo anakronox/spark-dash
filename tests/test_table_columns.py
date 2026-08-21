@@ -108,8 +108,11 @@ SLACK_TABLES = {
 #: component while the behaviour was gone.
 def slack_cells(src: str) -> tuple[int, int]:
     """(headers, cells) marking the trailing slack column, either spelling."""
-    ths = src.count('<th class="slack">') + src.count("<th class={SLACK}>")
-    tds = src.count('<td class="slack">') + src.count("<td class={SLACK}>")
+    # `SLACK_TH` / `SLACK_TD` rather than one `SLACK`: the slack cell needs the
+    # same base as every other cell and differs only in width, which one shared
+    # constant could not express -- see the slack-cell guard below.
+    ths = src.count('<th class="slack">') + src.count("<th class={SLACK_TH}>")
+    tds = src.count('<td class="slack">') + src.count("<td class={SLACK_TD}>")
     return ths, tds
 
 
@@ -322,9 +325,15 @@ def header_declarations(table: str) -> str:
     guard cannot be satisfied by the body half still being right."""
     src = without_comments((COMPONENTS / f"{table}.svelte").read_text())
 
-    const = re.search(r"const TH =(.*?);", src, re.S)
+    # TH is now built from TH_BASE, so read both -- a guard that only saw the
+    # derived constant would find no padding in it and fail for the wrong
+    # reason, or worse, find nothing to check and pass.
+    consts = re.findall(r"const TH(?:_BASE)? =(.*?);", src, re.S)
     style = re.search(r"<style>(.*?)</style>", src, re.S)
-    parts = [const.group(1)] if const else []
+    # BOTH TH_BASE and TH: the padding lives on the base, the truncation on the
+    # derived constant, and a guard that read only one of them would check half
+    # the styling and report on all of it.
+    parts = list(consts)
     if style:
         for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", style.group(1)):
             # A bare `th`, optionally narrowed by :not() -- not `th.slack`,
@@ -444,3 +453,42 @@ def test_no_static_class_is_dead(component):
         "that no rule defines — those elements render at browser defaults. "
         "(If this fired right after an edit, rebuild the frontend first.)"
     )
+
+
+#: Tables converted to utilities. The CSS-spelled ones get the same guarantee
+#: from their `th {...}` / `td {...}` element selectors, which cannot miss a
+#: cell; these have to state it.
+CONVERTED = ("ModelsTable", "ProcessTable")
+
+
+@pytest.mark.parametrize("table", CONVERTED)
+def test_the_slack_cell_is_an_ordinary_cell_apart_from_its_width(table):
+    """The slack column is UNSIZED, not unstyled.
+
+    The original CSS said this in three rules -- `th {...}` for every header
+    cell, `th:not(.slack)` for the truncation, `th.slack` for the width -- and
+    collapsing them into one constant plus a bare `w-auto` for slack dropped
+    the base off the one cell that never gets looked at. The visible result is
+    the header underline and every row's rule stopping short of the table's
+    right edge, which reads as a rendering artefact rather than a bug.
+    """
+    src = without_comments((COMPONENTS / f"{table}.svelte").read_text())
+    for name in ("SLACK_TH", "SLACK_TD"):
+        match = re.search(rf"const {name} = `([^`]*)`", src)
+        assert match, f"{table} defines no {name}"
+        value = match.group(1)
+        base = "TH_BASE" if name.endswith("TH") else "TD_BASE"
+        assert base in value, (
+            f"{table}'s {name} is not built on {base} — the slack cell will "
+            "render without the padding and rule every other cell has"
+        )
+        assert "w-auto" in value, f"{table}'s {name} lost its width"
+
+    # And the base itself has to carry the rule, or deriving from it proves
+    # nothing. This is the assertion the first version of this guard lacked.
+    for name in ("TH_BASE", "TD_BASE"):
+        match = re.search(rf"const {name} =\s*\n?\s*(.+?);", src, re.S)
+        assert match and "border-b" in match.group(1), (
+            f"{table}'s {name} sets no bottom rule — every cell derived from "
+            "it, slack included, loses the line between rows"
+        )

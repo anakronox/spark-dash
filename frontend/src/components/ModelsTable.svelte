@@ -331,25 +331,28 @@
      loud part of a table and a header row competing with it is noise. Relative
      positioning is the anchor for the AA resize grip, which sits on the column
      boundary rather than inside the cell's text flow. */
-  const TH =
-    /* `pt-0` and the truncation pair are both here because they were LOST in
-       the first conversion, and both failures were invisible in a diff.
-       `padding: 0 12px 6px` is one declaration; as utilities the zero has to
-       be said out loud, or the UA's own `th { padding: 1px }` fills the gap
-       and this table's header row sits a pixel below every other table's.
-       The truncation came from `th:not(.slack), td:not(.slack)` -- ONE rule
-       covering both cells -- and converting per-cell-type quietly kept the td
-       half and dropped the th half. */
-    'relative text-left text-micro font-medium tracking-[0.1em] uppercase ' +
-    'text-ink-muted px-3 pt-0 pb-[6px] border-b border-rule ' +
-    'whitespace-nowrap overflow-hidden text-ellipsis';
+  /* SPLIT INTO A BASE plus the truncation, because the original CSS was three
+     rules and not one: `th {...}` styled EVERY header cell, `th:not(.slack)`
+     added the truncation, and `th.slack` only set a width. Collapsing that
+     into one constant and giving the slack cell `w-auto` alone dropped the
+     base off it -- so the header underline and every row's rule stopped short
+     of the table's right edge, and the slack header picked up the UA's bold
+     and centred defaults. Caught by diffing computed styles against a
+     snapshot taken before the conversion, not by reading the diff. */
+  const TH_BASE =
+    'relative text-left text-micro font-medium tracking-[0.1em] uppercase '  +
+    'text-ink-muted px-3 pt-0 pb-[6px] border-b border-rule whitespace-nowrap';
+
+  /* `pt-0` is not decoration: with no preflight the UA's own
+     `th { padding: 1px }` fills any silence the utilities leave. */
+  const TH = `${TH_BASE} overflow-hidden text-ellipsis`;
 
   /* Body cells carry a 45%-opacity rule rather than the full one: at twelve
      rows the full weight reads as a grid, and the row separation only needs to
      be enough for the eye to track across. */
-  const TD =
-    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] ' +
-    'whitespace-nowrap overflow-hidden text-ellipsis';
+  const TD_BASE =
+    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
+  const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
 
   /* Numbers right-aligned AND tabular, so a column of readings scans as a
      column and does not reflow as values change.
@@ -371,9 +374,11 @@
   /* The trailing column that absorbs whatever `width: 100%` leaves over (AA1).
      Unsized on purpose: without it, fixed layout spreads the surplus across
      every column in proportion to the widths just set, undoing the point of
-     setting them. It is excluded from the clipping the other cells get because
-     it never holds content. */
-  const SLACK = 'w-auto';
+     setting them. Unsized is ALL it is, though -- it is an ordinary cell
+     otherwise, and it carries the rule out to the table's edge. It skips only
+     the clipping, having no content to clip. */
+  const SLACK_TH = `${TH_BASE} w-auto`;
+  const SLACK_TD = `${TD_BASE} w-auto`;
 
   /* A quiet marker, not a badge: it qualifies the name beside it rather than
      competing with the state column for attention. */
@@ -545,7 +550,7 @@
                  `aria-hidden`: an empty `th`/`td` pair is already announced as
                  an empty cell, and hiding it would leave the row's cell count
                  disagreeing with the header's. -->
-            <th class={SLACK}></th>
+            <th class={SLACK_TH}></th>
           </tr>
         </thead>
         <tbody>
@@ -556,7 +561,7 @@
               {#each cols.visible() as c (c.key)}
                 {@render cell(c, row)}
               {/each}
-              <td class={SLACK}></td>
+              <td class={SLACK_TD}></td>
             </tr>
           {/each}
         </tbody>

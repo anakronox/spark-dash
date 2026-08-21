@@ -156,20 +156,26 @@
      `.empty` and `.scroll` from the style block below. All five are named
      below; none is left to a class the markup carries and no rule defines. */
 
-  const TH =
-    /* `pt-0` is not decoration: `padding: 0 12px 6px` says "nothing above" out
-       loud, and with no preflight the UA's own `th { padding: 1px }` fills any
-       silence. The truncation pair came from `th:not(.slack), td:not(.slack)`
-       -- ONE rule covering both cell types, which is exactly how the th half
-       went missing in ModelsTable. */
-    'relative text-left text-micro font-medium tracking-[0.1em] uppercase ' +
-    'text-ink-muted px-3 pt-0 pb-[6px] border-b border-rule ' +
-    'whitespace-nowrap overflow-hidden text-ellipsis';
+  /* SPLIT INTO A BASE plus the truncation, because the original CSS was three
+     rules and not one: `th {...}` styled EVERY header cell, `th:not(.slack)`
+     added the truncation, and `th.slack` only set a width. Collapsing that
+     into one constant and giving the slack cell `w-auto` alone dropped the
+     base off it -- so the header underline and every row's rule stopped short
+     of the table's right edge, and the slack header picked up the UA's bold
+     and centred defaults. Caught by diffing computed styles against a
+     snapshot taken before the conversion, not by reading the diff. */
+  const TH_BASE =
+    'relative text-left text-micro font-medium tracking-[0.1em] uppercase '  +
+    'text-ink-muted px-3 pt-0 pb-[6px] border-b border-rule whitespace-nowrap';
+
+  /* `pt-0` is not decoration: with no preflight the UA's own
+     `th { padding: 1px }` fills any silence the utilities leave. */
+  const TH = `${TH_BASE} overflow-hidden text-ellipsis`;
 
   /* Body cells carry the rule at 45% so the grid recedes behind the data. */
-  const TD =
-    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] ' +
-    'whitespace-nowrap overflow-hidden text-ellipsis';
+  const TD_BASE =
+    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
+  const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
 
   /* `tabular-nums` is the global `.num` helper, spelled out. Dropping it is
      invisible until the numbers change and the column starts shifting. */
@@ -187,10 +193,10 @@
   const SHARE = `${TD} w-[34%] min-w-[120px]`;
   const SHARE_TH = `${TH} w-[34%] min-w-[120px]`;
 
-  /* The trailing column that absorbs whatever `width: 100%` leaves over.
-     Unsized on purpose, and deliberately NOT built on TD: it is excluded from
-     the truncation rule because there is nothing in it to truncate. */
-  const SLACK = 'w-auto';
+  /* Unsized so it still absorbs whatever `width: 100%` leaves over, but
+     otherwise a normal cell -- it carries the rule to the table's edge. */
+  const SLACK_TH = `${TH_BASE} w-auto`;
+  const SLACK_TD = `${TD_BASE} w-auto`;
 
   const MUTED = 'text-ink-muted';
 
@@ -337,8 +343,8 @@
                 />
               </th>
             {/each}
-            <!-- SLACK PARKS HERE — see the .slack rule in the style block. -->
-            <th class={SLACK}></th>
+            <!-- SLACK PARKS HERE. Its width is the point; its styling is ordinary. -->
+            <th class={SLACK_TH}></th>
           </tr>
         </thead>
         <tbody>
@@ -353,7 +359,7 @@
               {#each cols.visible() as c (c.key)}
                 {@render cell(c, row)}
               {/each}
-              <td class={SLACK}></td>
+              <td class={SLACK_TD}></td>
             </tr>
           {/each}
         </tbody>
