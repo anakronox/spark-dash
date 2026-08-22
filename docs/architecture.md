@@ -165,7 +165,7 @@ history view:
   memory, which runtime/model it belongs to. Display-only, no kill/control
   actions (confirmed non-goal).
 - Required panel: GPU utilization/memory/temp/power tiles per node, with
-  color-coded thresholds matching the [anomaly thresholds](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting)
+  color-coded thresholds matching the [anomaly thresholds](metrics.md#5-anomaly-thresholds-and-what-measurement-did-to-them)
   already validated by sparkview (e.g. temp > 80°C, PSI ≥ MOD, THROTTLED clock
   state) — the same at-a-glance red/yellow/green signal a TUI gives you, not
   just a number.

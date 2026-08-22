@@ -12,7 +12,7 @@ only things allowed to exist outside a container are:
    new scope introduced by this project.
 
 Nothing else gets `apt install`-ed, no systemd units get hand-written, no
-kernel modules get built, on any of the 3 GX10 nodes. If a piece of the
+kernel modules get built, on any GX10 node. If a piece of the
 monitoring stack can't be satisfied that way, it gets descoped rather than
 quietly becoming a host change — see the `spark_hwmon` decision below for a
 concrete example of that tradeoff actually being made.
@@ -358,8 +358,11 @@ volumes:
 
 ## Building and shipping images
 
-Settled. Images are built by hand, tagged with the commit, and pinned by tag in
-each stack's `.env`.
+Settled. Images are built by hand and tagged with the commit — never built on
+deploy, so a rollback is a tag change rather than a rebuild. Where they go
+depends on which of the two paths below you are on: a local build stays on the
+host that made it, and only the registry path pins a tag in each stack's
+`.env`.
 
 **Two scripts, because they serve two different people.**
 

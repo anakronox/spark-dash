@@ -174,7 +174,7 @@ the survivors.
 
 **Health state → status palette** (reserved; never reused as a series color):
 
-| State | Hex | Mapped from ([metrics.md](metrics.md#5-anomaly-thresholds-starting-point-for-phase-3-alerting)) |
+| State | Hex | Mapped from ([metrics.md](metrics.md#5-anomaly-thresholds-and-what-measurement-did-to-them)) |
 |---|---|---|
 | good | `#0ca30c` | PSI LOW, clock PASS, temp < 70°C |
 | warning | `#fab219` | PSI MOD, temp 70-80°C, mem > 85% |

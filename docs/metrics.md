@@ -383,22 +383,27 @@ Two traps:
 - **`sum` without `by (cluster)` is almost always the wrong answer.** It reads as
   cluster capacity and isn't.
 
-## 5. Anomaly thresholds (starting point for Phase 3 alerting)
+## 5. Anomaly thresholds, and what measurement did to them
 
-`sparkview`'s anomaly auto-logger already field-validated a set of trigger
-conditions on GB10 hardware — reuse these as the initial Prometheus alerting
-rules ([roadmap.md](roadmap.md) Phase 3) instead of guessing at thresholds from
-scratch:
+`sparkview`'s anomaly auto-logger had already field-validated a set of trigger
+conditions on GB10 hardware, so those were the starting point rather than
+guesses. Three of the four have since been changed by measurement on this
+cluster — which is the useful part of this section, because each change is a
+trap someone else building on GB10 will hit:
 
-- Memory pressure (PSI) reaches MOD, HIGH, or CRITICAL
-- GPU clock drops to THROTTLED or LOCKED while under load
-- Memory usage > 85% with swap active
-- GPU or CPU temperature exceeds 80°C
+| sparkview's trigger | What ships now | Why it changed |
+|---|---|---|
+| PSI reaches MOD / HIGH / CRITICAL | unchanged, at HIGH and CRITICAL | PSI is the one signal that catches contention *before* a freeze |
+| GPU clock THROTTLED or LOCKED under load | unchanged | the load gate is what makes it meaningful; an idle clock is not a fault |
+| memory > 85% **with swap active** | memory that is **unexplained** by resident models | `swap_used` is a LEVEL, not a flow. Pages evicted during a past squeeze sit there indefinitely — measured unchanged at 6.13–6.40 GiB across 24h while memory never passed 42%. The conjunct fired on history, not on pressure. A node full of model weights is also not a fault, so the rule now subtracts what the models explain |
+| GPU or CPU temperature over 80°C | bands **derived from the hardware's own limits**, per node and per component | a GX10 sits at ~84°C during routine ComfyUI work without throttling, so a fixed 80°C line fires constantly. A fixed 88/94 replaced it, and derived bands replaced that. `TemperatureBandsNotDerived` fires when a node falls back to a guess, so a guessed threshold announces itself |
 
-(sparkview also treats `PROCHOT` hardware throttle as a trigger — not available
-to us since `spark_hwmon` is out of scope; see above.)
+`PROCHOT` hardware throttle remains unavailable — it needs `spark_hwmon`, which
+is out of scope for the reason given above.
 
-Tune from there once we have real multi-node history to look at.
+The PSI bands are the one set still uncalibrated. They need a genuine memory
+squeeze to calibrate against, and manufacturing one on a box doing real work is
+not worth it.
 
 ## Collection architecture
 
