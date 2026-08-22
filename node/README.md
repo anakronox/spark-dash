@@ -131,10 +131,20 @@ Anything listed only on the left is new — copy it across from `.env.example`.
 
 ### Rolling out a new image
 
-**Rollout is manual, and pinning is the mechanism:**
+**Rollout is manual, and per node.** Building locally — the default — it is
+three commands on each GX10:
 
 ```bash
-# In .env — the tag publish-images.sh printed
+git -C "$REPO" pull
+"$REPO"/scripts/build-images.sh agent
+docker compose up -d spark-dash-agent
+```
+
+**If you deploy from a registry instead, pin the tag** that
+`publish-images.sh` printed:
+
+```bash
+# In .env
 AGENT_IMAGE=<registry>/<owner>/spark-dash-agent:255e10e
 ```
 

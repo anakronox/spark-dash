@@ -71,3 +71,48 @@ def test_anchors_point_at_headings_that_exist(doc):
         if anchor not in cache[other]:
             broken.append(f"[{text}]({target})")
     assert not broken, f"{doc.name} has anchors with no matching heading: {broken}"
+
+
+ALERT_FILES = sorted((ROOT / "central" / "config").glob("alerts*.yml"))
+
+#: Docs that describe the CURRENT alert set to an operator. The roadmap is
+#: deliberately excluded: it is a decision log, and naming a rule that was
+#: renamed or retired is exactly its job -- `MemoryHighWithSwap` appears there
+#: because measurement killed the theory behind it, which is a thing the record
+#: should keep saying.
+ALERT_DOCS = [ROOT / "central" / "README.md", ROOT / "node" / "README.md", ROOT / "README.md"]
+
+
+def defined_alerts() -> set[str]:
+    names: set[str] = set()
+    for f in ALERT_FILES:
+        names |= set(re.findall(r"^\s*- alert:\s*(\w+)", f.read_text(), re.M))
+    return names
+
+
+def test_alert_rules_exist_to_check():
+    """Guarding against an empty set, which would pass every doc vacuously."""
+    assert len(defined_alerts()) > 20, "found suspiciously few alert rules"
+
+
+@pytest.mark.parametrize("doc", ALERT_DOCS, ids=lambda p: f"{p.parent.name}/{p.name}")
+def test_documented_alert_names_still_exist(doc):
+    """Alert names in operator docs go stale silently.
+
+    `central/README.md` listed nine alerts as though that were the set; there
+    are 34. One of the nine had been renamed, so the doc named a rule that did
+    not exist — worse than omitting it, because a reader greps for it and
+    concludes their own config is broken.
+    """
+    defined = defined_alerts()
+    # Alert-shaped: two or more CamelCase words in backticks. `Prometheus` or
+    # `NVML` do not match; `NodeAgentDown` does.
+    named = {
+        m for m in re.findall(r"`([A-Za-z]+)`", doc.read_text())
+        if re.match(r"^(?:[A-Z][a-z0-9]+){2,}$", m)
+    }
+    stale = named - defined
+    assert not stale, (
+        f"{doc.name} names alert rules that are not in central/config/alerts*.yml: "
+        f"{sorted(stale)}"
+    )

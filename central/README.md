@@ -1,8 +1,12 @@
-# Central deployment (monitoring VM)
+# Central deployment (monitoring host)
 
-Two containers — Prometheus and the backend — on a dedicated Proxmox VM.
-Deliberately **not** on a GX10: see
+Four containers — Prometheus, Alertmanager, the backend, and a node-exporter for
+the monitoring host itself. Here that host is a dedicated Proxmox VM rather than
+a GX10, so that losing a node does not also lose the history explaining why:
 [../docs/deployment.md](../docs/deployment.md#central-stack--a-dedicated-proxmox-vm-settled).
+Running it on the GB10 alongside the agent is supported too — see
+[single-host](../docs/deployment.md#single-host--everything-on-one-gb10), which
+drops the node-exporter here because the node stack already runs one.
 
 This directory is a **self-contained stack**: `compose.yaml` at its root, and
 every bind mount in it is `./something` relative to this directory. Config is
@@ -126,10 +130,20 @@ docker exec sparkdash-prometheus grep -c AgentBuildSkew /etc/prometheus/config/a
 
 ### Rolling out a new image
 
-**Rollout is manual, and pinning is the mechanism:**
+**Rollout is manual.** If you build locally — the default — it is three
+commands, and the running version is whatever you last built here:
 
 ```bash
-# In .env — the tag publish-images.sh printed
+git -C "$REPO" pull
+"$REPO"/scripts/build-images.sh backend
+docker compose up -d backend
+```
+
+**If you deploy from a registry instead, pin the tag.** `publish-images.sh`
+prints it:
+
+```bash
+# In .env
 BACKEND_IMAGE=<registry>/<owner>/spark-dash-backend:9c2b41f
 ```
 
@@ -218,8 +232,8 @@ Generate one rather than inventing it:
 echo "spark-dash-$(head -c 9 /dev/urandom | base32 | tr '[:upper:]' '[:lower:]' | tr -d '=')"
 ```
 
-This is also why the URL is kept out of git — the repo is public, and the
-topic URL is the whole secret.
+This is also why the URL is kept out of git — the topic URL *is* the whole
+secret, so it must not be in a repo you might ever share.
 
 #### Setup
 
@@ -311,17 +325,29 @@ names. Neither is wrong; pick the one whose downside you mind less.
 
 ### What fires
 
-| Alert | Fires when | Severity |
+**34 rules, in `config/alerts.yml` and `config/alerts-storage.yml`** — those
+files are the authority, and each rule carries its reasoning in a comment above
+it. The nine below are the ones that page you as **critical**:
+
+| Alert | Fires when | For |
 |---|---|---|
-| `NodeAgentDown` | no metrics from a node for 2m | critical |
-| `GpuThrottled` | clock below threshold under sustained load, 5m | critical |
-| `GpuTemperatureCritical` | GPU above 94°C for 2m | critical |
-| `MemoryPressureCritical` | PSI CRITICAL for 2m | critical |
-| `GpuTemperatureHigh` | GPU above 88°C for 10m | warning |
-| `MemoryHighWithSwap` | above 85% memory *and* swap in use, 10m | warning |
-| `RouterUnreachable` | a llama.cpp router unreachable for 5m | warning |
-| `GpuClockLocked` | an external clock cap in place for 30m | warning |
-| `PrometheusStorageFillingUp` | disk predicted full within a week | warning |
+| `NodeAgentDown` | no metrics from a node | 2m |
+| `PrometheusNotIngesting` | Prometheus is up but storing nothing | 2m |
+| `GpuTemperatureCritical` | GPU past the derived critical band | 2m |
+| `CpuTemperatureCritical` | CPU past the derived critical band | 2m |
+| `MemoryPressureCritical` | PSI CRITICAL — the state that precedes a freeze | 2m |
+| `GpuThrottled` | clock below threshold under sustained load | 5m |
+| `NetworkLinkDown` | a **watched** interface is down | 5m |
+| `RdmaPortDown` | a **watched** RoCE port is down | 5m |
+| `NodeDiskLow` | disk nearly full | 15m |
+
+The other 25 are 24 warnings plus one `info`, and they group into four jobs:
+the collectors are honest about themselves (`AgentSnapshotStale`,
+`CollectorFailing`, `AgentBuildSkew`, and the `info`-level
+`TemperatureBandsNotDerived`); the fabric is watched per interface
+(`NetworkErrorsRising`, `RdmaErrorsRising`); the cluster is compared against
+itself (`ClusterNodeClockLagging`, `ClusterNodeRunningHot`); and Prometheus
+watches its own ingestion and disk.
 
 Every rule has a `for:` duration — a GPU touching 90°C for ten seconds is
 weather, ten minutes is a fault. Alerting on instantaneous values is how you
@@ -331,12 +357,25 @@ Two inhibit rules keep a single failure from producing a pile: a node being
 down suppresses its other alerts, and critical suppresses warning for the same
 condition on the same node.
 
+**Watched, not merely down.** `NetworkLinkDown` and `RdmaPortDown` ignore
+interfaces this node's `cluster.yml` entry excludes — a port cabled for a test
+and then unplugged is not a fault, and the two ports on one cable are excluded
+together. See `interfaces.ignore` in `cluster.yml.example`.
+
 ### Thresholds worth revisiting
 
-The temperature and PSI numbers are marked `[CALIBRATE]` in `alerts.yml`. The
-GX10 runs at ~84°C during routine ComfyUI work without throttling, so the
-generic 80°C line would fire constantly — 88/94 was chosen from that
-observation. The PSI bands are still guesses. See issue #30.
+**Temperature is no longer a guess.** The bands come from the hardware's own
+reported limits, per node and per component, with a fallback only where the
+device reports none — and `TemperatureBandsNotDerived` fires when a node is
+running on that fallback, so a guessed threshold announces itself rather than
+sitting there looking authoritative. This replaced a fixed 88/94, which itself
+replaced a generic 80°C line that fired constantly: a GX10 sits at ~84°C during
+routine ComfyUI work without throttling.
+
+**The PSI bands are still guesses**, and are marked `[CALIBRATE]` in
+`alerts.yml`. They need a genuine memory squeeze to calibrate against, which is
+not something worth manufacturing — see the alerting workstream in
+[../docs/roadmap.md](../docs/roadmap.md).
 
 ## Clusters and standalone nodes
 
