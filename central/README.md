@@ -81,8 +81,8 @@ Both containers run as non-root, and each needs write access to one directory:
 | `central/prometheus` | `65534` | Prometheus TSDB (the one that grows) | Prometheus crash-loops: `panic: Unable to create mmap-ed active query log` |
 | `central/targets` | `10002` | scrape targets rendered by the backend | backend logs `could not write ... is the volume writable?`; Prometheus scrapes nothing |
 
-That first panic is worth recognising — it reads like a Prometheus bug, but it
-is always this.
+If you see that first panic, this is why — it looks like a Prometheus bug and
+isn't.
 
 If you'd rather run both as some other uid, set `PUID`/`PGID` in `.env`
 instead of chowning. Leaving them unset keeps each container on its own
@@ -163,11 +163,8 @@ in the registry the last time that command ran, with no record of which, and
 `docker compose up -d` on an unchanged file would silently change the running
 version.
 
-An earlier plan had Dockhand pulling daily in off-hours, which would have made
-`:latest` converge on its own and turned pinning into an exception path. That
-is not how this is deployed, so the pin is the mechanism rather than a
-stopgap: `publish-images.sh` prints the sha to paste in, and rolling back is
-editing one line.
+`publish-images.sh` prints the sha to paste in, and rolling back is editing one
+line.
 
 > **Config files are a separate matter**, but a simpler one than it used to be:
 > they live in `config/` as a directory mount, so a pull plus a reload is
@@ -186,9 +183,8 @@ Only the dashboard is published externally. Prometheus and Alertmanager have no
 authentication of their own, and they don't need it while the LAN is the trust
 boundary — nothing routes them off the network.
 
-That's also why the dashboard is read-only: it's the one service with an
-external path, so it deliberately can't load, unload or kill anything even if
-someone reached it.
+It's also why the dashboard is read-only. It's the one service with an external
+path, so it can't load, unload or kill anything even if someone reached it.
 
 To lock the internal services down further, set `PROM_BIND=127.0.0.1` and
 `ALERTMANAGER_BIND=127.0.0.1` and reach them over SSH:
@@ -222,9 +218,11 @@ receive and send you notifications of their own.
 Your alerts name your nodes, IP addresses and models, so treat the topic like a
 password:
 
-- `spark-dash` — guessable in seconds. Don't.
-- `spark-dash-alerts` — still guessable.
-- `spark-dash-k7mq2vx9wp4n` — fine.
+| | |
+|---|---|
+| `spark-dash` | guessable in seconds |
+| `spark-dash-alerts` | still guessable |
+| `spark-dash-k7mq2vx9wp4n` | fine |
 
 Generate one rather than inventing it:
 
@@ -251,7 +249,7 @@ sudo chown -R 65534:65534 secrets
 sudo chmod 600 secrets/ntfy-url
 ```
 
-Two details that will bite otherwise:
+Two details that are easy to miss:
 
 - **`echo -n`** — a trailing newline becomes part of the URL and every POST
   fails with a confusing error.
@@ -349,9 +347,8 @@ the collectors are honest about themselves (`AgentSnapshotStale`,
 itself (`ClusterNodeClockLagging`, `ClusterNodeRunningHot`); and Prometheus
 watches its own ingestion and disk.
 
-Every rule has a `for:` duration — a GPU touching 90°C for ten seconds is
-weather, ten minutes is a fault. Alerting on instantaneous values is how you
-train yourself to ignore alerts.
+Every rule has a `for:` duration, so a brief spike doesn't page you — a GPU
+touching 90°C for ten seconds is weather, ten minutes is a fault.
 
 Two inhibit rules keep a single failure from producing a pile: a node being
 down suppresses its other alerts, and critical suppresses warning for the same

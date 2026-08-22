@@ -4,11 +4,10 @@ Two containers — stock `node-exporter` plus our `spark-dash-agent`. Cloned fro
 git and started by hand; nothing is installed on the base OS. See
 [../docs/deployment.md](../docs/deployment.md).
 
-This directory is a **self-contained stack**, and an unusually small one:
-`compose.yaml` is the only file it needs. Every bind mount in it is an absolute
-host path (`/proc`, `/sys`, `/etc/hostname`, `/`), so there is no data
-directory to create, no `DATA_ROOT`, and nothing relative to get wrong. The
-`.env` beside it is host-local and gitignored.
+This directory is a self-contained stack: `compose.yaml` is the only file it
+needs. Its bind mounts are all absolute host paths (`/proc`, `/sys`,
+`/etc/hostname`, `/`), so there's no data directory to create and no
+`DATA_ROOT` to set. The `.env` beside it is host-local and gitignored.
 
 ## Prerequisites
 
@@ -29,21 +28,18 @@ directory to create, no `DATA_ROOT`, and nothing relative to get wrong. The
    ./scripts/build-images.sh agent         # spark-dash-agent:latest, locally
    ```
 
-2. **Pulling from a registry instead is the maintainer path.** Then, and only
-   then, each node needs `docker login <registry>` plus `AGENT_IMAGE` and
+2. **If you pull from a registry instead** — the maintainer path — each node
+   also needs `docker login <registry>`, plus `AGENT_IMAGE` and
    `PULL_POLICY=always` in its `.env`. See
    [../docs/deployment.md](../docs/deployment.md#building-and-shipping-images).
 
 ## Configure
 
-**Which routers and engines this node serves is not configured here.** It comes
-from `cluster.yml` on the monitoring host: the agent asks the backend what it
-should poll. That is what lets this stack be byte-identical on every node.
-
-Nothing needs to differ per node. The agent reads the **host's** hostname from
-a bind-mounted `/etc/hostname` and uses it as its node id, so this same stack
-deploys unchanged to every GX10 — one directory in one repo, no per-node
-override to forget.
+**Which routers and engines this node serves is set on the monitoring host**,
+in `cluster.yml` — the agent asks the backend what to poll. Nothing else here
+differs between nodes either: the agent reads the host's hostname from a
+bind-mounted `/etc/hostname` and uses it as its node id. So the same stack
+deploys unchanged to every GX10.
 
 > It has to be `/etc/hostname`, not `/proc/sys/kernel/hostname`. The procfs
 > entry is UTS-namespace-aware and returns the *container's* hostname even
@@ -163,9 +159,7 @@ Nothing pulls images on a schedule here — every deploy is someone running
 to be in the registry the last time that command ran, with no record of which,
 and an `up -d` on an unchanged file would silently change the agent version.
 
-An earlier plan had Dockhand pulling daily in off-hours, which would have made
-`:latest` converge on its own. That is not how this is deployed, so the pin is
-the mechanism rather than a stopgap.
+Rolling back is editing that one line.
 
 **This is why `AgentBuildSkew` matters more than it looks.** Nothing brings a
 missed node into line overnight, so a node forgotten during a rollout stays on
