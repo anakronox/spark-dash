@@ -4608,11 +4608,53 @@ pointing at `https://github.com/someone/...` to imitate a stranger's clone, no
   `BACKEND_URL` in node. Placeholders use `.invalid`, which RFC 2606 guarantees
   will never resolve, so an unedited one fails loudly.
 
-**Not verified: `docker compose up -d` from that clean clone.** The VM was
-running production at the time and `container_name` is fixed in the compose
-files, so bringing a second copy up would have collided with the live stack.
-Everything up to that line is walked; that line is what production already runs
-daily.
+**Now verified. Walked 2026-08-22**, with production stopped and its four
+containers renamed aside so the shipped `container_name` values were free —
+nothing tracked was edited and the window was 19 seconds. Following the
+quickstart literally, `docker compose up -d` came up clean: all four containers
+running, backend healthy, Prometheus scraping 4 targets, and `/health`
+answering `{"prometheus":"ok","alertmanager":"ok","nodes_up":1}`. `degraded`
+was correct — the example config names a vLLM endpoint that is not running.
+
+Two things the walk taught that reading could not:
+
+- **A bare `up -d` that skips the quickstart's `chown` crash-loops Prometheus**
+  — root-owned bind mounts against uid 65534, panicking in
+  `NewActiveQueryTracker`. That is not a defect: the README says so in bold and
+  says skipping it "reads like a Prometheus bug". The first walk skipped those
+  lines and reproduced the documented consequence, which tests the warning
+  rather than the software. Worth recording because the failure looks like a
+  product bug and is not one.
+- **H1a's audit missed the most important file.** See H6.
+
+- [x] **H6. `cluster.yml.example` shipped a live node.** Found by the H4 walk,
+  2026-08-22.
+
+  H1a's table listed six functional lines and asserted everything else was
+  "commented out or a docstring example". `central/cluster.yml.example` was
+  never in that table, and its ACTIVE block read:
+
+  ```yaml
+  nodes:
+    - id: sparky
+      host: 192.168.50.61
+  ```
+
+  Not commented — the config a stranger `cp`s as step one of the quickstart. The
+  walk proved the consequence rather than arguing it: a clean clone came up
+  monitoring the maintainer's `sparky` and reported its agent version.
+
+  Its sibling `cluster.yml.single-host.example` had already been genericized by
+  [J](#j--single-host-profile-everything-on-one-gb10); the main file simply
+  never got the same pass. Both now use `CHANGE-ME` and a `CHANGE_ME.invalid`
+  host, which RFC 2606 guarantees never resolves — so an unedited copy reports
+  the node unreachable instead of quietly pointing at whatever answers on the
+  reader's own LAN. The single-host file's `192.168.1.100` was replaced for the
+  same reason: plausible and resolvable is worse than obviously wrong.
+
+  `tests/test_distribution.py` now guards every `*.example` and both compose
+  files against personal values in uncommented lines, and against a host
+  placeholder that could resolve. Verified against all three regressions.
 
 **MIGRATION, applies to THIS deployment.** `pull_policy` is now
 `${PULL_POLICY:-missing}` rather than a hardcoded `always`. An existing `.env`

@@ -25,7 +25,7 @@
 
 nodes:
   - id: CHANGE-ME          # the machine's hostname; the agent derives its own
-    host: 192.168.1.100    # <-- THIS MACHINE's LAN IP, never localhost
+    host: CHANGE_ME.invalid  # <-- THIS MACHINE's LAN IP, never localhost
 
     # One node, so no `cluster:` key. A cluster of one is a standalone node,
     # and naming it would only add a heading to group a single card under.

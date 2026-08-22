@@ -35,11 +35,19 @@
 # and moving them together to tidy the file WOULD repaint.
 
 nodes:
-  - id: sparky
+  - id: CHANGE-ME
     # The id becomes the `node` label on every metric. Choose it once and keep
-    # it: changing it splits the node's history in two.
+    # it: changing it splits the node's history in two. Conventionally the
+    # machine's hostname.
 
-    host: 192.168.50.61
+    # THIS NODE's LAN address, never localhost — the agent runs on the node and
+    # the backend reaches it from the monitoring host.
+    #
+    # A `.invalid` placeholder on purpose (RFC 2606 guarantees it never
+    # resolves), so a copied-but-unedited file reports the node as unreachable
+    # instead of quietly pointing at whatever happens to answer on somebody
+    # else's LAN.
+    host: CHANGE_ME.invalid
 
     # agent_port: 9500          # defaults, shown for reference
     # node_exporter_port: 9100
