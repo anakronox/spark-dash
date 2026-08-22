@@ -1,11 +1,11 @@
-# spark-dash-homegrown
+# spark-dash
 
 A scalable web dashboard for a home cluster of NVIDIA GB10-based inferencing
 servers (ASUS GX10 / "DGX Spark" class hardware), showing GPU/system health and
 live metrics for the LLM inferencing jobs (llama.cpp router + vLLM) running on
 them.
 
-Currently 1 node, growing to 3.
+Supports single node and clusters.
 
 ## Quickstart
 
