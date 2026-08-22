@@ -137,6 +137,61 @@ curl -s <monitoring-host>:8080/health | jq '{status, problems}'
 scraped. A node listed there but not yet running its agent appears in
 `problems`, which is the intended way to notice a half-finished deploy.
 
+### 4. Adding a node, or an engine on one
+
+**One file defines the cluster** — `central/cluster/cluster.yml` — and there are
+two ways to edit it. Both write the same file, and **neither needs a restart**:
+the backend re-reads it on a timer, and it renders Prometheus's scrape targets
+from the same entry, so there is no second inventory to keep in sync.
+
+**From the dashboard.** ⚙ **settings** → **Cluster**:
+
+- **`+ node`** adds a row. Set its **host** — the node's LAN address — and
+  optionally a **cluster** name.
+- **`+ router`** adds a llama.cpp router by **port**. The **metrics** tick beside
+  it opts that router in to `/metrics?model=`, which is what provides per-model
+  tokens/sec and KV-cache detail.
+- **`+ vLLM`** and **`+ SGLang`** add those engines the same way, by port.
+- **copy yaml** shows the YAML for that node if you would rather paste it
+  somewhere than save from here.
+
+The panel also lists the interfaces each node is actually reporting, as tick
+boxes, so excluding a deliberately-unplugged port from alerting does not mean
+looking its name up.
+
+**Or edit the file.** Same result:
+
+```yaml
+# central/cluster/cluster.yml
+nodes:
+  - id: node-1                 # becomes the `node` label on every metric
+    host: 10.0.0.11
+    runtimes:
+      llama_routers:
+        - port: 8001
+          scrape_metrics: true # per-model tokens/sec and KV cache
+        - port: 8108
+      vllm: [8120]
+      sglang: [30000]          # only if started with --enable-metrics
+
+  - id: node-2
+    host: 10.0.0.12
+    cluster: alpha             # pools memory with other `alpha` nodes
+```
+
+**Runtimes are ports, not URLs.** They are resolved against that node's own
+host, so a node's address appears exactly once — which is what lets the node
+stack in step 2 deploy byte-identical to every machine. A node that only holds
+weights for a tensor-parallel cluster needs no `runtimes:` block at all.
+
+**A new node still needs step 2 run on it.** Listing it here is what makes the
+dashboard and Prometheus look for it; the agent is what answers.
+
+**`cluster:` is not cosmetic.** Clustered nodes pool memory for distributed
+inference, so their free space is summed together and treated as capacity a
+single model could occupy. Unclustered nodes are never summed with anything —
+a fleet-wide total would describe memory that cannot hold a model.
+
 Deploying from a registry instead of building on each host is the maintainer
 path — see [building and shipping
 images](docs/deployment.md#building-and-shipping-images). It needs

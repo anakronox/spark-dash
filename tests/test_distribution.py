@@ -77,3 +77,36 @@ def test_the_placeholder_fails_loudly_rather_than_resolving():
             f"{name} ships host={host.group(1)!r} — a plausible-looking address "
             "points an unedited config at a real machine on the reader's LAN"
         )
+
+
+def test_readme_cluster_examples_actually_parse():
+    """Every `cluster.yml` block in the README goes through the real parser.
+
+    A config example is copied, not read. H6 shipped one that named a live host;
+    this guards the other half — an example that is merely WRONG, which a reader
+    discovers as a backend error on their first start rather than as a typo in
+    a doc. Parsed and validated with the same functions the backend uses, so
+    "it looked right" cannot be the standard.
+    """
+    import sys
+
+    for path in (ROOT / "backend" / "src", ROOT / "common" / "src"):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    from spark_dash_backend.cluster import parse_cluster, validate_cluster
+
+    readme = (ROOT / "README.md").read_text()
+    blocks = re.findall(r"```yaml\n(# central/cluster/cluster\.yml\n.*?)```", readme, re.S)
+    assert blocks, "no cluster.yml example found in the README — did it move?"
+
+    for block in blocks:
+        nodes = parse_cluster(block)
+        validate_cluster(nodes)
+        assert nodes, "a cluster.yml example parses to no nodes at all"
+        for node in nodes:
+            # The placeholder rule from H6 applies to examples a reader copies:
+            # never a real address, and never the maintainer's.
+            assert not re.match(r"^192\.168\.50\.", node.host), (
+                f"README example points at {node.host}, a real address on the "
+                "maintainer's LAN"
+            )
