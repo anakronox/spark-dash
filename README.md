@@ -129,13 +129,11 @@ the same address you would type in a browser, without a trailing path:
 BACKEND_URL=http://10.0.0.10:8080     # the monitoring host, not this node
 ```
 
-Two ways people get it wrong: it is **not** `localhost` and **not** this node's
-own address. The agent runs *on the node* and fetches its configuration *from*
-the monitoring host, so the value is that host's LAN address — and it is
-**identical on every node**, which is the whole point. The agent takes its id
-from the machine's hostname, and takes which routers and engines to poll from
-`cluster.yml` on the monitoring host, so nothing else in this file differs
-between nodes.
+The agent runs *on the node* and fetches its configuration *from* the monitoring
+host, so the value is that host's LAN address — and it will be **identical on
+every node**. The agent takes its id from the machine's hostname, and takes
+which routers and engines to poll from `cluster.yml` on the monitoring host, so
+nothing else in this file differs between nodes.
 
 Confirm it landed, on the node:
 
