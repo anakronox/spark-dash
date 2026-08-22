@@ -1,11 +1,13 @@
 # Metrics Catalog
 
-What we actually want to scrape/collect, and from where. This is the source of truth
-for exporter/scrape config once we start implementing.
+What is collected, and from where. This is the reference for the exporter and
+scrape config that ships — the agent's collectors and `prometheus.yml` are
+written against it, and the GB10 caveats below are why several of them do not
+look like the obvious implementation.
 
 ## 1. GPU / system-level (per node)
 
-Collected by **`spark-dash-agent`** (ours to build) — one container per node,
+Collected by **`spark-dash-agent`** — one container per node,
 reading NVML directly plus the GB10-specific signals that nothing generic
 exposes correctly. Third-party GPU exporters will not ship (see
 [below](#baseline-exporter--will-not-ship-decided-2026-08-21)).

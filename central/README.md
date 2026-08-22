@@ -545,8 +545,12 @@ curl -s localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .label
   LAN if you want its query UI directly.
 - **cloudflared is not defined here.** It already runs on this host; adding the
   dashboard is a tunnel route pointed at `:8080`, not a second connector.
-- **Retention** (`PROM_RETENTION`) is a placeholder 30d. Phase 3 sets a real
-  value from observed disk usage rather than a guess.
+- **Retention** (`PROM_RETENTION`) ships at **180d**, set from measured growth
+  rather than guessed: ~65 MB/day for three nodes at a 15s interval, so 180d is
+  about 12 GB on a 50 GB disk. Err long — raising retention later does not
+  recover data already deleted, so being too short costs permanently while being
+  too long costs a disk alert. The compose fallback is 30d and applies only if
+  the variable is unset.
 - The backend needs write access to the shared `prom-targets` volume. Ownership
   is seeded from the image, so this works on a freshly created volume without
   running as root.

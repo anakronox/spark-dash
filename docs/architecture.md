@@ -89,7 +89,7 @@ requires a host kernel module.
   only adding scrape targets, not touching the inference stack itself.
 - **`node_exporter`** — standard host metrics (CPU/mem/disk/net). ARM64 build
   available, no GB10-specific concerns.
-- **`spark-dash-agent` (new, ours to build)** — one container per node, with
+- **`spark-dash-agent`** — one container per node, purpose-built for GB10, with
   internal collector modules. Fully containerized: only needs `/proc`, `/sys`,
   and NVML/`nvidia-smi` access via the Container Toolkit, no host install.
   Modeled directly on

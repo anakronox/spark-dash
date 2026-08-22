@@ -78,8 +78,7 @@ to close the "who monitors the monitor" gap.
 **Full snapshot per tick, not deltas.** A snapshot for 3 nodes is a few KB; at
 1Hz that's negligible on a LAN, and it makes both sides stateless — no
 resync-after-reconnect logic, no delta-application bugs. Deltas would be a
-premature optimization here. (This supersedes the "pushes deltas" wording in
-[architecture.md](architecture.md#live-view-fast-path).)
+premature optimization here.
 
 Two behaviors that matter:
 
@@ -105,12 +104,19 @@ Snapshot shape (illustrative):
     "processes": [{"pid": 4412, "name": "llama-server", "gpu_mem_bytes": 42000000000,
                    "runtime": "llama.cpp", "model": "qwen3-32b"}],
     "runtimes": {
+      // THREE throughput fields, and only one of them is "throughput".
+      // `generation_tokens_per_sec` is decode and is what every surface leads
+      // with; `prompt_tokens_per_sec` is prefill, which arrives in bursts three
+      // orders of magnitude larger; `tokens_per_sec` is the two added together
+      // and is kept only because recorded history is written against it.
       "llama_cpp": {"loaded_models": ["qwen3-32b"], "slots_used": 2, "slots_total": 4,
-                    "tokens_per_sec": 41.2},
+                    "generation_tokens_per_sec": 41.2, "tokens_per_sec": 41.2},
       "vllm": [{"model": "llama-3.3-70b", "running": 1, "waiting": 0,
-                "kv_cache_pct": 0.63, "tokens_per_sec": 88.5}],
+                "kv_cache_pct": 0.63, "generation_tokens_per_sec": 88.5,
+                "prompt_tokens_per_sec": 0.0, "tokens_per_sec": 88.5}],
       "sglang": [{"model": "deepseek-v3", "running": 2, "waiting": 5,
-                  "kv_cache_pct": null, "tokens_per_sec": 137.5}]
+                  "kv_cache_pct": null, "generation_tokens_per_sec": 137.5,
+                  "prompt_tokens_per_sec": 0.0, "tokens_per_sec": 137.5}]
     }
   }]
 }

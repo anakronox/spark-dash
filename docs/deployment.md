@@ -245,10 +245,11 @@ Two new containers, plus a route on infrastructure that already exists.
 
 ### Sizing
 
-2 vCPU / 4GB RAM / ~50GB disk is comfortable for 3 nodes. Prometheus storage is
-the only thing that grows: roughly a couple of GB for 30 days at this metric
-volume and scrape interval — set real retention in Phase 3 once there's actual
-data to measure rather than guessing now.
+2 vCPU / 4GB RAM / ~50GB disk is comfortable for a handful of nodes. Prometheus
+storage is the only thing that grows, and it has been measured rather than
+estimated: ~65 MB/day for three nodes at a 15s interval, so the shipped
+`PROM_RETENTION=180d` comes to about 12 GB — comfortable on a 50 GB disk,
+where 365d would take over half the free space.
 
 Since it's a Proxmox VM, snapshots and (if the cluster is configured for it) HA
 migration come for free. The TSDB itself isn't precious — all *config* lives in

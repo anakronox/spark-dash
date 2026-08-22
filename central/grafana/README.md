@@ -22,7 +22,7 @@ that file, which is maintained separately and deliberately.
 
 | source | metric names | notes |
 |---|---|---|
-| `sparkdash_*` | 73 | the agent: GPU, unified memory, PSI, clocks, thermals, models, fabric |
+| `sparkdash_*` | 77 | the agent: GPU, unified memory, PSI, clocks, thermals, models, fabric |
 | `node_*` | ~314 | stock node_exporter, one job per node plus the monitoring host |
 | `vllm:*` / `sglang:*` | ~106 | scraped **directly**, so the full upstream surface is here |
 
