@@ -214,3 +214,43 @@ def test_node_dragging_aims_on_the_axis_the_layout_actually_uses():
     group = without_comments(NODE_GROUP.read_text())
     assert "gridTemplateColumns" in group, "the aim never reads the grid's track count"
     assert re.search(r"tracks > 1", group), "the aim does not switch axis when gridded"
+
+
+@pytest.mark.parametrize(
+    "path,selector",
+    [
+        (APP, ".sections"),
+        (APP, ".zone"),
+        (APP, ".cols"),
+        (SECTION, ".slot"),
+    ],
+    ids=["sections", "zone", "cols", "slot"],
+)
+def test_every_layout_grid_declares_a_zero_minimum_track(path, selector):
+    """`minmax(0, 1fr)`, never a bare `1fr` and never an implicit track.
+
+    App.svelte already carries a long note calling this "the whole of the
+    dashboard's layout shift": an `auto`-minimum track refuses to be narrower
+    than its content, so a column holding a wide table stops tracking the
+    window and pushes the page sideways.
+
+    `.slot` is here because it was added as a grid WITHOUT a track and did
+    exactly that — its implicit `auto` column measured 970px inside an 860px
+    half, so the Models card would not shrink with the window. Only Models
+    showed it, because its declared column widths sum highest; every panel had
+    the bug.
+    """
+    src = without_comments(path.read_text())
+    block = re.search(rf"{re.escape(selector)} \{{(.*?)\}}", src, re.S)
+    assert block, f"{path.name} has no `{selector}` rule"
+    body = block.group(1)
+    assert "display: grid" in body, f"{selector} is no longer a grid — is this guard still right?"
+    track = re.search(r"grid-template-columns:\s*([^;]+);", body)
+    assert track, (
+        f"{selector} is a grid with no grid-template-columns — the implicit track "
+        "is `auto`, whose minimum is min-content, so it will not shrink"
+    )
+    assert "minmax(0" in track.group(1), (
+        f"{selector} uses `{track.group(1).strip()}` — a track without a 0 minimum "
+        "refuses to be narrower than its content"
+    )

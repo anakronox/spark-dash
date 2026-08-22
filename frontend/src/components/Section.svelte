@@ -368,6 +368,15 @@
        The handle is absolutely positioned, so the panel is the only thing this
        lays out. */
     display: grid;
+    /* minmax(0, 1fr), NEVER an implicit track — the same rule `.sections`,
+       `.zone` and `.cols` all state, and the one this grid was added without.
+       An implicit track is `auto`, whose minimum is MIN-CONTENT, so the track
+       grew to the widest table it contained instead of to the slot: measured
+       970px inside an 860px half, which pushed the Models card past the page
+       edge and made the whole page scroll sideways. Only Models showed it
+       because its declared column widths sum highest — the bug was in every
+       panel and visible in one. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .slot.grabbed {
