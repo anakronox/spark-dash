@@ -13,6 +13,62 @@ Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Cards
 are draggable and can be paired side by side; every threshold shown is measured
 for this hardware rather than guessed.
 
+## What it monitors
+
+**77 metric families per node**, live at 1–2s over a WebSocket and kept for 180
+days in Prometheus. Read-only by design: it can't load, unload or kill anything.
+
+**The GPU, as GB10 actually reports it.**
+
+- Utilization, temperature, power, clocks.
+- **Unified memory done correctly.** `nvmlDeviceGetMemoryInfo` reports
+  `total ≈ MemTotal` on GB10 no matter what is resident, so the number every
+  generic exporter shows is useless here. The agent reads `/proc/meminfo`
+  instead, which is accurate under load.
+- **A load-gated throttle state machine** — `IDLE` / `PASS` / `LOCKED` /
+  `THROTTLED`. A low clock only means something while the GPU is busy, and on
+  GB10 a throttle usually means power delivery rather than heat.
+- **Memory pressure (PSI)**, which catches contention *before* swap or a freeze.
+  Percent-used does not.
+
+**Who is actually holding the memory.** Per-process GPU attribution, each
+process labelled with the runtime that owns it — llama.cpp, vLLM, SGLang,
+ComfyUI — so "97 GiB used" becomes "97 GiB held by these two vLLM shards". On a
+shared pool that difference is the whole question.
+
+**Per-model inference state.**
+
+- llama.cpp router mode: which models are loaded, sleeping or unloaded, slots in
+  use, KV-cache occupancy, and a timeline of every load and unload.
+- vLLM and SGLang scraped *directly* by Prometheus, so the full upstream surface
+  — latency histograms, per-request counters — is stored whether or not this UI
+  draws it.
+- **Decode and prefill are separate numbers.** Added together they read 47,672
+  tok/s while a model generates 48, because a large prompt landing inside one
+  poll window is a real ingest rate and is not what throughput means.
+
+**The cluster as one machine.** Nodes given a `cluster:` name pool their memory,
+so free space is summed *within* a cluster and never across — a fleet-wide total
+would describe capacity that cannot hold a model. Tensor-parallel workers are
+recognised as shards of one job rather than counted as separate models, and
+`ClusterNodeClockLagging` / `ClusterNodeRunningHot` compare members against each
+other to find the straggler that sets the pace.
+
+**The fabric.** Every interface and RoCE port: link state, negotiated rate,
+throughput, errors and drops. Ports you have deliberately unplugged are excluded
+by name from alerting — and the RoCE device behind an interface goes with it,
+since one cable carries both.
+
+**Alerting that has been calibrated rather than guessed.** 34 rules, push
+notifications via [ntfy](https://ntfy.sh) with no account or API key. Thermal
+bands come from the hardware's own limits per node, and an alert fires when a
+node falls back to a guessed one — a GX10 sits at ~84°C during routine work, so
+a generic 80°C line would page you constantly.
+
+**History worth keeping.** 15 chartable metrics — GPU and CPU utilization,
+clocks, temperature, power, memory, all four PSI signals, swap and disk I/O,
+throughput and prefill — over 1h to 7d, per node or aggregated.
+
 ## Quickstart
 
 Everything runs in Docker; nothing is installed on the base OS. There are two
