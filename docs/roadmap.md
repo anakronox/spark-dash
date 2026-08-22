@@ -917,7 +917,7 @@ have to double as a debugging session.
   The existing round-trip test missed it because its fixture had no groups.
 
   Documented the aggregation patterns in
-  [metrics.md](metrics.md#the-group-label-and-why-totals-are-usually-wrong),
+  [metrics.md](metrics.md#the-cluster-label-and-why-totals-are-usually-wrong),
   including the two traps: a standalone node carries *no* `group` label (an
   empty one would create a phantom group), and `sum` without `by (group)` reads
   as cluster capacity while describing capacity that doesn't exist.
@@ -1027,7 +1027,7 @@ gets built:
   | Alertmanager silences — the original exemplar | [G](#g--clearing-an-alarm) |
   | `cluster.yml` runtimes and ports | [L3](#l--a-settings-fly-out) |
   | Interface alert exclusions | [W](#w--choosing-which-interfaces-are-monitored--shipped-2026-08-21) |
-  | Engine endpoints (vLLM, SGLang) | [V](#v--more-inference-runtimes-sglang-and-atlas--v1v2av3-shipped-2026-08-21) |
+  | Engine endpoints (vLLM, SGLang) | [V](#v--more-inference-runtimes-sglang-and-atlas--shipped-2026-08-21-v2b-deferred) |
 
   **What is left over either fails the test or is a trap**, and is recorded
   here so it is not proposed again:
@@ -3308,7 +3308,7 @@ intended.
   `/api/agent-config` → `RemoteConfig` → the agent — so this is one more key,
   not a new mechanism.
 
-  **A trap created by [V](#v--more-inference-runtimes-sglang-and-atlas):**
+  **A trap created by [V](#v--more-inference-runtimes-sglang-and-atlas--shipped-2026-08-21-v2b-deferred):**
   `RemoteConfig` now treats *every* list-valued key under `runtimes:` as an
   engine's endpoint list, deliberately, so a node picks up an engine a newer
   backend knows about. `interfaces` must therefore be a **sibling of
@@ -3417,7 +3417,7 @@ intended.
   1. Build and push the agent image on **one** node (all three are arm64, and
      two nodes pushing the same tag would leave different digests behind one
      tag), then redeploy the node stacks. Every node is on `b074d8e` today,
-     several commits behind, so this also ships [V](#v--more-inference-runtimes-sglang-and-atlas).
+     several commits behind, so this also ships [V](#v--more-inference-runtimes-sglang-and-atlas--shipped-2026-08-21-v2b-deferred).
   2. Redeploy central for the new rules, backend and dashboard.
   3. Tick the boxes off in settings — `enP2p1s0f1np1` and `enp1s0f1np1` on
      `sparketa` and `sparkjr`. Nothing to hand-edit.
@@ -3496,7 +3496,7 @@ rendered anywhere.
   - **`sum(A) + sum(B)` is not one sum over two families.** Binary `+` keeps
     only label sets present on BOTH sides, so a node running one engine
     contributes nothing and charts flat zero while it serves. This was a live
-    bug in `HISTORY_QUERIES`, found during [V](#v--more-inference-runtimes-sglang-and-atlas)
+    bug in `HISTORY_QUERIES`, found during [V](#v--more-inference-runtimes-sglang-and-atlas--shipped-2026-08-21-v2b-deferred)
     and fixed there; the dashboard would have reproduced it exactly.
   - **Some `_total` series are typed as gauges.** The network byte counters are
     monotonic sysfs counters exported through a gauge family, so Grafana will

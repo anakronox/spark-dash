@@ -132,18 +132,25 @@ percentage suggests, because there is no separate VRAM: every byte the
 monitoring stack holds is a byte a model cannot. See
 [metrics.md](metrics.md) and the unified-memory notes.
 
-Most other Spark dashboards run directly on the Spark. This one deliberately
-does not. A single-host mode for users without spare hardware is roadmap
-workstream J, and it is opt-in with its cost stated rather than the default.
+Most other Spark dashboards run directly on the Spark. This one defaults to
+not doing that. Running everything on one GB10 **is supported** — see
+[Single-host](#single-host--everything-on-one-gb10) below — but it is opt-in,
+with its cost stated rather than discovered.
 
 ## Central stack — a dedicated Proxmox VM (settled)
 
-**Decision: the central stack runs on its own Docker host — a dedicated VM on
-the existing Proxmox cluster — not on any GX10.**
+**Decision: by default the central stack runs on its own Docker host — here, a
+dedicated VM on the existing Proxmox cluster — rather than on a GX10.** This is
+the recommended shape and the one this deployment runs. It is not the only
+supported one: [Single-host](#single-host--everything-on-one-gb10) below puts
+everything on one GB10 and states what that costs.
 
 ### Why not on a GX10
 
-The argument is failure domains, not resources:
+The argument is failure domains, not resources. It is an argument for a
+default, not a prohibition — [Single-host](#single-host--everything-on-one-gb10)
+below accepts every point here deliberately, for the one reader who has no
+second machine:
 
 - **"Node down" is one of the primary alerts.** If Prometheus lives on node 1,
   a node-1 crash takes out both the node *and* the history explaining why it
