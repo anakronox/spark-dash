@@ -8,9 +8,10 @@ jobs running on them.
 
 ## Current environment
 
-- **Hardware today:** 1x ASUS GX10 (NVIDIA GB10 Grace Blackwell Superchip, 128GB unified
-  LPDDR5x CPU/GPU memory, ARM64).
-- **Hardware planned:** +2x additional GX10 units, forming a 3-node cluster.
+- **Hardware:** 3x ASUS GX10 (NVIDIA GB10 Grace Blackwell Superchip, 128GB unified
+  LPDDR5x CPU/GPU memory, ARM64), two of them pooled for distributed inference.
+  This document was written at one node; the design goal below is what let the
+  other two arrive as configuration rather than as a rewrite.
 - **Inference runtimes:**
   - Multiple `llama.cpp` (`llama-server`) containers, mostly run in **router mode**
     (one router process fronting several models, on-demand load/unload, LRU eviction).
@@ -36,8 +37,8 @@ jobs running on them.
    - GPU utilization, memory usage (see unified-memory caveat in
      [metrics.md](metrics.md)), temperature, power draw.
    - CPU, host memory, disk, network as secondary/system-health signals.
-   - Node up/down (liveness) status — important once there are 3 nodes and a node
-     drop needs to be obvious at a glance.
+   - Node up/down (liveness) status — the more nodes there are, the more a
+     silent one needs to be obvious at a glance.
 2. **Per-job / per-model inferencing metrics**
    - Which models are currently loaded/running on which node and which runtime
      (llama.cpp router vs vLLM).
@@ -78,8 +79,11 @@ jobs running on them.
 
 ## Non-functional requirements
 
-- **Scalable from 1 → 3 nodes without redesign.** This is the primary architectural
-  driver — see [architecture.md](architecture.md).
+- **Scales by node count without redesign.** The primary architectural driver:
+  every query is written against a `node` label, so more nodes return more rows
+  rather than needing new shapes. Proven at three; nothing in the design caps it
+  there, though the node colour palette runs out at eight — see
+  [architecture.md](architecture.md).
 - **Low operational overhead.** This is a homelab-scale project for one primary
   operator; avoid components that need significant ongoing babysitting.
 - **Deployable entirely via Docker; base OS stays untouched.** Confirmed
@@ -104,7 +108,7 @@ jobs running on them.
 - Managing or scheduling inferencing jobs, or any process/model control actions
   (no "kill," no unload) — confirmed as strictly read-only monitoring, not an
   orchestrator. Revisit only on explicit request.
-- Cross-cluster (i.e., beyond these 3 nodes) or cloud-hybrid monitoring.
+- Cross-site or cloud-hybrid monitoring: one Prometheus, one LAN.
 
 ## Open questions
 

@@ -9,7 +9,7 @@ Two extremes were on the table:
    swapped models" — those are inference-domain concepts we'd be fighting the
    dashboard-panel model to express well.
 2. **Pure from-scratch app** — full control, but reinventing time-series
-   scraping/storage/retention across 3 nodes is wasted effort; Prometheus already
+   scraping/storage/retention across a handful of nodes is wasted effort; Prometheus already
    solves that well and is the de facto standard for exactly this (it's also what
    `dcgm-exporter` and vLLM already speak natively).
 
@@ -126,7 +126,7 @@ requires a host kernel module.
 
 ### Central (dedicated Proxmox VM — see [deployment.md](deployment.md#central-stack--a-dedicated-proxmox-vm-settled))
 
-- **Prometheus** — scrapes all of the above across all 3 nodes via a static (or
+- **Prometheus** — scrapes all of the above across every node via a static (or
   file-based service discovery) target list. Handles retention/history.
 - **Backend API** — has two distinct jobs, not one:
   - **History/trends (REST):** queries Prometheus over PromQL for anything
@@ -178,26 +178,27 @@ history view:
 **A dedicated VM on the existing Proxmox cluster — never on a GX10.** The
 deciding argument is failure domains, not resources: "node down" is a primary
 alert, so hosting Prometheus on node 1 means a node-1 crash destroys both the
-node and the history explaining why. It also keeps all three GX10s
+node and the history explaining why. It also keeps every GX10
 interchangeable and keeps `cloudflared` (and therefore any externally-reachable
 surface) off the inference hardware entirely. Full reasoning, sizing, and the
 dead-man's-switch caveat are in
 [deployment.md](deployment.md#central-stack--a-dedicated-proxmox-vm-settled).
 
-## Scaling from 1 → 3 nodes
+## Scaling by node count
 
-The design goal is that adding node 2 and node 3 is a **config change, not a code
-change**:
+The design goal was that adding a node is a **config change, not a code
+change**. It held: nodes 2 and 3 arrived as entries in `cluster.yml` and
+nothing else. What follows is why, and it applies equally to a fourth:
 
-- Prometheus target list gains 2 entries (or, better, file-based service
-  discovery reading a simple `nodes.yaml` inventory file — see
-  [roadmap.md](roadmap.md)).
-- Every panel/query in the backend is written in terms of a `node` label from the
-  start (even with 1 node today), so nothing needs to change shape later —
-  it just starts returning more rows.
-- Per-node containers/config are byte-identical across all 3 GX10s apart from
-  `NODE_ID`, so bringing up a new node is genuinely "copy the Compose file,
-  change one value."
+- The Prometheus target list gains an entry per node. This is now file-based
+  service discovery generated from `cluster.yml`, so the list is written rather
+  than maintained by hand.
+- Every panel/query in the backend is written in terms of a `node` label, and
+  was from the first single-node build, so nothing changed shape when the
+  cluster arrived — the same queries simply return more rows.
+- Per-node containers/config are byte-identical on every GX10 — `NODE_ID` is
+  optional and defaults to the hostname — so bringing up a new node is
+  genuinely "copy the directory, set `BACKEND_URL`".
 
 ## Auth / access
 

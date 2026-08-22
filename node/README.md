@@ -12,8 +12,9 @@ directory to create, no `DATA_ROOT`, and nothing relative to get wrong. The
 
 ## Prerequisites
 
-1. **The image must be published** for arm64 — nothing here builds it on
-   deploy:
+1. **Build the agent image on this node** — nothing here builds it on deploy,
+   and a GX10 is arm64, so building where it runs avoids cross-building
+   entirely. No registry and no `docker login` are involved:
 
    ```bash
    # On a GX10 (arm64 — build native, no QEMU needed).
@@ -25,18 +26,23 @@ directory to create, no `DATA_ROOT`, and nothing relative to get wrong. The
    git clone "$SRC" "$REPO" || git -C "$REPO" pull
    cd "$REPO"
 
-   docker login <registry>                 # only if deploying FROM a registry
-   ./scripts/build-images.sh agent
+   ./scripts/build-images.sh agent         # spark-dash-agent:latest, locally
    ```
 
-2. **Each node needs `docker login <registry>`** if the package is
-   private, so it can pull.
+2. **Pulling from a registry instead is the maintainer path.** Then, and only
+   then, each node needs `docker login <registry>` plus `AGENT_IMAGE` and
+   `PULL_POLICY=always` in its `.env`. See
+   [../docs/deployment.md](../docs/deployment.md#building-and-shipping-images).
 
 ## Configure
 
+**Which routers and engines this node serves is not configured here.** It comes
+from `cluster.yml` on the monitoring host: the agent asks the backend what it
+should poll. That is what lets this stack be byte-identical on every node.
+
 Nothing needs to differ per node. The agent reads the **host's** hostname from
 a bind-mounted `/etc/hostname` and uses it as its node id, so this same stack
-deploys unchanged to all three GX10s — one directory in one repo, no per-node
+deploys unchanged to every GX10 — one directory in one repo, no per-node
 override to forget.
 
 > It has to be `/etc/hostname`, not `/proc/sys/kernel/hostname`. The procfs
@@ -56,10 +62,19 @@ $EDITOR .env
 
 | Variable | Notes |
 |---|---|
+| `BACKEND_URL` | **The only required edit.** Where the agent fetches its runtime config from, and the same value on every node. |
 | `NODE_ID` | **Optional.** Defaults to the host's hostname. Set it only if that hostname is a poor label. Becomes the `node` label on every metric — keep it stable, since renaming orphans that node's history. |
+
+The three variables below are a **fallback for a node not yet managed
+centrally** — leave them empty when `cluster.yml` lists this node, which is the
+normal case. They exist so a node can be brought up before the central stack
+knows about it, and are ignored once it does.
+
+| Fallback variable | Notes |
+|---|---|
 | `LLAMA_ROUTER_URLS` | Comma-separated router base URLs. |
 | `LLAMA_METRICS_ROUTERS` | **Leave empty unless certain.** Opt-in allowlist for `/metrics?model=` requests, which LOAD the model on an autoload router. |
-| `VLLM_URLS` | Comma-separated vLLM `/metrics` endpoints. |
+| `VLLM_URLS` / `SGLANG_URLS` | Comma-separated `/metrics` endpoints, per engine. |
 
 ## Where things land
 

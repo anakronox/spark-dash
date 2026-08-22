@@ -25,7 +25,7 @@ the whole point of the hardware. Keeping every monitoring component
 containerized and disposable means:
 
 - A bad exporter config is `docker compose down`, not a broken host package.
-- The 3-node rollout (Phase 2) is "copy a Compose file," not "re-run a
+- Adding a node is "copy a directory and set one value," not "re-run a
   multi-step install script and hope it's idempotent."
 - Nothing about the dashboard risks destabilizing the host OS the inference
   workloads depend on.
@@ -327,7 +327,7 @@ networks:
     external: true  # the existing llama.cpp/vLLM compose network
 ```
 
-`NODE_ID` is the only value that differs between the three GX10s — everything
+`NODE_ID` is the only value that could differ between GX10s — everything
 else is byte-identical, which is what makes the Phase 2 rollout a copy.
 
 ```yaml
@@ -438,7 +438,7 @@ multi-arch entirely, and takes seconds rather than many minutes. The cost is
 building in two places, which is free because each image only ever runs on one
 of them.
 
-**Build on ONE host per image, not on each node.** All three GX10s are arm64
+**Build on ONE host per image, not on each node.** The GX10s are all arm64
 and the image carries nothing node-specific — `NODE_ID` comes from the host's
 hostname at runtime — so `publish-images.sh agent` runs on exactly one of them.
 Two nodes each building and pushing the same tag would leave the second

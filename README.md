@@ -17,8 +17,11 @@ for this hardware rather than guessed.
 
 Everything runs in Docker; nothing is installed on the base OS. There are two
 stacks — `central/` on a monitoring host, and `node/` on each GB10 you want to
-watch. They are deliberately not the same machine
-([why](docs/deployment.md#why-not-on-a-gx10)).
+watch. By default those are different machines, so that losing a node does not
+also lose the history explaining why
+([why](docs/deployment.md#why-not-on-a-gx10)). If you have no second machine,
+[single-host](docs/deployment.md#single-host--everything-on-one-gb10) puts both
+on one GB10 and states what that costs.
 
 You need Docker with Compose v2 on both, plus the NVIDIA Container Toolkit on
 each node — the agent reads NVML. **No registry account and no `docker login`:
@@ -92,8 +95,8 @@ images](docs/deployment.md#building-and-shipping-images). It needs
 - [Metrics catalog](docs/metrics.md) — exactly what's being collected, from
   vLLM, llama.cpp router mode, and GPU/system exporters, including GB10-specific
   caveats (unified memory, router autoload behavior).
-- [Roadmap](docs/roadmap.md) — phased plan from single-node MVP to the full
-  3-node cluster, plus open decisions.
+- [Roadmap](docs/roadmap.md) — the decision log: every workstream, what shipped,
+  and what was deliberately not built, with the reasoning kept.
 - [App design](docs/app-design.md) — backend/frontend stack (FastAPI + Svelte 5),
   API surface, live-update contract, and panel/visual design rules.
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS

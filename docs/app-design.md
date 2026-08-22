@@ -137,20 +137,31 @@ Chosen by the data's job, not by what looks impressive:
 
 Uses the reference palette. Two distinct color jobs, never mixed:
 
-**Node identity → categorical slots.** Three nodes maps exactly onto the
-three-slot all-pairs safe cap, which is a genuinely clean fit:
+**Node identity → categorical slots.** Eight slots, then deliberately none. A
+node's slot is its position in `cluster.yml`, so its colour is its line in that
+file, and appending a node never repaints an existing one.
 
-| Node | Light | Dark |
+The first three are the all-pairs CVD-safe set, and they are what a typical
+install sees:
+
+| Slot | Light | Dark |
 |---|---|---|
-| gx10-1 | `#2a78d6` (blue) | `#3987e5` |
-| gx10-2 | `#eb6834` (orange) | `#d95926` |
-| gx10-3 | `#1baf7a` (aqua) | `#199e70` |
+| 1 | `#2a78d6` (blue) | `#3987e5` |
+| 2 | `#eb6834` (orange) | `#d95926` |
+| 3 | `#1baf7a` (aqua) | `#199e70` |
 
 Validated (`--pairs all`, both modes): CVD ΔE 9.2 light / 9.4 dark, normal-vision
 24.0 / 20.9 — all checks pass. One caveat carried forward: aqua sits at 2.74:1 on
 the light surface, so **node series must carry visible direct labels** (the relief
 rule) — which the design does anyway, since a legend-only cluster chart would be
 worse than useless at a glance.
+
+**Why eight and not three.** The original three cycled with
+`--series-${slot % 3 + 1}`, which gave a fourth node the first node's colour —
+two lines the same shade on one chart, which is worse than an unfamiliar one.
+Past eight, a ninth node takes the neutral rather than a repeat: running out of
+distinguishable colours is a fact to state, not to hide by reusing one. See
+`frontend/src/lib/theme.ts`.
 
 Color follows the *node*, permanently — filtering to two nodes must not repaint
 the survivors.

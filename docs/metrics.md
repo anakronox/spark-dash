@@ -336,7 +336,7 @@ against.
 
 Computed by the dashboard backend, not scraped directly:
 
-- Cluster-wide GPU utilization / free capacity across all 3 nodes
+- Cluster-wide GPU utilization / free capacity across every node
 - "What's running where" table: node × runtime × model × status
 - Aggregate tokens/sec across the whole cluster
 - Node health summary (up/down, last-seen)

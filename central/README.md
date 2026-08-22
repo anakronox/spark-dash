@@ -22,8 +22,10 @@ drift costs you one diff instead of shipping a broken default to everyone.
 
 ## Prerequisites
 
-The image must be published first — nothing here builds it on deploy. Build on
-the monitoring VM so the architecture matches:
+**Build the image first — nothing here builds it on deploy.** Build it on the
+monitoring VM so the architecture matches the host that will run it. No
+registry and no `docker login` are involved: the image stays on this host's
+Docker daemon, which is all the stack needs.
 
 ```bash
 # Clones if absent, updates if already there: `git clone` onto an existing
@@ -34,8 +36,11 @@ SRC=<the URL you cloned this from>
 git clone "$SRC" "$REPO" || git -C "$REPO" pull
 cd "$REPO"
 
-docker login <registry>                 # only if deploying FROM a registry
-./scripts/build-images.sh backend
+./scripts/build-images.sh backend       # spark-dash-backend:latest, locally
+
+# Pulling from a registry instead is the maintainer path, and then you also
+# need `docker login <registry>` here and PULL_POLICY=always in .env.
+# See ../docs/deployment.md#building-and-shipping-images.
 ```
 
 ## Configure
