@@ -249,9 +249,15 @@ bundled frontend never renders are already stored.
   that list against the exporter in both directions, so a name in the table is
   a name you can query.
 
-[docs/roadmap.md](docs/roadmap.md) is the authoritative task list. Issue
-tracking mirrors it on a LAN-internal Forgejo instance that is not reachable
-from outside the network, so the roadmap file is the copy to read.
+[docs/roadmap.md](docs/roadmap.md) is the authoritative task list — every
+workstream, what shipped, and what was deliberately not built, with the
+reasoning kept. Planning happens on a LAN-internal Forgejo that isn't reachable
+from outside, so that file is the copy to read.
+
+**Bugs and questions belong in GitHub Issues.** If something in the quickstart
+doesn't work on your hardware, that's worth reporting — most of this is
+measured against three GB10s on one LAN, and the interesting failures will be
+the ones that aren't.
 
 ## License
 
