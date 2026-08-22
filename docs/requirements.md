@@ -26,10 +26,10 @@ jobs running on them.
   - Also published externally via a Cloudflare Tunnel, fronted by Google OAuth.
   - Single primary user (Brian), but the Cloudflare/OAuth front door means it should
     not assume "localhost-only, no auth" — treat the public path as a real edge.
-- **Source control / issue tracking:** self-hosted Forgejo at
-  `forgejo.indielab.tech`, repo `brian/spark-dash-homegrown`. Issues, project boards,
-  and wiki are all available and should be used to track this project, in addition to
-  the markdown docs in this repo.
+- **Source control:** developed on a self-hosted Forgejo on the same LAN and
+  published to GitHub. Issue tracking lives on that Forgejo instance, which is
+  not reachable from outside the network, so [roadmap.md](roadmap.md) is the
+  authoritative task list and the copy to read.
 
 ## Functional requirements
 
