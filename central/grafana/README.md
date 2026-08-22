@@ -128,9 +128,13 @@ Six sections, `$node` filters all of them:
 - **Agent health** (collapsed) — snapshot age, collection duration, build sha
   per node, collector errors
 
-Every panel carries a description explaining what it means and where it misleads;
-hover the ⓘ. Between them they double as the catalog `docs/metrics.md` does not
-yet contain for the `sparkdash_*` surface.
+Every panel carries a description explaining what it means and where it
+misleads; hover the ⓘ.
+
+For the full list of names, see
+**[what the agent exports](../../docs/metrics.md#what-the-agent-itself-exports)**
+— 85 `sparkdash_*` metrics with labels and meanings, checked against the
+exporter by a test.
 
 Panel queries were run against a live Prometheus before shipping. Grafana's
 **transformations** — the merges and column renames in the two multi-query

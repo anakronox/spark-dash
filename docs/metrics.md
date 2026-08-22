@@ -217,6 +217,14 @@ it lists the ways this surface misleads, which a table of names cannot convey.
 `tests/test_metrics_catalog.py` asserts this list and the exporter agree in both
 directions, by rendering a snapshot rather than trusting the prose.
 
+**Some of these only appear when the thing they measure does.** A name in this
+table is one the agent can export, not one your Prometheus necessarily holds
+right now — so an empty panel may mean "nothing to report" rather than a wrong
+query. On a live three-node cluster running llama.cpp and vLLM, 77 of the 85
+were present; the absent 8 were the six `sglang_*` families (no SGLang running),
+`llama_model_kv_cache_percent` (no llama model reporting occupancy), and
+`collector_errors`, which only exists while a collector is failing.
+
 ### Node and agent
 
 | metric | labels | meaning |

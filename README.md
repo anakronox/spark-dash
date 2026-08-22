@@ -237,12 +237,17 @@ images](docs/deployment.md#building-and-shipping-images). It needs
 
 ## Bring your own dashboard
 
-Prometheus holds everything the UI shows and 180 days of it, so building your
-own views instead is a supported path rather than a workaround — the inference
-engines are scraped *directly*, so latency histograms and per-request counters
-the bundled frontend never renders are already stored.
-[central/grafana/](central/grafana/) has an importable starter dashboard and,
-more usefully, the list of ways this particular metric surface will mislead you.
+Prometheus holds everything the UI shows, and 180 days of it, so building your
+own views is a supported path rather than a workaround. The inference engines
+are scraped *directly*, so latency histograms and per-request counters the
+bundled frontend never renders are already stored.
+
+- **[central/grafana/](central/grafana/)** — an importable starter dashboard,
+  and the list of ways this metric surface can mislead you.
+- **[Every metric the agent exports](docs/metrics.md#what-the-agent-itself-exports)**
+  — all 85 `sparkdash_*` names with their labels and meanings. A test checks
+  that list against the exporter in both directions, so a name in the table is
+  a name you can query.
 
 [docs/roadmap.md](docs/roadmap.md) is the authoritative task list. Issue
 tracking mirrors it on a LAN-internal Forgejo instance that is not reachable
