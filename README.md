@@ -122,10 +122,35 @@ $EDITOR .env                    # one value to change: BACKEND_URL
 docker compose up -d
 ```
 
-`BACKEND_URL` is genuinely the only edit, and the same `.env` then deploys
-unchanged to every node: the agent takes its id from the host's hostname, and
-takes which routers and vLLM endpoints to watch from `cluster.yml` on the
-monitoring host rather than from its own config.
+**`BACKEND_URL` is the monitoring host from step 1**, on the dashboard's port —
+the same address you would type in a browser, without a trailing path:
+
+```bash
+BACKEND_URL=http://10.0.0.10:8080     # the monitoring host, not this node
+```
+
+Two ways people get it wrong: it is **not** `localhost` and **not** this node's
+own address. The agent runs *on the node* and fetches its configuration *from*
+the monitoring host, so the value is that host's LAN address — and it is
+**identical on every node**, which is the whole point. The agent takes its id
+from the machine's hostname, and takes which routers and engines to poll from
+`cluster.yml` on the monitoring host, so nothing else in this file differs
+between nodes.
+
+Confirm it landed, on the node:
+
+```bash
+curl -s localhost:9500/snapshot | jq .config
+# {"source": "central", "fetched_at": "..."}
+```
+
+`source` is the answer:
+
+| | |
+|---|---|
+| `central` | working — this node is in `cluster.yml` and got its config |
+| `unreachable` | `BACKEND_URL` is wrong, or a firewall is in the way |
+| `env` | the backend answered, but this node is **not listed in `cluster.yml`** yet — add it in step 4 |
 
 ### 3. Check it
 
