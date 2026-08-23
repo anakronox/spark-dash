@@ -7,7 +7,10 @@
      renderer with no def shipped twice and displayed nothing for two days. Move
      them to a .ts module and that check silently stops covering this table. */
   export const NETWORK_COLUMNS: ColumnDef[] = [
-    { key: 'iface', label: 'interface', required: true, width: 18 },
+    /* 26ch, not 18: the longest name here is 13 characters and the
+       `not monitored` tag sits beside it, which at 18 truncated the tag to
+       "not m…" — a label that has stopped being a word. */
+    { key: 'iface', label: 'interface', required: true, width: 26 },
     { key: 'node', label: 'node', width: 13 },
     // Negotiated speed. Sorts numerically, so a link that came up at a tenth
     // of its rating heads a descending sort instead of being buried by a
@@ -172,7 +175,7 @@
      browser sizes columns from content and the ColumnDef numbers do nothing.
      `min-w` so the columns keep their proportions on a narrow card and the
      `.scroll` wrapper takes over instead of everything crushing. */
-  const TABLE = 'table-fixed text-body min-w-[680px]';
+  const TABLE = 'table-fixed text-body min-w-[740px]';
 </script>
 
 {#snippet cell(c: ColumnDef, r: LinkRow)}
