@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 APP_CSS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "app.css"
@@ -66,6 +66,14 @@ BAND = {"light": (0.43, 0.77), "dark": (0.48, 0.67)}  # OKLCH L
 #: band could otherwise hide behind.
 BAND_OVERRIDE = {"contrast": (0.55, 0.90)}
 CHROMA_FLOOR = 0.10
+
+#: Minimum ΔE between any node slot and any status colour.
+#:
+#: 12 rather than the 8.4 the CVD check tolerates between adjacent slots. Two
+#: node colours being close costs you a moment working out which node; a node
+#: colour close to `critical` costs you the difference between "node 8" and
+#: "something is wrong", which is a category error rather than a slower read.
+STATUS_FLOOR = 12.0
 CVD_TARGET = 8.0  # OKLab ΔE×100, min(protan, deutan), adjacent pairs
 NORMAL_FLOOR = 15.0
 CONTRAST_MIN = 3.0
@@ -167,6 +175,11 @@ class ThemeBlock:
     mode: str
     surface: str
     slots: list[str]
+    #: The four status colours, which node slots must NOT be confusable with.
+    #: Read per theme because several themes override them. Defaulted so a
+    #: synthetic palette can be checked without them; the check then skips
+    #: rather than passing vacuously.
+    status: dict[str, str] = field(default_factory=dict)
 
 
 def parse_themes(css: str | None = None) -> list[ThemeBlock]:
@@ -196,12 +209,18 @@ def parse_themes(css: str | None = None) -> list[ThemeBlock]:
         mode = mode_match.group(1) if mode_match else "dark"
 
         slots = [resolved.get(f"--chart-{i}", "") for i in range(1, 9)]
+        status = {
+            k: resolved.get(f"--{k}", "")
+            for k in ("good", "warning", "serious", "critical")
+            if resolved.get(f"--{k}", "").startswith("#")
+        }
         themes.append(
             ThemeBlock(
                 name=name or "dark",
                 mode=mode,
                 surface=resolved.get("--panel", ""),
                 slots=slots,
+                status=status,
             )
         )
     return themes
@@ -241,6 +260,33 @@ def check(theme: ThemeBlock) -> list[Finding]:
     out.append(
         Finding("chroma floor", not grey, f"all >= {CHROMA_FLOOR}" if not grey else f"grey: {grey}")
     )
+
+    # STATUS SEPARATION. Node colours say WHICH machine; status colours say
+    # HOW IT IS. A chart line the same red as `critical` makes the reader do
+    # arithmetic on the legend to find out whether they are looking at an
+    # identity or an alarm, and the answer differs per panel.
+    #
+    # Measured before this check existed: slot 8 sat ΔE 3.9 from `critical`,
+    # slot 2 ΔE 5.1, slot 5 ΔE 6.4 — indistinguishable rather than merely
+    # close. Six of eight were inside ΔE 10.
+    if theme.status:
+        near = [
+            (slot, name, round(d, 1))
+            for slot in theme.slots
+            for name, colour in theme.status.items()
+            if (d := delta_e(slot, colour)) < STATUS_FLOOR
+        ]
+        worst = min((d for _, _, d in near), default=None)
+        out.append(
+            Finding(
+                "status separation",
+                not near,
+                f"all >= {STATUS_FLOOR} from good/warning/serious/critical"
+                if not near
+                else f"{len(near)} too close, worst ΔE {worst}: "
+                + ", ".join(f"{s}<->{n} {d}" for s, n, d in sorted(near, key=lambda t: t[2])[:3]),
+            )
+        )
 
     pairs = list(zip(theme.slots, theme.slots[1:], strict=False))
     worst_cvd, worst_pair = min(

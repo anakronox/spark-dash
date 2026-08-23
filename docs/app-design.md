@@ -152,14 +152,21 @@ install sees:
 
 | Slot | Light | Dark |
 |---|---|---|
-| 1 | `#2a78d6` (blue) | `#3987e5` |
-| 2 | `#eb6834` (orange) | `#d95926` |
-| 3 | `#1baf7a` (aqua) | `#199e70` |
+| 1 | `#f623b0` | `#7261c1` |
+| 2 | `#841a84` | `#2ca79e` |
+| 3 | `#2395ff` | `#2c95ff` |
 
-Validated (`--pairs all`, both modes): CVD ΔE 9.2 light / 9.4 dark, normal-vision
-24.0 / 20.9 — all checks pass. One caveat carried forward: aqua sits at 2.74:1 on
-the light surface, so **node series must carry visible direct labels** (the relief
-rule) — which the design does anyway, since a legend-only cluster chart would be
+**Status colours own their hues, and node identity stays out of them.** Green,
+amber and red mean *how it is*; node colour means *which machine*. Those were
+confusable — measured across the seven themes, every one had node slots inside
+ΔE 12 of a status colour, worst case ΔE 0.4, which is the same colour. Node
+slots now live on the cyan→blue→purple→magenta arc, and `scripts/palette_check.py`
+enforces the separation so it cannot drift back.
+
+Validated by that script on every theme: lightness band, chroma floor, ≥3:1
+against the theme's own surface, adjacent-pair separation under protan and
+deutan simulation, and ≥12 ΔE from every status colour. Node series still carry
+visible direct labels (the relief rule) — a legend-only cluster chart would be
 worse than useless at a glance.
 
 **Why eight and not three.** The original three cycled with

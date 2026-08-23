@@ -123,14 +123,14 @@
      dataviz validator against this surface (all checks pass; light mode warns
      on contrast for three slots, which is discharged by every chart carrying a
      visible title and a named legend entry). */
-  --chart-1: #3987e5;
-  --chart-2: #da5c2b;
-  --chart-3: #199e70;
-  --chart-4: #c98500;
-  --chart-5: #d55181;
-  --chart-6: #008300;
-  --chart-7: #9085e9;
-  --chart-8: #e66767;
+  --chart-1: #7261c1;  /* L 0.55  h 289 */
+  --chart-2: #2ca79e;  /* L 0.66  h 188 */
+  --chart-3: #2c95ff;  /* L 0.67  h 253 */
+  --chart-4: #b92c84;  /* L 0.54  h 347 */
+  --chart-5: #b072d3;  /* L 0.66  h 312 */
+  --chart-6: #007295;  /* L 0.52  h 228 */
+  --chart-7: #4658f6;  /* L 0.55  h 271 */
+  --chart-8: #098d9e;  /* L 0.59  h 210 */
 
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "IBM Plex Mono",
     Menlo, Consolas, "DejaVu Sans Mono", monospace;
@@ -199,14 +199,14 @@
      Fixed order: colour follows the METRIC, never its position, so
      changing the selection never repaints the survivors. Validated
      with the dataviz validator against this surface. */
-  --chart-1: #3987e5;
-  --chart-2: #d95926;
-  --chart-3: #199e70;
-  --chart-4: #c98500;
-  --chart-5: #d55181;
-  --chart-6: #008300;
-  --chart-7: #9085e9;
-  --chart-8: #e66767;
+  --chart-1: #c146ca;  /* L 0.61  h 325 */
+  --chart-2: #008472;  /* L 0.55  h 179 */
+  --chart-3: #0084ff;  /* L 0.62  h 255 */
+  --chart-4: #09a7b0;  /* L 0.66  h 202 */
+  --chart-5: #6a2cff;  /* L 0.53  h 285 */
+  --chart-6: #126a95;  /* L 0.50  h 237 */
+  --chart-7: #9512dc;  /* L 0.53  h 308 */
+  --chart-8: #b06a95;  /* L 0.61  h 343 */
 }
 
 :root[data-theme='forest'] {
@@ -261,14 +261,14 @@
      pair #c98500 <-> #199e70 at dE 8.4 protan. Unchanged rather than
      re-tinted, because there is no headroom above the floor to spend and a
      green data palette is exactly what got the green-phosphor candidate cut. */
-  --chart-1: #3987e5;
-  --chart-2: #da5c2b;
-  --chart-3: #199e70;
-  --chart-4: #c98500;
-  --chart-5: #d55181;
-  --chart-6: #008300;
-  --chart-7: #9085e9;
-  --chart-8: #e66767;
+  --chart-1: #8d4fc1;  /* L 0.55  h 307 */
+  --chart-2: #12a78d;  /* L 0.65  h 176 */
+  --chart-3: #009eed;  /* L 0.67  h 242 */
+  --chart-4: #b91284;  /* L 0.53  h 346 */
+  --chart-5: #1a6aff;  /* L 0.57  h 262 */
+  --chart-6: #c172c1;  /* L 0.67  h 327 */
+  --chart-7: #613ee5;  /* L 0.51  h 284 */
+  --chart-8: #0995b0;  /* L 0.62  h 217 */
 }
 
 :root[data-theme='contrast'] {
@@ -340,14 +340,14 @@
      adjacent CVD dE 20.6 (floor 8; the dark theme manages 8.4), adjacent
      normal-vision dE 24.6 (floor 15), minimum contrast 4.8:1 (floor 3),
      minimum rendered chroma 0.116 (floor 0.10). */
-  --chart-1: #ab67a5; /* rose    L 0.61 */
-  --chart-2: #65f0f0; /* cyan    L 0.88 */
-  --chart-3: #9e80d1; /* violet  L 0.66 */
-  --chart-4: #c9c261; /* olive   L 0.80 */
-  --chart-5: #849ded; /* indigo  L 0.71 */
-  --chart-6: #ffb777; /* amber   L 0.83 */
-  --chart-7: #008a63; /* teal    L 0.56 */
-  --chart-8: #62bbf5; /* azure   L 0.76 */
+  --chart-1: #3e9ed3;  /* L 0.67  h 237 */
+  --chart-2: #72f6e5;  /* L 0.89  h 184 */
+  --chart-3: #584fff;  /* L 0.55  h 277 */
+  --chart-4: #b04684;  /* L 0.55  h 347 */
+  --chart-5: #cab0ff;  /* L 0.81  h 299 */
+  --chart-6: #b900ca;  /* L 0.56  h 324 */
+  --chart-7: #2cc1ca;  /* L 0.74  h 201 */
+  --chart-8: #1a84f6;  /* L 0.62  h 255 */
 }
 
 :root[data-theme='slate'] {
@@ -378,14 +378,14 @@
   /* The dark theme's validated set, unchanged. A cooler surface is exactly the
      kind of change that can fail contrast without touching the palette, which
      is why this is checked and not assumed. */
-  --chart-1: #3987e5;
-  --chart-2: #da5c2b;
-  --chart-3: #199e70;
-  --chart-4: #c98500;
-  --chart-5: #d55181;
-  --chart-6: #008300;
-  --chart-7: #9085e9;
-  --chart-8: #e66767;
+  --chart-1: #ca3eca;  /* L 0.62  h 328 */
+  --chart-2: #0084ff;  /* L 0.62  h 255 */
+  --chart-3: #1a6a95;  /* L 0.50  h 238 */
+  --chart-4: #4646ff;  /* L 0.53  h 273 */
+  --chart-5: #b92384;  /* L 0.54  h 347 */
+  --chart-6: #9e12dc;  /* L 0.54  h 311 */
+  --chart-7: #1a95a7;  /* L 0.62  h 210 */
+  --chart-8: #846adc;  /* L 0.60  h 291 */
 }
 
 :root[data-theme='paper'] {
@@ -419,14 +419,14 @@
      (amber and pink, discharged by the always-present chart legend) apply here
      too and are recorded against this theme in the checker rather than
      inherited silently. */
-  --chart-1: #1f6fd0;
-  --chart-2: #ca4714;
-  --chart-3: #14835c;
-  --chart-4: #eda100;
-  --chart-5: #e87ba4;
-  --chart-6: #2e7d32;
-  --chart-7: #6a5acd;
-  --chart-8: #d0453b;
+  --chart-1: #dc3eb9;  /* L 0.64  h 338 */
+  --chart-2: #7b0995;  /* L 0.43  h 318 */
+  --chart-3: #3e8dff;  /* L 0.65  h 258 */
+  --chart-4: #4609f6;  /* L 0.47  h 276 */
+  --chart-5: #00849e;  /* L 0.57  h 218 */
+  --chart-6: #844fdc;  /* L 0.56  h 296 */
+  --chart-7: #1a9e95;  /* L 0.63  h 187 */
+  --chart-8: #09618d;  /* L 0.47  h 239 */
 }
 
 :root[data-theme='light'] {
@@ -480,14 +480,14 @@
      dataviz validator against this surface (all checks pass; light mode warns
      on contrast for three slots, which is discharged by every chart carrying a
      visible title and a named legend entry). */
-  --chart-1: #2873cf;
-  --chart-2: #ca4714;
-  --chart-3: #14835c;
-  --chart-4: #eda100;
-  --chart-5: #e87ba4;
-  --chart-6: #008300;
-  --chart-7: #4a3aa7;
-  --chart-8: #e34948;
+  --chart-1: #f623b0;  /* L 0.66  h 347 */
+  --chart-2: #841a84;  /* L 0.44  h 328 */
+  --chart-3: #2395ff;  /* L 0.66  h 252 */
+  --chart-4: #3500f6;  /* L 0.46  h 272 */
+  --chart-5: #008da7;  /* L 0.59  h 217 */
+  --chart-6: #6135c1;  /* L 0.47  h 291 */
+  --chart-7: #b06adc;  /* L 0.65  h 311 */
+  --chart-8: #1a9e8d;  /* L 0.63  h 181 */
 }
 
 /* @layer base — AND THIS IS LOAD-BEARING, not tidiness.
