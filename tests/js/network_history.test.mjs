@@ -489,9 +489,12 @@ test('every division names what it means', () => {
 // ------------------------------------------------------- the overview table
 
 /** Rows for one link, keyed the way `dataset` keys everything else. */
-const rowsFor = (spec, { rdma = [], fabric = new Set(), nodes = ['sparky'] } = {}) => {
+const rowsFor = (
+  spec,
+  { rdma = [], fabric = new Set(), nodes = ['sparky'], live = new Map() } = {},
+) => {
   const { names, columns } = dataset(spec);
-  return buildRows(names, columns, nodes, null, rdma, fabric).flatMap((d) =>
+  return buildRows(names, columns, nodes, null, rdma, fabric, live).flatMap((d) =>
     d.rows.map((r) => ({ ...r, division: d.key })),
   );
 };
@@ -789,6 +792,43 @@ test('a filled pairing reaches the row roce column', () => {
   const r = only({ [`sparky/eth0/${RX}`]: [10, 10] }, { rdma });
   assert.equal(r.port, 'flapped');
   assert.equal(r.why, 'port flapped');
+});
+
+// --------------------------------------- facts with no time series
+
+test('speed and the monitored flag come off the live snapshot', () => {
+  // Both moved here when the live Network card stopped drawing a second
+  // interface table. Neither is a rate, so applying today's answer to a window
+  // is sound in a way that applying today's throughput would not be.
+  const live = new Map([
+    [linkKey('sparky', 'eth0'), { speedMbps: 200000, monitored: false }],
+  ]);
+  const r = only({ [`sparky/eth0/${RX}`]: [10] }, { live });
+  assert.equal(r.speedMbps, 200000);
+  assert.equal(r.monitored, false);
+});
+
+test('a link the live feed has never mentioned is monitored, with no speed', () => {
+  // An agent that predates the `monitored` flag watches everything, which is
+  // what the field means — so the default has to be true, not false. And absent
+  // is not zero: every wifi port here reports no speed at all.
+  const r = only({ [`sparky/eth0/${RX}`]: [10] });
+  assert.equal(r.monitored, true);
+  assert.equal(r.speedMbps, null);
+});
+
+test('the monitored flag does not filter anything', () => {
+  // Reusing it to decide what the card DRAWS was rejected when the divisions
+  // shipped: it exists to decide what alerts, and a flag serving two purposes
+  // is how a flag starts lying. Reporting it is the opposite.
+  const live = new Map([
+    [linkKey('sparky', 'quiet'), { speedMbps: 10000, monitored: false }],
+  ]);
+  const rows = rowsFor(
+    { [`sparky/quiet/${RX}`]: [10], [`sparky/loud/${RX}`]: [900] },
+    { live },
+  );
+  assert.equal(rows.length, 2, 'an unmonitored link must still be drawn');
 });
 
 let failed = 0;

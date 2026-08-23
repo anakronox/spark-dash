@@ -10,7 +10,7 @@
    * otherwise invisible failure, and the driver's own string is the clearest
    * statement of what actually happened.
    */
-  import { bitRate, num } from '../lib/format';
+  import { bitRate } from '../lib/format';
   import ColumnMenu from './ColumnMenu.svelte';
   import ColumnGrip from './ColumnGrip.svelte';
   import Pager from './Pager.svelte';
@@ -30,19 +30,6 @@
   }
   const { nodes, maxRows = 8 }: Props = $props();
 
-  interface IfaceRow {
-    key: string;
-    node: string;
-    name: string;
-    up: boolean;
-    monitored: boolean;
-    speedMbps: number | null;
-    rx: number;
-    tx: number;
-    errors: number;
-    dropped: number;
-  }
-
   interface RdmaRow {
     key: string;
     node: string;
@@ -58,25 +45,6 @@
     errors: number;
     active: boolean;
   }
-
-  const interfaces = $derived.by<IfaceRow[]>(() =>
-    nodes.filter((n) => pageFocus.includes(n.node_id)).flatMap((n) =>
-      (n.network ?? []).map((i) => ({
-        key: `${n.node_id}/${i.name}`,
-        node: n.node_id,
-        name: i.name,
-        up: i.up,
-        /* Defaulted true for a snapshot from an agent that predates the flag:
-           an older agent watches everything, which is what the field means. */
-        monitored: i.monitored ?? true,
-        speedMbps: i.speed_mbps,
-        rx: i.rx_bytes_per_sec,
-        tx: i.tx_bytes_per_sec,
-        errors: i.rx_errors + i.tx_errors,
-        dropped: i.rx_dropped + i.tx_dropped,
-      })),
-    ),
-  );
 
   /* Collector failures, surfaced verbatim.
    *
@@ -140,11 +108,6 @@
     return rate.replace(/\/sec\b/gi, '/s').replace(/\s*\([^)]*\)\s*$/, '');
   }
 
-  function speed(mbps: number | null): string {
-    if (mbps === null) return '—';
-    return mbps >= 1000 ? `${num(mbps / 1000, 0)}G` : `${num(mbps, 0)}M`;
-  }
-
   /** The negotiated rate as a number, for ordering only — the cell still shows
    *  the driver's own string.
    *
@@ -181,20 +144,9 @@
     { key: 'err', value: (r) => r.errors },
   ]);
 
-  const ifaceView = new TableView<IfaceRow>([
-    { key: 'name', value: (r) => r.name },
-    { key: 'node', value: (r) => r.node },
-    { key: 'link', value: (r) => r.speedMbps },
-    { key: 'rx', value: (r) => r.rx },
-    { key: 'tx', value: (r) => r.tx },
-    { key: 'err', value: (r) => r.errors },
-    { key: 'drop', value: (r) => r.dropped },
-  ]);
-
   // Before paint — see ModelsTable.
   $effect.pre(() => {
     rdmaView.pageSize = maxRows;
-    ifaceView.pageSize = maxRows;
   });
 
   const RDMA_COLUMNS: ColumnDef[] = [
@@ -211,18 +163,7 @@
     { key: 'err', label: 'err', right: true, signal: true, width: 8 },
   ];
 
-  const IFACE_COLUMNS: ColumnDef[] = [
-    { key: 'name', label: 'interface', required: true, width: 17 },
-    { key: 'node', label: 'node', width: 13 },
-    { key: 'link', label: 'link', right: true, width: 12 },
-    { key: 'rx', label: 'rx', right: true, width: 11 },
-    { key: 'tx', label: 'tx', right: true, width: 11 },
-    { key: 'err', label: 'err', right: true, signal: true, width: 8 },
-    { key: 'drop', label: 'drop', right: true, signal: true, width: 9 },
-  ];
-
   const rdmaCols = new ColumnView('network.rdma', RDMA_COLUMNS);
-  const ifaceCols = new ColumnView('network.ifaces', IFACE_COLUMNS);
 
   /* Signal columns that currently have something to say.
    *
@@ -231,28 +172,11 @@
    * to know. Hiding a stat on a monitoring dashboard is hiding a signal, so the
    * signal wins: the column comes back on its own, and the menu says why. */
   const rdmaTripped = $derived(rdma.some((p) => p.errors > 0) ? ['err'] : []);
-  const ifaceTripped = $derived([
-    ...(interfaces.some((i) => i.errors > 0) ? ['err'] : []),
-    ...(interfaces.some((i) => i.dropped > 0) ? ['drop'] : []),
-  ]);
-
   $effect(() => rdmaCols.force(rdmaTripped));
-  $effect(() => ifaceCols.force(ifaceTripped));
 
   $effect(() => dropSortWhenHidden(rdmaView, (k) => rdmaCols.isVisible(k)));
-  $effect(() => dropSortWhenHidden(ifaceView, (k) => ifaceCols.isVisible(k)));
-
-  /** green when up, red when a WATCHED link is down, muted when a link nobody
-   *  watches is down. Three states because "down" means two different things
-   *  once exclusions exist, and rendering them alike is what made a real
-   *  failure the quietest row in the table. */
-  function linkTone(i: { up: boolean; monitored: boolean }): 'up' | 'bad' | 'quiet' {
-    if (i.up) return 'up';
-    return i.monitored ? 'bad' : 'quiet';
-  }
 
   const rdmaShown = $derived(rdmaView.slice(rdma));
-  const ifacesShown = $derived(ifaceView.slice(interfaces));
 
   /* Measured from the rendered header rather than from the stored value: a
      column still on its `ch` default has no stored pixel width, and a drag has
@@ -303,7 +227,6 @@
      a live feed; proportional digits would shift the column on every poll. */
   const NUM = `${TD} text-right tabular-nums`;
   const DIM = `${TD} text-ink-muted`;
-  const NUM_DIM = `${NUM} text-ink-muted`;
   const NAME = `${TD} font-medium`;
 
   /* Verbatim from the driver -- the string itself is the diagnosis when a link
@@ -327,18 +250,12 @@
     quiet: `${STATE} text-ink-muted`,
   };
 
-  /* Sits beside the name rather than taking a column of its own: it is true of
-     a minority of rows, and a column would spend width on emptiness. */
-  const TAG =
-    'ml-[6px] text-nano tracking-[0.08em] uppercase px-[5px] py-px ' +
-    'rounded-sm border border-rule text-ink-muted whitespace-nowrap';
+
 
   const COUNT = 'text-ink-muted text-label';
   const SCROLL = 'overflow-x-auto';
 
-  /* The second table gets a rule above it: two tables in one card need to read
-     as two tables, not as one that changed its mind about its columns. */
-  const SCROLL_SPACED = `${SCROLL} mt-[14px] border-t border-rule pt-[10px]`;
+
   const TABLE = 'table-fixed text-body min-w-[620px]';
   const EMPTY = 'px-4 pt-0 pb-[14px] text-body text-ink-2';
 </script>
@@ -373,58 +290,14 @@
   {/if}
 {/snippet}
 
-{#snippet ifaceCell(c: ColumnDef, i: IfaceRow)}
-  {#if c.key === 'name'}
-    <td class={NAME}>
-      <!-- COLOUR IS THE LINK, the tag is whether anyone is watching.
-           Down-and-watched is `bad`, not muted: before this, a failed link
-           rendered in the same grey as an unused port, so the most alarming
-           row in the table was also its quietest. Down-and-excluded stays
-           muted, because that one really is unremarkable. -->
-      <span class={STATE_TONE[linkTone(i)]}>
-        <span aria-hidden="true">{i.up ? '●' : '○'}</span>
-        {i.name}
-      </span>
-      {#if !i.monitored}
-        <span class={TAG} title="Excluded from alerting in this node's config">
-          not monitored
-        </span>
-      {/if}
-    </td>
-  {:else if c.key === 'node'}
-    <td class={DIM}>{i.node}</td>
-  {:else if c.key === 'link'}
-    <td class={NUM_DIM}>{speed(i.speedMbps)}</td>
-  {:else if c.key === 'rx'}
-    <td class={NUM}>{bits(i.rx)}</td>
-  {:else if c.key === 'tx'}
-    <td class={NUM}>{bits(i.tx)}</td>
-  {:else if c.key === 'err'}
-    <td class={errCell(i.errors > 0)}>{i.errors}</td>
-  {:else if c.key === 'drop'}
-    <td class={errCell(i.dropped > 0)}>{i.dropped}</td>
-  {/if}
-{/snippet}
-
 <section class="panel">
   <header>
-    <h2 class="eyebrow">Network</h2>
+    <h2 class="eyebrow">RDMA ports</h2>
     <span class={COUNT}>
-      {interfaces.length}
-      {interfaces.length === 1 ? 'interface' : 'interfaces'}
-      {#if rdma.length}
-        · {rdma.length} RDMA
-      {/if}
+      {rdma.length}
+      {rdma.length === 1 ? 'port' : 'ports'}
     </span>
-    <!-- ONE control for a card that draws two tables, with the groups named.
-         Two buttons would mean two corners on one card. -->
-    <ColumnMenu
-      of="Network"
-      groups={[
-        { label: 'RDMA ports', view: rdmaCols },
-        { label: 'Interfaces', view: ifaceCols },
-      ]}
-    />
+    <ColumnMenu of="RDMA ports" groups={[{ label: 'RDMA ports', view: rdmaCols }]} />
   </header>
 
   {#if rdma.length}
@@ -493,73 +366,6 @@
     </div>
 
     <Pager view={rdmaView} total={rdma.length} label="RDMA port pages" />
-  {/if}
-
-  {#if interfaces.length}
-    <div class={rdma.length > 0 ? SCROLL_SPACED : SCROLL}>
-      <table class={TABLE}>
-        <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed`
-             the first row's widths decide the whole table, and a `<colgroup>`
-             states them once instead of relying on whichever row happens to
-             render first.
-
-             A dragged width is pixels; the default is `ch`, which tracks the
-             font — these tables set their own font-size, and a pixel default
-             would be wrong the moment that changed. The `.slack` col stays
-             unsized so it still absorbs whatever `width: 100%` leaves over
-             (AA1); under fixed layout that surplus would otherwise be split
-             across every column and undo the point of setting them. -->
-        <colgroup>
-          {#each ifaceCols.visible() as c (c.key)}
-            <col style="width: {ifaceCols.width(c.key) !== null
-              ? `${ifaceCols.width(c.key)}px`
-              : `${c.width}ch`}" />
-          {/each}
-          <col />
-        </colgroup>
-        <thead>
-          <tr>
-            {#each ifaceCols.visible() as c (c.key)}
-              <th use:register={c.key} scope="col" class={c.right ? TH_R : TH} aria-sort={ifaceView.ariaSort(c.key)}>
-                <SortButton view={ifaceView} id={c.key} label={c.label} />
-                <ColumnGrip
-                  label={c.label}
-                  width={() => gripWidth(c.key)}
-                  onresize={(px) => ifaceCols.setWidth(c.key, px)}
-                  onreset={() => ifaceCols.resetWidth(c.key)}
-                />
-              </th>
-            {/each}
-            <!-- SLACK PARKS HERE. `table { width: 100% }` in app.css forces the
-                 table to fill its container, and in an auto-layout table that
-                 surplus is handed to whichever columns can grow — in
-                 proportion to their content, so the column with the longest
-                 strings takes most of it. That is what opened a large gap
-                 beside `model` once M3 added three more content-sized numeric
-                 columns and left even more slack to redistribute.
-
-                 An empty final column with no width constraint absorbs it
-                 instead, so every real column sizes to its own content. Not
-                 `aria-hidden`: an empty `th`/`td` pair is already announced as
-                 an empty cell, and hiding it would leave the row's cell count
-                 disagreeing with the header's. -->
-            <th class={SLACK_TH}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each ifacesShown as i (i.key)}
-            <tr class:down={!i.up}>
-              {#each ifaceCols.visible() as c (c.key)}
-                {@render ifaceCell(c, i)}
-              {/each}
-              <td class={SLACK_TD}></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-
-    <Pager view={ifaceView} total={interfaces.length} label="Interface pages" />
   {:else if failures.length}
     <div class={EMPTY}>
       <p class="m-0">The network collector failed:</p>
@@ -576,9 +382,10 @@
     </p>
   {:else}
     <p class={EMPTY}>
-      No physical interfaces found. The agent ran but saw nothing with a
-      <code class="text-ink">device</code> entry under <code class="text-ink">/sys/class/net</code>, which is how
-      a real NIC is told from a virtual one.
+      No RDMA devices found. The agent ran and saw nothing under
+      <code class="text-ink">/sys/class/infiniband</code>, which is where a RoCE
+      device registers even though it runs over Ethernet. Interfaces without one
+      are in <strong class="text-ink-2">Network history</strong>.
     </p>
   {/if}
 </section>

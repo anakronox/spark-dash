@@ -481,6 +481,17 @@ export interface LinkRow {
   up: boolean;
   /** Worst RDMA port state on this cable, or null when there is no RoCE here. */
   port: 'up' | 'down' | 'flapped' | null;
+  /** Negotiated link speed in Mb/s, from the live snapshot. Null when the
+   *  driver reports none — every wifi port here. */
+  speedMbps: number | null;
+  /** False when this node's config excludes the interface from alerting.
+   *
+   * SHOWN, never filtered on. Reusing `monitored` to decide what this card
+   * DRAWS was rejected when the divisions shipped — that flag exists to decide
+   * what alerts, and a flag serving two purposes is how a flag starts lying.
+   * Reporting it is the opposite: it tells a reader why a link they can see is
+   * not paging anyone. */
+  monitored: boolean;
   tier: number;
   /** Which rule put this row where it is. A sort nobody can explain reads as
    *  the data being wrong — the same argument `dropSortWhenHidden` makes. */
@@ -533,6 +544,10 @@ export function linkRow(
   division: 'fabric' | 'management',
   byName: Map<string, (number | null)[]>,
   onThisLink: Port[] = [],
+  /** Per-interface facts that have no time series: the negotiated speed and
+   *  whether alerting watches this link. Both come from the live snapshot,
+   *  which is where the agent has always reported them. */
+  live: { speedMbps: number | null; monitored: boolean } = { speedMbps: null, monitored: true },
 ): LinkRow {
   const col = (metric: string) => byName.get(`${link.key}${SEP}${metric}`);
   const rx = col(RX);
@@ -616,6 +631,8 @@ export function linkRow(
     drops,
     up,
     port,
+    speedMbps: live.speedMbps,
+    monitored: live.monitored,
     tier,
     why,
   };
@@ -709,6 +726,8 @@ export function buildRows(
   activeNodes: string[] | null,
   rdma: Port[] = [],
   fabric: ReadonlySet<string> = new Set(),
+  /** `linkKey(node, iface)` -> the facts with no time series. */
+  live: ReadonlyMap<string, { speedMbps: number | null; monitored: boolean }> = new Map(),
 ): { key: 'fabric' | 'management'; label: string; note: string; rows: LinkRow[] }[] {
   const byName = new Map(names.map((n, i) => [n, columns[i]]));
   const wanted = (node: string) => activeNodes === null || activeNodes.includes(node);
@@ -722,7 +741,13 @@ export function buildRows(
   const rows = links(names, nodeOrder)
     .filter((l) => wanted(l.node))
     .map((l) =>
-      linkRow(l, divide(l.key, (portsOn.get(l.key) ?? []).length > 0, fabric), byName, portsOn.get(l.key)),
+      linkRow(
+        l,
+        divide(l.key, (portsOn.get(l.key) ?? []).length > 0, fabric),
+        byName,
+        portsOn.get(l.key),
+        live.get(l.key) ?? { speedMbps: null, monitored: true },
+      ),
     )
     .sort(byImportance);
 

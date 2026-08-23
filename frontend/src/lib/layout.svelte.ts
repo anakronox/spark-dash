@@ -229,7 +229,13 @@ export interface SectionDef {
 export const SECTIONS: SectionDef[] = [
   { id: 'history', label: 'History' },
   { id: 'processes', label: 'GPU processes' },
-  { id: 'network', label: 'Network' },
+  /* WAS 'Network', and drew two tables. The interfaces one moved into Network
+     history when that grew a table of its own — six of its seven columns were
+     already there. What is left is the RDMA table, which history cannot
+     replace: per device:port where history collapses to one row per interface,
+     and carrying the negotiated rate string, which is an info label rather
+     than a series. The id is unchanged so saved layouts keep their place. */
+  { id: 'network', label: 'RDMA ports' },
   /* A SEPARATE CARD, not more chips on History. That panel already carries 15
      metrics and its chip row wraps to three lines at full width; six network
      chips would not join it, they would bury it.
@@ -278,14 +284,17 @@ export const ROW_CHOICES = [5, 8, 10, 15, 25, 50, 0];
 
 /** Per section, because the sections are not alike.
  *
- * Network is lower because it draws TWO tables — RDMA ports and interfaces —
- * and the cap applies to each, so 8 there is 16 rows of section against 10 for
- * a table that draws one.
+ * A card that draws TWO tables gets a lower cap, because the cap applies to
+ * each of them — so 8 on such a card is up to 16 rows of section against 10 for
+ * a card that draws one. That is `network-history` now; it used to be
+ * `network`, until its interfaces table moved.
  */
 const DEFAULT_ROWS: Record<string, number> = {
   processes: 10,
   models: 10,
-  network: 8,
+  // One table now — the RDMA ports. It was 8 while this card also drew the
+  // interfaces table that Network history absorbed.
+  network: 10,
   activity: 10,
   /* Lower for the same reason as `network`: this card draws TWO tables, one per
      division, and the cap applies to each — so 8 here is up to 16 rows of

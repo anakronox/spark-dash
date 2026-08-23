@@ -78,6 +78,32 @@
    * Union of the live pairing and whatever history knows, so a node that has
    * dropped out of the live feed keeps its charts in the right division rather
    * than sliding into Management the moment its agent goes quiet. */
+  /** Per-interface facts with no time series, from the live snapshot.
+   *
+   * The negotiated speed and the alerting exclusion moved here when the live
+   * Network card stopped drawing a second interface table. Both are the agent's
+   * own answers and neither is a rate, so reading them live and applying them
+   * to a window is sound in a way that reading live THROUGHPUT would not be. */
+  const liveFacts = $derived(
+    new Map(
+      nodes.flatMap((n) =>
+        (n.network ?? []).map(
+          (i) =>
+            [
+              linkKey(n.node_id, i.name),
+              {
+                speedMbps: i.speed_mbps,
+                /* Defaulted true for a snapshot from an agent that predates the
+                   flag: an older agent watches everything, which is what the
+                   field means. */
+                monitored: i.monitored ?? true,
+              },
+            ] as const,
+        ),
+      ),
+    ),
+  );
+
   /** The RoCE pairings the live feed knows, flattened. */
   const livePairs = $derived(
     nodes.flatMap((n) =>
@@ -229,7 +255,9 @@
      line is a chart-sized hole — and in a table a quiet link is one short row
      that says, in the `why` column, that it is down. Hiding it there would be
      hiding the answer. */
-  const divisions = $derived(buildRows(names, columns, nodeIds, active, rdma, fabric));
+  const divisions = $derived(
+    buildRows(names, columns, nodeIds, active, rdma, fabric, liveFacts),
+  );
   const linkCount = $derived(divisions.reduce((n, d) => n + d.rows.length, 0));
 
   const mode = $derived(chosenMode ?? (linkCount > TABLE_ABOVE ? 'table' : 'charts'));

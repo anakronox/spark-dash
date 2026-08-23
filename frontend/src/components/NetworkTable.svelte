@@ -9,6 +9,10 @@
   export const NETWORK_COLUMNS: ColumnDef[] = [
     { key: 'iface', label: 'interface', required: true, width: 18 },
     { key: 'node', label: 'node', width: 13 },
+    // Negotiated speed. Sorts numerically, so a link that came up at a tenth
+    // of its rating heads a descending sort instead of being buried by a
+    // lexical one — the same reasoning the RDMA table's `rate` column uses.
+    { key: 'link', label: 'link', right: true, width: 10 },
     // The sparkline sorts by BURSTINESS, which is what its shape shows. Sorting
     // it by peak would put a flat line at the top of a column whose whole job
     // is to show movement.
@@ -76,6 +80,7 @@
   const view = new TableView<LinkRow>([
     { key: 'iface', value: (r) => r.iface },
     { key: 'node', value: (r) => r.node },
+    { key: 'link', value: (r) => r.speedMbps },
     { key: 'trend', value: (r) => r.burst },
     { key: 'peak', value: (r) => r.peak },
     { key: 'now', value: (r) => r.now },
@@ -152,6 +157,16 @@
   const NUM_DIM = `${NUM} text-ink-muted`;
 
   const errCell = (hot: boolean) => `${NUM} ${hot ? 'text-warning' : 'text-ink-muted'}`;
+  const TAG =
+    'ml-[6px] px-[5px] py-[1px] rounded-[3px] text-micro tracking-[0.04em] ' +
+    'bg-[color-mix(in_srgb,var(--ink)_8%,transparent)] text-ink-muted align-[1px]';
+
+  /** Negotiated speed, abbreviated. `—` when the driver reports none, which is
+   *  every wifi port here — absent is not zero. */
+  function speed(mbps: number | null): string {
+    if (mbps === null) return '—';
+    return mbps >= 1000 ? `${Math.round(mbps / 1000)}G` : `${Math.round(mbps)}M`;
+  }
 
   /* `table-fixed`, or the declared widths are advisory: under auto layout the
      browser sizes columns from content and the ColumnDef numbers do nothing.
@@ -163,12 +178,23 @@
 {#snippet cell(c: ColumnDef, r: LinkRow)}
   {#if c.key === 'iface'}
     <td class={TD}>
-      <!-- The interface name keeps its case: `enP7s7` is what `ip link` says
-           and what the two tables above print. -->
+      <!-- The interface name keeps its case: `enP7s7` is what `ip link` says. -->
       <span class="[font-variant-numeric:tabular-nums]">{r.iface}</span>
+      <!-- A TAG, not a column. It applies to a minority of links and says
+           something about CONFIG rather than about traffic, so a column of
+           mostly-blank cells would cost a column's width to say nothing most of
+           the time. It is here because a reader looking at a bad link needs to
+           know it is not paging anyone. -->
+      {#if !r.monitored}
+        <span class={TAG} title="Excluded from alerting in this node's config">
+          not monitored
+        </span>
+      {/if}
     </td>
   {:else if c.key === 'node'}
     <td class={DIM}>{r.node}</td>
+  {:else if c.key === 'link'}
+    <td class={NUM_DIM}>{speed(r.speedMbps)}</td>
   {:else if c.key === 'trend'}
     <td class={TD}>
       <!-- Scaled to the row's own maximum, like the small multiples: a shared

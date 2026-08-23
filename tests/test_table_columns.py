@@ -95,8 +95,14 @@ def test_every_declared_column_is_sortable(table):
 SLACK_TABLES = {
     "ModelsTable": 1,
     "ProcessTable": 1,
-    # Two tables in one component: RDMA ports and interfaces.
-    "NetworkPanel": 2,
+    # One each. NetworkPanel drew a second table of INTERFACES until the
+    # Network history table absorbed it: six of its seven columns were already
+    # there, and the history version adds trend, peak and why. What is left here
+    # is the RDMA table, which history cannot replace — it is per device:port
+    # where history collapses to one row per interface, and it carries the
+    # negotiated rate string, which is an info label and not a series.
+    "NetworkPanel": 1,
+    "NetworkTable": 1,
 }
 
 

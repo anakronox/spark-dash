@@ -4722,6 +4722,44 @@ what was already there.
   needs attention" without opening anything, so a chart that promotes itself was
   left out — worth revisiting once the ranking has been used in anger.
 
+- [x] **AC7. The live Network card stops being a second interface table.**
+  Done 2026-08-23.
+
+  Once AC6 shipped, the obvious question was whether the live card was still
+  earning its place. Half of it was not: **six of the interfaces table's seven
+  columns** — name, node, rx, tx, err, drop — were already in the history table,
+  which also carries trend, peak, `why` and link-down. Only `link` was unique.
+
+  The RDMA table is a different matter and stays. It is **per `device:port`**
+  where history collapses to one row per interface with `roce` as worst-of, so
+  on a node with four RoCE devices the history row can say something is down and
+  not which. It carries **`physical_state`** separately from `state`. And it
+  carries the **negotiated rate string** — `200 Gb/sec (2X NDR)` against
+  `100 Gb/sec (4X EDR)` on the f1 ports — which is an info label, has no history
+  query behind it, and is the specific ConnectX-7-came-up-slow failure the
+  column exists for.
+
+  Two facts moved rather than being lost: the negotiated **speed**, and the
+  **`monitored`** flag. Both come off the live snapshot, and both are safe to
+  read live and apply to a window in a way that reading live THROUGHPUT would
+  not be, because neither is a rate. Note the flag is now SHOWN here while still
+  never being filtered ON — AC1 rejected reusing it to decide what the card
+  draws, and reporting it is the opposite of that: it tells a reader why a bad
+  link is not paging anyone.
+
+  **One argument that did not survive measurement.** The expectation was that
+  freshness would decide it — a 2s direct poll against a 240s rate window. Live
+  and the table's `now` column were measured against each other on the same
+  links and agree within about 1.5x on steady traffic. The gap only opens on a
+  burst, where the window flattens the spike. Real, but narrow, and not what
+  justifies keeping the card.
+
+  What the live card still uniquely gives up nothing on: it polls agents
+  directly, so it works when Prometheus is unreachable — the failure this
+  project already builds `data_age_s` for — and its err/drop counters are
+  cumulative since boot, answering "has this link EVER errored", which no window
+  can.
+
 **No scale ceiling for throughput.** `MetricSpec.scaleMax` exists so a quiet
 hour does not auto-scale into looking dramatic, and it is set where the hardware
 gives a natural ceiling (100°C, 300W, 3003MHz). Link speed looks like such a
