@@ -4376,6 +4376,100 @@ A published project attracting drive-by contributions weighs that differently �
 utilities lower the cost of a first patch. That is the condition to watch, and
 it is [H](#h--genericize-for-distribution)'s question rather than this one's.
 
+### AC — Network graphs
+
+**The fabric is collected and never charted.** Fifteen `sparkdash_network_*`
+and `sparkdash_rdma_*` families are exported, scraped and kept for 180 days,
+and none of them appear in the history panel. The Network section shows
+instantaneous rates in a table, so a link that degraded overnight, a port that
+flapped, or a transfer that saturated a 200Gb link at 03:00 leaves nothing you
+can look at afterwards. The data is already in Prometheus; only the chart is
+missing.
+
+That makes this cheap in collection terms and not cheap in design terms, which
+is the whole of the item.
+
+- [ ] **AC1. Decide what a network chart is keyed by.**
+
+  Every existing chip is **one series per node** — GPU utilization, CPU clock,
+  memory used. `NODE_FILTERABLE` works by appending `{node="x"}` to a bare
+  selector, and `tests/test_history_metrics.py` enforces that the expression
+  really is bare, because appending a matcher to an aggregation is not valid
+  PromQL and surfaces as a 503 rather than an honest error.
+
+  Network is **per interface**, which is a second dimension no chip has. Summing
+  it away is not an option: a 200Gb RoCE link and a 10Gb management port added
+  together is a number describing nothing.
+
+  Measured on this cluster, 2026-08-23:
+
+  | | |
+  |---|---|
+  | interfaces reporting | 14 |
+  | `monitored` (not excluded from alerting) | 7 |
+  | actually carrying traffic (>1 kB/s) | 7 |
+
+  Fourteen lines on one chart is unreadable; seven is borderline. The `monitored`
+  flag already encodes "an interface somebody cares about" and happens to select
+  exactly the ones carrying traffic here, so it is the obvious default — but it
+  was designed for alerting, and reusing it for charting means one flag serving
+  two purposes, which is how a flag starts lying. Worth deciding deliberately
+  rather than by convenience.
+
+  Options, none yet chosen: one chart with a line per monitored interface; small
+  multiples, one per interface; or a per-node roll-up with the interface
+  breakdown behind a click.
+
+- [ ] **AC2. Bits, and the counter that is typed as a gauge.**
+
+  Network gear is rated in bits and the Network panel already converts — a chart
+  that showed bytes would disagree with the table above it. So the query is
+  `rate(...bytes_total[window]) * 8`.
+
+  These `_total` series are real monotonic counters read from sysfs, but the
+  agent exports them through a gauge family, so Grafana will not suggest
+  `rate()` and PromQL linters object to it. `rate()` is correct — they reset
+  only on host reboot, which `rate()` handles. Already documented in
+  `central/grafana/README.md`; noted here because the history layer has never
+  had to `rate()` anything, and `MetricSpec` has no field that says "this needs
+  a rate".
+
+- [ ] **AC3. Decide whether RDMA gets its own chart, and avoid drawing the same
+  bytes twice.**
+
+  `sparkdash_rdma_receive_bytes_total` is read from the Ethernet interface the
+  RoCE device is paired with, because mlx5 leaves the IB-style counters at zero.
+  So RDMA throughput and interface throughput are **the same bytes**, and
+  charting both would show one transfer as two.
+
+  Either the RDMA chip charts something the interface chip cannot — port state
+  over time, or negotiated rate against actual — or there is no RDMA chip and
+  the interface chart carries it, with the RoCE pairing shown in the table as it
+  is now.
+
+- [ ] **AC4. Decide whether errors and drops are charted at all.**
+
+  They read zero on a healthy fabric, and a chart of a flat zero is noise
+  competing for the same screen space as a chart that moves. The table already
+  handles this better: `err` and `drop` are `signal` columns that force
+  themselves back into view on their first non-zero value, so a fault announces
+  itself without a chart.
+
+  The argument for charting them anyway is **when** — a table says errors exist,
+  a chart says they started at 02:14 and stopped, which is the difference
+  between "a cable is bad" and "something happened during the backup window".
+  That is a real question the table cannot answer, so this is genuinely open
+  rather than rhetorical.
+
+**No scale ceiling for throughput.** `MetricSpec.scaleMax` exists so a quiet
+hour does not auto-scale into looking dramatic, and it is set where the hardware
+gives a natural ceiling (100°C, 300W, 3003MHz). Link speed looks like such a
+ceiling and is not: `sparkdash_network_speed_mbps` differs per interface.
+Measured here, three speeds across fourteen interfaces — 4x 200Gb, 4x 100Gb,
+3x 10Gb — so one fixed axis sized for the RoCE links would flatten a saturated
+management port into a flat line at the bottom. Throughput charts already fall back to the window maximum for
+this reason, and network should too.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
