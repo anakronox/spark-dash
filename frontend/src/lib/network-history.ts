@@ -595,17 +595,30 @@ export function linkRow(
   };
 }
 
-/** Default order: tier, then how much it moved, then how much it carried.
+/** Default order: tier first, then whatever that tier is actually about.
  *
- * Volume is the LAST key rather than the first. On its own it ranks a busy
- * management port above every fabric link on the cluster, every time, which is
- * the opposite of what anyone opened this card to see — but as a tiebreak
- * inside a tier it does exactly the right thing, putting the busiest of the
- * otherwise-equal links first.
+ * Volume is never the first key. On its own it ranks a busy management port
+ * above every fabric link on the cluster, every time, which is the opposite of
+ * what anyone opened this card to see.
+ *
+ * BURST IS ONLY A SORT KEY INSIDE THE BURSTY TIER, which the first version got
+ * wrong and the deployed page showed immediately. Sorting every tier by burst
+ * ordered the four steady RoCE links 74, 76, 77, 79 kb/s — ascending, because
+ * their burst ratios were 1.12 against 1.09 and that noise decided it. Two
+ * links are never bursty to exactly the same four decimal places, so volume
+ * never got a turn and the steady rows looked shuffled.
+ *
+ * Within a tier the reader is asking a different question. Among bursty links:
+ * which moved most. Among steady ones: which is busiest. Among broken ones:
+ * also which is busiest, since the `why` column already says what is wrong and
+ * the interesting broken link is the one carrying traffic.
  */
 export function byImportance(a: LinkRow, b: LinkRow): number {
-  return a.tier - b.tier || b.burst - a.burst || b.peak - a.peak ||
-    a.node.localeCompare(b.node) || a.iface.localeCompare(b.iface);
+  if (a.tier !== b.tier) return a.tier - b.tier;
+  if (a.tier === TIER_BURST && a.burst !== b.burst) return b.burst - a.burst;
+  return (
+    b.peak - a.peak || a.node.localeCompare(b.node) || a.iface.localeCompare(b.iface)
+  );
 }
 
 /** An SVG path for a row-height sparkline.

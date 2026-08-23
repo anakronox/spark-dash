@@ -210,86 +210,88 @@
   {/if}
 {/snippet}
 
-<section class="division">
-  <div class="scroll">
-    <table class={TABLE}>
-      <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed` the
-           first row's widths decide the whole table, and a `<colgroup>` states
-           them once instead of depending on whichever row renders first.
+<!-- No wrapper element. The card already renders a `section.division` around
+     this with the heading in it, and nesting a second one under the same name
+     gave `.division` two meanings and made every query on the page return each
+     division twice. -->
+<div class="scroll">
+  <table class={TABLE}>
+    <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed` the
+         first row's widths decide the whole table, and a `<colgroup>` states
+         them once instead of depending on whichever row renders first.
 
-           A dragged width is PIXELS and the default is `ch`: this table sets
-           its own font-size, so a pixel default would be wrong the moment that
-           changed — but a drag was a measurement at a specific size on a
-           specific screen, and re-expressing it in `ch` would be inventing
-           precision. The slack col stays unsized so it still absorbs whatever
-           `width: 100%` leaves over. -->
-      <colgroup>
+         A dragged width is PIXELS and the default is `ch`: this table sets
+         its own font-size, so a pixel default would be wrong the moment that
+         changed — but a drag was a measurement at a specific size on a
+         specific screen, and re-expressing it in `ch` would be inventing
+         precision. The slack col stays unsized so it still absorbs whatever
+         `width: 100%` leaves over. -->
+    <colgroup>
+      {#each cols.visible() as c (c.key)}
+        <col
+          style="width: {cols.width(c.key) !== null
+            ? `${cols.width(c.key)}px`
+            : `${c.width}ch`}"
+        />
+      {/each}
+      <col />
+    </colgroup>
+    <thead>
+      <tr>
         {#each cols.visible() as c (c.key)}
-          <col
-            style="width: {cols.width(c.key) !== null
-              ? `${cols.width(c.key)}px`
-              : `${c.width}ch`}"
-          />
-        {/each}
-        <col />
-      </colgroup>
-      <thead>
-        <tr>
-          {#each cols.visible() as c (c.key)}
-            <th
-              use:register={c.key}
-              scope="col"
-              class={c.right ? TH_R : TH}
-              aria-sort={view.ariaSort(c.key)}
-            >
-              <SortButton {view} id={c.key} label={c.label} />
-              <ColumnGrip
-                label={c.label}
-                width={() => gripWidth(c.key)}
-                onresize={(px) => cols.setWidth(c.key, px)}
-                onreset={() => cols.resetWidth(c.key)}
-              />
-            </th>
-          {/each}
-          <!-- Slack parks here, as in the other tables: `table { width: 100% }`
-               hands surplus to whichever columns can grow, which is what opens
-               a gap beside the widest text column. -->
-          <th class={SLACK_TH}></th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each shown as r (r.key)}
-          <!-- The ROW is the control. A separate button column would be a
-               second thing to aim at for an action that belongs to the whole
-               row, and every row already has to be hoverable to be readable. -->
-          <tr
-            class="row"
-            class:open={open.has(r.key)}
-            class:down={!r.up}
-            aria-expanded={open.has(r.key)}
-            tabindex="0"
-            role="button"
-            title={open.has(r.key) ? 'Close this chart' : 'Open this link’s chart'}
-            onclick={() => ontoggle(r.key)}
-            onkeydown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                ontoggle(r.key);
-              }
-            }}
+          <th
+            use:register={c.key}
+            scope="col"
+            class={c.right ? TH_R : TH}
+            aria-sort={view.ariaSort(c.key)}
           >
-            {#each cols.visible() as c (c.key)}
-              {@render cell(c, r)}
-            {/each}
-            <td class={SLACK_TD}></td>
-          </tr>
+            <SortButton {view} id={c.key} label={c.label} />
+            <ColumnGrip
+              label={c.label}
+              width={() => gripWidth(c.key)}
+              onresize={(px) => cols.setWidth(c.key, px)}
+              onreset={() => cols.resetWidth(c.key)}
+            />
+          </th>
         {/each}
-      </tbody>
-    </table>
-  </div>
+        <!-- Slack parks here, as in the other tables: `table { width: 100% }`
+             hands surplus to whichever columns can grow, which is what opens
+             a gap beside the widest text column. -->
+        <th class={SLACK_TH}></th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each shown as r (r.key)}
+        <!-- The ROW is the control. A separate button column would be a
+             second thing to aim at for an action that belongs to the whole
+             row, and every row already has to be hoverable to be readable. -->
+        <tr
+          class="row"
+          class:open={open.has(r.key)}
+          class:down={!r.up}
+          aria-expanded={open.has(r.key)}
+          tabindex="0"
+          role="button"
+          title={open.has(r.key) ? 'Close this chart' : 'Open this link’s chart'}
+          onclick={() => ontoggle(r.key)}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              ontoggle(r.key);
+            }
+          }}
+        >
+          {#each cols.visible() as c (c.key)}
+            {@render cell(c, r)}
+          {/each}
+          <td class={SLACK_TD}></td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+</div>
 
-  <Pager {view} total={rows.length} label="{label} pages" />
-</section>
+<Pager {view} total={rows.length} label="{label} pages" />
 
 <style>
   .scroll {

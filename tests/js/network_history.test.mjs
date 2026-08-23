@@ -630,6 +630,31 @@ test('inside a tier, the busiest comes first', () => {
   assert.deepEqual(rows.map((r) => r.iface), ['big', 'small']);
 });
 
+test('burst noise does not decide the order of steady links', () => {
+  /* MEASURED ON THE DEPLOYED PAGE. Sorting every tier by burst put the four
+     steady RoCE links in ASCENDING order of throughput — 74, 76, 77, 79 kb/s —
+     because their burst ratios were 1.12 against 1.09 and that decided it. Two
+     links are never bursty to the same four decimals, so volume never got a
+     turn and the rows looked shuffled. Burst is a sort key only where it means
+     something: inside the bursty tier. */
+  const rows = rowsFor({
+    // `quiet` is a hair burstier; `loud` carries twelve times the traffic.
+    [`sparky/quiet/${RX}`]: [9, 10, 9, 11],
+    [`sparky/loud/${RX}`]: [120, 120, 120, 121],
+  });
+  assert.equal(rows[0].tier, rows[1].tier, 'fixture should put both in one tier');
+  assert.ok(rows.find((r) => r.iface === 'quiet').burst > rows.find((r) => r.iface === 'loud').burst);
+  assert.deepEqual(rows.map((r) => r.iface), ['loud', 'quiet']);
+});
+
+test('inside the bursty tier, the one that moved most comes first', () => {
+  const rows = rowsFor({
+    [`sparky/spikier/${RX}`]: spike(1, 500),
+    [`sparky/spiky/${RX}`]: spike(1, 50),
+  });
+  assert.deepEqual(rows.map((r) => r.iface), ['spikier', 'spiky']);
+});
+
 test('the order is total — no pair ever compares equal', () => {
   // Two identical links on two nodes must still have a stable order, or the
   // table reshuffles on every refresh.
