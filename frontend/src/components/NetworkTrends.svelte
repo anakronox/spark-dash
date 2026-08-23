@@ -40,6 +40,7 @@
     buildRows,
     columnName,
     columnNode,
+    pairPorts,
     ports,
   } from '../lib/network-history';
   import { ColumnView } from '../lib/columns.svelte';
@@ -77,6 +78,15 @@
    * Union of the live pairing and whatever history knows, so a node that has
    * dropped out of the live feed keeps its charts in the right division rather
    * than sliding into Management the moment its agent goes quiet. */
+  /** The RoCE pairings the live feed knows, flattened. */
+  const livePairs = $derived(
+    nodes.flatMap((n) =>
+      (n.rdma ?? [])
+        .filter((p) => p.interface)
+        .map((p) => ({ node: n.node_id, device: p.device, iface: p.interface })),
+    ),
+  );
+
   const fabric = $derived.by(() => {
     const keys = new Set<string>();
     for (const node of nodes) {
@@ -333,7 +343,11 @@
           linkColumns.push(snapped.columns[i]);
         }
       }
-      rdma = ports(portRows);
+      /* Paired against the live snapshot for any port whose metric predates
+         AC1c. Without this the `roce` column reads "—" for every fabric link
+         until the node stacks are redeployed — the one column the Fabric
+         division exists to explain. */
+      rdma = pairPorts(ports(portRows), livePairs);
       names = linkNames;
       columns = linkColumns;
     } catch (err) {

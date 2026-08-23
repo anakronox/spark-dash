@@ -13,8 +13,8 @@
     // it by peak would put a flat line at the top of a column whose whole job
     // is to show movement.
     { key: 'trend', label: 'trend', width: 14 },
-    { key: 'peak', label: 'peak', right: true, width: 12 },
-    { key: 'now', label: 'now', right: true, width: 12 },
+    { key: 'peak', label: 'peak', right: true, width: 14 },
+    { key: 'now', label: 'now', right: true, width: 14 },
     { key: 'err', label: 'err', right: true, signal: true, width: 8 },
     { key: 'drop', label: 'drop', right: true, signal: true, width: 9 },
     { key: 'port', label: 'roce', width: 10 },

@@ -145,6 +145,32 @@ export function ports(
   );
 }
 
+/** Fill in a pairing the metric never carried, from the live snapshot.
+ *
+ * `rdma_port_info.interface` shipped in AC1c and only reaches Prometheus once a
+ * node's stack is redeployed, so on a cluster running an older agent every port
+ * arrives unpaired — and the `roce` column then reads "—" for every fabric link
+ * on the page, which is the one column that division exists to explain.
+ *
+ * The live snapshot has known the pairing all along; it is the same fact by a
+ * different transport, and it is what already decides the divisions. NOT a
+ * regex over device names: `roceP2p1s0f0` against `enP2p1s0f0np0` looks
+ * derivable and would be a guess that happens to work on this hardware.
+ *
+ * Only fills what is MISSING. Where the metric carries a pairing it wins: that
+ * one is contemporaneous with the samples, and the live answer is not.
+ */
+export function pairPorts(
+  rows: Port[],
+  live: { node: string; device: string; iface: string }[],
+): Port[] {
+  if (!live.length) return rows;
+  const known = new Map(live.map((l) => [`${l.node}${SEP}${l.device}`, l.iface]));
+  return rows.map((p) =>
+    p.iface ? p : { ...p, iface: known.get(`${p.node}${SEP}${p.device}`) ?? '' },
+  );
+}
+
 /** A port worth drawing: one that was NOT up for the whole window.
  *
  * Signal-gated like the fault charts, and for the same reason — a flat line at

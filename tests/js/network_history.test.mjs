@@ -38,6 +38,7 @@ import {
   links,
   portChart,
   portIsNotable,
+  pairPorts,
   ports,
   sparkPath,
 } from '../../frontend/src/lib/network-history.ts';
@@ -752,6 +753,42 @@ test('190 links across 32 nodes build, rank and divide', () => {
   assert.equal(divs[0].rows[0].iface, 'enp1s0f1np1');
   assert.equal(divs[0].rows[0].node, 'gx10-17');
   assert.equal(divs[0].rows[0].why, 'drops');
+});
+
+// --------------------------------------------------------- live pairing
+
+test('a port with no exported pairing is filled in from the live snapshot', () => {
+  // `rdma_port_info.interface` shipped in AC1c and only reaches Prometheus once
+  // a node's stack is redeployed. Until then the roce column would read "—" for
+  // every fabric link — the one column the division exists to explain.
+  const paired = pairPorts(ports([portRow('sparky', 'roceA', '', [1, 0])]), [
+    { node: 'sparky', device: 'roceA', iface: 'enP2p1s0f0np0' },
+  ]);
+  assert.equal(paired[0].iface, 'enP2p1s0f0np0');
+});
+
+test('the exported pairing wins over the live one', () => {
+  // The metric is contemporaneous with the samples; the live answer is now.
+  const paired = pairPorts(ports([portRow('sparky', 'roceA', 'from-metric', [1, 0])]), [
+    { node: 'sparky', device: 'roceA', iface: 'from-live' },
+  ]);
+  assert.equal(paired[0].iface, 'from-metric');
+});
+
+test('a live pairing on another node does not leak across', () => {
+  const paired = pairPorts(ports([portRow('sparky', 'roceA', '', [1, 0])]), [
+    { node: 'sparketa', device: 'roceA', iface: 'eth9' },
+  ]);
+  assert.equal(paired[0].iface, '');
+});
+
+test('a filled pairing reaches the row roce column', () => {
+  const rdma = pairPorts(ports([portRow('sparky', 'roceA', '', [1, 0])]), [
+    { node: 'sparky', device: 'roceA', iface: 'eth0' },
+  ]);
+  const r = only({ [`sparky/eth0/${RX}`]: [10, 10] }, { rdma });
+  assert.equal(r.port, 'flapped');
+  assert.equal(r.why, 'port flapped');
 });
 
 let failed = 0;
