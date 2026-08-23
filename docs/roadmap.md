@@ -4416,9 +4416,67 @@ is the whole of the item.
   two purposes, which is how a flag starts lying. Worth deciding deliberately
   rather than by convenience.
 
-  Options, none yet chosen: one chart with a line per monitored interface; small
-  multiples, one per interface; or a per-node roll-up with the interface
-  breakdown behind a click.
+  **Decided 2026-08-23: small multiples, one chart per interface, each on its
+  own axis.** Reasoning below, in AC1b.
+
+- [ ] **AC1b. Why small multiples, and not a shared axis of any kind.**
+
+  The instinct is one chart with a line per interface. Measured over 24h on this
+  cluster, that does not work — and the reason is not line count:
+
+  | interface | peak (24h) |
+  |---|---|
+  | `sparky enP7s7` (10Gb management) | **580 Mb/s** |
+  | `sparketa enP7s7` | 871 kb/s |
+  | `sparketa enp1s0f0np0` | 368 kb/s |
+  | `sparketa enP2p1s0f1np1` | 107 kb/s |
+  | `sparketa enP2p1s0f0np0` (200Gb RoCE) | **288 b/s** |
+  | `wlP9s9` x3 | 0 |
+
+  **Six orders of magnitude.** On a shared linear axis, one management port
+  doing 580 Mb/s flattens every other link — including the 200Gb fabric — onto
+  zero. The chart would then say the interconnect is idle, which is a stronger
+  and more wrong claim than drawing nothing.
+
+  **Grouping does not fix it**, which was the first idea and is worth recording
+  as rejected on evidence: the spread is *within* classes, not between them.
+  580 Mb/s against 871 kb/s is two ports of the same 10Gb model; 368 kb/s
+  against 288 b/s is two RoCE links on the same node. Splitting fabric from
+  management halves the line count and leaves a 1000x range in each chart.
+
+  **Percent of link capacity** was the other candidate and remains attractive
+  for one specific question — "is anything saturated" — since it puts 10Gb and
+  200Gb on one bounded axis. It fails the general case for the same reason:
+  everything idle sits on zero, indistinguishable. It also cannot include the
+  three wifi ports, which report no speed. Worth revisiting as a *second* chart
+  rather than the primary one.
+
+  Small multiples scale each link to its own traffic, so an idle 200Gb link
+  still shows its shape and a saturated one still reads as saturated. The axis
+  label carries the magnitude, which is what makes cross-chart comparison
+  possible at all.
+
+  **The cost, stated plainly:** chart count grows with interfaces rather than
+  staying fixed the way the existing per-metric charts do — 14 here, filtered to
+  7 by `monitored`. At 32 nodes this does not hold and something else is needed.
+  Accepted for now because the alternative misrepresents the fabric today, and a
+  32-node install is hypothetical while a flat-lined 200Gb link is not.
+
+- [ ] **AC1c. Export the RDMA-to-interface pairing as a label. Prerequisite.**
+
+  `sparkdash_rdma_port_info` carries `device`, `port`, `link_layer` and `rate`
+  but **not** the Ethernet interface the RoCE device is paired with. The agent
+  knows it — `RdmaPort.interface` drives the UI and the paired alert exclusion —
+  it is simply not exported.
+
+  Two things need it. Grouping or filtering interfaces by fabric role is not
+  expressible in PromQL without it. And AC3's double-counting cannot even be
+  *detected* in a query: there is no way to tell which interface an RDMA counter
+  duplicates, because the join key is absent.
+
+  The device names encode the pairing (`roceP2p1s0f0` against `enP2p1s0f0np0`),
+  so it is derivable by string munging. That is the wrong fix — the agent has
+  the real answer and should say it.
 
 - [ ] **AC1a. It gets its own card, not more chips on History. Decided
   2026-08-23.**
