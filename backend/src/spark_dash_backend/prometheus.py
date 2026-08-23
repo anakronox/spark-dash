@@ -310,6 +310,21 @@ HISTORY_QUERIES: dict[str, str] = {
         "sum by (node, interface) "
         "(increase(sparkdash_network_transmit_dropped_total[{window}]))"
     ),
+    # Was the link up for the whole bucket?
+    #
+    # `min_over_time`, so a flap inside one step shows as a 0 rather than being
+    # sampled away. A range query otherwise reports whatever the last scrape in
+    # the bucket said, and at a 900s step a link that dropped for two minutes
+    # and came back reads as having been up the entire time.
+    #
+    # This is the one query the overview table needed that the charts did not.
+    # A down interface carries no traffic, so on the CHART grid it was filtered
+    # out as idle and the question never arose; in a table, where nothing is
+    # hidden, it would otherwise be a flat zero row with no explanation of
+    # whether the wire is quiet or unplugged.
+    "network_link_up": (
+        "min by (node, interface) (min_over_time(sparkdash_network_up[{window}]))"
+    ),
     # RDMA port state, joined to the interface it shares a cable with.
     #
     # THE ONE FABRIC QUESTION THE THROUGHPUT CHARTS CANNOT ANSWER. A RoCE port

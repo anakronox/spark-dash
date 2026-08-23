@@ -255,7 +255,18 @@ const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
  * by a row count, and a "max rows" control on it would be a setting that does
  * nothing.
  */
-export const PAGED_SECTIONS = new Set(['processes', 'models', 'network', 'activity']);
+export const PAGED_SECTIONS = new Set([
+  'processes',
+  'models',
+  'network',
+  'activity',
+  /* Network history joined this list when it grew an overview table. It is
+     absent from History for the reason stated above — a chart's height is set
+     by the plot, not by a row count — and that is still true of this card's
+     CHART mode. The cap applies to the table, which is the mode that exists
+     because the link list can be long. */
+  'network-history',
+]);
 
 /** Row caps offered in settings. `0` means uncapped.
  *
@@ -276,6 +287,10 @@ const DEFAULT_ROWS: Record<string, number> = {
   models: 10,
   network: 8,
   activity: 10,
+  /* Lower for the same reason as `network`: this card draws TWO tables, one per
+     division, and the cap applies to each — so 8 here is up to 16 rows of
+     section against 10 for a card that draws one. */
+  'network-history': 8,
 };
 
 function readColumns(available: string[] = DEFAULT_ORDER): Record<string, Zone> {

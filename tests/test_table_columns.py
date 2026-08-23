@@ -37,7 +37,7 @@ COMPONENTS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "comp
 #: Tables whose rows are ColumnDef-driven. Network holds two, so its keys are
 #: checked as one pooled set -- they share a snippet namespace by convention,
 #: and a key used by both tables is legitimate.
-TABLES = ("ModelsTable", "ProcessTable", "NetworkPanel")
+TABLES = ("ModelsTable", "ProcessTable", "NetworkPanel", "NetworkTable")
 
 
 def lists(name: str) -> tuple[set[str], set[str], set[str]]:

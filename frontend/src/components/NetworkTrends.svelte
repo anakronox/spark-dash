@@ -28,17 +28,21 @@
    * needed. Accepted because the alternative misrepresents the fabric today,
    * and a 32-node install is hypothetical while a flat-lined 200Gb link is not.
    */
+  import ColumnMenu from './ColumnMenu.svelte';
   import MetricChart from './MetricChart.svelte';
+  import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
   import {
     NETWORK_METRICS,
     PORT_STATE,
     buildGrid,
+    buildRows,
     columnName,
     columnNode,
     ports,
   } from '../lib/network-history';
+  import { ColumnView } from '../lib/columns.svelte';
   import type { Port } from '../lib/network-history';
   import { linkKey } from '../lib/network-history';
   import { nodeColor } from '../lib/theme';
@@ -62,9 +66,11 @@
      * does not change hour to hour, so applying today's answer to a 7d window
      * is sound in a way that applying today's THROUGHPUT would not be. */
     nodes: NodeSnapshot[];
+    /** Rows before each division's table pages. Infinity = uncapped. */
+    maxRows?: number;
     themeKey: string;
   }
-  const { nodeIds, nodes, themeKey }: Props = $props();
+  const { nodeIds, nodes, maxRows = 8, themeKey }: Props = $props();
 
   /** `linkKey(node, iface)` for every interface with an RDMA device on it.
    *
@@ -82,6 +88,7 @@
     return keys;
   });
 
+  const MODE_KEY = 'spark-dash.network-mode.v1';
   const QUIET_KEY = 'spark-dash.network-quiet.v1';
   const EVENTS_KEY = 'spark-dash.network-events.v1';
 
@@ -123,6 +130,50 @@
      a question you ask, not a preference you hold. */
   let activeNodes = $state<string[] | null>(null);
 
+  /* CHARTS OR TABLE, and the default is computed while the reader has no
+   * opinion.
+   *
+   * The grid is the better view of a small cluster and does not scale: chart
+   * count grows with the link count, and a fully-populated GB10 contributes six
+   * interfaces and four RDMA ports. The table costs the same at any size.
+   *
+   * So an untouched card adapts — table above `TABLE_ABOVE` links — and the
+   * first explicit choice wins permanently. A default that keeps overriding
+   * someone is not a default, and a card that silently changes shape when a
+   * node is added is worse than one that picked wrong to begin with.
+   */
+  const TABLE_ABOVE = 12;
+  let chosenMode = $state<'charts' | 'table' | null>(readMode());
+
+  function readMode(): 'charts' | 'table' | null {
+    try {
+      const raw = localStorage.getItem(MODE_KEY);
+      return raw === 'charts' || raw === 'table' ? raw : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function setMode(next: 'charts' | 'table') {
+    chosenMode = next;
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  /** Links whose full chart is open above the table.
+   *
+   * NOT PERSISTED, the same call as the node solo filter: which link you are
+   * looking at is a question you are asking, not a preference you hold. */
+  let opened = $state<string[]>([]);
+  const openSet = $derived(new Set(opened));
+
+  function toggleOpen(key: string) {
+    opened = openSet.has(key) ? opened.filter((k) => k !== key) : [...opened, key];
+  }
+
   let rangeKey = $state(RANGES[0].key);
   let error = $state<string | null>(null);
   let loading = $state(false);
@@ -163,6 +214,26 @@
   );
   const groups = $derived(grid.groups);
   const total = $derived(groups.reduce((n, g) => n + g.charts.length, 0));
+
+  /* THE TABLE NEVER FILTERS. `includeQuiet` is a chart-grid concern — a flat
+     line is a chart-sized hole — and in a table a quiet link is one short row
+     that says, in the `why` column, that it is down. Hiding it there would be
+     hiding the answer. */
+  const divisions = $derived(buildRows(names, columns, nodeIds, active, rdma, fabric));
+  const linkCount = $derived(divisions.reduce((n, d) => n + d.rows.length, 0));
+
+  const mode = $derived(chosenMode ?? (linkCount > TABLE_ABOVE ? 'table' : 'charts'));
+
+  /* One menu for the card, so both divisions' tables share a column set and a
+     storage key. Two menus would be two controls in two corners of one card —
+     the arrangement NetworkPanel already rejected for the same reason. */
+  const linkCols = new ColumnView('network-history.links', NETWORK_COLUMNS);
+
+  /** The charts the opened rows asked for, in the grid's own order so opening
+   *  two links does not depend on which was clicked first. */
+  const openCharts = $derived(
+    groups.flatMap((g) => g.charts).filter((c) => openSet.has(c.link.key)),
+  );
 
   /* Up to 4 across, snapping 1 / 2 / 4 — the same powers-of-two reasoning as
      the History grid and the node grid, so the three cards line up when they
@@ -328,10 +399,25 @@
     </div>
 
     <div class="controls">
-      <!-- The count is ON the control: "3 idle" says the card is hiding
-           something and how much, where a bare toggle would leave a reader
-           wondering whether an interface is missing or absent. -->
-      {#if grid.quiet || includeQuiet}
+      <!-- Two words rather than an icon pair: this switches what the card IS,
+           and a glyph would have to be learned. -->
+      <div class="modes" role="group" aria-label="View">
+        {#each ['charts', 'table'] as const as m (m)}
+          <button
+            class="range"
+            class:active={mode === m}
+            aria-pressed={mode === m}
+            title={m === 'table'
+              ? 'One row per link — the whole cluster at once'
+              : 'One chart per link, on its own axis'}
+            onclick={() => setMode(m)}
+          >{m}</button>
+        {/each}
+      </div>
+
+      <!-- Chart mode only. In a table a quiet link is one short row that says
+           why it is quiet, so there is nothing to hide and nothing to count. -->
+      {#if mode === 'charts' && (grid.quiet || includeQuiet)}
         <button
           class="events"
           class:on={includeQuiet}
@@ -379,6 +465,38 @@
     </p>
   {:else}
     <div class="divisions" class:loading>
+      <!-- OPENED CHARTS FIRST, above every division. A link opened from the
+           Management table is still a chart, and filing it back under its own
+           heading would put it below a table the reader is looking at — or
+           off screen entirely on a long one. -->
+      {#if mode === 'table' && openCharts.length}
+        <section class="division">
+          <h3 class="division-head">
+            Open
+            <span class="count">{openCharts.length}</span>
+            <span class="note dim">click a row again to close it</span>
+          </h3>
+          <div class="charts" style:--cols={cols} style:--cols-md={colsMd}>
+            {#each openCharts as c (c.key)}
+              <div class="cell">
+                <span class="owner">{c.link.node}</span>
+                <MetricChart
+                  metric={c.metric}
+                  {x}
+                  columns={c.columns}
+                  names={c.names}
+                  {slots}
+                  identity={c.link.node}
+                  theme={themeKey}
+                  syncKey="spark-dash-network"
+                  annotations={showEvents ? annotations : []}
+                />
+              </div>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <!-- FABRIC AND MANAGEMENT ARE DIFFERENT QUESTIONS, so they are different
            divisions. A flat grid gives a 200Gb RoCE link and a wifi port the
            same weight, and reading the fabric then means picking its charts out
@@ -387,13 +505,28 @@
            single group it still says WHICH one, and "Fabric" over four charts
            is the difference between "this is the interconnect" and "these are
            four of the interfaces". -->
-      {#each groups as g (g.key)}
+      {#each mode === 'table' ? divisions : groups as g (g.key)}
+        {@const n = 'rows' in g ? g.rows.length : g.charts.length}
         <section class="division" data-division={g.key}>
           <h3 class="division-head">
             {g.label}
-            <span class="count">{g.charts.length}</span>
+            <span class="count">{n}</span>
             <span class="note dim">{g.note}</span>
+            {#if mode === 'table' && g.key === divisions[0]?.key}
+              <ColumnMenu of="Network history" groups={[{ label: 'Links', view: linkCols }]} />
+            {/if}
           </h3>
+          {#if mode === 'table' && 'rows' in g}
+            <NetworkTable
+              label={g.label}
+              rows={g.rows}
+              cols={linkCols}
+              {slots}
+              {maxRows}
+              open={openSet}
+              ontoggle={toggleOpen}
+            />
+          {:else if 'charts' in g}
           <div class="charts" style:--cols={cols} style:--cols-md={colsMd}>
             {#each g.charts as c (c.key)}
               <div class="cell">
@@ -415,6 +548,7 @@
               </div>
             {/each}
           </div>
+          {/if}
         </section>
       {/each}
     </div>

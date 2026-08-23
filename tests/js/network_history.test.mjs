@@ -23,7 +23,14 @@ import {
   ERRORS,
   RX,
   TX,
+  BURST_RATIO,
+  LINK_UP,
+  TIER_BURST,
+  TIER_STATE,
+  TIER_STEADY,
   buildGrid,
+  buildRows,
+  byImportance,
   chartsFor,
   columnName,
   columnNode,
@@ -32,6 +39,7 @@ import {
   portChart,
   portIsNotable,
   ports,
+  sparkPath,
 } from '../../frontend/src/lib/network-history.ts';
 
 const tests = [];
@@ -475,6 +483,250 @@ test('every division names what it means', () => {
   for (const g of buildGrid(names, columns, ['sparky'], null, false, [], FABRIC).groups) {
     assert.ok(g.label && g.note, `${g.key} has no heading or no definition`);
   }
+});
+
+// ------------------------------------------------------- the overview table
+
+/** Rows for one link, keyed the way `dataset` keys everything else. */
+const rowsFor = (spec, { rdma = [], fabric = new Set(), nodes = ['sparky'] } = {}) => {
+  const { names, columns } = dataset(spec);
+  return buildRows(names, columns, nodes, null, rdma, fabric).flatMap((d) =>
+    d.rows.map((r) => ({ ...r, division: d.key })),
+  );
+};
+const only = (spec, opts) => rowsFor(spec, opts)[0];
+
+test('a row sums the two directions — one wire, one line', () => {
+  const r = only({ [`sparky/eth0/${RX}`]: [10, 20], [`sparky/eth0/${TX}`]: [1, 2] });
+  assert.deepEqual(r.series, [11, 22]);
+  assert.equal(r.peak, 22);
+  assert.equal(r.now, 22);
+});
+
+test('the newest sample is the last one that EXISTS', () => {
+  // The freshest bucket is routinely still null. Reading the last element would
+  // report every link as idle for the length of one step.
+  const r = only({ [`sparky/eth0/${RX}`]: [10, 20, null] });
+  assert.equal(r.now, 20);
+});
+
+test('null in both directions is a gap, not a zero', () => {
+  // null + 0 is 0 in JavaScript, which would draw a sample that never existed.
+  const r = only({ [`sparky/eth0/${RX}`]: [10, null], [`sparky/eth0/${TX}`]: [1, null] });
+  assert.deepEqual(r.series, [11, null]);
+});
+
+test('a link that was down at any point is the top tier', () => {
+  const r = only({
+    [`sparky/eth0/${RX}`]: [10, 10],
+    [`sparky/eth0/${LINK_UP}`]: [1, 0],
+  });
+  assert.equal(r.up, false);
+  assert.equal(r.tier, TIER_STATE);
+  assert.equal(r.why, 'link down');
+});
+
+test('errors outrank drops', () => {
+  // A drop is backpressure, an error is usually a cable. Same distinction the
+  // two fault lines are kept apart for.
+  const r = only({
+    [`sparky/eth0/${RX}`]: [10],
+    [`sparky/eth0/${ERRORS}`]: [1],
+    [`sparky/eth0/${DROPS}`]: [9],
+  });
+  assert.equal(r.why, 'errors');
+});
+
+/** A window that sits at `base` and spikes to `peak` once — the shape of a
+ *  real burst, and the only shape peak/mean can actually detect. A two-sample
+ *  series cannot exceed a ratio of 2 no matter what it does. */
+const spike = (base, peak, n = 60) => {
+  const v = new Array(n).fill(base);
+  v[Math.floor(n / 2)] = peak;
+  return v;
+};
+
+test('a bursty link outranks a steady one, and a steady one is not flagged', () => {
+  const bursty = only({ [`sparky/eth0/${RX}`]: spike(1, 100) });
+  const steady = only({ [`sparky/eth0/${RX}`]: spike(10, 11) });
+  assert.equal(bursty.tier, TIER_BURST);
+  assert.equal(bursty.why, 'bursty');
+  assert.equal(steady.tier, TIER_STEADY);
+  assert.equal(steady.why, '');
+  assert.ok(bursty.burst >= BURST_RATIO && steady.burst < BURST_RATIO);
+});
+
+test('the measured tiers land on the right side of the threshold', () => {
+  // The three groups this cluster actually produced over 24h, at the peak and
+  // mean that were measured. The threshold has to separate them or it was
+  // picked from thin air.
+  const asMeasured = (mean, peak, n = 288) => {
+    // Solve for the base that yields the measured mean once the spike is in.
+    const base = (mean * n - peak) / (n - 1);
+    const v = new Array(n).fill(base);
+    v[n >> 1] = peak;
+    return v;
+  };
+  const busy = only({ [`sparky/eth0/${RX}`]: asMeasured(28547907, 580223842) });
+  const steady = only({ [`sparky/eth0/${RX}`]: asMeasured(401407, 730416) });
+  const flat = only({ [`sparky/eth0/${RX}`]: asMeasured(248, 283) });
+  assert.ok(busy.burst > 15, `busy measured ${busy.burst}`);
+  assert.ok(steady.burst < 2, `steady measured ${steady.burst}`);
+  assert.ok(flat.burst < 2, `flat measured ${flat.burst}`);
+  assert.equal(busy.tier, TIER_BURST);
+  assert.equal(steady.tier, TIER_STEADY);
+  assert.equal(flat.tier, TIER_STEADY);
+});
+
+test('a short series cannot fake a burst', () => {
+  // peak/mean is bounded by the sample count: with n points the ceiling is n,
+  // and with two it is 2. Real windows carry 60-170 samples, so the threshold
+  // is reachable — but a fixture of two numbers can never trip it, which is
+  // worth pinning because it made the first version of the test above wrong.
+  const r = only({ [`sparky/eth0/${RX}`]: [1, 1000] });
+  assert.ok(r.burst <= 2, `two samples produced a ratio of ${r.burst}`);
+});
+
+test('a port down beats a port that only flapped — worst wins', () => {
+  const rdma = ports([
+    portRow('sparky', 'roceA', 'eth0', [1, 1]),
+    portRow('sparky', 'roceB', 'eth0', [0, 0]),
+    portRow('sparky', 'roceC', 'eth0', [1, 0]),
+  ]);
+  const r = only({ [`sparky/eth0/${RX}`]: [10, 10] }, { rdma });
+  assert.equal(r.port, 'down');
+  assert.equal(r.why, 'port down');
+});
+
+test('a cable whose ports are all healthy reads up', () => {
+  const rdma = ports([portRow('sparky', 'roceA', 'eth0', [1, 1])]);
+  const r = only({ [`sparky/eth0/${RX}`]: [10, 10] }, { rdma });
+  assert.equal(r.port, 'up');
+  assert.equal(r.tier, TIER_STEADY);
+});
+
+test('a link with no RoCE has no port state at all', () => {
+  // Not "up". An interface with no RDMA device has nothing to report, and a
+  // column saying "up" would invent a port.
+  assert.equal(only({ [`sparky/eth0/${RX}`]: [10] }).port, null);
+});
+
+test('volume is the last key, never the first', () => {
+  // On its own it ranks a busy management port above every fabric link, every
+  // time — the opposite of what anyone opened this card for.
+  const rows = rowsFor({
+    [`sparky/busy/${RX}`]: [1000, 1000],
+    [`sparky/quiet/${RX}`]: [1, 1],
+    [`sparky/quiet/${DROPS}`]: [0, 5],
+  });
+  assert.deepEqual(rows.map((r) => r.iface), ['quiet', 'busy']);
+});
+
+test('inside a tier, the busiest comes first', () => {
+  const rows = rowsFor({
+    [`sparky/small/${RX}`]: [5, 5],
+    [`sparky/big/${RX}`]: [900, 900],
+  });
+  assert.deepEqual(rows.map((r) => r.iface), ['big', 'small']);
+});
+
+test('the order is total — no pair ever compares equal', () => {
+  // Two identical links on two nodes must still have a stable order, or the
+  // table reshuffles on every refresh.
+  const a = { key: 'a', node: 'n1', iface: 'eth0', tier: 2, burst: 1, peak: 1 };
+  const b = { key: 'b', node: 'n2', iface: 'eth0', tier: 2, burst: 1, peak: 1 };
+  assert.ok(byImportance(a, b) < 0);
+  assert.ok(byImportance(b, a) > 0);
+});
+
+test('rows split into the same divisions the charts use', () => {
+  const divs = buildRows(
+    ...(() => { const d = dataset({
+      [`sparky/fab/${RX}`]: [10], [`sparky/mgmt/${RX}`]: [10] });
+      return [d.names, d.columns]; })(),
+    ['sparky'], null, [], new Set([linkKey('sparky', 'fab')]),
+  );
+  assert.deepEqual(divs.map((d) => d.key), ['fabric', 'management']);
+  assert.deepEqual(divs[0].rows.map((r) => r.iface), ['fab']);
+});
+
+// ------------------------------------------------------------- sparklines
+
+test('a sparkline is a path, and a flat line sits on the baseline', () => {
+  const d = sparkPath([0, 0, 0], 60, 10);
+  assert.ok(d.startsWith('M'));
+  // height 10 -> every y is 10.0, the bottom.
+  assert.ok(/10\.0/.test(d) && !/ 0\.0/.test(d), `flat line is not on the baseline: ${d}`);
+});
+
+test('a gap breaks the path instead of being drawn through', () => {
+  const d = sparkPath([1, null, 1], 60, 10);
+  assert.equal((d.match(/M/g) || []).length, 2, `expected two subpaths: ${d}`);
+});
+
+test('downsampling keeps the spike clear of the baseline', () => {
+  /* MAX per bucket, not mean. The first version of this test asserted only that
+     the peak reached the top of the chart, which BOTH do — the scale is
+     relative to the downsampled points, so whatever the tallest bucket is ends
+     up at y=0. It passed against an averaging implementation.
+
+     What actually separates them is a narrow spike over a HIGH baseline. Ten
+     samples per bucket, baseline 100, one sample at 500: max draws the bucket
+     at 500 and the baseline sits at a fifth of the height; mean draws it at 140
+     and the baseline rises to three quarters, which is a ripple. */
+  const values = new Array(240).fill(100);
+  values[100] = 500;
+  const ys = sparkPath(values, 100, 10, 24)
+    .split(/[ML]/)
+    .filter(Boolean)
+    .map((pt) => parseFloat(pt.trim().split(' ')[1]));
+
+  assert.ok(ys.includes(0), `the peak did not reach the top: ${ys}`);
+  const baseline = ys.filter((y) => y > 0);
+  assert.ok(
+    baseline.every((y) => y >= 7),
+    `the baseline rose off the floor, so the spike was averaged away: ${ys}`,
+  );
+});
+
+test('no data is an empty path, not a broken one', () => {
+  assert.equal(sparkPath([], 60, 10), '');
+  assert.equal(sparkPath([null, null], 60, 10), '');
+});
+
+// ------------------------------------------------------------------- scale
+
+test('190 links across 32 nodes build, rank and divide', () => {
+  // The claim the whole table exists for, checked where it can be: a browser
+  // cannot reach 32 nodes on this cluster.
+  const spec = {};
+  const nodes = [];
+  const fabric = new Set();
+  for (let n = 0; n < 32; n++) {
+    const node = `gx10-${String(n).padStart(2, '0')}`;
+    nodes.push(node);
+    for (const iface of ['enP2p1s0f0np0', 'enP2p1s0f1np1', 'enp1s0f0np0', 'enp1s0f1np1']) {
+      spec[`${node}/${iface}/${RX}`] = [10, 10 + n];
+      fabric.add(linkKey(node, iface));
+    }
+    spec[`${node}/enP7s7/${RX}`] = [100, 200];
+    spec[`${node}/wlP9s9/${RX}`] = [0, 0];
+  }
+  // One link in the middle of the pack goes bad.
+  spec[`gx10-17/enp1s0f1np1/${DROPS}`] = [0, 12];
+
+  const { names, columns } = dataset(spec);
+  const divs = buildRows(names, columns, nodes, null, [], fabric);
+  const all = divs.flatMap((d) => d.rows);
+
+  assert.equal(all.length, 32 * 6, `expected 192 rows, got ${all.length}`);
+  assert.deepEqual(divs.map((d) => d.key), ['fabric', 'management']);
+  assert.equal(divs[0].rows.length, 32 * 4);
+  assert.equal(divs[1].rows.length, 32 * 2);
+  // The one bad link is the first row of its division, out of 128.
+  assert.equal(divs[0].rows[0].iface, 'enp1s0f1np1');
+  assert.equal(divs[0].rows[0].node, 'gx10-17');
+  assert.equal(divs[0].rows[0].why, 'drops');
 });
 
 let failed = 0;

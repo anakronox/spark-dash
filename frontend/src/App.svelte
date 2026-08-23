@@ -745,6 +745,7 @@
           <NetworkTrends
             nodeIds={nodes.map((n) => n.node_id)}
             {nodes}
+            maxRows={layout.rowsFor(id)}
             themeKey={theme.resolved}
           />
         {/if}

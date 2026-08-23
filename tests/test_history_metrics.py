@@ -120,9 +120,25 @@ def test_network_queries_are_rated_and_in_bits():
         assert "8 *" not in expr, f"{key} is a count, not a bit rate: {expr!r}"
     # The port state is a GAUGE in the ordinary sense — 1 while the port is up —
     # so a rate over it would be meaningless rather than merely unconventional.
-    state = HISTORY_QUERIES["rdma_port_state"]
-    assert "rate(" not in state, f"port state is not a counter: {state!r}"
-    assert "8 *" not in state
+    for key in ("rdma_port_state", "network_link_up"):
+        expr = HISTORY_QUERIES[key]
+        assert "rate(" not in expr, f"{key} is a state, not a counter: {expr!r}"
+        assert "8 *" not in expr
+
+
+def test_link_up_takes_the_minimum_over_the_bucket():
+    """A flap inside one step must survive the downsample.
+
+    A range query reports whatever the last scrape in the bucket said, so at a
+    900s step a link that dropped for two minutes and came back reads as having
+    been up the whole time — and the row that exists to say "this went down"
+    says nothing. `min_over_time` is what makes the window's worst moment the
+    one that gets reported.
+    """
+    expr = HISTORY_QUERIES["network_link_up"]
+    assert "min_over_time(" in expr, expr
+    assert "max_over_time(" not in expr, expr
+    assert expr.startswith("min by"), expr
 
 
 def test_network_queries_keep_their_second_dimension():
@@ -144,6 +160,7 @@ def test_network_queries_keep_their_second_dimension():
         "network_errors": "by (node, interface)",
         "network_drops": "by (node, interface)",
         "rdma_port_state": "by (node, device, port, interface)",
+        "network_link_up": "by (node, interface)",
     }
     assert set(required) == set(network_keys()), (
         "a network query was added or removed without saying what its key is"

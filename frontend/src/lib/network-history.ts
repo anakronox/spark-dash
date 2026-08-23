@@ -19,9 +19,10 @@ export const TX = 'network_tx_bits';
 export const ERRORS = 'network_errors';
 export const DROPS = 'network_drops';
 export const PORT_STATE = 'rdma_port_state';
+export const LINK_UP = 'network_link_up';
 
 /** The four queries, in one place, so a fetch loop and a test agree. */
-export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS, PORT_STATE] as const;
+export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS, PORT_STATE, LINK_UP] as const;
 
 /** Sub-series names. Short: they are the tooltip's left column, repeated on
  *  every row, and "receive" would push the numbers off the edge. */
@@ -297,6 +298,38 @@ export interface ChartGroup {
   charts: LinkChart[];
 }
 
+/** The divisions, named once.
+ *
+ * Shared by the chart grid and the overview table so a link cannot be filed
+ * under Fabric in one view and Management in the other — which would be worse
+ * than having no division at all, because each view on its own would look
+ * right. */
+export const DIVISIONS: { key: 'fabric' | 'management'; label: string; note: string }[] = [
+  {
+    key: 'fabric',
+    label: 'Fabric',
+    note: 'RoCE links — interfaces paired with an RDMA device',
+  },
+  {
+    key: 'management',
+    label: 'Management',
+    note: 'everything else — no RDMA device on this interface',
+  },
+];
+
+/** Which division a link belongs to.
+ *
+ * ONE RULE, in one place. An interface with an RDMA port observed on it is
+ * fabric whatever the caller's set says: the pairing IS the definition, and an
+ * attached port is that pairing observed directly. */
+export function divide(
+  key: string,
+  hasPort: boolean,
+  fabric: ReadonlySet<string>,
+): 'fabric' | 'management' {
+  return fabric.has(key) || hasPort ? 'fabric' : 'management';
+}
+
 /** The grid, divided into fabric and management.
  *
  * WHY THE DIVISION EXISTS. Small multiples put every link on its own axis,
@@ -372,30 +405,290 @@ export function buildGrid(
       // worth seeing.
       if (!includeQuiet && !attached.length) continue;
     }
-    // An interface with a port attached is fabric whatever the caller's set
-    // says: the pairing IS the definition, and a port hanging off it is that
-    // pairing observed directly.
-    const isFabric = fabric.has(link.key) || attached.length > 0;
+    const isFabric = divide(link.key, attached.length > 0, fabric) === 'fabric';
     (isFabric ? inFabric : inManagement).push(...built, ...attached);
   }
   inFabric.push(...unpaired.map(portChart));
 
-  const groups: ChartGroup[] = [];
-  if (inFabric.length) {
-    groups.push({
-      key: 'fabric',
-      label: 'Fabric',
-      note: 'RoCE links — interfaces paired with an RDMA device',
-      charts: inFabric,
-    });
-  }
-  if (inManagement.length) {
-    groups.push({
-      key: 'management',
-      label: 'Management',
-      note: 'everything else — no RDMA device on this interface',
-      charts: inManagement,
-    });
-  }
+  const charts = { fabric: inFabric, management: inManagement };
+  const groups: ChartGroup[] = DIVISIONS.filter((d) => charts[d.key].length).map((d) => ({
+    ...d,
+    charts: charts[d.key],
+  }));
   return { groups, quiet };
+}
+
+
+/* ---------------------------------------------------------------- overview
+ *
+ * The card draws one chart per interface, which is readable and does not
+ * scale: chart count grows with the cluster. Measured — a fully-populated GB10
+ * has 6 interfaces and 4 RDMA ports, so 32 nodes is ~190 links and, at 7d with
+ * faults and port states, ~500 charts. The wall is not the data (five range
+ * queries serve the card however many links it draws) but uPlot INSTANCES:
+ * every chart is a canvas plus a ResizeObserver.
+ *
+ * So the overview is a table — one row per link, constant screen cost at any
+ * cluster size, nothing hidden — and the charts open from it.
+ */
+
+/** One link as a table row. Everything here derives from the queries the card
+ *  already fetches; none of it is a second request. */
+export interface LinkRow {
+  key: string;
+  node: string;
+  iface: string;
+  division: 'fabric' | 'management';
+  /** rx + tx per sample. One wire, one line: the row answers "how much did
+   *  this carry", and the direction split is what opening the chart is for. */
+  series: (number | null)[];
+  peak: number;
+  /** The most recent sample that exists. Not the last ELEMENT, which is null
+   *  whenever the newest bucket has not filled yet. */
+  now: number;
+  mean: number;
+  /** peak / mean. See TIER_BURST for why this and not standard deviation. */
+  burst: number;
+  errors: number;
+  drops: number;
+  /** False when the interface was down at any point in the window. */
+  up: boolean;
+  /** Worst RDMA port state on this cable, or null when there is no RoCE here. */
+  port: 'up' | 'down' | 'flapped' | null;
+  tier: number;
+  /** Which rule put this row where it is. A sort nobody can explain reads as
+   *  the data being wrong — the same argument `dropSortWhenHidden` makes. */
+  why: string;
+}
+
+/** Rank tiers, lexicographic and low-is-urgent.
+ *
+ * TIERS, NOT A WEIGHTED SCORE. A weighted sum of "downness" and "burstiness"
+ * and "volume" needs three invented constants, and the moment anyone asks why
+ * a row is third the only honest answer is "arithmetic". A tier is a sentence:
+ * it is here because its port flapped.
+ */
+export const TIER_STATE = 0;
+export const TIER_BURST = 1;
+export const TIER_STEADY = 2;
+
+/** peak/mean at or above which a link counts as bursty.
+ *
+ * MEASURED, not picked. Over 24h on this cluster the links separate into three
+ * groups with an order of magnitude of clear air between them: 18.4-20.3 for
+ * the three that actually did something, 1.5-1.8 for steady background
+ * traffic, and 1.1 for the near-flat RoCE links. Four sits in the middle of
+ * that gap with a factor of four of margin on both sides.
+ *
+ * Peak-over-mean rather than a coefficient of variation, which ranks the same
+ * links in the same order (cv 2.21-2.73 / 0.18-0.20 / 0.02-0.03) and cannot be
+ * explained in a tooltip. "It peaked at twenty times its average" is a sentence
+ * a reader can check against the sparkline beside it.
+ *
+ * BOUNDED BY THE SAMPLE COUNT: with n points the ratio cannot exceed n, so a
+ * short window compresses it. Harmless in practice — every range here returns
+ * 60-170 samples by construction (see RangeSpec.step), and all links on one
+ * render share a window, so the comparison between them is always fair. Worth
+ * knowing anyway: it is what made the first version of this measure's test
+ * wrong, using a two-sample fixture that could never exceed 2.
+ */
+export const BURST_RATIO = 4;
+
+const finite = (c: (number | null)[]) =>
+  c.filter((v): v is number => v != null && isFinite(v));
+
+/** Total over the window for a counting series, ignoring gaps. */
+const total = (c: (number | null)[] | undefined) =>
+  c ? finite(c).reduce((a, b) => a + b, 0) : 0;
+
+/** One link's row. `port` is the worst state among the RDMA ports on it. */
+export function linkRow(
+  link: Link,
+  division: 'fabric' | 'management',
+  byName: Map<string, (number | null)[]>,
+  onThisLink: Port[] = [],
+): LinkRow {
+  const col = (metric: string) => byName.get(`${link.key}${SEP}${metric}`);
+  const rx = col(RX);
+  const tx = col(TX);
+  const len = Math.max(rx?.length ?? 0, tx?.length ?? 0);
+
+  const series: (number | null)[] = [];
+  for (let i = 0; i < len; i++) {
+    const a = rx?.[i];
+    const b = tx?.[i];
+    // null + 0 is 0, which would draw a sample that does not exist. A point is
+    // only real when at least one direction reported.
+    series.push(a == null && b == null ? null : (a ?? 0) + (b ?? 0));
+  }
+
+  const seen = finite(series);
+  const peak = seen.length ? Math.max(...seen) : 0;
+  const mean = seen.length ? seen.reduce((a, b) => a + b, 0) / seen.length : 0;
+  const now = [...series].reverse().find((v) => v != null) ?? 0;
+
+  const upCol = col(LINK_UP);
+  const up = !(upCol ?? []).some((v) => v != null && v === 0);
+
+  /* Worst wins. One dead port on a cable with three healthy ones is the fact
+     about that cable, and a row summarising it as "up" would be a row that
+     hides the only thing worth knowing. Ranked explicitly rather than resolved
+     with a chain of conditions — the chain was correct and unreadable, which on
+     a rule like this is the same as being unverifiable. */
+  const SEVERITY = { up: 0, flapped: 1, down: 2 } as const;
+  let port: LinkRow['port'] = null;
+  for (const p of onThisLink) {
+    const vals = finite(p.column);
+    if (!vals.length) continue;
+    const state = vals.every((v) => v === 0)
+      ? 'down'
+      : vals.some((v) => v !== 1)
+        ? 'flapped'
+        : 'up';
+    if (port === null || SEVERITY[state] > SEVERITY[port]) port = state;
+  }
+
+  const errors = total(col(ERRORS));
+  const drops = total(col(DROPS));
+  const burst = mean > 0 ? peak / mean : 0;
+
+  let tier = TIER_STEADY;
+  let why = '';
+  if (!up) {
+    tier = TIER_STATE;
+    why = 'link down';
+  } else if (port === 'down') {
+    tier = TIER_STATE;
+    why = 'port down';
+  } else if (port === 'flapped') {
+    tier = TIER_STATE;
+    why = 'port flapped';
+  } else if (errors > 0) {
+    // Errors before drops: a drop is usually backpressure, an error is usually
+    // a cable. Same distinction the two chart lines are kept apart for.
+    tier = TIER_STATE;
+    why = 'errors';
+  } else if (drops > 0) {
+    tier = TIER_STATE;
+    why = 'drops';
+  } else if (burst >= BURST_RATIO) {
+    tier = TIER_BURST;
+    why = 'bursty';
+  }
+
+  return {
+    key: link.key,
+    node: link.node,
+    iface: link.iface,
+    division,
+    series,
+    peak,
+    now,
+    mean,
+    burst,
+    errors,
+    drops,
+    up,
+    port,
+    tier,
+    why,
+  };
+}
+
+/** Default order: tier, then how much it moved, then how much it carried.
+ *
+ * Volume is the LAST key rather than the first. On its own it ranks a busy
+ * management port above every fabric link on the cluster, every time, which is
+ * the opposite of what anyone opened this card to see — but as a tiebreak
+ * inside a tier it does exactly the right thing, putting the busiest of the
+ * otherwise-equal links first.
+ */
+export function byImportance(a: LinkRow, b: LinkRow): number {
+  return a.tier - b.tier || b.burst - a.burst || b.peak - a.peak ||
+    a.node.localeCompare(b.node) || a.iface.localeCompare(b.iface);
+}
+
+/** An SVG path for a row-height sparkline.
+ *
+ * NOT A uPlot INSTANCE, and that is the entire point of the table. A canvas and
+ * a ResizeObserver per row would reproduce, at 190 rows, exactly the cost the
+ * table exists to escape. One `<path>` costs nothing and needs no observer.
+ *
+ * Downsampled by taking the MAX of each bucket, not the mean. A sparkline is
+ * read for its shape, and averaging is what turns a two-minute spike into a
+ * ripple — which is the one thing on the row worth noticing.
+ *
+ * Scaled to the ROW's own maximum, like the small multiples above it: a shared
+ * scale would flatten every fabric link against the management port, which is
+ * the six-orders-of-magnitude problem this card already solved once.
+ */
+export function sparkPath(
+  values: (number | null)[],
+  width: number,
+  height: number,
+  buckets = 24,
+): string {
+  if (!values.length || width <= 0 || height <= 0) return '';
+  const n = Math.min(buckets, values.length);
+  const size = values.length / n;
+
+  const points: (number | null)[] = [];
+  for (let i = 0; i < n; i++) {
+    const slice = finite(values.slice(Math.floor(i * size), Math.floor((i + 1) * size)));
+    points.push(slice.length ? Math.max(...slice) : null);
+  }
+
+  const top = Math.max(...points.filter((v): v is number => v != null), 0);
+  const step = n > 1 ? width / (n - 1) : 0;
+  // A flat line sits on the BASELINE, not halfway up: zero traffic should read
+  // as zero, and a row of mid-height lines would imply activity everywhere.
+  const y = (v: number) => (top > 0 ? height - (v / top) * height : height);
+
+  let d = '';
+  let pen = false;
+  points.forEach((v, i) => {
+    if (v == null) {
+      // A gap is a gap. Bridging it would draw a line through an outage.
+      pen = false;
+      return;
+    }
+    d += `${pen ? 'L' : 'M'}${(i * step).toFixed(1)} ${y(v).toFixed(1)}`;
+    pen = true;
+  });
+  return d;
+}
+
+/** Every link as a row, in importance order, split by division.
+ *
+ * Shares `divide()` with the chart grid so a link cannot appear under Fabric in
+ * one view and Management in the other.
+ */
+export function buildRows(
+  names: string[],
+  columns: (number | null)[][],
+  nodeOrder: string[],
+  activeNodes: string[] | null,
+  rdma: Port[] = [],
+  fabric: ReadonlySet<string> = new Set(),
+): { key: 'fabric' | 'management'; label: string; note: string; rows: LinkRow[] }[] {
+  const byName = new Map(names.map((n, i) => [n, columns[i]]));
+  const wanted = (node: string) => activeNodes === null || activeNodes.includes(node);
+  const portsOn = new Map<string, Port[]>();
+  for (const p of rdma) {
+    if (!p.iface || !wanted(p.node)) continue;
+    const key = linkKey(p.node, p.iface);
+    portsOn.set(key, [...(portsOn.get(key) ?? []), p]);
+  }
+
+  const rows = links(names, nodeOrder)
+    .filter((l) => wanted(l.node))
+    .map((l) =>
+      linkRow(l, divide(l.key, (portsOn.get(l.key) ?? []).length > 0, fabric), byName, portsOn.get(l.key)),
+    )
+    .sort(byImportance);
+
+  return DIVISIONS.filter((d) => rows.some((r) => r.division === d.key)).map((d) => ({
+    ...d,
+    rows: rows.filter((r) => r.division === d.key),
+  }));
 }
