@@ -7,10 +7,14 @@
      renderer with no def shipped twice and displayed nothing for two days. Move
      them to a .ts module and that check silently stops covering this table. */
   export const NETWORK_COLUMNS: ColumnDef[] = [
-    /* 26ch, not 18: the longest name here is 13 characters and the
-       `not monitored` tag sits beside it, which at 18 truncated the tag to
-       "not m…" — a label that has stopped being a word. */
-    { key: 'iface', label: 'interface', required: true, width: 26 },
+    /* 32ch, and MEASURED rather than guessed twice.
+       18 truncated the `not monitored` tag beside a 13-character device name to
+       "not m…". 26 was the second guess and still clipped the longest pair —
+       and the check that passed it was reading `textContent`, which a CSS
+       `text-overflow` ellipsis never appears in. Comparing `scrollWidth`
+       against `clientWidth` on the rendered cells put the requirement at 222px
+       against 188px available, which is where 32 comes from. */
+    { key: 'iface', label: 'interface', required: true, width: 32 },
     { key: 'node', label: 'node', width: 13 },
     // Negotiated speed. Sorts numerically, so a link that came up at a tenth
     // of its rating heads a descending sort instead of being buried by a
@@ -175,7 +179,7 @@
      browser sizes columns from content and the ColumnDef numbers do nothing.
      `min-w` so the columns keep their proportions on a narrow card and the
      `.scroll` wrapper takes over instead of everything crushing. */
-  const TABLE = 'table-fixed text-body min-w-[740px]';
+  const TABLE = 'table-fixed text-body min-w-[800px]';
 </script>
 
 {#snippet cell(c: ColumnDef, r: LinkRow)}
