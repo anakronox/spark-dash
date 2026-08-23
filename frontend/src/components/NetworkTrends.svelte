@@ -167,10 +167,16 @@
   /* Up to 4 across, snapping 1 / 2 / 4 — the same powers-of-two reasoning as
      the History grid and the node grid, so the three cards line up when they
      sit side by side.
-     PER GROUP, not for the card: a Fabric division of two charts laid out on
-     the four-wide track the Management division needs would leave half a row of
-     air under a heading, which reads as charts having failed to load. */
+     ONE COUNT FOR THE WHOLE CARD, sized to its biggest division. Sizing each
+     division separately was the first attempt and looked wrong on the page:
+     Fabric's eight charts went four across while Management's three went two
+     across, so the management ports were drawn at twice the width of the RoCE
+     links. Chart width is a claim about importance, and that one was backwards.
+     A short division simply leaves the rest of its row empty, which is what a
+     grid does. */
   const colsFor = (n: number) => (n >= 4 ? 4 : n >= 2 ? 2 : 1);
+  const cols = $derived(colsFor(Math.max(0, ...groups.map((g) => g.charts.length))));
+  const colsMd = $derived(Math.min(cols, 2));
 
   const isActive = (id: string) => active === null || active.includes(id);
 
@@ -388,11 +394,7 @@
             <span class="count">{g.charts.length}</span>
             <span class="note dim">{g.note}</span>
           </h3>
-          <div
-            class="charts"
-            style:--cols={colsFor(g.charts.length)}
-            style:--cols-md={Math.min(colsFor(g.charts.length), 2)}
-          >
+          <div class="charts" style:--cols={cols} style:--cols-md={colsMd}>
             {#each g.charts as c (c.key)}
               <div class="cell">
                 <!-- The node above the interface, because the interface name is
