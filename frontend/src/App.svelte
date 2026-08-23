@@ -13,6 +13,7 @@
   import ProcessTable from './components/ProcessTable.svelte';
   import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
+  import NetworkTrends from './components/NetworkTrends.svelte';
   import { Layout, ZONE_LABEL } from './lib/layout.svelte';
   import type { Zone } from './lib/layout.svelte';
   import { nodeSlots } from './lib/theme';
@@ -740,6 +741,8 @@
           <SwapTimeline maxRows={layout.rowsFor(id)} />
         {:else if id === 'history'}
           <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.resolved} />
+        {:else if id === 'network-history'}
+          <NetworkTrends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.resolved} />
         {/if}
       </Section>
     {/each}

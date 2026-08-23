@@ -10,7 +10,7 @@
    * otherwise invisible failure, and the driver's own string is the clearest
    * statement of what actually happened.
    */
-  import { num } from '../lib/format';
+  import { bitRate, num } from '../lib/format';
   import ColumnMenu from './ColumnMenu.svelte';
   import ColumnGrip from './ColumnGrip.svelte';
   import Pager from './Pager.svelte';
@@ -120,14 +120,13 @@
   );
 
   /** Bytes/sec as bits/sec — network gear is rated in bits, and comparing
-   *  throughput against a "200 Gb/s" link is the whole point. */
-  function bits(bytesPerSec: number): string {
-    const b = bytesPerSec * 8;
-    if (b >= 1e9) return `${num(b / 1e9, 2)} Gb/s`;
-    if (b >= 1e6) return `${num(b / 1e6, 1)} Mb/s`;
-    if (b >= 1e3) return `${num(b / 1e3, 0)} kb/s`;
-    return `${num(b, 0)} b/s`;
-  }
+   *  throughput against a "200 Gb/s" link is the whole point.
+   *
+   * The rendering lives in lib/format so the Network history charts below can
+   * use the same one. This panel and those charts describe the same links, and
+   * a table saying "580.2 Mb/s" above a chart saying "0.58 Gb/s" would read as
+   * two different measurements. */
+  const bits = (bytesPerSec: number) => bitRate(bytesPerSec * 8);
 
   /** The driver's rate, abbreviated for the cell. Full string on the title.
    *

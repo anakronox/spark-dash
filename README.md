@@ -67,6 +67,13 @@ threshold would page you constantly.
 clocks, temperature, power, memory, all four PSI signals, swap and disk I/O,
 throughput and prefill — over 1h to 7d, per node or aggregated.
 
+**And the fabric over time.** Every interface gets its own chart on its own
+axis, receive and transmit, over the same 1h to 7d. One axis for all of them
+would not work here: the links on this cluster span six orders of magnitude, so
+a busy management port flattens a 200Gb RoCE link onto zero and the chart ends
+up claiming the interconnect is idle. Errors and drops only appear once there
+are some.
+
 ## Quickstart
 
 Everything runs in Docker; nothing is installed on the base OS. You install two

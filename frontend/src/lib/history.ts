@@ -36,6 +36,22 @@ export interface MetricSpec {
    * series is then explicitly relative and the tooltip's absolute value is the
    * one to trust. */
   scaleMax?: number;
+  /** Format ticks and readings with an SI prefix — 580Mb/s, not 580223842b/s.
+   *
+   * Network throughput spans six orders of magnitude on this cluster alone
+   * (288 b/s on an idle 200Gb RoCE link against 580 Mb/s on a management
+   * port), so the raw figure is unreadable at both ends of the range. No other
+   * metric here needs it: a percentage, a temperature and a clock all live
+   * inside three digits by construction. */
+  si?: boolean;
+  /** Sub-series drawn inside one chart, keyed by the name in `names`.
+   *
+   * The `false` entry is drawn solid and the `true` entry dashed, both in the
+   * chart's identity colour. Used for direction — receive against transmit —
+   * where two lines belong on ONE axis because they are the same quantity
+   * through the same wire, and giving them separate charts would double the
+   * grid to say nothing. */
+  dashed?: string;
 }
 
 export const METRICS: MetricSpec[] = [
@@ -156,6 +172,10 @@ export async function fetchHistory(
  */
 export function toColumnar(
   series: HistorySeries[],
+  /** What to call each column. Defaults to the node, which is the identity for
+   *  every per-node chart. The network charts pass their own: those series are
+   *  one per interface per direction, and three of them can share a node. */
+  nameOf: (s: HistorySeries) => string = (s) => s.node ?? s.labels.instance ?? 'series',
 ): { x: number[]; columns: number[][]; names: string[] } {
   const stamps = new Set<number>();
   for (const s of series) for (const [t] of s.points) stamps.add(t);
@@ -172,7 +192,7 @@ export function toColumnar(
       if (i !== undefined) col[i] = v;
     }
     columns.push(col);
-    names.push(s.node ?? s.labels.instance ?? 'series');
+    names.push(nameOf(s));
   }
 
   return { x, columns, names };

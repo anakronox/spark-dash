@@ -16,7 +16,9 @@ from pathlib import Path
 
 from spark_dash_backend.prometheus import HISTORY_QUERIES, NODE_FILTERABLE
 
-HISTORY_TS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "lib" / "history.ts"
+LIB = Path(__file__).resolve().parent.parent / "frontend" / "src" / "lib"
+HISTORY_TS = LIB / "history.ts"
+NETWORK_TS = LIB / "network-history.ts"
 
 #: Queries deliberately not offered as a chip. `memory_used_bytes` backs the
 #: absolute figure the tooltip shows beside the percentage chart, so it is
@@ -38,6 +40,26 @@ def chip_keys() -> list[str]:
     return re.findall(r"key:\s*'([a-z0-9_]+)'", src[start:end])
 
 
+def network_keys() -> list[str]:
+    """Query keys the Network history card fetches.
+
+    A SECOND SOURCE OF REACHABILITY, added because the check below is the one
+    that noticed. The network queries are not chips — that card has no metric
+    picker, it draws every interface it is given — so they read as dead weight
+    to a test that only knows about chips.
+
+    Parsed from the constants rather than from NETWORK_METRICS' contents,
+    because the array holds references and a regex over it would find the
+    identifier and not the string it stands for.
+    """
+    src = NETWORK_TS.read_text()
+    declared = dict(re.findall(r"export const ([A-Z_]+) = '([a-z0-9_]+)';", src))
+    listed = re.findall(r"export const NETWORK_METRICS = \[([^\]]*)\]", src)
+    assert listed, "NETWORK_METRICS is not where this test expects it"
+    used = re.findall(r"[A-Z_]+", listed[0])
+    return [declared[name] for name in used if name in declared]
+
+
 def test_every_chip_has_a_query():
     """A chip without one renders a control that cannot do anything."""
     missing = sorted(set(chip_keys()) - set(HISTORY_QUERIES))
@@ -45,9 +67,67 @@ def test_every_chip_has_a_query():
 
 
 def test_every_query_is_reachable():
-    """A query nobody can select is dead weight that still costs a fetch."""
-    unreachable = sorted(set(HISTORY_QUERIES) - set(chip_keys()) - QUERIES_WITHOUT_CHIPS)
-    assert not unreachable, f"queries with no chip: {unreachable}"
+    """A query nobody can select is dead weight that still costs a fetch.
+
+    TWO CARDS REACH INTO HISTORY_QUERIES NOW. History offers a chip per metric;
+    Network history has no picker and fetches a fixed four, one per direction
+    and one per fault kind. A query is reachable if either card can ask for it.
+    """
+    unreachable = sorted(
+        set(HISTORY_QUERIES)
+        - set(chip_keys())
+        - set(network_keys())
+        - QUERIES_WITHOUT_CHIPS
+    )
+    assert not unreachable, f"queries nothing can request: {unreachable}"
+
+
+def test_every_network_key_has_a_query():
+    """The same drift the chip check exists for, on the card that has no chips.
+
+    Worse there, in fact: a chip with no query renders a control that does
+    nothing, which someone notices and reports. A bad key here fails the fetch
+    and the card simply draws fewer charts — an interface quietly missing from a
+    grid of fourteen is not something anyone spots.
+    """
+    keys = network_keys()
+    assert keys, "no network query keys found — the parser has drifted"
+    missing = sorted(set(keys) - set(HISTORY_QUERIES))
+    assert not missing, f"network keys with no HISTORY_QUERIES entry: {missing}"
+
+
+def test_network_queries_are_rated_and_in_bits():
+    """AC2, pinned. These are counters exported through a GAUGE family, so
+    nothing in Prometheus or in a linter will suggest `rate()` — and a chart of
+    the raw counter is a monotonic ramp that says nothing about throughput.
+
+    Bits, because the Network table above these charts converts to bits and a
+    chart in bytes would disagree with it by a factor of eight with nothing on
+    either saying which was which. Only the throughput pair: a fault count is
+    not a bit rate.
+    """
+    for key in ("network_rx_bits", "network_tx_bits"):
+        expr = HISTORY_QUERIES[key]
+        assert "rate(" in expr, f"{key} plots a counter without rate(): {expr!r}"
+        assert expr.startswith("8 * "), f"{key} is not converted to bits: {expr!r}"
+    for key in ("network_errors", "network_drops"):
+        expr = HISTORY_QUERIES[key]
+        assert "rate(" in expr, f"{key} plots a counter without rate(): {expr!r}"
+        assert "8 *" not in expr, f"{key} is a count, not a bit rate: {expr!r}"
+
+
+def test_network_queries_group_by_interface():
+    """The whole point of the card: per INTERFACE, never summed to the node.
+
+    A 200Gb RoCE link and a 10Gb management port added together is a number
+    describing nothing, and it is the easy mistake to make here because every
+    other query in this file aggregates to exactly one series per node.
+    """
+    for key in network_keys():
+        expr = HISTORY_QUERIES[key]
+        assert "by (node, interface)" in expr, (
+            f"{key} does not keep the interface dimension: {expr!r}"
+        )
 
 
 def test_chip_keys_are_unique():

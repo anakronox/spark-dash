@@ -391,8 +391,9 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         errs = _g("rdma_errors_total", "Receive errors, discards and link downs", rl)
         info = _g(
             "rdma_port_info",
-            "Always 1; carries link layer and negotiated rate as labels",
-            [*rl, "link_layer", "rate"],
+            "Always 1; carries link layer, negotiated rate and the paired "
+            "Ethernet interface as labels",
+            [*rl, "link_layer", "rate", "interface"],
         )
 
         for port in snap.rdma:
@@ -404,7 +405,29 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             errs.add_metric(labels, float(port.errors))
             # An info-style metric: the rate string is what reveals a link that
             # negotiated below its rated speed, and it can't be a gauge value.
-            info.add_metric([*labels, port.link_layer, port.rate], 1.0)
+            #
+            # `interface` IS THE JOIN KEY, and its absence made a real question
+            # unaskable. RDMA byte counters are read from the Ethernet
+            # interface the RoCE device is paired with, because mlx5 leaves the
+            # IB-style counters at zero — so the two families describe the SAME
+            # bytes, and nothing in Prometheus said which pairs with which. A
+            # query could not group interfaces by fabric role, and could not
+            # detect the double-count at all. The agent has known the answer all
+            # along; it simply never said it.
+            #
+            # Adding a label splits a series' history at the deploy, which is
+            # why `network_monitored` is a separate family rather than a label
+            # on `network_up`. It is the right trade here and not there: this
+            # one is always 1, so its history carries nothing to lose, and the
+            # old series ages out of the 180-day window on its own.
+            #
+            # Derivable by string munging — `roceP2p1s0f0` against
+            # `enP2p1s0f0np0` — and that is exactly the fix to avoid. The
+            # pairing is read from sysfs; a regex over device names would be a
+            # guess that happens to work on this hardware.
+            info.add_metric(
+                [*labels, port.link_layer, port.rate, port.interface], 1.0
+            )
 
         yield from (active, rdma_monitored, rx, tx, errs, info)
 

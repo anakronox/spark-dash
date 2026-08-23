@@ -223,6 +223,76 @@ HISTORY_QUERIES: dict[str, str] = {
         f"max by (node) (rate(node_vmstat_pswpin{{{_NODES}}}[{{window}}]) "
         f"+ rate(node_vmstat_pswpout{{{_NODES}}}[{{window}}]))"
     ),
+    # --- Network, per INTERFACE rather than per node ----------------------
+    #
+    # THE ONLY HISTORY QUERIES WITH A SECOND DIMENSION. Every other entry here
+    # yields one series per node; these yield one per interface, 14 on this
+    # cluster against 3 nodes. That is deliberate and cannot be summed away: a
+    # 200Gb RoCE link and a 10Gb management port added together is a number
+    # describing nothing.
+    #
+    # BITS, because network gear is rated in bits and the Network table above
+    # these charts already converts. A chart in bytes would disagree with the
+    # table it sits under, at a factor of eight, with nothing on either saying
+    # which was which.
+    #
+    # `rate()` OVER A GAUGE FAMILY, which looks wrong and is correct. These are
+    # real monotonic counters read from sysfs, but the agent exports every
+    # metric through GaugeMetricFamily, so Prometheus records them as gauges:
+    # Grafana will not suggest `rate()` here and a PromQL linter will object to
+    # it. They reset only on host reboot, which `rate()` handles as a counter
+    # reset regardless of the declared type. Already noted in
+    # central/grafana/README.md; repeated here because this is the first
+    # history query that needs it.
+    #
+    # `sum by (node, interface)` over a single series per interface, purely to
+    # drop `instance` and `job` and leave the label set the charts key on.
+    "network_rx_bits": (
+        "8 * sum by (node, interface) "
+        "(rate(sparkdash_network_receive_bytes_total[{window}]))"
+    ),
+    "network_tx_bits": (
+        "8 * sum by (node, interface) "
+        "(rate(sparkdash_network_transmit_bytes_total[{window}]))"
+    ),
+    # Errors and drops, kept apart. A drop is usually backpressure — a queue
+    # that overflowed under load — while an error is usually physical, a bad
+    # cable or a failing transceiver. Summing them into one "faults" line would
+    # save a chart and lose the distinction that decides whether anyone needs to
+    # walk to the rack.
+    #
+    # ADDED WITH `+`, and this file argues against exactly that a few entries
+    # up — so the difference is worth stating rather than looking like an
+    # oversight.
+    #
+    # The name-regex trick used for tokens_per_second does not work here, and
+    # fails loudly: `rate()` DROPS `__name__`, so
+    # `rate({__name__=~"..._(receive|transmit)_errors_total"}[w])` reduces two
+    # families to two series with the identical label set {node, interface},
+    # and Prometheus refuses with "vector cannot contain metrics with the same
+    # labelset". Measured, not reasoned about — it returned a 422. The regex
+    # form only works for tokens_per_second because nothing there takes a rate,
+    # so `__name__` survives to keep the series distinct.
+    #
+    # `+` is safe here for a reason that does not hold there. Engines are
+    # OPTIONAL and per-node: a node running llama.cpp and not vLLM has one side
+    # of the addition and not the other, so `+` drops it. Directions are not
+    # optional. The agent emits receive and transmit for every interface in one
+    # loop, unconditionally, so the two sides always carry the same label sets.
+    # Pinned by test_both_directions_are_always_emitted, because that invariant
+    # is what makes this expression correct.
+    "network_errors": (
+        "sum by (node, interface) "
+        "(rate(sparkdash_network_receive_errors_total[{window}])) + "
+        "sum by (node, interface) "
+        "(rate(sparkdash_network_transmit_errors_total[{window}]))"
+    ),
+    "network_drops": (
+        "sum by (node, interface) "
+        "(rate(sparkdash_network_receive_dropped_total[{window}])) + "
+        "sum by (node, interface) "
+        "(rate(sparkdash_network_transmit_dropped_total[{window}]))"
+    ),
     "disk_busy": (
         f"100 * max by (node) (rate(node_disk_io_time_seconds_total"
         f"{{{_NODES}}}[{{window}}]))"

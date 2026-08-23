@@ -4389,7 +4389,15 @@ missing.
 That makes this cheap in collection terms and not cheap in design terms, which
 is the whole of the item.
 
-- [ ] **AC1. Decide what a network chart is keyed by.**
+**Shipped 2026-08-23** as a `Network history` section: one chart per interface,
+each on its own axis, receive solid and transmit dashed in the node's colour.
+AC1, AC1a, AC1b, AC1c, AC2 built; AC3 and AC4 decided; AC5 split out and open.
+Four range queries serve the whole grid however many interfaces it draws, and
+the interfaces shown are those that carried traffic in the window — see the
+filtering note in AC1, which is the one place this deliberately did NOT reuse
+what was already there.
+
+- [x] **AC1. Decide what a network chart is keyed by.** Done 2026-08-23.
 
   Every existing chip is **one series per node** — GPU utilization, CPU clock,
   memory used. `NODE_FILTERABLE` works by appending `{node="x"}` to a bare
@@ -4419,7 +4427,18 @@ is the whole of the item.
   **Decided 2026-08-23: small multiples, one chart per interface, each on its
   own axis.** Reasoning below, in AC1b.
 
-- [ ] **AC1b. Why small multiples, and not a shared axis of any kind.**
+  **And the `monitored` flag was NOT reused, on exactly the grounds above.** It
+  would have worked — it selects the seven links carrying traffic here, and it
+  is already maintained. It was rejected because that flag decides what ALERTS,
+  and the first person to silence a noisy port would also, invisibly, lose the
+  ability to chart it. The card filters on the data instead: an interface is
+  drawn when it carried any traffic at all in the window. That needs no
+  maintenance, cannot fall out of date with cluster.yml, and reads correctly at
+  both ends — an idle 200Gb link sits at 288 b/s and stays on the page, while a
+  wifi port at a true zero drops off it. The hidden ones are counted on a
+  control ("3 idle") rather than silently omitted.
+
+- [x] **AC1b. Why small multiples, and not a shared axis of any kind.**
 
   The instinct is one chart with a line per interface. Measured over 24h on this
   cluster, that does not work — and the reason is not line count:
@@ -4462,7 +4481,7 @@ is the whole of the item.
   Accepted for now because the alternative misrepresents the fabric today, and a
   32-node install is hypothetical while a flat-lined 200Gb link is not.
 
-- [ ] **AC1c. Export the RDMA-to-interface pairing as a label. Prerequisite.**
+- [x] **AC1c. Export the RDMA-to-interface pairing as a label. Done 2026-08-23.**
 
   `sparkdash_rdma_port_info` carries `device`, `port`, `link_layer` and `rate`
   but **not** the Ethernet interface the RoCE device is paired with. The agent
@@ -4478,7 +4497,16 @@ is the whole of the item.
   so it is derivable by string munging. That is the wrong fix — the agent has
   the real answer and should say it.
 
-- [ ] **AC1a. It gets its own card, not more chips on History. Decided
+  **Shipped as a label on `rdma_port_info`.** Adding a label splits a series'
+  history at the deploy, which is exactly why `network_monitored` is a separate
+  family rather than a label on `network_up`. The trade is right here and wrong
+  there: this series is always 1, so its history holds nothing to lose, and the
+  old label set ages out of the 180-day window on its own. A port with no netdev
+  gets the label EMPTY rather than omitted — a family carrying two different
+  label sets is something Prometheus accepts and every `on (interface)` join
+  then silently drops.
+
+- [x] **AC1a. It gets its own card, not more chips on History. Done
   2026-08-23.**
 
   History already carries **15 metrics** and its chip row wraps to three lines
@@ -4501,7 +4529,7 @@ is the whole of the item.
   component. Reuse is the obvious first answer, but `Trends` currently assumes
   one series per node — see AC1.
 
-- [ ] **AC2. Bits, and the counter that is typed as a gauge.**
+- [x] **AC2. Bits, and the counter that is typed as a gauge.** Done 2026-08-23.
 
   Network gear is rated in bits and the Network panel already converts — a chart
   that showed bytes would disagree with the table above it. So the query is
@@ -4515,8 +4543,27 @@ is the whole of the item.
   had to `rate()` anything, and `MetricSpec` has no field that says "this needs
   a rate".
 
-- [ ] **AC3. Decide whether RDMA gets its own chart, and avoid drawing the same
-  bytes twice.**
+  **One thing this turned up, worth recording because it looks like the
+  established idiom and is not.** `tokens_per_second` sums several families with
+  `sum by (node) ({__name__=~"..."})`, adopted specifically to stop binary `+`
+  dropping a node that runs one engine and not another. Reaching for the same
+  shape on the fault counters fails: `rate()` DROPS `__name__`, so
+  `rate({__name__=~"..._(receive|transmit)_errors_total"}[w])` reduces two
+  families to two series with the identical label set, and Prometheus refuses
+  with "vector cannot contain metrics with the same labelset" — a 422, measured
+  rather than reasoned about. The regex form only works over there because
+  nothing takes a rate, so `__name__` survives to keep the series apart.
+
+  So the fault queries use `+` after all, and the difference is real rather than
+  a lapse: engines are OPTIONAL and per-node, which is what makes `+` lossy
+  there. Directions are not — the agent emits receive and transmit for every
+  interface in one loop, unconditionally. That invariant is what makes the
+  expression correct, so it is now pinned by
+  `test_both_directions_are_always_emitted` rather than left as a property
+  someone has to notice.
+
+- [x] **AC3. Decide whether RDMA gets its own chart, and avoid drawing the same
+  bytes twice.** Decided 2026-08-23.
 
   `sparkdash_rdma_receive_bytes_total` is read from the Ethernet interface the
   RoCE device is paired with, because mlx5 leaves the IB-style counters at zero.
@@ -4528,7 +4575,23 @@ is the whole of the item.
   the interface chart carries it, with the RoCE pairing shown in the table as it
   is now.
 
-- [ ] **AC4. Decide whether errors and drops are charted at all.**
+  **Decided: no RDMA throughput chart.** The bytes are the interface's bytes,
+  and two charts of one transfer is not a second measurement — it is the same
+  one drawn twice, on a card whose whole argument is that a misleading chart is
+  worse than no chart. The RoCE pairing stays in the table, and AC1c means a
+  query can now *prove* the duplication rather than take this paragraph's word
+  for it.
+
+  **What is left unbuilt, deliberately.** Port state over time is the RDMA
+  question the interface charts genuinely cannot answer: a port that flapped at
+  03:00 shows up in `rdma_port_active` and nowhere else. It wants a step plot of
+  a 0/1 series, and `MetricChart` draws neither steps nor a two-value axis — a
+  line chart of a boolean, auto-scaled to [0, 1], reads as a wild oscillation
+  when it is one clean transition. Carried forward as AC5 rather than bolted on
+  badly.
+
+- [x] **AC4. Decide whether errors and drops are charted at all.** Decided
+  2026-08-23.
 
   They read zero on a healthy fabric, and a chart of a flat zero is noise
   competing for the same screen space as a chart that moves. The table already
@@ -4541,6 +4604,33 @@ is the whole of the item.
   between "a cable is bad" and "something happened during the backup window".
   That is a real question the table cannot answer, so this is genuinely open
   rather than rhetorical.
+
+  **Decided: charted, but signal-gated** — the same rule the `err` and `drop`
+  columns already follow. A fault chart is built for an interface only when
+  something in the window is non-zero, and it sits immediately after that
+  interface's throughput chart rather than in a block at the end. On a healthy
+  fabric that is fourteen charts which do not exist; on a bad cable it is one
+  that appears beside the traffic it interrupted, which is what makes "were the
+  errors while it was busy" answerable in a glance.
+
+  Errors and drops stay SEPARATE lines rather than one "faults" total. A drop is
+  usually backpressure — a queue that overflowed under load — and an error is
+  usually physical. Summing them saves one line and loses the distinction that
+  decides whether anyone walks to the rack.
+
+- [ ] **AC5. RDMA port state over time.**
+
+  The one fabric question the throughput charts cannot answer. A RoCE port that
+  dropped and came back at 03:00 leaves `rdma_port_active` stepping 1 → 0 → 1
+  and leaves the byte counters looking like an ordinary quiet spell, so the
+  chart that would show it is the one not built. Split out of AC3 because it
+  needs a renderer this card does not have: a step plot on a two-value axis.
+  Drawn as an ordinary auto-scaled line, one clean transition reads as a wild
+  oscillation between the top and bottom of the plot.
+
+  Cheap-ish once that exists — the series is exported and scraped today, and
+  `rdma_port_info.interface` (AC1c) is what lets such a chart sit beside the
+  interface it shares a cable with rather than in a section of its own.
 
 **No scale ceiling for throughput.** `MetricSpec.scaleMax` exists so a quiet
 hour does not auto-scale into looking dramatic, and it is set where the hardware

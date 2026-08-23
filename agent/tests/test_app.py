@@ -474,6 +474,68 @@ def test_rdma_port_monitored_is_exported_per_port():
     assert 'sparkdash_rdma_port_monitored{device="roceP2p1s0f1",node="gx10-1",port="1"} 0.0' in text
 
 
+def test_both_directions_are_always_emitted():
+    """WHAT MAKES THE ERROR QUERIES CORRECT. The history expressions add receive
+    and transmit with `+`, and binary `+` keeps only the label sets present on
+    BOTH sides — so an interface that reported one direction and not the other
+    would vanish from the fault charts entirely rather than show what it has.
+
+    Safe only because these are emitted unconditionally, in one loop, for every
+    interface. `speed_mbps` is the counter-example in the same block: it is
+    guarded by `is not None` and genuinely can be absent, which is why nothing
+    adds it to anything.
+    """
+    snap = make_snapshot(network=[NetworkInterface(name="eth0", up=True)])
+    text = render(snap)
+    for family in (
+        "receive_bytes_total",
+        "transmit_bytes_total",
+        "receive_errors_total",
+        "transmit_errors_total",
+        "receive_dropped_total",
+        "transmit_dropped_total",
+    ):
+        assert f'sparkdash_network_{family}{{interface="eth0",node="gx10-1"}}' in text
+
+
+def test_rdma_port_info_carries_the_paired_interface():
+    """THE JOIN KEY. RDMA byte counters are read from the Ethernet interface the
+    RoCE device is paired with — mlx5 leaves the IB-style counters at zero — so
+    the two families describe the same bytes. Without this label nothing in
+    Prometheus says which pairs with which, and the double-count cannot even be
+    detected in a query, let alone avoided."""
+    snap = make_snapshot(
+        rdma=[
+            RdmaPort(
+                device="roceP2p1s0f0",
+                port=1,
+                state="ACTIVE",
+                link_layer="Ethernet",
+                rate="200 Gb/sec (2X NDR)",
+                interface="enP2p1s0f0np0",
+            )
+        ]
+    )
+    text = render(snap)
+    assert 'interface="enP2p1s0f0np0"' in text
+    assert "sparkdash_rdma_port_info{" in text
+    line = next(l for l in text.splitlines() if l.startswith("sparkdash_rdma_port_info{"))
+    # Read from sysfs, not munged out of the device name: `roceP2p1s0f0` and
+    # `enP2p1s0f0np0` look derivable and a regex over them would be a guess
+    # that happens to work on this hardware.
+    assert 'device="roceP2p1s0f0"' in line and 'interface="enP2p1s0f0np0"' in line
+
+
+def test_rdma_port_info_reports_no_pairing_as_empty_not_missing():
+    """A port with no netdev still gets the label, empty. Omitting it for some
+    ports and not others would give the family two label sets, which Prometheus
+    accepts and every `on (interface)` join then silently drops."""
+    snap = make_snapshot(rdma=[RdmaPort(device="mlx5_0", port=1, state="ACTIVE")])
+    text = render(snap)
+    line = next(l for l in text.splitlines() if l.startswith("sparkdash_rdma_port_info{"))
+    assert 'interface=""' in line
+
+
 def test_metrics_content_type_matches_the_generator(client):
     """Regression: the endpoint advertised OpenMetrics while serving the
     plain-text format. Prometheus honours the header, parses strictly, and

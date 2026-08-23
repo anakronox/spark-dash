@@ -39,6 +39,42 @@ export function compact(value: number): string {
   return String(Math.round(value));
 }
 
+/** Bits per second, in the unit a human would say it in.
+ *
+ * SHARED WITH THE NETWORK TABLE ON PURPOSE. The table and the history charts
+ * sit in the same page describing the same links, and the one thing that must
+ * never happen is the two disagreeing about what 580,223,841 means. One
+ * function, one answer.
+ *
+ * Takes BITS, not bytes. The callers differ — the table holds bytes/sec from
+ * the live snapshot, the charts hold bits/sec because the PromQL already
+ * multiplied — and putting the conversion inside would make one of them do it
+ * twice. The parameter name is the whole documentation of which is which.
+ */
+export function bitRate(bitsPerSec: number, dash = '—'): string {
+  if (!isFinite(bitsPerSec)) return dash;
+  const b = bitsPerSec;
+  if (b >= 1e9) return `${num(b / 1e9, 2)} Gb/s`;
+  if (b >= 1e6) return `${num(b / 1e6, 1)} Mb/s`;
+  if (b >= 1e3) return `${num(b / 1e3, 0)} kb/s`;
+  return `${num(b, 0)} b/s`;
+}
+
+/** An SI prefix and the divisor that goes with it, chosen for a whole axis.
+ *
+ * PICKED ONCE FROM THE TOP OF THE SCALE, not per tick. Scaling each label on
+ * its own gives an axis reading 0 / 500k / 1M / 1.5M / 2M, where the reader has
+ * to re-anchor at every gridline to see that the spacing is even. One divisor
+ * for the axis means the numbers count up the way an axis should.
+ */
+export function siScale(max: number): { div: number; prefix: string } {
+  const m = Math.abs(max);
+  if (m >= 1e9) return { div: 1e9, prefix: 'G' };
+  if (m >= 1e6) return { div: 1e6, prefix: 'M' };
+  if (m >= 1e3) return { div: 1e3, prefix: 'k' };
+  return { div: 1, prefix: '' };
+}
+
 export function num(value: number | null | undefined, digits = 0, dash = '—'): string {
   if (value === null || value === undefined || Number.isNaN(value)) return dash;
   return value.toFixed(digits);

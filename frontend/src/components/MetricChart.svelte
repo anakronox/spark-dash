@@ -20,6 +20,7 @@
   import 'uplot/dist/uPlot.min.css';
   import { onDestroy } from 'svelte';
   import { chartTheme, cssVar, nodeColor } from '../lib/theme';
+  import { bitRate, siScale } from '../lib/format';
   import type { MetricSpec } from '../lib/history';
 
   interface Props {
@@ -41,6 +42,17 @@
      *  share an x axis, so an instant lines up across the whole grid. */
     annotations?: { ts: number; kind: string; label: string; node: string | null }[];
     height?: number;
+    /** Colour every line by THIS id rather than by its own name.
+     *
+     * The history grid is one chart per metric with one line per node, so a
+     * line's name IS its identity and the default works. The network grid is
+     * one chart per INTERFACE, where the lines are receive and transmit — two
+     * views of one node's wire, not two nodes. Their names key nothing in
+     * `slots`, and colouring by them would fall through to no colour at all.
+     *
+     * A single id rather than one per column because that is the shape of the
+     * thing: a chart of one interface has exactly one owner. */
+    identity?: string;
   }
   const {
     metric,
@@ -52,7 +64,24 @@
     syncKey,
     annotations = [],
     height = 132,
+    identity,
   }: Props = $props();
+
+  /** The line colour for a named column. */
+  const colourOf = (name: string) => nodeColor(slots.get(identity ?? name));
+
+  /** Dash pattern for a named column, empty for solid.
+   *
+   * DIRECTION BY DASH, NOT BY HUE. Colour already carries the node here, and
+   * on a grid of small multiples that is the property worth keeping constant:
+   * every chart belonging to one box reads as a group at a glance. Spending
+   * hue on direction instead would break that AND collide with the node
+   * palette, which is deliberately kept clear of the status colours.
+   *
+   * [5, 3] rather than a finer dash: at 132px tall with a 2px stroke, a
+   * [2, 2] pattern reads as a lighter solid line rather than as a dashed one.
+   */
+  const dashOf = (name: string) => (metric.dashed === name ? [5, 3] : []);
 
   let host = $state<HTMLDivElement | null>(null);
   let chart: uPlot | null = null;
@@ -95,7 +124,8 @@
     return annotations.filter((a) => Math.abs(a.ts - ts) <= tolerance);
   }
 
-  const fmt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1));
+  const fmt = (v: number) =>
+    metric.si ? bitRate(v) : `${Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)}${metric.unit}`;
 
   /* 11px, up from 10. These are eight small charts rather than one large one,
      so their axes are the densest type on the page and were also the smallest.
@@ -122,6 +152,17 @@
    * it is the same decimal that made the MIDDLE label wider than the ceiling.
    * Throughput genuinely needs it, since its whole scale can be 0 to 1. */
   function ticks(values: number[]): string[] {
+    /* SI axes take one divisor for the whole axis, from the top of the scale.
+       Scaling each label on its own produces 0 / 500k / 1M / 1.5M / 2M, where
+       the reader re-anchors at every gridline to see that the spacing is even.
+       The prefix rides on the unit so the axis still says what it measures. */
+    if (metric.si) {
+      const { div, prefix } = siScale(Math.max(...values.map(Math.abs), 1));
+      const fine = div > 1 && values.some((v) => v !== 0 && Math.abs(v) / div < 10);
+      return values.map(
+        (v) => `${(v / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`,
+      );
+    }
     const fine = values.some((v) => v !== 0 && Math.abs(v) < 10);
     return values.map((v) => `${fine ? v.toFixed(1) : v.toFixed(0)}${metric.unit}`);
   }
@@ -277,8 +318,9 @@
         ...(names.length
           ? names.map((name) => ({
               label: name,
-              stroke: nodeColor(slots.get(name)),
+              stroke: colourOf(name),
               width: 2,
+              dash: dashOf(name),
               points: { show: false },
             }))
           : [{ label: '', stroke: 'transparent', points: { show: false } }]),
@@ -298,7 +340,12 @@
      the samples are not. Node visibility is in here because toggling a node
      adds or removes a series. */
   const shape = $derived(
-    [metric.key, names.join('|'), theme, width, height, axisWidth].join('~'),
+    /* `identity` and `dashed` are baked into the series options at
+       construction, exactly like the colours, so they belong in the key that
+       decides rebuild-vs-setData. */
+    [metric.key, names.join('|'), identity, metric.dashed, theme, width, height, axisWidth].join(
+      '~',
+    ),
   );
   let builtShape = '';
 
@@ -382,9 +429,13 @@
         {#each names as name, i (name)}
           {@const v = columns[i]?.[hover.idx]}
           <div class="row">
-            <span class="swatch" style:background={nodeColor(slots.get(name))}></span>
+            <span
+              class="swatch"
+              class:dashed={metric.dashed === name}
+              style:background={colourOf(name)}
+            ></span>
             <span class="who">{name}</span>
-            <span class="val num">{v == null ? '—' : `${fmt(v)}${metric.unit}`}</span>
+            <span class="val num">{v == null ? '—' : fmt(v)}</span>
           </div>
         {/each}
       </div>
@@ -467,6 +518,20 @@
     height: 8px;
     border-radius: 2px;
     flex: none;
+  }
+
+  /* The key has to show the DASH, or the tooltip lists two identically
+     coloured rows for two lines the reader is meant to tell apart. Gaps rather
+     than a lighter tint: a paler swatch reads as a second colour, which is the
+     thing the dash exists to avoid. `currentColor` would not work here — the
+     colour arrives as an inline background, so the gradient re-uses it via
+     `background-image` over that background. */
+  .tip .swatch.dashed {
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0 2px,
+      var(--panel) 2px 4px
+    );
   }
 
   .tip .who {

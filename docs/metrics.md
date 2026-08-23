@@ -291,13 +291,13 @@ partition is disjoint, so aggregating at any level is safe.
 | `network_up` | `interface` | 1 when the link is up |
 | `network_monitored` | `interface` | 0 when excluded from alerting by `cluster.yml` — still collected and charted |
 | `network_speed_mbps` | `interface` | absent while a link is down |
-| `network_{receive,transmit}_bytes_total` | `interface` | monotonic counters **typed as gauges**; `rate()` is correct on them |
+| `network_{receive,transmit}_bytes_total` | `interface` | monotonic counters **typed as gauges**; `rate()` is correct on them — they reset only on reboot, which `rate()` handles regardless of the declared type |
 | `network_receive_errors_total`, `network_receive_dropped_total` | `interface` | |
 | `network_transmit_errors_total`, `network_transmit_dropped_total` | `interface` | |
 | `rdma_port_active` | `device`, `port` | |
 | `rdma_port_monitored` | `device`, `port` | derived from the paired netdev — one cable carries both |
-| `rdma_{receive,transmit}_bytes_total`, `rdma_errors_total` | `device`, `port` | |
-| `rdma_port_info` | + `link_layer`, `rate` | always 1; the negotiated rate rides as a label because a string cannot be a gauge value |
+| `rdma_{receive,transmit}_bytes_total`, `rdma_errors_total` | `device`, `port` | read from the PAIRED interface — the same bytes `network_*_bytes_total` reports, not additional ones |
+| `rdma_port_info` | + `link_layer`, `rate`, `interface` | always 1; the negotiated rate rides as a label because a string cannot be a gauge value. `interface` is the join key to the netdev the RoCE device shares a cable with — empty when there is no pairing |
 
 ### Inference — llama.cpp router mode
 

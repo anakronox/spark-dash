@@ -230,6 +230,19 @@ export const SECTIONS: SectionDef[] = [
   { id: 'history', label: 'History' },
   { id: 'processes', label: 'GPU processes' },
   { id: 'network', label: 'Network' },
+  /* A SEPARATE CARD, not more chips on History. That panel already carries 15
+     metrics and its chip row wraps to three lines at full width; six network
+     chips would not join it, they would bury it.
+
+     A section of its own also gives the fabric its own time range, which is the
+     behaviour you want — correlating a 200Gb link saturating at 03:00 against
+     GPU temperature means looking at two windows, not one — and it inherits
+     drag-to-reorder, pairing, collapse, hide and the row cap for free.
+
+     Saved layouts from before this shipped are already handled: `reconcile()`
+     appends a section the saved order has never seen rather than dropping it,
+     so it turns up in its default position instead of vanishing. */
+  { id: 'network-history', label: 'Network history' },
   { id: 'models', label: 'Models' },
   { id: 'activity', label: 'Model activity' },
 ];
