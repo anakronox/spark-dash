@@ -4420,6 +4420,29 @@ is the whole of the item.
   multiples, one per interface; or a per-node roll-up with the interface
   breakdown behind a click.
 
+- [ ] **AC1a. It gets its own card, not more chips on History. Decided
+  2026-08-23.**
+
+  History already carries **15 metrics** and its chip row wraps to three lines
+  at full width. Six or so network chips would not fit that row; they would
+  bury it.
+
+  A separate section also gives the fabric its own time range, which is the
+  behaviour you want: correlating a 200Gb link saturating at 03:00 against GPU
+  temperature means looking at two windows, not one. And it inherits everything
+  the section machinery already does — drag to reorder, pair side by side,
+  collapse, hide, per-section row counts.
+
+  The cost is one entry in `SECTIONS`, a branch in `App.svelte`'s section
+  renderer, and a `DEFAULT_ROWS` entry. Existing saved layouts are already
+  handled: `reconcile()` appends a section a saved order has never seen rather
+  than dropping it, so it appears for people who arranged their page before
+  this shipped, in its default position.
+
+  Open: whether it reuses `Trends` with a different metric list, or is its own
+  component. Reuse is the obvious first answer, but `Trends` currently assumes
+  one series per node — see AC1.
+
 - [ ] **AC2. Bits, and the counter that is typed as a gauge.**
 
   Network gear is rated in bits and the Network panel already converts — a chart
