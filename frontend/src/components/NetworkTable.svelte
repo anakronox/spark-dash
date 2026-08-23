@@ -23,7 +23,12 @@
     // The sparkline sorts by BURSTINESS, which is what its shape shows. Sorting
     // it by peak would put a flat line at the top of a column whose whole job
     // is to show movement.
-    { key: 'trend', label: 'trend', width: 14 },
+    /* 16ch, measured the same way as `iface`. At 14 the cell's content box was
+       77px against an 80px sparkline, so the last 3px sat under the cell's
+       overflow-hidden — and the right-hand end of a sparkline is the most
+       recent samples, which is the part worth seeing. Widening rather than
+       shrinking SPARK_W: the sparkline is the column. */
+    { key: 'trend', label: 'trend', width: 16 },
     { key: 'peak', label: 'peak', right: true, width: 14 },
     { key: 'now', label: 'now', right: true, width: 14 },
     { key: 'err', label: 'err', right: true, signal: true, width: 8 },
