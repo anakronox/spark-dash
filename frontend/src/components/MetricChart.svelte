@@ -207,6 +207,10 @@
    * a clock) and drops the decimal where it only ever said `.0`.
    */
   function decimalsFor(values: number[]): number {
+    // Whole numbers need no decimal at all, whatever the spacing says. A fault
+    // count reading 0.0 / 1.0 / 2.0 is accurate and still spends three
+    // characters saying the axis counts in halves, which it does not.
+    if (values.every((v) => Number.isInteger(v))) return 0;
     const sorted = [...new Set(values)].sort((a, b) => a - b);
     if (sorted.length < 2) return 0;
     const gap = Math.min(...sorted.slice(1).map((v, i) => v - sorted[i]));
