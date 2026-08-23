@@ -742,7 +742,11 @@
         {:else if id === 'history'}
           <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.resolved} />
         {:else if id === 'network-history'}
-          <NetworkTrends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.resolved} />
+          <NetworkTrends
+            nodeIds={nodes.map((n) => n.node_id)}
+            {nodes}
+            themeKey={theme.resolved}
+          />
         {/if}
       </Section>
     {/each}

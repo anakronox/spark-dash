@@ -402,7 +402,7 @@
     </header>
 
     <!-- Appearance -->
-    <section class="block">
+    <section class="stack">
       <h3 class="eyebrow dim">Appearance</h3>
       <div class="choices" role="group" aria-label="Theme">
         {#each THEMES as t (t.id)}
@@ -425,7 +425,7 @@
     </section>
 
     <!-- Layout -->
-    <section class="block">
+    <section class="stack">
       <h3 class="eyebrow dim">Node cards</h3>
       <!-- Deliberate, never automatic. Switching on node count would mean the
            page rearranges itself the moment a node joins — which is exactly
@@ -453,7 +453,7 @@
       <p class="note dim">Compact keeps name, status and the memory band.</p>
     </section>
 
-    <section class="block">
+    <section class="stack">
       <h3 class="eyebrow dim">Sections</h3>
       <!-- HIDE, not collapse. Collapsing already has a control on the section
            itself, and duplicating it here would be two ways to do one thing.
@@ -548,7 +548,7 @@
     </section>
 
     <!-- Cluster -->
-    <section class="block">
+    <section class="stack">
       <h3 class="eyebrow dim">Cluster</h3>
       {#if cfgError}
         <p class="note" data-tone="warning">Couldn't read the cluster config: {cfgError}</p>
@@ -733,7 +733,7 @@
     </section>
 
     <!-- Where this lives -->
-    <section class="block">
+    <section class="stack">
       <h3 class="eyebrow dim">Monitoring footprint</h3>
       <!-- J4: the number that keeps the single-host argument honest.
            Monitoring a GB10 should cost it as little as possible, and on one
@@ -814,7 +814,7 @@
   }
   .close:hover { color: var(--ink); }
 
-  .block { display: flex; flex-direction: column; gap: 8px; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
 
   .note { font-size: 11px; margin: 0; }
 

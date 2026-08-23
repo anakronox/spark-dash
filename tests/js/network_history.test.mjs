@@ -35,6 +35,12 @@ import {
 } from '../../frontend/src/lib/network-history.ts';
 
 const tests = [];
+/** Every chart on the card, divisions flattened — for the assertions that are
+ *  about ordering or gating rather than about the division itself. */
+const flat = (grid) => grid.groups.flatMap((g) => g.charts);
+const divisionOf = (grid, label) =>
+  (grid.groups.find((g) => g.charts.some((c) => c.metric.label === label)) ?? {}).key;
+
 const test = (name, fn) => tests.push([name, fn]);
 
 /** A HistorySeries as the backend returns it. */
@@ -186,14 +192,14 @@ const busyAndIdle = () =>
 test('an interface with no traffic at all is hidden, and counted', () => {
   const { names, columns } = busyAndIdle();
   const grid = buildGrid(names, columns, ['sparky'], null, false);
-  assert.deepEqual(grid.charts.map((c) => c.metric.label), ['enP7s7']);
+  assert.deepEqual(flat(grid).map((c) => c.metric.label), ['enP7s7']);
   assert.equal(grid.quiet, 1, 'the count is what tells the reader something is hidden');
 });
 
 test('the idle toggle brings it back without changing the count', () => {
   const { names, columns } = busyAndIdle();
   const grid = buildGrid(names, columns, ['sparky'], null, true);
-  assert.deepEqual(grid.charts.map((c) => c.metric.label), ['enP7s7', 'wlP9s9']);
+  assert.deepEqual(flat(grid).map((c) => c.metric.label), ['enP7s7', 'wlP9s9']);
   assert.equal(grid.quiet, 1);
 });
 
@@ -207,7 +213,7 @@ test('an idle 200Gb link is NOT quiet — it still carries a trickle', () => {
     [`sparketa/enP2p1s0f0np0/${TX}`]: [0, 0, 0],
   });
   const grid = buildGrid(names, columns, ['sparketa'], null, false);
-  assert.equal(grid.charts.length, 1);
+  assert.equal(flat(grid).length, 1);
   assert.equal(grid.quiet, 0);
 });
 
@@ -218,7 +224,7 @@ test('a fault chart sits immediately after the interface it belongs to', () => {
     [`sparky/wlP9s9/${RX}`]: [5],
   });
   const grid = buildGrid(names, columns, ['sparky'], null, false);
-  assert.deepEqual(grid.charts.map((c) => c.metric.label), [
+  assert.deepEqual(flat(grid).map((c) => c.metric.label), [
     'enP7s7',
     'enP7s7 faults',
     'wlP9s9',
@@ -231,14 +237,14 @@ test('soloing a node drops the other nodes links', () => {
     [`sparketa/enP7s7/${RX}`]: [10],
   });
   const grid = buildGrid(names, columns, ['sparky', 'sparketa'], ['sparketa'], false);
-  assert.deepEqual(grid.charts.map((c) => c.link.node), ['sparketa']);
+  assert.deepEqual(flat(grid).map((c) => c.link.node), ['sparketa']);
 });
 
 test('a null sample is not traffic', () => {
   // A node down for the window returns nulls, not zeroes. Treating null as
   // traffic would keep a dead node on the grid as a chart with no line.
   const { names, columns } = dataset({ [`sparky/enP7s7/${RX}`]: [null, null] });
-  assert.equal(buildGrid(names, columns, ['sparky'], null, false).charts.length, 0);
+  assert.equal(flat(buildGrid(names, columns, ['sparky'], null, false)).length, 0);
 });
 
 test('every chart key is unique — the grid is keyed on it', () => {
@@ -247,7 +253,7 @@ test('every chart key is unique — the grid is keyed on it', () => {
     [`sparky/enP7s7/${ERRORS}`]: [1],
     [`sparketa/enP7s7/${RX}`]: [10],
   });
-  const keys = buildGrid(names, columns, ['sparky', 'sparketa'], null, true).charts.map(
+  const keys = flat(buildGrid(names, columns, ['sparky', 'sparketa'], null, true)).map(
     (c) => c.key,
   );
   assert.equal(new Set(keys).size, keys.length, 'a duplicate key makes Svelte reuse the wrong chart');
@@ -322,21 +328,26 @@ test('a port chart lands under the interface it shares a cable with', () => {
   });
   const rdma = ports([portRow('sparky', 'roceP2p1s0f1', 'enP2p1s0f1np1', [1, 0])]);
   const grid = buildGrid(names, columns, ['sparky'], null, false, rdma);
-  assert.deepEqual(grid.charts.map((c) => c.metric.label), [
+  assert.deepEqual(flat(grid).map((c) => c.metric.label), [
     'enP2p1s0f1np1',
     'roceP2p1s0f1 port 1',
     'enP7s7',
   ]);
 });
 
-test('a port whose pairing is unknown still gets charted, at the end', () => {
-  // An agent from before AC1c. Dropping the chart would hide a flapping port
-  // on exactly the deployment least equipped to notice.
-  const { names, columns } = dataset({ [`sparky/enP7s7/${RX}`]: [10] });
+test('a port whose pairing is unknown still gets charted, at the end of Fabric', () => {
+  // An agent from before AC1c and no live snapshot either. Dropping the chart
+  // would hide a flapping port on exactly the deployment least equipped to
+  // notice. It cannot be placed under a link, so it goes last in its division.
+  const { names, columns } = dataset({
+    [`sparky/enP2p1s0f0np0/${RX}`]: [10],
+    [`sparky/enP7s7/${RX}`]: [10],
+  });
   const rdma = ports([portRow('sparky', 'roceP2p1s0f1', '', [1, 0])]);
-  const grid = buildGrid(names, columns, ['sparky'], null, false, rdma);
-  assert.deepEqual(grid.charts.map((c) => c.metric.label), [
-    'enP7s7',
+  const grid = buildGrid(names, columns, ['sparky'], null, false, rdma, FABRIC);
+  const fab = grid.groups.find((g) => g.key === 'fabric');
+  assert.deepEqual(fab.charts.map((c) => c.metric.label), [
+    'enP2p1s0f0np0',
     'roceP2p1s0f1 port 1',
   ]);
 });
@@ -350,7 +361,7 @@ test('an idle link whose RoCE port flapped is NOT hidden', () => {
   });
   const rdma = ports([portRow('sparky', 'roceP2p1s0f1', 'enP2p1s0f1np1', [1, 0])]);
   const grid = buildGrid(names, columns, ['sparky'], null, false, rdma);
-  assert.deepEqual(grid.charts.map((c) => c.metric.label), [
+  assert.deepEqual(flat(grid).map((c) => c.metric.label), [
     'enP2p1s0f1np1',
     'roceP2p1s0f1 port 1',
   ]);
@@ -367,22 +378,103 @@ test('soloing a node drops the other nodes ports too', () => {
     portRow('sparketa', 'roceP2p1s0f1', '', [0]),
   ]);
   const grid = buildGrid(names, columns, ['sparky', 'sparketa'], ['sparketa'], false, rdma);
-  assert.deepEqual(grid.charts.map((c) => c.link.node), ['sparketa', 'sparketa']);
+  assert.deepEqual(flat(grid).map((c) => c.link.node), ['sparketa', 'sparketa']);
 });
 
 test('one node port does not attach to another node same-named interface', () => {
   // `enP7s7` exists on all three boxes. Keying by interface alone would hang
-  // sparkjr's port off sparky's chart.
+  // sparkjr's port off sparky's chart — and, now that a port decides the
+  // division, would also move the wrong node's link into Fabric.
   const { names, columns } = dataset({
     [`sparky/enP7s7/${RX}`]: [10],
     [`sparkjr/enP7s7/${RX}`]: [10],
   });
   const rdma = ports([portRow('sparkjr', 'roceX', 'enP7s7', [0])]);
-  const grid = buildGrid(names, columns, ['sparky', 'sparkjr'], null, false, rdma);
+  const grid = buildGrid(names, columns, ['sparky', 'sparkjr'], null, false, rdma, new Set());
+  const fab = grid.groups.find((g) => g.key === 'fabric');
+  const mgmt = grid.groups.find((g) => g.key === 'management');
   assert.deepEqual(
-    grid.charts.map((c) => `${c.link.node} ${c.metric.label}`),
-    ['sparky enP7s7', 'sparkjr enP7s7', 'sparkjr roceX port 1'],
+    fab.charts.map((c) => `${c.link.node} ${c.metric.label}`),
+    ['sparkjr enP7s7', 'sparkjr roceX port 1'],
   );
+  assert.deepEqual(
+    mgmt.charts.map((c) => `${c.link.node} ${c.metric.label}`),
+    ['sparky enP7s7'],
+  );
+});
+
+// ---------------------------------------------------------- the division
+
+const FABRIC = new Set([linkKey('sparky', 'enP2p1s0f0np0')]);
+
+test('a paired interface goes to Fabric and an unpaired one to Management', () => {
+  const { names, columns } = dataset({
+    [`sparky/enP2p1s0f0np0/${RX}`]: [10],
+    [`sparky/enP7s7/${RX}`]: [10],
+  });
+  const grid = buildGrid(names, columns, ['sparky'], null, false, [], FABRIC);
+  assert.deepEqual(grid.groups.map((g) => g.key), ['fabric', 'management']);
+  assert.equal(divisionOf(grid, 'enP2p1s0f0np0'), 'fabric');
+  assert.equal(divisionOf(grid, 'enP7s7'), 'management');
+});
+
+test('fabric comes first — it is the question the cluster exists for', () => {
+  const { names, columns } = dataset({
+    // Alphabetically enP7s7 sorts after, so this is not just insertion order.
+    [`sparky/enP7s7/${RX}`]: [10],
+    [`sparky/enP2p1s0f0np0/${RX}`]: [10],
+  });
+  const grid = buildGrid(names, columns, ['sparky'], null, false, [], FABRIC);
+  assert.equal(grid.groups[0].key, 'fabric');
+});
+
+test('an empty division is not drawn', () => {
+  // A cluster with no RoCE at all gets one heading, not one and an empty frame.
+  const { names, columns } = dataset({ [`sparky/enP7s7/${RX}`]: [10] });
+  const grid = buildGrid(names, columns, ['sparky'], null, false, [], new Set());
+  assert.deepEqual(grid.groups.map((g) => g.key), ['management']);
+});
+
+test('a port hanging off an interface makes it fabric whatever the set says', () => {
+  // The pairing IS the definition, and a port attached to the link is that
+  // pairing observed directly — so an empty fabric set cannot override it.
+  const { names, columns } = dataset({ [`sparky/enP2p1s0f1np1/${RX}`]: [10] });
+  const rdma = ports([portRow('sparky', 'roceP2p1s0f1', 'enP2p1s0f1np1', [1, 0])]);
+  const grid = buildGrid(names, columns, ['sparky'], null, false, rdma, new Set());
+  assert.equal(divisionOf(grid, 'enP2p1s0f1np1'), 'fabric');
+  assert.equal(divisionOf(grid, 'roceP2p1s0f1 port 1'), 'fabric');
+});
+
+test('a port chart with no pairing still lands in Fabric', () => {
+  // It is an RDMA port by construction. Management would be actively wrong.
+  const { names, columns } = dataset({ [`sparky/enP7s7/${RX}`]: [10] });
+  const rdma = ports([portRow('sparky', 'roceP2p1s0f1', '', [1, 0])]);
+  const grid = buildGrid(names, columns, ['sparky'], null, false, rdma, new Set());
+  assert.equal(divisionOf(grid, 'roceP2p1s0f1 port 1'), 'fabric');
+  assert.equal(divisionOf(grid, 'enP7s7'), 'management');
+});
+
+test("a fault chart stays in its interface's division", () => {
+  const { names, columns } = dataset({
+    [`sparky/enP2p1s0f0np0/${RX}`]: [10],
+    [`sparky/enP2p1s0f0np0/${ERRORS}`]: [3],
+  });
+  const grid = buildGrid(names, columns, ['sparky'], null, false, [], FABRIC);
+  assert.equal(grid.groups.length, 1);
+  assert.deepEqual(grid.groups[0].charts.map((c) => c.metric.label), [
+    'enP2p1s0f0np0',
+    'enP2p1s0f0np0 faults',
+  ]);
+});
+
+test('every division names what it means', () => {
+  const { names, columns } = dataset({
+    [`sparky/enP2p1s0f0np0/${RX}`]: [10],
+    [`sparky/enP7s7/${RX}`]: [10],
+  });
+  for (const g of buildGrid(names, columns, ['sparky'], null, false, [], FABRIC).groups) {
+    assert.ok(g.label && g.note, `${g.key} has no heading or no definition`);
+  }
 });
 
 let failed = 0;

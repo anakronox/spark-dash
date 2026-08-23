@@ -40,14 +40,47 @@
     ports,
   } from '../lib/network-history';
   import type { Port } from '../lib/network-history';
+  import { linkKey } from '../lib/network-history';
   import { nodeColor } from '../lib/theme';
+  import type { NodeSnapshot } from '../lib/types';
 
   interface Props {
     /** Ordered node ids, so chart colours and grid order match the cards. */
     nodeIds: string[];
+    /** The live snapshot, for one fact only: which interfaces are paired with
+     *  an RDMA device, and so belong to the fabric.
+     *
+     * FROM THE LIVE FEED RATHER THAN FROM PROMETHEUS, which is worth stating
+     * because the charts themselves come from Prometheus. The agent has always
+     * known the pairing — it drives the RDMA table and the paired alert
+     * exclusion — but it only started EXPORTING it as a metric label in AC1c,
+     * so a cluster whose node stack has not been redeployed has the fact live
+     * and not in history. Reading it here means the division works today,
+     * everywhere, and the metric label stays what places port charts in time.
+     *
+     * The pairing is current and the window is not; an interface's fabric role
+     * does not change hour to hour, so applying today's answer to a 7d window
+     * is sound in a way that applying today's THROUGHPUT would not be. */
+    nodes: NodeSnapshot[];
     themeKey: string;
   }
-  const { nodeIds, themeKey }: Props = $props();
+  const { nodeIds, nodes, themeKey }: Props = $props();
+
+  /** `linkKey(node, iface)` for every interface with an RDMA device on it.
+   *
+   * Union of the live pairing and whatever history knows, so a node that has
+   * dropped out of the live feed keeps its charts in the right division rather
+   * than sliding into Management the moment its agent goes quiet. */
+  const fabric = $derived.by(() => {
+    const keys = new Set<string>();
+    for (const node of nodes) {
+      for (const port of node.rdma ?? []) {
+        if (port.interface) keys.add(linkKey(node.node_id, port.interface));
+      }
+    }
+    for (const p of rdma) if (p.iface) keys.add(linkKey(p.node, p.iface));
+    return keys;
+  });
 
   const QUIET_KEY = 'spark-dash.network-quiet.v1';
   const EVENTS_KEY = 'spark-dash.network-events.v1';
@@ -125,14 +158,19 @@
     return kept.length ? kept : null;
   });
 
-  const grid = $derived(buildGrid(names, columns, nodeIds, active, includeQuiet, rdma));
-  const charts = $derived(grid.charts);
+  const grid = $derived(
+    buildGrid(names, columns, nodeIds, active, includeQuiet, rdma, fabric),
+  );
+  const groups = $derived(grid.groups);
+  const total = $derived(groups.reduce((n, g) => n + g.charts.length, 0));
 
   /* Up to 4 across, snapping 1 / 2 / 4 — the same powers-of-two reasoning as
      the History grid and the node grid, so the three cards line up when they
-     sit side by side. */
-  const cols = $derived(charts.length >= 4 ? 4 : charts.length >= 2 ? 2 : 1);
-  const colsMd = $derived(Math.min(cols, 2));
+     sit side by side.
+     PER GROUP, not for the card: a Fabric division of two charts laid out on
+     the four-wide track the Management division needs would leave half a row of
+     air under a heading, which reads as charts having failed to load. */
+  const colsFor = (n: number) => (n >= 4 ? 4 : n >= 2 ? 2 : 1);
 
   const isActive = (id: string) => active === null || active.includes(id);
 
@@ -324,7 +362,7 @@
     <p class="error">Couldn't load network history: {error}</p>
   {:else if !x.length}
     <p class="empty dim">{loading ? 'Loading…' : 'No data in this range.'}</p>
-  {:else if !charts.length}
+  {:else if !total}
     <!-- Distinct from "no data": the queries answered, and everything they
          returned was filtered out. Saying which is what tells the reader
          whether to change the range or the filter. -->
@@ -334,25 +372,48 @@
         : 'No interfaces to draw.'}
     </p>
   {:else}
-    <div class="charts" class:loading style:--cols={cols} style:--cols-md={colsMd}>
-      {#each charts as c (c.key)}
-        <div class="cell">
-          <!-- The node above the interface, because the interface name is the
-               chart's title and the node is what disambiguates it: `enP7s7`
-               exists on all three boxes. -->
-          <span class="owner">{c.link.node}</span>
-          <MetricChart
-            metric={c.metric}
-            {x}
-            columns={c.columns}
-            names={c.names}
-            {slots}
-            identity={c.link.node}
-            theme={themeKey}
-            syncKey="spark-dash-network"
-            annotations={showEvents ? annotations : []}
-          />
-        </div>
+    <div class="divisions" class:loading>
+      <!-- FABRIC AND MANAGEMENT ARE DIFFERENT QUESTIONS, so they are different
+           divisions. A flat grid gives a 200Gb RoCE link and a wifi port the
+           same weight, and reading the fabric then means picking its charts out
+           by remembering which device names are which.
+           The heading is shown even when there is only one division: with a
+           single group it still says WHICH one, and "Fabric" over four charts
+           is the difference between "this is the interconnect" and "these are
+           four of the interfaces". -->
+      {#each groups as g (g.key)}
+        <section class="division" data-division={g.key}>
+          <h3 class="division-head">
+            {g.label}
+            <span class="count">{g.charts.length}</span>
+            <span class="note dim">{g.note}</span>
+          </h3>
+          <div
+            class="charts"
+            style:--cols={colsFor(g.charts.length)}
+            style:--cols-md={Math.min(colsFor(g.charts.length), 2)}
+          >
+            {#each g.charts as c (c.key)}
+              <div class="cell">
+                <!-- The node above the interface, because the interface name is
+                     the chart's title and the node is what disambiguates it:
+                     `enP7s7` exists on all three boxes. -->
+                <span class="owner">{c.link.node}</span>
+                <MetricChart
+                  metric={c.metric}
+                  {x}
+                  columns={c.columns}
+                  names={c.names}
+                  {slots}
+                  identity={c.link.node}
+                  theme={themeKey}
+                  syncKey="spark-dash-network"
+                  annotations={showEvents ? annotations : []}
+                />
+              </div>
+            {/each}
+          </div>
+        </section>
       {/each}
     </div>
   {/if}
@@ -506,8 +567,55 @@
 
   /* Dimmed rather than replaced while reloading: swapping the grid for a
      spinner every refresh would make the card flash on its own timer. */
-  .charts.loading {
+  .divisions.loading {
     opacity: 0.55;
+  }
+
+  .divisions {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .division-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0 0 6px;
+    padding-bottom: 4px;
+    /* A rule, not a heavier weight. The card already has a title and the node
+       legend under it; a bold subheading would compete with both. A hairline
+       divides without adding a third level of emphasis. */
+    border-bottom: 1px solid var(--rule);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .division-head .count {
+    font-weight: 400;
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The definition, not decoration. "Fabric" is a word people use loosely, and
+     this one means something exact — an interface with an RDMA device on it —
+     so the heading says so rather than leaving the reader to infer it from
+     which names ended up where. */
+  .division-head .note {
+    margin-left: auto;
+    font-weight: 400;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  @media (max-width: 700px) {
+    .division-head .note {
+      display: none;
+    }
   }
 
   .cell {

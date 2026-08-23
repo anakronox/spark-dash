@@ -169,7 +169,7 @@
     </header>
 
     <!-- Now -->
-    <section class="block">
+    <section class="stack">
       <h3 class="eyebrow dim">Firing now</h3>
       {#if !feed.available}
         <p class="note" data-tone="warning">
@@ -208,7 +208,7 @@
          alert nobody can see is a way to hide problems from yourself, so if
          something is silenced the dashboard has to say so and offer the undo. -->
     {#if silences.length}
-      <section class="block">
+      <section class="stack">
         <h3 class="eyebrow dim">Silenced</h3>
         {#each silences as s (s.id)}
           <div class="row silenced">
@@ -223,8 +223,8 @@
     {/if}
 
     <!-- History -->
-    <section class="block">
-      <div class="block-head">
+    <section class="stack">
+      <div class="stack-head">
         <h3 class="eyebrow dim">History</h3>
         <div class="ranges" role="group" aria-label="History range">
           {#each HISTORY_RANGES as r (r.key)}
@@ -346,9 +346,9 @@
   }
   .close:hover { color: var(--ink); }
 
-  .block { display: flex; flex-direction: column; gap: 8px; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
 
-  .block-head {
+  .stack-head {
     display: flex;
     align-items: baseline;
     justify-content: space-between;

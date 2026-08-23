@@ -287,13 +287,35 @@ export function chartsFor(
   return out;
 }
 
-/** The whole grid, in draw order.
+/** One labelled division of the card. */
+export interface ChartGroup {
+  key: 'fabric' | 'management';
+  label: string;
+  /** One line under the heading saying what the division MEANS, since "fabric"
+   *  is a word people use loosely and this one has an exact definition. */
+  note: string;
+  charts: LinkChart[];
+}
+
+/** The grid, divided into fabric and management.
  *
- * A fault chart sits IMMEDIATELY AFTER the interface it belongs to rather than
- * in a block of its own at the end. It breaks the rhythm of a 4-wide grid, and
- * that is the lesser cost: the question a fault chart exists to answer is
- * "were the errors while it was busy", and answering it should not require
- * scrolling between two halves of the same card.
+ * WHY THE DIVISION EXISTS. Small multiples put every link on its own axis,
+ * which fixes the six-orders-of-magnitude problem and creates a second one: a
+ * flat grid of fourteen charts gives a 200Gb RoCE link and a wifi port exactly
+ * the same weight, and on an inference cluster those are not the same question.
+ * Reading the fabric means picking its charts out of the management ports by
+ * remembering which device names are which.
+ *
+ * FABRIC IS DEFINED BY THE RoCE PAIRING, not by link speed and not by name. A
+ * speed threshold would be a guess that happens to work here — sort a 100Gb
+ * storage NIC with no RDMA into "fabric" and it is wrong in a way nobody would
+ * notice. The pairing is the agent's own answer to "is this a fabric link",
+ * read from sysfs, and it is the same fact that already drives the paired alert
+ * exclusion. Matching `roce*` against `en*` by string would be the third way to
+ * do it and is the one the roadmap rejects: the real answer exists.
+ *
+ * A port chart is always fabric — it is an RDMA port by construction, including
+ * when its own pairing is unknown.
  */
 export function buildGrid(
   names: string[],
@@ -305,12 +327,14 @@ export function buildGrid(
   includeQuiet: boolean,
   /** RDMA ports, already merged. Empty when the cluster has no RoCE. */
   rdma: Port[] = [],
-): { charts: LinkChart[]; quiet: number } {
+  /** `linkKey(node, iface)` for every interface paired with an RDMA device. */
+  fabric: ReadonlySet<string> = new Set(),
+): { groups: ChartGroup[]; quiet: number } {
   const byName = new Map(names.map((n, i) => [n, columns[i]]));
   const wanted = (node: string) => activeNodes === null || activeNodes.includes(node);
   const all = links(names, nodeOrder).filter((l) => wanted(l.node));
 
-  /* A port chart goes to the interface it shares a cable with, which is the
+  /* A port chart goes under the interface it shares a cable with, which is the
      whole reason AC1c had to ship first. Keyed by node AND interface: `enP7s7`
      exists on all three boxes, and a key of the interface alone would hang
      sparkjr's port off sparky's chart. */
@@ -322,16 +346,17 @@ export function buildGrid(
     if (p.iface && byName.has(`${key}${SEP}${RX}`)) {
       beside.set(key, [...(beside.get(key) ?? []), p]);
     } else {
-      // No pairing (an agent from before AC1c), or paired to an interface with
-      // no throughput series of its own. Charted anyway, at the end of the
-      // grid: an unplaceable chart is still a fact, and dropping it would make
-      // a flapping port invisible on exactly the deployment least likely to
-      // notice — the one running the older agent.
+      // No pairing (an agent from before AC1c and no live snapshot either), or
+      // paired to an interface with no throughput series of its own. Charted
+      // anyway, at the end of the fabric group: an unplaceable chart is still a
+      // fact, and dropping it would hide a flapping port on exactly the
+      // deployment least likely to notice.
       unpaired.push(p);
     }
   }
 
-  const charts: LinkChart[] = [];
+  const inFabric: LinkChart[] = [];
+  const inManagement: LinkChart[] = [];
   let quiet = 0;
   for (const link of all) {
     const built = chartsFor(link, byName);
@@ -347,8 +372,30 @@ export function buildGrid(
       // worth seeing.
       if (!includeQuiet && !attached.length) continue;
     }
-    charts.push(...built, ...attached);
+    // An interface with a port attached is fabric whatever the caller's set
+    // says: the pairing IS the definition, and a port hanging off it is that
+    // pairing observed directly.
+    const isFabric = fabric.has(link.key) || attached.length > 0;
+    (isFabric ? inFabric : inManagement).push(...built, ...attached);
   }
-  charts.push(...unpaired.map(portChart));
-  return { charts, quiet };
+  inFabric.push(...unpaired.map(portChart));
+
+  const groups: ChartGroup[] = [];
+  if (inFabric.length) {
+    groups.push({
+      key: 'fabric',
+      label: 'Fabric',
+      note: 'RoCE links — interfaces paired with an RDMA device',
+      charts: inFabric,
+    });
+  }
+  if (inManagement.length) {
+    groups.push({
+      key: 'management',
+      label: 'Management',
+      note: 'everything else — no RDMA device on this interface',
+      charts: inManagement,
+    });
+  }
+  return { groups, quiet };
 }

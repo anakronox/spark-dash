@@ -324,7 +324,7 @@
        panel when collapsed. A control that changes position depending on the
        state it's in reads as two different controls. -->
   <button
-    class="collapse"
+    class="fold"
     class:collapsed
     aria-expanded={!collapsed}
     aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
@@ -425,7 +425,20 @@
      section-level controls, so they belong together and outside the panel —
      the headers already carry a title at one end and their own controls at
      the other. */
-  .collapse {
+  /* NOT `.collapse`, and the name is the whole point.
+   *
+   * `collapse` is a Tailwind utility — `visibility: collapse` — and Tailwind v4
+   * generates a utility for any candidate string it finds in the markup,
+   * including a class name of our own that happens to match. Utilities sit in
+   * `@layer utilities` while these scoped rules are unlayered, so ours win
+   * every property they SET. `visibility` was not one of them, so the control
+   * was `visibility: collapse` on every section on the page: present in the
+   * DOM, correctly positioned, measurable — and impossible to see or click.
+   *
+   * Pinned by test_no_scoped_class_shadows_a_tailwind_utility, which builds the
+   * CSS and compares the two sets. The failure is silent by construction: no
+   * error, no warning, and nothing wrong with either file on its own. */
+  .fold {
     position: absolute;
     left: -20px;
     top: 38px;
@@ -437,34 +450,34 @@
     transition: opacity 120ms ease, color 120ms ease;
   }
 
-  .collapse svg {
+  .fold svg {
     display: block;
     transition: transform 140ms ease;
   }
 
   /* Points down when open (press to fold away), right when closed (press to
      open out) — the direction the content will move. */
-  .collapse.collapsed svg {
+  .fold.collapsed svg {
     transform: rotate(-90deg);
   }
 
   /* A collapsed section is a single thin bar, so a control that only appears
      on hover of a 40px strip is easy to miss. Once folded, the chevron stays
      faintly visible as the marker for what is there. */
-  .collapse.collapsed {
+  .fold.collapsed {
     opacity: 0.55;
   }
 
   .slot:hover .handle,
-  .slot:hover .collapse,
+  .slot:hover .fold,
   .handle:focus-visible,
-  .collapse:focus-visible,
-  .slot:hover .collapse.collapsed {
+  .fold:focus-visible,
+  .slot:hover .fold.collapsed {
     opacity: 1;
   }
 
   .handle:hover,
-  .collapse:hover {
+  .fold:hover {
     color: var(--ink);
   }
 
@@ -514,7 +527,7 @@
       left: -22px;
     }
 
-    .collapse {
+    .fold {
       opacity: 0.45;
       padding: 8px 6px;
       left: -22px;
