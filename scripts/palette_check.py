@@ -180,6 +180,8 @@ class ThemeBlock:
     #: synthetic palette can be checked without them; the check then skips
     #: rather than passing vacuously.
     status: dict[str, str] = field(default_factory=dict)
+    #: Workload-class colours, checked against status for the same reason.
+    series: list[str] = field(default_factory=list)
 
 
 def parse_themes(css: str | None = None) -> list[ThemeBlock]:
@@ -214,6 +216,13 @@ def parse_themes(css: str | None = None) -> list[ThemeBlock]:
             for k in ("good", "warning", "serious", "critical")
             if resolved.get(f"--{k}", "").startswith("#")
         }
+        # The workload classes -- memory band segments, the SM figure, swap
+        # timeline. A separate palette from the node slots and, until this was
+        # added, an unchecked one: 13 of 21 sat inside dE 12 of a status colour.
+        series = [
+            c for i in (1, 2, 3)
+            if (c := resolved.get(f"--series-{i}", "").strip()).startswith("#")
+        ]
         themes.append(
             ThemeBlock(
                 name=name or "dark",
@@ -221,6 +230,7 @@ def parse_themes(css: str | None = None) -> list[ThemeBlock]:
                 surface=resolved.get("--panel", ""),
                 slots=slots,
                 status=status,
+                series=series,
             )
         )
     return themes
@@ -272,7 +282,7 @@ def check(theme: ThemeBlock) -> list[Finding]:
     if theme.status:
         near = [
             (slot, name, round(d, 1))
-            for slot in theme.slots
+            for slot in theme.slots + theme.series
             for name, colour in theme.status.items()
             if (d := delta_e(slot, colour)) < STATUS_FLOOR
         ]
@@ -281,7 +291,7 @@ def check(theme: ThemeBlock) -> list[Finding]:
             Finding(
                 "status separation",
                 not near,
-                f"all >= {STATUS_FLOOR} from good/warning/serious/critical"
+                f"all {len(theme.slots) + len(theme.series)} >= {STATUS_FLOOR} from good/warning/serious/critical"
                 if not near
                 else f"{len(near)} too close, worst ΔE {worst}: "
                 + ", ".join(f"{s}<->{n} {d}" for s, n, d in sorted(near, key=lambda t: t[2])[:3]),

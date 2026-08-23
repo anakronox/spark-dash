@@ -101,9 +101,9 @@
      in them (`llama.cpp`, `comfyui`), and alert tags and the swap timeline use
      them too. So they answer to 4.5, not the 3.0 a chart line would need.
      Slot 2 was at 4.48 — nudged to 4.60. */
-  --series-1: #3987e5; /* blue   — LLM runtimes */
-  --series-2: #da5c2b; /* orange — other GPU workloads */
-  --series-3: #199e70; /* aqua   — third node */
+  --series-1: #3987e5;  /* h 255 — LLM runtimes */
+  --series-2: #9900ff;  /* h 302 — other GPU workloads */
+  --series-3: #eb33ad;  /* h 346 — SM / third series */
 
   /* Status palette. Reserved: never reused as a series colour, and never the
      sole carrier of meaning — every status ships with an icon and a word. */
@@ -183,9 +183,9 @@
   --ink-2: #cebdf5;
   --ink-muted: #9d8ac9;
 
-  --series-1: #2ee6ff; /* cyan    */
-  --series-2: #ff4fa8; /* magenta */
-  --series-3: #b18cff; /* violet  */
+  --series-1: #2ee6ff;  /* h 209 — LLM runtimes */
+  --series-2: #ff47ff;  /* h 328 — other GPU workloads */
+  --series-3: #0a5cd6;  /* h 260 — SM / third series */
 
   /* Status keeps its meaning and its ordering; only the hue is pushed toward
      the theme. Safe because every status ships with a glyph and a word, so
@@ -235,9 +235,9 @@
   /* Node/runtime hues are the dark theme's, unchanged: they are validated as
      TEXT (the process table prints runtime names in them) and re-checked
      against this surface — 5.32 / 5.11 / 5.68, all clear of 4.5. */
-  --series-1: #3987e5; /* blue   — LLM runtimes */
-  --series-2: #da5c2b; /* orange — other GPU workloads */
-  --series-3: #199e70; /* aqua   — third node */
+  --series-1: #3987e5;  /* h 255 — LLM runtimes */
+  --series-2: #ff1fd6;  /* h 338 — other GPU workloads */
+  --series-3: #99477a;  /* h 344 — SM / third series */
 
   /* The accent and the GOOD colour are the same green, deliberately. There is
      no `--accent` token in this system, so an accent has to land on a real one;
@@ -300,9 +300,9 @@
      vision cannot have a tier that is hard to read on purpose. */
   --ink-muted: #b8b8b8;
 
-  --series-1: #65e0ca;
-  --series-2: #ffd0a7;
-  --series-3: #8ca4f0;
+  --series-1: #003dff;  /* h 264 — LLM runtimes */
+  --series-2: #ff00d6;  /* h 338 — other GPU workloads */
+  --series-3: #0afff5;  /* h 190 — SM / third series */
 
   /* Status keeps its ORDER and its hue families so meaning transfers from
      every other theme, at lightnesses this surface can carry. */
@@ -366,9 +366,9 @@
   --ink-2: #b3bfcd;
   --ink-muted: #8695a6;
 
-  --series-1: #3987e5;
-  --series-2: #da5c2b;
-  --series-3: #199e70;
+  --series-1: #3987e5;  /* h 255 — LLM runtimes */
+  --series-2: #ff5cc2;  /* h 346 — other GPU workloads */
+  --series-3: #ad00ff;  /* h 308 — SM / third series */
 
   --good: #35b87a;
   --warning: #fab219;
@@ -406,9 +406,9 @@
   --ink-2: #4a4238;
   --ink-muted: #6f6557;
 
-  --series-1: #1f6fd0;
-  --series-2: #c2450f;
-  --series-3: #14835c;
+  --series-1: #1f6fd0;  /* h 256 — LLM runtimes */
+  --series-2: #701452;  /* h 345 — other GPU workloads */
+  --series-3: #e01fa3;  /* h 346 — SM / third series */
 
   --good: #147a3d;
   --warning: #8a6100;
@@ -452,9 +452,9 @@
      Re-validated as a categorical palette afterwards: still all-pass, and
      strictly better than before — CVD separation rose (protan 9.1 -> 10.1) and
      the sub-3:1 contrast warning dropped from three slots to two. */
-  --series-1: #2873cf;
-  --series-2: #ca4714;
-  --series-3: #14835c;
+  --series-1: #2873cf;  /* h 256 — LLM runtimes */
+  --series-2: #701452;  /* h 345 — other GPU workloads */
+  --series-3: #f53dd6;  /* h 336 — SM / third series */
 
   /* STATUS — light mode never defined these, so it inherited the dark values
      and painted them on a white panel. That is why yellow was effectively
