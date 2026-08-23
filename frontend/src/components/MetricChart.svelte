@@ -174,8 +174,44 @@
         (v) => `${(v / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`,
       );
     }
-    const fine = values.some((v) => v !== 0 && Math.abs(v) < 10);
-    return values.map((v) => `${fine ? v.toFixed(1) : v.toFixed(0)}${metric.unit}`);
+    const d = decimalsFor(values);
+    const labels = values.map((v) => v.toFixed(d));
+    /* A scale so fine that three decimals still collide. Exponential is ugly
+       and it is the honest answer: a duplicated label is an axis that cannot be
+       read at all, and the right fix at that point is a better unit for the
+       metric — which is why the fault charts count rather than rate. */
+    const distinct = new Set(values).size;
+    const usable = new Set(labels).size === distinct ? labels : values.map((v) => v.toExponential(1));
+    return usable.map((t) => `${t}${metric.unit}`);
+  }
+
+  /** How many decimals a tick needs: enough to name the gridline it sits on.
+   *
+   * TWO WRONG ANSWERS PRECEDED THIS, and both were checked against every axis
+   * in the app rather than argued about.
+   *
+   * The original was a heuristic — "one decimal if anything on the axis is
+   * under 10" — which is right for a 0-1 throughput scale and produces nonsense
+   * below it: a fault rate of 0.0002 rendered as `0.0` at BOTH ends of its own
+   * scale, two identical labels on one axis.
+   *
+   * The obvious repair, "fewest decimals that tell the ticks apart", is worse.
+   * It made a 4.7 tok/s axis read 0 / 1 / 2 / 4 / 5 — every label distinct, and
+   * the one reading "4" sitting on the gridline at 3.5. Distinctness is not the
+   * requirement. Naming the gridline accurately is, and distinctness follows
+   * from it.
+   *
+   * So the precision comes from the SPACING: resolve to within a quarter of the
+   * gap between ticks. That reproduces the old heuristic everywhere it was
+   * right (0.0/0.3/0.5/0.8/1.0 on a 0-1 scale, whole numbers on a percentage or
+   * a clock) and drops the decimal where it only ever said `.0`.
+   */
+  function decimalsFor(values: number[]): number {
+    const sorted = [...new Set(values)].sort((a, b) => a - b);
+    if (sorted.length < 2) return 0;
+    const gap = Math.min(...sorted.slice(1).map((v, i) => v - sorted[i]));
+    if (!(gap > 0)) return 0;
+    return Math.min(3, Math.max(0, Math.ceil(-Math.log10(gap / 2))));
   }
 
   /** How wide the y-axis gutter must be, MEASURED.

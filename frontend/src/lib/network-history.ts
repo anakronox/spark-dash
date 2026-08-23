@@ -270,7 +270,10 @@ export function chartsFor(
       metric: {
         key: `${link.key}${SEP}faults`,
         label: `${link.iface} faults`,
-        unit: '/s',
+        // No unit: the value is a COUNT over the chart's own rate window, not a
+        // rate. "3/s" would be a claim about a second; "3" is a claim about
+        // what happened, which is the question.
+        unit: '',
         verbatim: true,
         dashed: 'drops',
       },

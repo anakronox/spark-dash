@@ -281,17 +281,34 @@ HISTORY_QUERIES: dict[str, str] = {
     # loop, unconditionally, so the two sides always carry the same label sets.
     # Pinned by test_both_directions_are_always_emitted, because that invariant
     # is what makes this expression correct.
+    #
+    # `increase()`, NOT `rate()`, and it is the one place on this card that
+    # differs. Throughput is a rate because bits per second is how a link is
+    # rated and how the table above reports it. A fault is not: nobody asks how
+    # many errors per second, they ask how many and when.
+    #
+    # Measured, which is what settled it. Over 7d the rate form put sparkjr's
+    # error burst at 0.0002/s, and the AXIS then printed "0.0/s" for both the
+    # top and the bottom of its own scale — two identical labels on one axis,
+    # which is a chart that cannot be read at all. `increase()` over the same
+    # window gives single digits.
+    #
+    # The catch, stated because it is real: `increase()` extrapolates, so a
+    # burst of 3 can read 3.4, and the figure counts a window that scales with
+    # the range. Both are true of `rate()` here too, just multiplied by the
+    # window. The shape answers "when", which is what AC4 says this chart is
+    # for; the count is an order of magnitude, not an audit.
     "network_errors": (
         "sum by (node, interface) "
-        "(rate(sparkdash_network_receive_errors_total[{window}])) + "
+        "(increase(sparkdash_network_receive_errors_total[{window}])) + "
         "sum by (node, interface) "
-        "(rate(sparkdash_network_transmit_errors_total[{window}]))"
+        "(increase(sparkdash_network_transmit_errors_total[{window}]))"
     ),
     "network_drops": (
         "sum by (node, interface) "
-        "(rate(sparkdash_network_receive_dropped_total[{window}])) + "
+        "(increase(sparkdash_network_receive_dropped_total[{window}])) + "
         "sum by (node, interface) "
-        "(rate(sparkdash_network_transmit_dropped_total[{window}]))"
+        "(increase(sparkdash_network_transmit_dropped_total[{window}]))"
     ),
     # RDMA port state, joined to the interface it shares a cable with.
     #

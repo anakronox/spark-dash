@@ -153,6 +153,9 @@ test('a fault chart appears on the first non-zero sample', () => {
   assert.equal(built[1].metric.label, 'enP7s7 faults');
   assert.deepEqual(built[1].names, ['errors', 'drops']);
   assert.equal(built[1].metric.dashed, 'drops');
+  // A count over the window, not a rate — so no unit. "3/s" would be a claim
+  // about a second; "3" is a claim about what happened.
+  assert.equal(built[1].metric.unit, '');
   assert.equal(built[1].metric.si, undefined, 'a fault count is not a bit rate');
   assert.equal(built[1].metric.verbatim, true, 'the fault caption names a device too');
 });

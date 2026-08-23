@@ -112,7 +112,11 @@ def test_network_queries_are_rated_and_in_bits():
         assert expr.startswith("8 * "), f"{key} is not converted to bits: {expr!r}"
     for key in ("network_errors", "network_drops"):
         expr = HISTORY_QUERIES[key]
-        assert "rate(" in expr, f"{key} plots a counter without rate(): {expr!r}"
+        # `increase()`, not `rate()`. Nobody asks how many errors per second.
+        # Measured: the rate form put a real burst at 0.0002/s, and the axis
+        # then printed "0.0/s" at both ends of its own scale.
+        assert "increase(" in expr, f"{key} should count, not rate: {expr!r}"
+        assert "rate(" not in expr.replace("increase(", ""), expr
         assert "8 *" not in expr, f"{key} is a count, not a bit rate: {expr!r}"
     # The port state is a GAUGE in the ordinary sense — 1 while the port is up —
     # so a rate over it would be meaningless rather than merely unconventional.
