@@ -429,10 +429,15 @@
         {#each names as name, i (name)}
           {@const v = columns[i]?.[hover.idx]}
           <div class="row">
+            <!-- `background-color`, NOT the `background` shorthand. The
+                 shorthand resets `background-image`, and inline style beats the
+                 class rule — so the dashed swatch below silently rendered
+                 solid, which is a key that describes a line the chart does not
+                 draw. -->
             <span
               class="swatch"
               class:dashed={metric.dashed === name}
-              style:background={colourOf(name)}
+              style:background-color={colourOf(name)}
             ></span>
             <span class="who">{name}</span>
             <span class="val num">{v == null ? '—' : fmt(v)}</span>
@@ -535,6 +540,8 @@
      colour arrives as an inline background, so the gradient re-uses it via
      `background-image` over that background. */
   .tip .swatch.dashed {
+    /* 2px on, 2px off across an 8px swatch: two visible gaps, which is the
+       fewest that still reads as a dash rather than as a rendering artifact. */
     background-image: repeating-linear-gradient(
       90deg,
       transparent 0 2px,

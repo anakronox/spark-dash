@@ -254,3 +254,21 @@ def test_every_layout_grid_declares_a_zero_minimum_track(path, selector):
         f"{selector} uses `{track.group(1).strip()}` — a track without a 0 minimum "
         "refuses to be narrower than its content"
     )
+
+
+def test_the_dashed_swatch_is_not_killed_by_the_inline_colour():
+    """A `background` shorthand resets `background-image`, and an inline style
+    beats a class rule — so a swatch given its colour inline and its dash in CSS
+    renders solid, silently. The tooltip then keys two lines with two identical
+    marks.
+
+    Source-level because the failure is a computed style: it looks correct in
+    the markup, in the stylesheet, and in a screenshot at 8px. It was caught by
+    zooming into a deployed page.
+    """
+    src = (FRONTEND / "components" / "MetricChart.svelte").read_text()
+    swatch = src[src.index('class="swatch"') : src.index("</span>", src.index('class="swatch"'))]
+    assert "style:background-color=" in swatch, (
+        "the swatch sets the `background` shorthand, which wipes its dash gradient"
+    )
+    assert "style:background=" not in swatch
