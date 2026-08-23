@@ -158,8 +158,14 @@
     { key: 'rate', label: 'rate', width: 16 },
     { key: 'iface', label: 'interface', width: 17 },
     { key: 'node', label: 'node', width: 13 },
-    { key: 'rx', label: 'rx', right: true, width: 11 },
-    { key: 'tx', label: 'tx', right: true, width: 11 },
+    /* 13ch, measured: at 11 the content box is 55px and "619 kb/s" needs 58,
+       so any port above 100 kb/s clipped its own last character. Pre-existing
+       and invisible until the fabric carried enough traffic to show it — found
+       by comparing scrollWidth against clientWidth across every cell on the
+       page, which is the check that should have caught it. A Gb/s reading is
+       wider still, so the headroom is deliberate. */
+    { key: 'rx', label: 'rx', right: true, width: 13 },
+    { key: 'tx', label: 'tx', right: true, width: 13 },
     { key: 'err', label: 'err', right: true, signal: true, width: 8 },
   ];
 
