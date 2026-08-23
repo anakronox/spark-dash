@@ -394,7 +394,7 @@
 
 <figure class="chart">
   <figcaption>
-    <span class="name">{metric.label}</span>
+    <span class="name" class:verbatim={metric.verbatim}>{metric.label}</span>
     {#if !ceiling}
       <!-- Named rather than quietly fitted: this chart's height means something
            different from its neighbours', and a reader comparing peaks across
@@ -464,6 +464,14 @@
      captions would compete with it rather than sit under it. */
   .name {
     color: var(--ink-2);
+  }
+
+  /* An identifier keeps its own case — see MetricSpec.verbatim. The letter
+     spacing goes with it: it is there to keep uppercase from setting too
+     tight, and applied to a mixed-case device name it just looks loose. */
+  .name.verbatim {
+    text-transform: none;
+    letter-spacing: 0.02em;
   }
 
   .rel {

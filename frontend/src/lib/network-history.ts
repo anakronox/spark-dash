@@ -152,6 +152,7 @@ export function chartsFor(
         // being read as one word.
         unit: 'b/s',
         si: true,
+        verbatim: true,
         dashed: DIRECTIONS.tx,
       },
       names: [rx && DIRECTIONS.rx, tx && DIRECTIONS.tx].filter(
@@ -173,6 +174,7 @@ export function chartsFor(
         key: `${link.key}${SEP}faults`,
         label: `${link.iface} faults`,
         unit: '/s',
+        verbatim: true,
         dashed: 'drops',
       },
       names: [errors && 'errors', drops && 'drops'].filter((n): n is string => !!n),

@@ -110,6 +110,11 @@ test('a throughput chart draws receive solid and transmit dashed', () => {
   assert.equal(chart.metric.label, 'enP7s7');
   assert.equal(chart.metric.si, true, 'bits need an SI axis or 580223842 is unreadable');
   assert.equal(chart.metric.unit, 'b/s');
+  // `enP7s7` is what `ip link` says and what the Network table prints. The
+  // caption is uppercased as a style, which is right for a phrase and wrong for
+  // a name — a caption nobody can paste into a shell is not the name of the
+  // thing any more.
+  assert.equal(chart.metric.verbatim, true, 'a device name must keep its case');
   assert.equal(chart.metric.scaleMax, undefined, 'link speed is not a shared ceiling');
 });
 
@@ -146,6 +151,7 @@ test('a fault chart appears on the first non-zero sample', () => {
   assert.deepEqual(built[1].names, ['errors', 'drops']);
   assert.equal(built[1].metric.dashed, 'drops');
   assert.equal(built[1].metric.si, undefined, 'a fault count is not a bit rate');
+  assert.equal(built[1].metric.verbatim, true, 'the fault caption names a device too');
 });
 
 test('drops alone are enough to raise the chart', () => {

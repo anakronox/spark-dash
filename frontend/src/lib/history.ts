@@ -44,6 +44,15 @@ export interface MetricSpec {
    * metric here needs it: a percentage, a temperature and a clock all live
    * inside three digits by construction. */
   si?: boolean;
+  /** Render the label exactly as written, with no case transform.
+   *
+   * The chart captions are uppercased as a style, which is right for a phrase
+   * — "GPU utilization" — and wrong for a name. Interface names are
+   * case-sensitive identifiers: `enP7s7` is what `ip link` says and what the
+   * Network table one card up prints, and `ENP7S7` matches neither. A caption
+   * a reader cannot paste into a shell has stopped being the name of the
+   * thing. */
+  verbatim?: boolean;
   /** Sub-series drawn inside one chart, keyed by the name in `names`.
    *
    * The `false` entry is drawn solid and the `true` entry dashed, both in the

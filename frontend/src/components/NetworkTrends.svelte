@@ -482,12 +482,14 @@
     min-width: 0;
   }
 
+  /* Node ids keep their case for the same reason the interface name does: this
+     is the id from cluster.yml, and it is what every other surface on the page
+     — the cards, the legend, the tables — prints unchanged. */
   .owner {
     display: block;
     padding-left: 2px;
     font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    letter-spacing: 0.04em;
     color: var(--ink-muted);
   }
 
