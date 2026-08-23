@@ -4676,6 +4676,52 @@ what was already there.
   Worth noting for the existing queries: that same check is what confirms
   `sum by (node, interface)` cannot double-count on the throughput charts.
 
+- [x] **AC6. The overview table, so the card stops growing with the cluster.**
+  Done 2026-08-23.
+
+  AC1b accepted small multiples on the record that "at 32 nodes this does not
+  hold and something else is needed". This is that something.
+
+  Measured before designing anything: a fully-populated GB10 has 6 interfaces
+  and 4 RDMA ports, so 32 nodes is ~190 links and, at 7d with faults and port
+  states, ~500 charts. The wall is **not the data** — five range queries serve
+  the card however many links it draws — it is uPlot INSTANCES, one canvas and
+  one ResizeObserver each. Which is why the sparklines in the table are SVG
+  paths and nothing else; a canvas per row would rebuild the exact cost the
+  table exists to escape.
+
+  **Two candidates died on contact with the data.** Percent-of-link-capacity is
+  the obvious "is anything important" summary, and over 24h the busiest link
+  here peaks at **5.8%** of its rating while every other link sits at
+  **0.0001%** — eleven flat zeros. Left out until links actually fill.
+  Burstiness works where that fails: peak-over-mean separates into 18.4-20.3 /
+  1.5-1.8 / 1.1 with an order of magnitude of clear air, so the threshold of 4
+  has a factor of four of margin on both sides.
+
+  **Ranked in lexicographic tiers, not a weighted score.** A weighted sum needs
+  three invented constants and makes "why is this row third" unanswerable; a
+  tier is a sentence. State, then bursty, then steady — and the `why` column
+  says which rule placed the row, because a ranking nobody can account for reads
+  as the data being wrong.
+
+  Volume is never the first key: alone it ranks a busy management port above
+  every fabric link, every time. Burst is only a key INSIDE the bursty tier,
+  which the first version got wrong and the deployed page showed at once — it
+  ordered the steady RoCE links 74, 76, 77, 79 kb/s, ascending, because ratios
+  of 1.12 against 1.09 decided it and volume never got a turn.
+
+  **One query had to be added after all**, against the plan's claim that none
+  would: `network_link_up`, with `min_over_time` so a flap inside a 900s bucket
+  is not sampled away. On the chart grid a down interface carries no traffic and
+  was filtered out as idle, so the question never arose; in a table, where
+  nothing is hidden, it would have been a flat zero row with no way to tell a
+  quiet wire from an unplugged one. It found the three wifi ports are DOWN
+  rather than idle.
+
+  **Open: automatic promotion.** Ranking plus the `why` column answers "what
+  needs attention" without opening anything, so a chart that promotes itself was
+  left out — worth revisiting once the ranking has been used in anger.
+
 **No scale ceiling for throughput.** `MetricSpec.scaleMax` exists so a quiet
 hour does not auto-scale into looking dramatic, and it is set where the hardware
 gives a natural ceiling (100°C, 300W, 3003MHz). Link speed looks like such a

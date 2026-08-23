@@ -74,6 +74,10 @@ a busy management port flattens a 200Gb RoCE link onto zero and the chart ends
 up claiming the interconnect is idle. Errors and drops only appear once there
 are some.
 
+Past a dozen links the card switches to a table — one row per link with a
+sparkline, sorted so anything down, faulted or unusually busy is at the top, and
+a column naming which of those put it there. Click a row for its full chart.
+
 ## Quickstart
 
 Everything runs in Docker; nothing is installed on the base OS. You install two
