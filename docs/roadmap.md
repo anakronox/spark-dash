@@ -4391,7 +4391,9 @@ is the whole of the item.
 
 **Shipped 2026-08-23** as a `Network history` section: one chart per interface,
 each on its own axis, receive solid and transmit dashed in the node's colour.
-AC1, AC1a, AC1b, AC1c, AC2 built; AC3 and AC4 decided; AC5 split out and open.
+AC1, AC1a, AC1b, AC1c, AC2 and AC5 built; AC3 and AC4 decided. RDMA ports that
+flapped or stayed down are drawn as stepped two-state charts under the interface
+they share a cable with.
 Four range queries serve the whole grid however many interfaces it draws, and
 the interfaces shown are those that carried traffic in the window — see the
 filtering note in AC1, which is the one place this deliberately did NOT reuse
@@ -4618,7 +4620,7 @@ what was already there.
   usually physical. Summing them saves one line and loses the distinction that
   decides whether anyone walks to the rack.
 
-- [ ] **AC5. RDMA port state over time.**
+- [x] **AC5. RDMA port state over time.** Done 2026-08-23.
 
   The one fabric question the throughput charts cannot answer. A RoCE port that
   dropped and came back at 03:00 leaves `rdma_port_active` stepping 1 → 0 → 1
@@ -4631,6 +4633,48 @@ what was already there.
   Cheap-ish once that exists — the series is exported and scraped today, and
   `rdma_port_info.interface` (AC1c) is what lets such a chart sit beside the
   interface it shares a cable with rather than in a section of its own.
+
+  **Built, and it was not hypothetical.** Measured over 7d before writing any of
+  it: `changes(sparkdash_rdma_port_active[7d])` reports 3-4 transitions each on
+  four ports, and two of sparky's ports have read 0 for the entire week. Every
+  throughput chart over the same window looks unremarkable, which is exactly the
+  gap this was supposed to close.
+
+  Signal-gated like the fault charts, with one extra rule. A port that was up
+  for the whole window is not drawn — that is a chart-sized restatement of the
+  green dot on the Network table. A port that was DOWN for the whole window very
+  much is: the table shows a red dot and cannot say it has been a week.
+
+  Placement is where AC1c earns its keep. The chart sits directly under the
+  throughput of the interface it shares a cable with, so a port dropping can be
+  read against the traffic on the same wire at the same instant. An agent from
+  before AC1c reports no pairing; those charts go to the end of the grid rather
+  than being dropped, since hiding a flapping port on the deployment running the
+  older agent is the worst place to hide one. One exception to the idle filter
+  falls out of this: an interface with no traffic whose RoCE port flapped stays
+  on the card. A silent link whose port dropped is not an idle link.
+
+  **Two measurements changed the implementation.**
+
+  The 0/1 series is drawn STEPPED with `align: 1`, not interpolated. A sample
+  says what the state was at that instant and it held until the next scrape said
+  otherwise; a straight line between two samples asserts the port spent the
+  interval passing through states it cannot occupy. The axis is fixed with two
+  splits labelled `down` / `up` — auto-scaled, one clean transition fills the
+  plot and reads as a wild oscillation, and a 0.5 gridline offers a value that
+  cannot occur.
+
+  And the query has to AGGREGATE, which was not obvious. A `cluster` label was
+  added to the targets part way through the retention window, so 12 of 18
+  node/interface keys have two series apiece — sequential, never overlapping
+  (max concurrent series per key is 1, checked). The frontend merges the two
+  variants into one history rather than keeping either: taking one would
+  truncate the chart at the relabel, which looks precisely like the port having
+  stopped reporting. The same merge covers the agent upgrade that ships
+  AC1c, where one variant carries `interface` and the other predates it.
+
+  Worth noting for the existing queries: that same check is what confirms
+  `sum by (node, interface)` cannot double-count on the throughput charts.
 
 **No scale ceiling for throughput.** `MetricSpec.scaleMax` exists so a quiet
 hour does not auto-scale into looking dramatic, and it is set where the hardware

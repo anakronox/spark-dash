@@ -498,6 +498,38 @@ def test_both_directions_are_always_emitted():
         assert f'sparkdash_network_{family}{{interface="eth0",node="gx10-1"}}' in text
 
 
+def test_every_rdma_port_gets_both_state_and_info():
+    """WHAT MAKES THE PORT-STATE JOIN CORRECT. The history query is
+    `rdma_port_active * on (node, device, port) group_left(interface)
+    rdma_port_info`, and a `*` join keeps only the keys present on BOTH sides —
+    so a port with a state and no info row would vanish from the chart entirely
+    rather than be drawn without its pairing.
+
+    Safe only because both are emitted in the same loop for every port, with no
+    condition on either. The same invariant, and the same reason for pinning it,
+    as test_both_directions_are_always_emitted.
+    """
+    snap = make_snapshot(
+        rdma=[
+            RdmaPort(device="roceP2p1s0f0", port=1, state="ACTIVE", interface="a"),
+            # No interface, no link layer, no rate: the sparsest port possible,
+            # which is the one an optional-field guard would drop.
+            RdmaPort(device="mlx5_9", port=2, state="DOWN"),
+        ]
+    )
+    text = render(snap)
+    for device, port in (("roceP2p1s0f0", 1), ("mlx5_9", 2)):
+        assert f'sparkdash_rdma_port_active{{device="{device}",node="gx10-1",port="{port}"}}' in text
+        info = [
+            l
+            for l in text.splitlines()
+            if l.startswith("sparkdash_rdma_port_info{")
+            and f'device="{device}"' in l
+            and f'port="{port}"' in l
+        ]
+        assert len(info) == 1, f"{device}:{port} has {len(info)} info rows, need exactly 1"
+
+
 def test_rdma_port_info_carries_the_paired_interface():
     """THE JOIN KEY. RDMA byte counters are read from the Ethernet interface the
     RoCE device is paired with — mlx5 leaves the IB-style counters at zero — so

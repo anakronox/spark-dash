@@ -31,7 +31,15 @@
   import MetricChart from './MetricChart.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
-  import { NETWORK_METRICS, buildGrid, columnName, columnNode } from '../lib/network-history';
+  import {
+    NETWORK_METRICS,
+    PORT_STATE,
+    buildGrid,
+    columnName,
+    columnNode,
+    ports,
+  } from '../lib/network-history';
+  import type { Port } from '../lib/network-history';
   import { nodeColor } from '../lib/theme';
 
   interface Props {
@@ -90,6 +98,11 @@
   let names = $state<string[]>([]);
   let columns = $state<(number | null)[][]>([]);
   let x = $state<number[]>([]);
+  /* Kept apart from `names`/`columns` because a port is not an interface: it is
+     keyed by device rather than by netdev, and several of them can hang off one
+     wire. Packing it into the same name space would need a third slot in every
+     key for the benefit of one caller. */
+  let rdma = $state<Port[]>([]);
 
   const range = $derived(RANGES.find((r) => r.key === rangeKey) ?? RANGES[0]);
   const slots = $derived(new Map(nodeIds.map((id, i) => [id, i])));
@@ -112,7 +125,7 @@
     return kept.length ? kept : null;
   });
 
-  const grid = $derived(buildGrid(names, columns, nodeIds, active, includeQuiet));
+  const grid = $derived(buildGrid(names, columns, nodeIds, active, includeQuiet, rdma));
   const charts = $derived(grid.charts);
 
   /* Up to 4 across, snapping 1 / 2 / 4 — the same powers-of-two reasoning as
@@ -188,13 +201,32 @@
       const step = parseInt(range.step, 10) || 60;
       const snapped = snapGrid(columnar.x, columnar.columns, step);
       x = snapped.x;
-      columns = snapped.columns;
-      names = columnar.names;
+
+      /* Split AFTER the alignment, not before. The port-state series has to
+         share the grid's x axis — the whole point of the chart is reading a
+         port dropping against the traffic on the same cable at the same
+         instant — so it goes through `toColumnar` and `snapGrid` with
+         everything else and is separated out here. */
+      const portRows = [];
+      const linkNames = [];
+      const linkColumns = [];
+      for (let i = 0; i < tagged.length; i++) {
+        if (tagged[i].metric === PORT_STATE) {
+          portRows.push({ labels: tagged[i].series.labels, column: snapped.columns[i] });
+        } else {
+          linkNames.push(columnar.names[i]);
+          linkColumns.push(snapped.columns[i]);
+        }
+      }
+      rdma = ports(portRows);
+      names = linkNames;
+      columns = linkColumns;
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       error = (err as Error).message;
       names = [];
       columns = [];
+      rdma = [];
       x = [];
     } finally {
       if (inflight === controller) loading = false;

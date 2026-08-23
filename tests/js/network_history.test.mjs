@@ -29,6 +29,9 @@ import {
   columnNode,
   linkKey,
   links,
+  portChart,
+  portIsNotable,
+  ports,
 } from '../../frontend/src/lib/network-history.ts';
 
 const tests = [];
@@ -245,6 +248,138 @@ test('every chart key is unique — the grid is keyed on it', () => {
     (c) => c.key,
   );
   assert.equal(new Set(keys).size, keys.length, 'a duplicate key makes Svelte reuse the wrong chart');
+});
+
+// -------------------------------------------------------------- rdma ports
+
+const portRow = (node, device, iface, column, port = '1') => ({
+  labels: { node, device, port, ...(iface ? { interface: iface } : {}) },
+  column,
+});
+
+test('two label variants of one port merge into one history', () => {
+  // Measured: a `cluster` label was added to the targets part way through the
+  // window, so 12 of 18 keys have two series, each null where the other has
+  // samples. Keeping one would truncate the chart at the relabel — which looks
+  // exactly like the port having stopped reporting.
+  const merged = ports([
+    portRow('sparky', 'roceP2p1s0f1', '', [1, 1, null, null]),
+    portRow('sparky', 'roceP2p1s0f1', '', [null, null, 0, 1]),
+  ]);
+  assert.equal(merged.length, 1, 'one physical port must be one entry');
+  assert.deepEqual(merged[0].column, [1, 1, 0, 1]);
+});
+
+test('the variant that knows the pairing wins', () => {
+  // The agent upgrade that ships AC1c lands mid-window: one variant carries
+  // `interface` and the other predates it.
+  const merged = ports([
+    portRow('sparky', 'roceP2p1s0f1', '', [1, null]),
+    portRow('sparky', 'roceP2p1s0f1', 'enP2p1s0f1np1', [null, 0]),
+  ]);
+  assert.equal(merged[0].iface, 'enP2p1s0f1np1');
+});
+
+test('a port that was up all window is not drawn', () => {
+  // A flat line at "up" restates the green dot already on the Network table.
+  assert.equal(portIsNotable({ column: [1, 1, 1] }), false);
+});
+
+test('a port that was down all window IS drawn', () => {
+  // Measured: two of sparky's ports have read 0 for seven days straight. The
+  // live table shows that as a red dot with no hint it has been a week.
+  assert.equal(portIsNotable({ column: [0, 0, 0] }), true);
+});
+
+test('a flap is drawn', () => {
+  assert.equal(portIsNotable({ column: [1, 0, 1] }), true);
+});
+
+test('nulls alone are not a state change', () => {
+  assert.equal(portIsNotable({ column: [1, null, 1] }), false);
+});
+
+test('a port chart is a stepped two-state plot, named by its device', () => {
+  const chart = portChart({
+    node: 'sparky', device: 'roceP2p1s0f1', port: '1',
+    iface: 'enP2p1s0f1np1', column: [1, 0],
+  });
+  assert.deepEqual(chart.metric.states, ['down', 'up']);
+  // `roceP2p1s0f1` is what ibstat prints. Captioning it with the netdev name
+  // would make it look like a second chart about the throughput above it.
+  assert.equal(chart.metric.label, 'roceP2p1s0f1 port 1');
+  assert.equal(chart.metric.verbatim, true);
+  assert.equal(chart.metric.si, undefined, 'a state is not a rate');
+});
+
+test('a port chart lands under the interface it shares a cable with', () => {
+  const { names, columns } = dataset({
+    [`sparky/enP7s7/${RX}`]: [10],
+    [`sparky/enP2p1s0f1np1/${RX}`]: [5],
+  });
+  const rdma = ports([portRow('sparky', 'roceP2p1s0f1', 'enP2p1s0f1np1', [1, 0])]);
+  const grid = buildGrid(names, columns, ['sparky'], null, false, rdma);
+  assert.deepEqual(grid.charts.map((c) => c.metric.label), [
+    'enP2p1s0f1np1',
+    'roceP2p1s0f1 port 1',
+    'enP7s7',
+  ]);
+});
+
+test('a port whose pairing is unknown still gets charted, at the end', () => {
+  // An agent from before AC1c. Dropping the chart would hide a flapping port
+  // on exactly the deployment least equipped to notice.
+  const { names, columns } = dataset({ [`sparky/enP7s7/${RX}`]: [10] });
+  const rdma = ports([portRow('sparky', 'roceP2p1s0f1', '', [1, 0])]);
+  const grid = buildGrid(names, columns, ['sparky'], null, false, rdma);
+  assert.deepEqual(grid.charts.map((c) => c.metric.label), [
+    'enP7s7',
+    'roceP2p1s0f1 port 1',
+  ]);
+});
+
+test('an idle link whose RoCE port flapped is NOT hidden', () => {
+  // A silent link whose port dropped is not an idle link — it is the most
+  // interesting thing on the card.
+  const { names, columns } = dataset({
+    [`sparky/enP2p1s0f1np1/${RX}`]: [0, 0],
+    [`sparky/enP2p1s0f1np1/${TX}`]: [0, 0],
+  });
+  const rdma = ports([portRow('sparky', 'roceP2p1s0f1', 'enP2p1s0f1np1', [1, 0])]);
+  const grid = buildGrid(names, columns, ['sparky'], null, false, rdma);
+  assert.deepEqual(grid.charts.map((c) => c.metric.label), [
+    'enP2p1s0f1np1',
+    'roceP2p1s0f1 port 1',
+  ]);
+  assert.equal(grid.quiet, 1, 'it is still counted as idle — it just is not hidden');
+});
+
+test('soloing a node drops the other nodes ports too', () => {
+  const { names, columns } = dataset({
+    [`sparky/enP7s7/${RX}`]: [10],
+    [`sparketa/enP7s7/${RX}`]: [10],
+  });
+  const rdma = ports([
+    portRow('sparky', 'roceP2p1s0f1', '', [0]),
+    portRow('sparketa', 'roceP2p1s0f1', '', [0]),
+  ]);
+  const grid = buildGrid(names, columns, ['sparky', 'sparketa'], ['sparketa'], false, rdma);
+  assert.deepEqual(grid.charts.map((c) => c.link.node), ['sparketa', 'sparketa']);
+});
+
+test('one node port does not attach to another node same-named interface', () => {
+  // `enP7s7` exists on all three boxes. Keying by interface alone would hang
+  // sparkjr's port off sparky's chart.
+  const { names, columns } = dataset({
+    [`sparky/enP7s7/${RX}`]: [10],
+    [`sparkjr/enP7s7/${RX}`]: [10],
+  });
+  const rdma = ports([portRow('sparkjr', 'roceX', 'enP7s7', [0])]);
+  const grid = buildGrid(names, columns, ['sparky', 'sparkjr'], null, false, rdma);
+  assert.deepEqual(
+    grid.charts.map((c) => `${c.link.node} ${c.metric.label}`),
+    ['sparky enP7s7', 'sparkjr enP7s7', 'sparkjr roceX port 1'],
+  );
 });
 
 let failed = 0;

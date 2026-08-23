@@ -111,7 +111,9 @@
    * Throughput has no natural ceiling, so it alone fits to its data. It is
    * flagged in the caption rather than left to look like the others.
    */
-  const ceiling = $derived(metric.percent ? 100 : (metric.scaleMax ?? null));
+  const ceiling = $derived(
+    metric.states ? 1 : metric.percent ? 100 : (metric.scaleMax ?? null),
+  );
 
   /** Annotations within half a sample of the hovered instant.
    *
@@ -125,7 +127,13 @@
   }
 
   const fmt = (v: number) =>
-    metric.si ? bitRate(v) : `${Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)}${metric.unit}`;
+    metric.states
+      ? // "up" / "down", never "1.0". The number is an encoding, not a reading:
+        // nobody asks how many a port is.
+        (metric.states[Math.round(v)] ?? String(v))
+      : metric.si
+        ? bitRate(v)
+        : `${Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)}${metric.unit}`;
 
   /* 11px, up from 10. These are eight small charts rather than one large one,
      so their axes are the densest type on the page and were also the smallest.
@@ -152,6 +160,9 @@
    * it is the same decimal that made the MIDDLE label wider than the ceiling.
    * Throughput genuinely needs it, since its whole scale can be 0 to 1. */
   function ticks(values: number[]): string[] {
+    // Two ticks, two words. A state axis labelled 0.0 / 0.5 / 1.0 asks the
+    // reader to remember an encoding, and offers a midpoint that cannot occur.
+    if (metric.states) return values.map((v) => metric.states![Math.round(v)] ?? '');
     /* SI axes take one divisor for the whole axis, from the top of the scale.
        Scaling each label on its own produces 0 / 500k / 1M / 1.5M / 2M, where
        the reader re-anchors at every gridline to see that the spacing is even.
@@ -181,6 +192,9 @@
    * and no guess.
    */
   const axisWidth = $derived.by(() => {
+    if (metric.states) {
+      return Math.ceil(Math.max(...metric.states.map(textWidth))) + AXIS_PAD;
+    }
     // The auto-fitted case has no ceiling, so take the tallest sample instead —
     // a throughput axis reaching 1500 needs room for "1500tok/s".
     const top =
@@ -277,7 +291,13 @@
       },
       scales: {
         x: { time: true },
-        y: fixed
+        y: metric.states
+          ? /* Padded past both states so the line is never drawn ON the plot
+               border, where a flat "up" is indistinguishable from the frame
+               itself. The gridlines still land on 0 and 1 because the splits
+               below say so — this only moves the frame outward. */
+            { range: () => [-0.12, 1.12] as [number, number] }
+          : fixed
           ? // A constant `range` is what stops uPlot auto-fitting.
             { range: () => [0, fixed] as [number, number] }
           : // Still anchored at zero: a throughput chart floated off the
@@ -297,6 +317,10 @@
           ticks: { stroke: t.grid },
           font: AXIS_FONT,
           size: axisWidth,
+          /* Two splits, not uPlot's automatic five. On a 0-1 scale it would
+             offer 0, 0.25, 0.5, 0.75, 1 — three gridlines for values a boolean
+             cannot take. */
+          ...(metric.states ? { splits: () => [0, 1] } : {}),
           /* The unit on the tick, since there is only one unit per chart now
              and it is what makes the number readable.
              DECIMALS ONLY WHEN THE SCALE IS SMALL. "50.0%" and "0.0°C" carry a
@@ -322,6 +346,15 @@
               width: 2,
               dash: dashOf(name),
               points: { show: false },
+              /* STEPPED, and `align: 1` specifically: the sample says what the
+                 state was AT that instant, and it held until the next scrape
+                 said otherwise. Right-continuous is that claim. The default
+                 straight interpolation draws a diagonal between the two, which
+                 asserts the port spent the interval passing through states it
+                 has no way to be in. */
+              ...(metric.states
+                ? { paths: uPlot.paths.stepped!({ align: 1 }) }
+                : {}),
             }))
           : [{ label: '', stroke: 'transparent', points: { show: false } }]),
       ],
@@ -343,7 +376,17 @@
     /* `identity` and `dashed` are baked into the series options at
        construction, exactly like the colours, so they belong in the key that
        decides rebuild-vs-setData. */
-    [metric.key, names.join('|'), identity, metric.dashed, theme, width, height, axisWidth].join(
+    [
+      metric.key,
+      names.join('|'),
+      identity,
+      metric.dashed,
+      metric.states?.join('|'),
+      theme,
+      width,
+      height,
+      axisWidth,
+    ].join(
       '~',
     ),
   );

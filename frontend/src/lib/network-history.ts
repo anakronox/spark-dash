@@ -18,9 +18,10 @@ export const RX = 'network_rx_bits';
 export const TX = 'network_tx_bits';
 export const ERRORS = 'network_errors';
 export const DROPS = 'network_drops';
+export const PORT_STATE = 'rdma_port_state';
 
 /** The four queries, in one place, so a fetch loop and a test agree. */
-export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS] as const;
+export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS, PORT_STATE] as const;
 
 /** Sub-series names. Short: they are the tooltip's left column, repeated on
  *  every row, and "receive" would push the numbers off the edge. */
@@ -46,6 +47,17 @@ export interface Link {
   key: string;
   node: string;
   iface: string;
+}
+
+/** One RDMA port's state series, with the wire it shares a cable with. */
+export interface Port {
+  node: string;
+  device: string;
+  port: string;
+  /** The paired Ethernet interface, or '' when the agent predates AC1c and so
+   *  never said. An unpaired port is still charted — just not beside a link. */
+  iface: string;
+  column: (number | null)[];
 }
 
 export interface LinkChart {
@@ -83,6 +95,91 @@ const parse = (name: string) => {
 /** The node out of a packed column name. Exported so nothing outside this file
  *  has to know what the separator is. */
 export const columnNode = (name: string) => parse(name).node ?? '';
+
+/** Collapse the port-state series into one entry per physical port.
+ *
+ * TWO SERIES CAN DESCRIBE ONE PORT, and merging them is not tidiness — it is
+ * the difference between a week of history and half of one. Measured here over
+ * 7d: a `cluster` label was added to the targets part way through the window,
+ * so 12 of 18 keys have two series, each null where the other has samples.
+ * Taking one and discarding the other would silently truncate the chart at the
+ * relabel, which looks exactly like the port having stopped reporting.
+ *
+ * They never overlap — max concurrent series per key is 1 — so a coalesce is
+ * lossless. Where they somehow did, the later-listed sample wins rather than
+ * being summed: on a two-state axis, 1 + 1 = 2 is off the top of the chart.
+ *
+ * The same merge covers the agent upgrade that ships the `interface` label: for
+ * a window spanning it, one variant carries the pairing and the other does not,
+ * and whichever has it wins.
+ */
+export function ports(
+  rows: { labels: Record<string, string>; column: (number | null)[] }[],
+): Port[] {
+  const byKey = new Map<string, Port>();
+  for (const t of rows) {
+    const node = t.labels.node ?? '';
+    const device = t.labels.device ?? '';
+    if (!device) continue;
+    const key = `${node}${SEP}${device}${SEP}${t.labels.port ?? ''}`;
+    const column = t.column ?? [];
+    const found = byKey.get(key);
+    if (!found) {
+      byKey.set(key, {
+        node,
+        device,
+        port: t.labels.port ?? '',
+        iface: t.labels.interface ?? '',
+        column: [...column],
+      });
+      continue;
+    }
+    found.iface ||= t.labels.interface ?? '';
+    for (let j = 0; j < column.length; j++) {
+      if (column[j] != null) found.column[j] = column[j];
+    }
+  }
+  return [...byKey.values()].sort(
+    (a, b) => a.node.localeCompare(b.node) || a.device.localeCompare(b.device),
+  );
+}
+
+/** A port worth drawing: one that was NOT up for the whole window.
+ *
+ * Signal-gated like the fault charts, and for the same reason — a flat line at
+ * "up" is a chart-sized restatement of the green dot already on the Network
+ * table. What it cannot say, and this can, is WHEN it was not.
+ *
+ * A port that was DOWN the whole window is very much worth drawing. Measured
+ * here: two of sparky's ports have read 0 for seven days straight, which the
+ * live table shows as a red dot with no indication that it has been that way
+ * all week.
+ */
+export const portIsNotable = (p: Port) =>
+  p.column.some((v) => v != null && v !== 1);
+
+/** The chart for one port. */
+export function portChart(p: Port): LinkChart {
+  const link = { key: linkKey(p.node, p.iface || p.device), node: p.node, iface: p.iface };
+  return {
+    key: `${p.node}${SEP}${p.device}${SEP}${p.port}${SEP}state`,
+    link,
+    metric: {
+      key: `${p.node}${SEP}${p.device}${SEP}${p.port}${SEP}state`,
+      // The DEVICE names this chart, even when it sits under its interface's
+      // throughput: `roceP2p1s0f1` is what `ibstat` prints and what the RDMA
+      // table lists, and a chart captioned with the netdev name would be a
+      // second chart apparently about the same thing.
+      label: `${p.device} port ${p.port}`,
+      unit: '',
+      verbatim: true,
+      states: ['down', 'up'],
+    },
+    names: ['state'],
+    columns: [p.column],
+    quiet: false,
+  };
+}
 
 /** Every interface that returned a series, in a stable order.
  *
@@ -203,24 +300,52 @@ export function buildGrid(
   activeNodes: string[] | null,
   /** Include interfaces that were flat zero for the whole window. */
   includeQuiet: boolean,
+  /** RDMA ports, already merged. Empty when the cluster has no RoCE. */
+  rdma: Port[] = [],
 ): { charts: LinkChart[]; quiet: number } {
   const byName = new Map(names.map((n, i) => [n, columns[i]]));
-  const all = links(names, nodeOrder).filter(
-    (l) => activeNodes === null || activeNodes.includes(l.node),
-  );
+  const wanted = (node: string) => activeNodes === null || activeNodes.includes(node);
+  const all = links(names, nodeOrder).filter((l) => wanted(l.node));
+
+  /* A port chart goes to the interface it shares a cable with, which is the
+     whole reason AC1c had to ship first. Keyed by node AND interface: `enP7s7`
+     exists on all three boxes, and a key of the interface alone would hang
+     sparkjr's port off sparky's chart. */
+  const notable = rdma.filter((p) => wanted(p.node) && portIsNotable(p));
+  const beside = new Map<string, Port[]>();
+  const unpaired: Port[] = [];
+  for (const p of notable) {
+    const key = linkKey(p.node, p.iface);
+    if (p.iface && byName.has(`${key}${SEP}${RX}`)) {
+      beside.set(key, [...(beside.get(key) ?? []), p]);
+    } else {
+      // No pairing (an agent from before AC1c), or paired to an interface with
+      // no throughput series of its own. Charted anyway, at the end of the
+      // grid: an unplaceable chart is still a fact, and dropping it would make
+      // a flapping port invisible on exactly the deployment least likely to
+      // notice — the one running the older agent.
+      unpaired.push(p);
+    }
+  }
 
   const charts: LinkChart[] = [];
   let quiet = 0;
   for (const link of all) {
     const built = chartsFor(link, byName);
+    const attached = (beside.get(link.key) ?? []).map(portChart);
     // "Quiet" is a property of the LINK, not of each chart: a fault chart is
     // never quiet by construction, and counting per-chart would report a
     // number that does not match the interfaces being hidden.
     if (built.length && built[0].quiet) {
       quiet++;
-      if (!includeQuiet) continue;
+      // ...unless a port on that cable flapped. A silent link whose RoCE port
+      // dropped is not an idle link, it is the most interesting thing on the
+      // card, and hiding it behind the idle toggle would bury the one chart
+      // worth seeing.
+      if (!includeQuiet && !attached.length) continue;
     }
-    charts.push(...built);
+    charts.push(...built, ...attached);
   }
+  charts.push(...unpaired.map(portChart));
   return { charts, quiet };
 }

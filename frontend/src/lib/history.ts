@@ -44,6 +44,16 @@ export interface MetricSpec {
    * metric here needs it: a percentage, a temperature and a clock all live
    * inside three digits by construction. */
   si?: boolean;
+  /** Draw this as a STATE, not a quantity: a stepped line on a two-value axis
+   *  whose ticks are these two words, [what 0 means, what 1 means].
+   *
+   * A 0/1 series drawn as an ordinary line is actively misleading. Auto-scaled
+   * it fills the plot, so one clean transition reads as a wild oscillation
+   * between the top and bottom of the chart; interpolated, it slopes between
+   * the two samples and implies the port spent minutes half-up. Stepped and
+   * pinned to a fixed axis, it says what it means: this state, from here until
+   * the next sample. */
+  states?: [string, string];
   /** Render the label exactly as written, with no case transform.
    *
    * The chart captions are uppercased as a style, which is right for a phrase

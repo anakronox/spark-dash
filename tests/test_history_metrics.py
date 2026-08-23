@@ -114,20 +114,58 @@ def test_network_queries_are_rated_and_in_bits():
         expr = HISTORY_QUERIES[key]
         assert "rate(" in expr, f"{key} plots a counter without rate(): {expr!r}"
         assert "8 *" not in expr, f"{key} is a count, not a bit rate: {expr!r}"
+    # The port state is a GAUGE in the ordinary sense — 1 while the port is up —
+    # so a rate over it would be meaningless rather than merely unconventional.
+    state = HISTORY_QUERIES["rdma_port_state"]
+    assert "rate(" not in state, f"port state is not a counter: {state!r}"
+    assert "8 *" not in state
 
 
-def test_network_queries_group_by_interface():
-    """The whole point of the card: per INTERFACE, never summed to the node.
+def test_network_queries_keep_their_second_dimension():
+    """The whole point of the card: never summed to the node.
 
     A 200Gb RoCE link and a 10Gb management port added together is a number
     describing nothing, and it is the easy mistake to make here because every
-    other query in this file aggregates to exactly one series per node.
+    OTHER query in this file aggregates to exactly one series per node.
+
+    Which dimension has to survive differs by what the series is about, so the
+    check names it rather than looking for one string. The interface queries key
+    on the netdev; the port-state query keys on the RDMA device, because several
+    ports can hang off one cable and collapsing them to the interface would draw
+    two ports' history as one line.
     """
-    for key in network_keys():
+    required = {
+        "network_rx_bits": "by (node, interface)",
+        "network_tx_bits": "by (node, interface)",
+        "network_errors": "by (node, interface)",
+        "network_drops": "by (node, interface)",
+        "rdma_port_state": "by (node, device, port, interface)",
+    }
+    assert set(required) == set(network_keys()), (
+        "a network query was added or removed without saying what its key is"
+    )
+    for key, grouping in required.items():
         expr = HISTORY_QUERIES[key]
-        assert "by (node, interface)" in expr, (
-            f"{key} does not keep the interface dimension: {expr!r}"
-        )
+        assert grouping in expr, f"{key} does not group by {grouping}: {expr!r}"
+
+
+def test_port_state_joins_through_the_interface_label():
+    """AC5 depends on AC1c, and this is where that dependency lives.
+
+    Without `group_left(interface)` the state series names a device and nothing
+    can say which wire that is, so the chart could only sit in a section of its
+    own — away from the traffic it explains, which was the whole reason to build
+    it.
+
+    `group_left` and not a plain `on`: the info series carries labels the state
+    series does not, and a one-to-one match would refuse them.
+    """
+    expr = HISTORY_QUERIES["rdma_port_state"]
+    assert "group_left(interface)" in expr, expr
+    assert "sparkdash_rdma_port_info" in expr, expr
+    # `max`, not `sum`: two overlapping label variants would sum to 2, which on
+    # a two-state axis is off the top of the chart.
+    assert expr.startswith("max by"), expr
 
 
 def test_chip_keys_are_unique():

@@ -293,6 +293,38 @@ HISTORY_QUERIES: dict[str, str] = {
         "sum by (node, interface) "
         "(rate(sparkdash_network_transmit_dropped_total[{window}]))"
     ),
+    # RDMA port state, joined to the interface it shares a cable with.
+    #
+    # THE ONE FABRIC QUESTION THE THROUGHPUT CHARTS CANNOT ANSWER. A RoCE port
+    # that dropped and came back at 03:00 leaves the byte counters looking like
+    # an ordinary quiet spell; the only place it shows is here. Measured on this
+    # cluster over 7d: four ports flapped 3-4 times each while every throughput
+    # chart looked unremarkable.
+    #
+    # `group_left(interface)` IS WHY AC1c HAD TO SHIP FIRST. Without that label
+    # the state series names a device (`roceP2p1s0f1`) and nothing can say which
+    # wire that is, so the chart could only sit in a section of its own, away
+    # from the traffic it explains. With it, the join carries the pairing
+    # through and the chart lands beside its own interface.
+    #
+    # An agent that has not been upgraded yet simply contributes no `interface`
+    # label, and the join still returns the state — degraded to "unpaired",
+    # never dropped.
+    #
+    # `max by (...)` for the same reason the network queries aggregate: it
+    # collapses `instance`, `job` and `cluster`. That last one matters more than
+    # it looks. Measured over 7d here, 12 of 18 node/interface pairs have TWO
+    # series because a `cluster` label was added part way through the window —
+    # sequential, never overlapping (max concurrent series per key is 1), so no
+    # aggregation double-counts today. `max` rather than `sum` keeps that true
+    # if they ever do overlap: summing two 1s would give 2, which on a 0/1 axis
+    # is off the top of the chart. Where both are present, up wins — a transient
+    # duplicate should not be able to invent an outage.
+    "rdma_port_state": (
+        "max by (node, device, port, interface) (sparkdash_rdma_port_active"
+        " * on (node, device, port) group_left(interface)"
+        " sparkdash_rdma_port_info)"
+    ),
     "disk_busy": (
         f"100 * max by (node) (rate(node_disk_io_time_seconds_total"
         f"{{{_NODES}}}[{{window}}]))"
