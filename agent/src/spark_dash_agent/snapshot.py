@@ -479,18 +479,33 @@ class SnapshotBuilder:
         # temperature along with the shutdown threshold sysfs does not carry,
         # and reading it again through /sys would give one question two answers.
         #
-        # The SHUTDOWN threshold is the limit, not slowdown. Slowdown (86 C) is
-        # where the part throttles itself; shutdown (90 C) is where it cuts
-        # power, which is the only limit comparable to a `critical` trip on
-        # every other domain. Using slowdown would make the GPU look closer to
-        # death than it is.
+        # THE SHUTDOWN THRESHOLD IS THE LIMIT, not slowdown, and not the
+        # dashboard's own critical band.
+        #
+        # Every other limit in this list is a point of destruction: 104.8 C is
+        # where the kernel powers the machine off, 84.85 C is what the nvme
+        # calls critical, 105 C the same for a NIC asic. Slowdown (86 C on this
+        # part) is where the GPU throttles ITSELF — a performance event, not a
+        # survival one. Ranking a throttle point against four destruction points
+        # is precisely the incomparability that headroom exists to remove, and
+        # it would put the GPU permanently near the top of the table.
+        #
+        # `gpu_bands.critical_c` is the tempting shortcut and is wrong for the
+        # same reason: it is derived FROM slowdown (source `nvml-slowdown`,
+        # 86 C), because alerting should fire when performance degrades. That
+        # is the right band for an alert and the wrong limit for this ranking.
+        #
+        # Falls back to the band when NVML gives no shutdown threshold, which is
+        # better than no limit at all — the row still ranks, just conservatively.
         if gpu is not None and gpu.temp_c is not None:
+            shutdown_c = getattr(self._gpu, "shutdown_temp_c", None)
             temperatures.append(
                 TempSensor(
                     domain="gpu",
                     sensor="gpu",
                     celsius=gpu.temp_c,
-                    limit_c=gpu_bands.critical_c if gpu_bands else None,
+                    limit_c=shutdown_c
+                    or (gpu_bands.critical_c if gpu_bands else None),
                 )
             )
         # What the node is SUPPOSED to be full of, so health can ask whether

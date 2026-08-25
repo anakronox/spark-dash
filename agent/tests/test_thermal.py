@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from spark_dash_common.models import GpuMetrics
 from spark_dash_agent.collectors.thermal import (
     ThermalCollector,
     classify,
@@ -225,3 +226,45 @@ def test_an_unreadable_temp_is_skipped_not_zeroed(tmp_path):
     z = zone(tmp_path, 0, temp_c=50.0)
     (z / "temp").write_text("\n")
     assert read_thermal_zones(tmp_path) == []
+
+
+# ----------------------------------------------------- the GPU's own limit
+
+def test_the_gpu_limit_is_shutdown_not_slowdown(monkeypatch):
+    """MEASURED ON THIS HARDWARE: slowdown 86 C, shutdown 90 C.
+
+    Every other limit in the list is a point of destruction — 104.8 where the
+    kernel powers the machine off, 84.85 the nvme's critical, 105 for a NIC
+    asic. Slowdown is where the GPU throttles ITSELF: a performance event, not
+    a survival one. Ranking a throttle point against four destruction points is
+    exactly the incomparability headroom exists to remove, and it would park the
+    GPU near the top of the table permanently.
+
+    BEHAVIOURAL, not a source scan. The first version of this test read the
+    file and compared the positions of two strings — and failed on correct code,
+    because the explanatory comment above the line mentions
+    `gpu_bands.critical_c` before the code uses `shutdown_temp_c`. A test that
+    cannot tell prose from behaviour is not testing behaviour.
+
+    The tempting wrong answer is also 86, so the two are distinguished by using
+    a shutdown value that could not be confused with the derived band.
+    """
+    from spark_dash_agent.config import Settings
+    from spark_dash_agent.snapshot import SnapshotBuilder
+
+    builder = SnapshotBuilder(Settings(node_id="gx10-1"))
+    monkeypatch.setattr(builder._gpu, "shutdown_temp_c", 90.0, raising=False)
+    monkeypatch.setattr(builder._gpu, "slowdown_temp_c", 86.0, raising=False)
+    monkeypatch.setattr(
+        builder._gpu, "safe_collect", lambda errors: GpuMetrics(util_pct=10.0, temp_c=70.0), raising=False
+    )
+    monkeypatch.setattr(builder._thermal, "safe_collect", lambda errors: [], raising=False)
+
+    snap = builder.build()
+    gpu = next(t for t in snap.temperatures if t.domain == "gpu")
+    assert gpu.limit_c == pytest.approx(90.0), (
+        f"the GPU row is judged against {gpu.limit_c}, not the shutdown threshold"
+    )
+    # And the derived band really is the other number, so this is a live
+    # distinction rather than a coincidence.
+    assert snap.temp_bands.gpu_critical_c == pytest.approx(86.0)
