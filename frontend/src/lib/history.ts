@@ -146,6 +146,32 @@ export const METRICS: MetricSpec[] = [
      disk against an idle one reports a comfortable 50% for a machine that is
      completely stalled on one of them. */
   { key: 'disk_busy', label: 'Disk busy', unit: '%', percent: true },
+  /* THE HOTTEST SENSOR ON THE BOX, whichever it is.
+     The dashboard reported two temperatures — the GPU, and one CPU reading
+     psutil happened to pick first — while the hardware exposes eighteen to
+     twenty-three. Measured over 24h on this cluster, `acpitz` zone0 peaked at
+     95.4C while the GPU read 72.0C at the same instant: a sensor 23 degrees
+     hotter than the one being charted.
+     104C: above the 104.8C kernel trip at which the machine powers itself off,
+     so the plotted height stays meaningful right through the danger band —
+     the same reasoning as the 100C ceiling on GPU temperature. */
+  { key: 'system_temperature', label: 'Hottest sensor', unit: '°C', scaleMax: 104 },
+  /* Per domain, because the LIMITS differ by twenty degrees across one box.
+     Charted separately rather than as one "temperature" line: 104.8 for a
+     package zone against 84.85 for the nvme means the same number is
+     comfortable in one place and fatal in another. */
+  { key: 'package_temperature', label: 'Package temp', unit: '°C', scaleMax: 104 },
+  // 90: just above the 84.85C the nvme calls critical.
+  { key: 'storage_temperature', label: 'Storage temp', unit: '°C', scaleMax: 90 },
+  // 110: just above the 105C a ConnectX asic calls critical.
+  { key: 'network_temperature', label: 'NIC temp', unit: '°C', scaleMax: 110 },
+  /* Degrees left before the closest sensor reaches its OWN limit — the one
+     scale on which a 52C NIC and an 85C GPU are comparable, as 53 degrees of
+     margin against 5. Falls to zero at the point something trips, so unlike
+     the readings above it needs no per-domain version.
+     No scaleMax: the interesting end is near zero, and a fixed ceiling sized
+     for a cold machine would flatten the approach to it. */
+  { key: 'temperature_headroom', label: 'Thermal headroom', unit: '°C' },
 ];
 
 export interface RangeSpec {

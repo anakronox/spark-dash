@@ -561,6 +561,48 @@ class TempBands(BaseModel):
     cpu_source: str = "fallback"
 
 
+class TempSensor(BaseModel):
+    """One temperature sensor, and the limit it is judged against.
+
+    ONE ROW PER SENSOR, not one number per node. The agent used to report a
+    single CPU temperature, chosen by psutil's preference order from whichever
+    chip it found first. Measured over 24h on this cluster, `acpitz` zone0 hit
+    95.4 °C while the GPU read 72.0 °C at the same instant — so the single
+    number was, by luck, tracking the hottest zone, and everything else on the
+    machine was invisible.
+
+    `limit_c` is the sensor's OWN threshold, read from the hardware. It differs
+    by twenty degrees across one box — 104.8 for a package zone, 84.85 for the
+    nvme, 105 for a NIC asic, 90 for the GPU — so a single global threshold
+    would be wrong for four of the five domains. This is the lesson already
+    recorded for the GPU bands: ask the hardware, then judge against what it
+    reports.
+
+    None where the hardware states no limit, which is every wifi phy here.
+    Absent is not unlimited, and a row with no limit gets no headroom rather
+    than a made-up one.
+    """
+
+    #: What the sensor measures: package, storage, network, wireless, gpu, or
+    #: `other` for a chip the classifier does not recognise. Never dropped —
+    #: an unrecognised sensor is the one most worth seeing.
+    domain: str
+    #: Stable, human-readable, and unique within a node.
+    sensor: str
+    celsius: float
+    limit_c: float | None = None
+
+    @property
+    def headroom_c(self) -> float | None:
+        """Degrees left before this sensor's own limit.
+
+        THE ONE COMPARABLE SCALE. A 52 °C NIC and an 85 °C GPU are not
+        rankable as temperatures; as 53 degrees of headroom against 5, they
+        are.
+        """
+        return None if self.limit_c is None else self.limit_c - self.celsius
+
+
 class ConfigStatus(BaseModel):
     """Where a node's runtime config came from, and when it last arrived.
 
@@ -661,6 +703,9 @@ class NodeSnapshot(BaseModel):
     psi: PsiMetrics | None = None
     cpu: CpuMetrics | None = None
     processes: list[ProcessInfo] = Field(default_factory=list)
+    #: Every temperature sensor on the box, classified by domain. Empty on a
+    #: host with no readable sensors, which is any macOS dev machine.
+    temperatures: list[TempSensor] = Field(default_factory=list)
     network: list[NetworkInterface] = Field(default_factory=list)
     rdma: list[RdmaPort] = Field(default_factory=list)
     runtimes: Runtimes = Field(default_factory=Runtimes)

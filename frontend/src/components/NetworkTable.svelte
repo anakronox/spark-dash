@@ -63,7 +63,8 @@
   import type { ColumnView } from '../lib/columns.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
   import { bitRate } from '../lib/format';
-  import { byImportance, sparkPath } from '../lib/network-history';
+  import { byImportance } from '../lib/network-history';
+  import { sparkPath } from '../lib/sparkline';
   import type { LinkRow } from '../lib/network-history';
   import { nodeColor } from '../lib/theme';
 

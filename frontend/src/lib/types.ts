@@ -86,6 +86,21 @@ export interface ProcessInfo {
   decoder_pct: number;
 }
 
+export interface TempSensor {
+  /** `package`, `storage`, `network`, `wireless`, `gpu`, or `other` for a chip
+   *  the agent's classifier doesn't recognise — never dropped. */
+  domain: string;
+  sensor: string;
+  celsius: number;
+  /** The limit THIS sensor reports. Differs by twenty degrees across one box —
+   *  104.8 package trip, 84.85 nvme, 105 NIC asic, GPU shutdown — so a single
+   *  global threshold would be wrong for four of the five domains.
+   *  Null where the hardware states none, which is every wifi phy. Absent is
+   *  not unlimited, and a row with no limit gets no headroom rather than an
+   *  invented one. */
+  limit_c: number | null;
+}
+
 export interface NetworkInterface {
   name: string;
   up: boolean;
@@ -254,6 +269,7 @@ export interface NodeSnapshot {
   cpu: CpuMetrics | null;
   processes: ProcessInfo[];
   network: NetworkInterface[];
+  temperatures: TempSensor[];
   rdma: RdmaPort[];
   runtimes: Runtimes;
   errors: Record<string, string>;

@@ -220,6 +220,71 @@ else
   warn "no PSI reading — kernel built without CONFIG_PSI, or /proc not mounted from host"
 fi
 
+# ------------------------------------------------------------------ thermal
+# THE CHECK THAT CANNOT BE WRITTEN AS A UNIT TEST. The collector classifies
+# every chip the machine exposes; whether it saw them ALL, and saw each of them
+# once, is only answerable against real sysfs on real hardware. node_exporter
+# walks the same trees independently, so it is the second opinion.
+hdr "Temperature sensors"
+THERMAL=$(printf '%s' "$SNAP" | python3 -c "
+import json,sys
+for t in json.load(sys.stdin).get('temperatures') or []:
+    print(f\"{t['domain']}\t{t['sensor']}\t{t['celsius']}\t{t.get('limit_c')}\")
+")
+if [[ -z "$THERMAL" ]]; then
+  bad "the agent reports no temperature sensors — is /sys mounted from the host?"
+else
+  N=$(printf '%s\n' "$THERMAL" | wc -l | tr -d ' ')
+  UNIQ=$(printf '%s\n' "$THERMAL" | cut -f2 | sort -u | wc -l | tr -d ' ')
+  if [[ "$N" == "$UNIQ" ]]; then
+    ok "$N sensors, all distinctly named"
+  else
+    bad "$N sensors but only $UNIQ distinct names — a chip is being read twice"
+  fi
+
+  # The double-count guard, checked against the kernel rather than the fixture:
+  # hwmon0 IS thermal_zone0's hwmon child and republishes all seven zones, so a
+  # package count above the zone count means the skip stopped working.
+  ZONES=$(ls -d /sys/class/thermal/thermal_zone* 2>/dev/null | wc -l | tr -d ' ')
+  PKG=$(printf '%s\n' "$THERMAL" | awk -F'\t' '$1=="package"' | wc -l | tr -d ' ')
+  if [[ "$PKG" == "$ZONES" ]]; then
+    ok "package sensors match the kernel's zone count ($ZONES)"
+  else
+    bad "$PKG package sensors against $ZONES thermal zones — acpitz is being double-read"
+  fi
+
+  # Second opinion. node_exporter walks the same sysfs independently, so a
+  # sensor it has and the agent does not is one the classifier dropped.
+  if NE=$(curl -sf --max-time 10 http://127.0.0.1:9100/metrics 2>/dev/null); then
+    CMP=$(printf '%s' "$NE" | python3 -c "
+import re,sys
+raw=sys.stdin.read()
+zones=hw=0
+for line in raw.splitlines():
+    if line.startswith('node_thermal_zone_temp{'): zones+=1
+    elif line.startswith('node_hwmon_temp_celsius{'):
+        chip=re.search(r'chip=\"([^\"]*)\"', line)
+        # node_exporter republishes the zones under hwmon too; those are the
+        # duplicates the agent deliberately skips.
+        if chip and not chip.group(1).startswith('thermal_'): hw+=1
+print(zones+hw)
+")
+    if [[ "$CMP" == "$N" ]]; then
+      ok "agrees with node_exporter on the sensor count ($CMP)"
+    else
+      warn "agent sees $N sensors, node_exporter sees $CMP — one of them is missing a chip"
+    fi
+  else
+    info "node_exporter not reachable on :9100; skipped the second opinion"
+  fi
+
+  HOT=$(printf '%s\n' "$THERMAL" | sort -t$'\t' -k3 -gr | head -1)
+  info "hottest: $(printf '%s' "$HOT" | cut -f2) at $(printf '%s' "$HOT" | cut -f3)C"
+  NOLIMIT=$(printf '%s\n' "$THERMAL" | awk -F'\t' '$4=="None"' | wc -l | tr -d ' ')
+  [[ "$NOLIMIT" == "0" ]] && ok "every sensor states a limit" \
+    || info "$NOLIMIT sensors state no limit — expected for wifi and the nvme spare sensors"
+fi
+
 # ------------------------------------------------------------------ runtimes
 hdr "Inference runtimes"
 ROUTERS=$(printf '%s' "$SNAP" | python3 -c "

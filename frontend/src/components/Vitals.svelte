@@ -7,9 +7,10 @@
     CpuMetrics,
     DiskMetrics,
     GpuMetrics,
-    PsiMetrics,
     MemoryMetrics,
+    PsiMetrics,
     TempBands,
+    TempSensor,
   } from '../lib/types';
 
   interface Props {
@@ -23,9 +24,49 @@
     disk: DiskMetrics | null;
     /** This node's OWN thresholds, so nothing here hardcodes a temperature. */
     tempBands: TempBands | null;
+    /** Every sensor on the box. The GPU reading beside this one is not the
+     *  hottest thing in the machine — measured over 24h here, `acpitz` zone0
+     *  peaked at 95.4 °C while the GPU read 72.0 °C at the same instant. */
+    temperatures: TempSensor[];
     tokensPerSec: number;
   }
-  const { gpu, cpu, psi, memory, disk, tempBands, tokensPerSec }: Props = $props();
+  const {
+    gpu,
+    cpu,
+    psi,
+    memory,
+    disk,
+    tempBands,
+    temperatures,
+    tokensPerSec,
+  }: Props = $props();
+
+  /** The hottest sensor on the node, and how close it is to its own limit.
+   *
+   * MAX, never mean — this box was measured holding 95.4 °C and 58.0 °C at the
+   * same instant, and their average describes nothing physical.
+   *
+   * TONED BY HEADROOM, not by temperature, because the limits differ by twenty
+   * degrees across one machine: 52 °C on a NIC rated to 105 is cold, and 85 °C
+   * on a GPU that shuts down at 90 is not. A fixed threshold here would call
+   * one of them wrong. */
+  const hot = $derived.by(() => {
+    let best: TempSensor | null = null;
+    for (const t of temperatures ?? []) if (!best || t.celsius > best.celsius) best = t;
+    return best;
+  });
+  const hotHeadroom = $derived(
+    hot && hot.limit_c != null ? hot.limit_c - hot.celsius : null,
+  );
+  const hotTone = $derived(
+    hotHeadroom == null
+      ? 'plain'
+      : hotHeadroom <= 5
+        ? 'critical'
+        : hotHeadroom <= 15
+          ? 'warning'
+          : 'plain',
+  );
 
   const memPct = $derived(
     memory && memory.total_bytes > 0
@@ -119,6 +160,23 @@
     <dt>temp</dt>
     <dd class="num" data-tone={tempTone} title={tempDetail}>
       {gpu?.temp_c != null ? `${num(gpu.temp_c)}°C` : '—'}
+    </dd>
+  </div>
+  <!-- Beside the GPU reading, not instead of it. They are different sensors and
+       usually different numbers: the GPU is what throttles, this is what is
+       actually hottest, and on this hardware the gap has been measured at 23
+       degrees. Named in the tooltip, because "95 °C" is only actionable once
+       you know which chip it is. -->
+  <div class="v">
+    <dt>hot</dt>
+    <dd
+      class="num"
+      data-tone={hotTone}
+      title={hot
+        ? `${hot.sensor} (${hot.domain})${hot.limit_c != null ? ` — limit ${hot.limit_c}°C, ${hotHeadroom?.toFixed(1)}° left` : ' — no limit reported'}`
+        : 'no sensors reported; needs an agent from 2026-08-25 or later'}
+    >
+      {hot ? `${num(hot.celsius)}°C` : '—'}
     </dd>
   </div>
   <div class="v">

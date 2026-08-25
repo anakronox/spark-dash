@@ -24,6 +24,7 @@ from spark_dash_common.models import (
     ModelState,
     NodeSnapshot,
     PsiState,
+    TempSensor,
 )
 
 _NS = "sparkdash"
@@ -45,6 +46,7 @@ class SnapshotMetricsCollector:
         yield from _psi_metrics(snap, node)
         yield from _cpu_metrics(snap, node)
         yield from _temp_band_metrics(snap, node)
+        yield from _thermal_metrics(snap, node)
         yield from _network_metrics(snap, node)
         yield from _process_metrics(snap, node)
         yield from _runtime_metrics(snap, node)
@@ -467,6 +469,78 @@ def _temp_band_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFam
     )
     source.add_metric([node, "gpu", bands.gpu_source], 1.0)
     source.add_metric([node, "cpu", bands.cpu_source], 1.0)
+    yield source
+
+
+def _thermal_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
+    """Every sensor, its own limit, and which one is currently the hottest.
+
+    THE GPU IS JOINED IN HERE rather than collected twice. NVML already reports
+    it along with the slowdown and shutdown thresholds sysfs does not carry, so
+    the GPU collector stays the single reader and this adds it to the same
+    families so one query covers the whole machine.
+
+    The headline is a BARE `{node}` series. Labelling it with the sensor that
+    currently holds it would churn a new series every time the hottest changed,
+    breaking the line on any chart drawn from it — so which sensor it is goes in
+    an info metric instead, the same shape and the same reasoning as
+    `temp_band_source_info` above.
+    """
+    sensors = list(snap.temperatures)
+
+    # NVML's reading, with its shutdown threshold as the limit — the
+    # temperature at which this part cuts power, which is the only limit
+    # comparable to a `critical` trip on the other domains. Slowdown (86) is a
+    # throttle, not a limit, and using it here would make the GPU look closer
+    # to death than it is.
+    if snap.gpu is not None and snap.gpu.temp_c is not None:
+        sensors.append(
+            TempSensor(
+                domain="gpu",
+                sensor="gpu",
+                celsius=snap.gpu.temp_c,
+                limit_c=snap.temp_bands.gpu_critical_c if snap.temp_bands else None,
+            )
+        )
+
+    if not sensors:
+        return
+
+    labels = ["node", "domain", "sensor"]
+    reading = _g("temperature_celsius", "Temperature of one sensor", labels)
+    limit = _g(
+        "temperature_limit_celsius",
+        "The limit this sensor is judged against, as the hardware reports it",
+        labels,
+    )
+    for sensor in sensors:
+        reading.add_metric([node, sensor.domain, sensor.sensor], float(sensor.celsius))
+        if sensor.limit_c is not None:
+            # Omitted, never zeroed. A sensor whose hardware states no limit —
+            # every wifi phy here — must not report one, or its headroom
+            # becomes a number someone could act on.
+            limit.add_metric([node, sensor.domain, sensor.sensor], float(sensor.limit_c))
+    yield reading
+    yield limit
+
+    # MAX, never mean. One of these boxes currently holds 95.4 C and 58 C at
+    # once; the average of those describes nothing physical. Thermal risk is a
+    # property of the hottest point.
+    hottest = max(sensors, key=lambda t: t.celsius)
+    headline = _g(
+        "system_temperature_celsius",
+        "Hottest sensor on the node, whichever it is",
+        ["node"],
+    )
+    headline.add_metric([node], float(hottest.celsius))
+    yield headline
+
+    source = _g(
+        "system_temperature_source_info",
+        "Always 1; names the sensor currently reporting the highest temperature",
+        labels,
+    )
+    source.add_metric([node, hottest.domain, hottest.sensor], 1.0)
     yield source
 
 

@@ -141,6 +141,48 @@ def test_link_up_takes_the_minimum_over_the_bucket():
     assert expr.startswith("min by"), expr
 
 
+def test_temperature_queries_take_a_max_never_a_mean():
+    """MEASURED, and the whole design of the thermal work.
+
+    One of these boxes was holding 95.4 C and 58.0 C at the same instant. The
+    average of those describes nothing physical — thermal risk is a property of
+    the hottest point, so every reading query reduces with `max`.
+
+    Headroom is the exception and reduces with `min`, because there the
+    dangerous end is the small one: the smallest margin to a limit is the
+    binding constraint, and a max would report the coolest thing in the box.
+    """
+    for key in (
+        "system_temperature",
+        "package_temperature",
+        "storage_temperature",
+        "network_temperature",
+    ):
+        expr = HISTORY_QUERIES[key]
+        assert expr.startswith("max by (node)"), f"{key} does not take a max: {expr!r}"
+        assert "avg" not in expr and "sum" not in expr, expr
+
+    headroom = HISTORY_QUERIES["temperature_headroom"]
+    assert headroom.startswith("min by (node)"), headroom
+
+
+def test_headroom_only_counts_sensors_that_state_a_limit():
+    """A wifi phy reports no threshold at all. Subtracting against a missing
+    limit must drop the sensor, not treat it as zero — a headroom of `0 - 42`
+    would make the coldest chip on the machine look like the most urgent.
+
+    `on(node, domain, sensor)` is what enforces it: the vector match keeps only
+    sensors present on BOTH sides, and a sensor with no limit is absent from
+    the left.
+    """
+    expr = HISTORY_QUERIES["temperature_headroom"]
+    assert "on(node, domain, sensor)" in expr, expr
+    assert "sparkdash_temperature_limit_celsius" in expr
+    assert expr.index("limit_celsius") < expr.index("- on("), (
+        "the subtraction is the wrong way round; headroom is limit minus reading"
+    )
+
+
 def test_network_queries_keep_their_second_dimension():
     """The whole point of the card: never summed to the node.
 

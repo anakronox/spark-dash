@@ -29,6 +29,7 @@ from spark_dash_common.models import (
     RdmaPort,
     RouterModel,
     Runtimes,
+    TempSensor,
 )
 
 
@@ -472,6 +473,65 @@ def test_rdma_port_monitored_is_exported_per_port():
     text = render(snap)
     assert 'sparkdash_rdma_port_monitored{device="roceP2p1s0f0",node="gx10-1",port="1"} 1.0' in text
     assert 'sparkdash_rdma_port_monitored{device="roceP2p1s0f1",node="gx10-1",port="1"} 0.0' in text
+
+
+def test_thermal_metrics_carry_every_sensor_and_its_own_limit():
+    snap = make_snapshot(
+        temperatures=[
+            TempSensor(domain="package", sensor="zone0", celsius=95.4, limit_c=104.8),
+            TempSensor(domain="storage", sensor="nvme Composite", celsius=49.9, limit_c=84.85),
+            TempSensor(domain="wireless", sensor="phy0", celsius=42.0),
+        ]
+    )
+    text = render(snap)
+    assert 'sparkdash_temperature_celsius{domain="package",node="gx10-1",sensor="zone0"} 95.4' in text
+    assert 'sparkdash_temperature_limit_celsius{domain="package",node="gx10-1",sensor="zone0"} 104.8' in text
+    # OMITTED, never zeroed. A wifi phy states no limit, and reporting 0 would
+    # give it the worst headroom on the card.
+    assert 'sparkdash_temperature_limit_celsius{domain="wireless"' not in text
+    assert 'sparkdash_temperature_celsius{domain="wireless",node="gx10-1",sensor="phy0"} 42.0' in text
+
+
+def test_the_headline_is_the_hottest_sensor_and_a_stable_series():
+    """MAX, never mean — one of these boxes holds 95.4 C and 58 C at once.
+
+    And the headline series carries only `node`: labelling it with the sensor
+    would churn a new series every time the hottest changed, breaking the line
+    on any chart drawn from it. Which sensor it is goes in the info metric.
+    """
+    snap = make_snapshot(
+        temperatures=[
+            TempSensor(domain="package", sensor="zone0", celsius=95.4, limit_c=104.8),
+            TempSensor(domain="package", sensor="zone1", celsius=58.0, limit_c=104.8),
+            TempSensor(domain="storage", sensor="nvme Composite", celsius=49.9),
+        ]
+    )
+    text = render(snap)
+    assert 'sparkdash_system_temperature_celsius{node="gx10-1"} 95.4' in text
+    assert (
+        'sparkdash_system_temperature_source_info{domain="package",node="gx10-1",sensor="zone0"} 1.0'
+        in text
+    )
+
+
+def test_the_gpu_joins_the_same_families_rather_than_being_collected_twice():
+    """NVML already reads the GPU and its shutdown threshold, which sysfs does
+    not carry. Duplicating it through the thermal collector would give one
+    question two answers; the exporter joins it in instead, so a single query
+    covers the whole machine."""
+    snap = make_snapshot(temperatures=[TempSensor(domain="package", sensor="zone0", celsius=60.0)])
+    text = render(snap)
+    gpu_rows = [l for l in text.splitlines() if l.startswith("sparkdash_temperature_celsius{domain=\"gpu\"")]
+    assert len(gpu_rows) == 1, gpu_rows
+
+
+def test_a_node_with_no_sensors_emits_no_thermal_families():
+    """Not a zero. A macOS dev box has no sensors, and a headline of 0 C would
+    read as the coldest machine in the fleet."""
+    snap = make_snapshot(temperatures=[], gpu=None)
+    text = render(snap)
+    assert "sparkdash_system_temperature_celsius" not in text
+    assert "sparkdash_temperature_celsius" not in text
 
 
 def test_both_directions_are_always_emitted():

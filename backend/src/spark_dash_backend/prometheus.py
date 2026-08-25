@@ -223,6 +223,41 @@ HISTORY_QUERIES: dict[str, str] = {
         f"max by (node) (rate(node_vmstat_pswpin{{{_NODES}}}[{{window}}]) "
         f"+ rate(node_vmstat_pswpout{{{_NODES}}}[{{window}}]))"
     ),
+    # --- Temperature ------------------------------------------------------
+    #
+    # MAX, never mean, and this is the whole design of the thermal work. One of
+    # these boxes was measured holding 95.4 C and 58.0 C at the same instant;
+    # the average of those describes nothing physical. Thermal risk is a
+    # property of the hottest point.
+    #
+    # The headline arrives from the agent already reduced — it is one bare
+    # `{node}` series, so `max by (node)` over it is a no-op that exists only to
+    # drop `instance` and `job` and leave the label set the charts key on.
+    "system_temperature": "max by (node) (sparkdash_system_temperature_celsius)",
+    # Per domain, because the LIMITS differ by twenty degrees across one box —
+    # 104.8 for a package zone, 84.85 for the nvme, 105 for a NIC asic, 90 for
+    # the GPU. A single chart of "temperature" would put four incomparable
+    # numbers on one axis.
+    "package_temperature": (
+        'max by (node) (sparkdash_temperature_celsius{domain="package"})'
+    ),
+    "storage_temperature": (
+        'max by (node) (sparkdash_temperature_celsius{domain="storage"})'
+    ),
+    "network_temperature": (
+        'max by (node) (sparkdash_temperature_celsius{domain="network"})'
+    ),
+    # Degrees left before the hottest sensor reaches its own limit.
+    #
+    # THE ONE COMPARABLE SCALE. A 52 C NIC and an 85 C GPU cannot be ranked as
+    # temperatures; as 53 degrees of headroom against 5, they can. `min` rather
+    # than `max` because the smallest margin is the one that matters, and the
+    # `and on(...)` keeps sensors that state no limit out of it entirely — a
+    # wifi phy with no threshold must not contribute a headroom of nothing.
+    "temperature_headroom": (
+        "min by (node) (sparkdash_temperature_limit_celsius"
+        " - on(node, domain, sensor) sparkdash_temperature_celsius)"
+    ),
     # --- Network, per INTERFACE rather than per node ----------------------
     #
     # THE ONLY HISTORY QUERIES WITH A SECOND DIMENSION. Every other entry here

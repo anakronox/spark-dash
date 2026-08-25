@@ -254,6 +254,27 @@ were present; the absent 8 were the six `sglang_*` families (no SGLang running),
 | `cpu_temp_warning_celsius`, `cpu_temp_critical_celsius` | | same, from the ACPI critical trip |
 | `temp_band_source_info` | `component`, `derived` | always 1; where each band came from |
 
+### Temperature — every sensor on the box
+
+A GB10 exposes 18–23 thermal sensors. These carry all of them, classified by
+what they measure, because the limits differ by twenty degrees across one
+machine and a single threshold would be wrong for four of the five domains.
+
+| metric | labels | meaning |
+|---|---|---|
+| `temperature_celsius` | `domain`, `sensor` | one reading per sensor. `domain` is `package` (the 7 `acpitz` zones), `storage` (nvme), `network` (mlx5 asic), `wireless`, `gpu`, or `other` for a chip the classifier doesn't recognise — never dropped |
+| `temperature_limit_celsius` | `domain`, `sensor` | the limit **that sensor** reports: 104.8 package trip, 84.85 nvme crit, 105 NIC crit, GPU shutdown. **Absent, not zero**, where the hardware states none — every wifi phy |
+| `system_temperature_celsius` | | the hottest sensor on the node, whichever it is. A bare `node` series so it stays one stable line; **max, never mean** — a box measured holding 95.4 °C and 58 °C at once has no meaningful average |
+| `system_temperature_source_info` | `domain`, `sensor` | always 1; names whichever sensor currently holds the headline |
+
+The 7 `acpitz` zones are also published by node_exporter **twice** — once as
+`node_thermal_zone_temp` and again as `node_hwmon_temp_celsius{chip="thermal_*"}`.
+The agent reads them once, from `/sys/class/thermal`, because only the zones
+carry the trip point the limit comes from.
+
+No fan, power, voltage or current sensors exist on this hardware. lm-sensors
+sees three chips and every one is temperature-only.
+
 ### GPU processes
 
 All five carry `runtime`, `model`, `server`. Aggregated by that key, **never

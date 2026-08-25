@@ -4769,6 +4769,91 @@ Measured here, three speeds across fourteen interfaces — 4x 200Gb, 4x 100Gb,
 management port into a flat line at the bottom. Throughput charts already fall back to the window maximum for
 this reason, and network should too.
 
+### AD — Every temperature the box exposes — **shipped 2026-08-25**
+
+**The dashboard reported two temperatures. The hardware exposes 18–23**, all of
+them already scraped by node_exporter, in Prometheus, and retained 180 days
+with nothing drawing them. The same shape the network families were in before
+AC.
+
+Not academic. Measured over 24h before writing anything: **`acpitz` zone0 peaked
+at 95.4 °C while the GPU read 72.0 °C at the same instant** — a sensor 23
+degrees hotter than the one the dashboard led with.
+
+| source | count | hardware threshold | now / 24h peak |
+|---|---|---|---|
+| `acpitz` zones 0–6 | 7 | 104.8 °C kernel trip | 47–69 / **95.4** |
+| `nvme` | 3 | max 82.85, **crit 84.85** | 44–52 |
+| `mlx5` NIC asic | 4 (absent on sparky) | **crit 105** | 52 |
+| wifi phy | 1 | none | 42 |
+| GPU (NVML) | 1 | slowdown 86, shutdown 90 | — / 85 |
+
+- [x] **AD1. Five measured facts, each of which killed an obvious idea.**
+
+  1. **No fan, power, voltage or current sensors exist.** lm-sensors sees three
+     chips and every one is temperature-only. There is no airflow or wattage
+     story on this hardware, and nothing here should grow one without someone
+     first checking the sensors appeared.
+  2. **The `Processor` cooling state has never left 0 in 7 days**, on any node.
+     ACPI passive throttling is not the mechanism — the GPU throttles itself at
+     86 °C. A throttle-state chart would be a flat zero.
+  3. **`PCIe_Port_Link_Speed_000f` reports −231.** Junk from sysfs; excluded.
+  4. **The 7 zones are double-exposed.** `hwmon0` *is* `thermal_zone0`'s hwmon
+     child and republishes all seven as temp1–temp7 while `/sys/class/thermal`
+     publishes the same seven. Reading both counts every package sensor twice —
+     which inflates nothing visibly, because the max is still the max, and
+     silently doubles every row count.
+  5. **Averaging is meaningless.** One box holds 95.4 °C and 58 °C at once.
+     Every aggregate here is a **max**.
+
+  Also: the zones are unlabelled and all correlate 0.89–0.99 with GPU
+  temperature, because a GB10 is one package. There is no chassis-versus-die
+  separation to find — the useful split is by **component domain**.
+
+- [x] **AD2. The agent is the single source, and the cost of that.**
+
+  Classification and limits live in `collectors/thermal.py`; everything reads
+  its series. The node-card headline must be live and the live path is a direct
+  agent poll by design; the agent already reads the zone trip points that
+  `node_hwmon_temp_crit_celsius` does not carry; and domain classification is a
+  judgement that drifts the moment it exists in two places.
+
+  **The cost, stated plainly: none of it lights up until the node stacks are
+  redeployed.**
+
+- [x] **AD3. Headroom, not temperature, is the ranking.**
+
+  The limits differ by twenty degrees across one box. Sorted by degrees an
+  85 °C GPU heads the table and a 52 °C NIC sits at the bottom; by headroom the
+  GPU has 5 degrees left and the NIC has 53. That inversion is pinned by a test
+  that asserts both orderings explicitly, because it is the entire reason the
+  limits are collected.
+
+  A sensor stating **no** limit sorts LAST, never first. No known margin is not
+  the same as no margin left, and putting an unmeasurable wifi radio above a
+  GPU five degrees from shutdown would be the exact inversion this prevents.
+
+  Two headlines, not one: **hottest** and **closest to its limit** are usually
+  different sensors. Showing one and calling it "system temperature" is what
+  the old single CPU number did.
+
+- [x] **AD4. Verified against node_exporter on live hardware.**
+
+  The classification could silently drop or duplicate a chip and no unit test
+  would know. node_exporter walks the same sysfs independently, so it is the
+  second opinion: on sparketa the collector reported **15 sensors, 15 distinct
+  names, 15/15 agreeing within 2 °C, and a sensor-count difference of 0** once
+  node_exporter's own zone republication is removed. Added as a section to
+  `scripts/validate-on-gx10.sh`, where a maintainer would look.
+
+- [ ] **AD5. Alerting, deliberately deferred.**
+
+  `CpuTemperatureHigh` reached `pending` **413 times on sparky in 7 days and
+  never fired** — the spike always ends before the hold time — and
+  `TemperatureBandsNotDerived` has fired on sparkjr. Both are real and neither
+  is a drawing problem. Worth doing now that the sensors are visible, and worth
+  doing separately: the question is hold times and thresholds, not charts.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

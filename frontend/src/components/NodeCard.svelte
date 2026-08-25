@@ -176,6 +176,7 @@
           memory={node.memory}
           disk={node.disk}
           tempBands={node.temp_bands}
+          temperatures={node.temperatures ?? []}
           tokensPerSec={nodeTokensPerSec}
         />
       </div>
@@ -187,6 +188,7 @@
         memory={node.memory}
         disk={node.disk}
         tempBands={node.temp_bands}
+        temperatures={node.temperatures ?? []}
         tokensPerSec={nodeTokensPerSec}
       />
     {/if}

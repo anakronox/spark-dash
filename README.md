@@ -59,6 +59,12 @@ cable carries both. RDMA ports get their own card, listing each device and port
 with the rate it actually negotiated — a ConnectX-7 that comes up at 10 Gb/sec
 instead of 200 is otherwise invisible.
 
+**Every sensor, not just the GPU.** A GB10 exposes 18-23 temperature sensors —
+seven SoC zones, the NVMe, one per ConnectX port, the radio — and they're ranked
+by how close each is to *its own* limit, which differ by twenty degrees across
+one machine. Worth having: on this cluster an SoC zone peaked at 95.4°C while
+the GPU read 72°C at the same moment.
+
 **Alerting with calibrated thresholds.** 34 rules, with push notifications via
 [ntfy](https://ntfy.sh) — no account or API key needed. Thermal bands come from
 each node's own hardware limits, and you get an alert if a node has to fall back

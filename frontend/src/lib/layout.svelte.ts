@@ -249,6 +249,10 @@ export const SECTIONS: SectionDef[] = [
      appends a section the saved order has never seen rather than dropping it,
      so it turns up in its default position instead of vanishing. */
   { id: 'network-history', label: 'Network history' },
+  /* Live, not historical, which is why it sits with the other live cards
+     rather than beside History. A GB10 exposes 18-23 thermal sensors and the
+     dashboard showed two; this is the rest of them. */
+  { id: 'thermal', label: 'Temperatures' },
   { id: 'models', label: 'Models' },
   { id: 'activity', label: 'Model activity' },
 ];
@@ -272,6 +276,7 @@ export const PAGED_SECTIONS = new Set([
      CHART mode. The cap applies to the table, which is the mode that exists
      because the link list can be long. */
   'network-history',
+  'thermal',
 ]);
 
 /** Row caps offered in settings. `0` means uncapped.
@@ -300,6 +305,10 @@ const DEFAULT_ROWS: Record<string, number> = {
      division, and the cap applies to each — so 8 here is up to 16 rows of
      section against 10 for a card that draws one. */
   'network-history': 8,
+  /* Lower again: this card draws one table PER DOMAIN — up to six — and the cap
+     applies to each. 8 here is 21 rows of package sensors alone at three
+     nodes. */
+  thermal: 8,
 };
 
 function readColumns(available: string[] = DEFAULT_ORDER): Record<string, Zone> {

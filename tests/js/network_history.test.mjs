@@ -40,8 +40,8 @@ import {
   portIsNotable,
   pairPorts,
   ports,
-  sparkPath,
 } from '../../frontend/src/lib/network-history.ts';
+import { sparkPath } from '../../frontend/src/lib/sparkline.ts';
 
 const tests = [];
 /** Every chart on the card, divisions flattened — for the assertions that are
