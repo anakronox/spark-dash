@@ -60,6 +60,7 @@ def exported() -> set[str]:
         RouterModel,
         Runtimes,
         TempBands,
+        TempSensor,
     )
 
     snap = NodeSnapshot(
@@ -68,6 +69,19 @@ def exported() -> set[str]:
         temp_bands=TempBands(gpu_warning_c=82.0, gpu_critical_c=86.0,
                              gpu_source="nvml-slowdown", cpu_warning_c=92.8,
                              cpu_critical_c=98.8, cpu_source="acpi-critical-trip"),
+        # One sensor per DOMAIN, because this fixture's job is to emit every
+        # family the agent can. The GPU row is joined by the snapshot builder on
+        # a real node, so it has to be spelled out here — leaving it out is what
+        # made this guard fire when that join moved out of the exporter.
+        temperatures=[
+            TempSensor(domain="package", sensor="zone0", celsius=74.5, limit_c=104.8),
+            TempSensor(domain="storage", sensor="nvme nvme0 Composite",
+                       celsius=49.9, limit_c=84.85),
+            TempSensor(domain="network", sensor="mlx5 0000:01:00.0 asic",
+                       celsius=52.0, limit_c=105.0),
+            TempSensor(domain="wireless", sensor="mt7925_phy0 phy0 temp1", celsius=42.0),
+            TempSensor(domain="gpu", sensor="gpu", celsius=72.0, limit_c=90.0),
+        ],
         gpu=GpuMetrics(util_pct=50.0, temp_c=60.0, power_w=90.0, clock_mhz=2400.0,
                        clock_state=ClockState.PASS, target_clock_mhz=2418.0),
         memory=MemoryMetrics(total_bytes=1, available_bytes=1, used_bytes=1,
