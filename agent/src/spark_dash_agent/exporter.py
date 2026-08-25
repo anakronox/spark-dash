@@ -24,7 +24,6 @@ from spark_dash_common.models import (
     ModelState,
     NodeSnapshot,
     PsiState,
-    TempSensor,
 )
 
 _NS = "sparkdash"
@@ -475,10 +474,10 @@ def _temp_band_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFam
 def _thermal_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
     """Every sensor, its own limit, and which one is currently the hottest.
 
-    THE GPU IS JOINED IN HERE rather than collected twice. NVML already reports
-    it along with the slowdown and shutdown thresholds sysfs does not carry, so
-    the GPU collector stays the single reader and this adds it to the same
-    families so one query covers the whole machine.
+    THE GPU IS ALREADY IN `snap.temperatures`, joined there by the snapshot
+    builder. It was joined HERE first, which left the live card — which reads
+    the snapshot, not the metrics — as the only surface without a GPU row.
+    Joining once, upstream of both, is what keeps them agreeing.
 
     The headline is a BARE `{node}` series. Labelling it with the sensor that
     currently holds it would churn a new series every time the hottest changed,
@@ -487,21 +486,6 @@ def _thermal_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
     `temp_band_source_info` above.
     """
     sensors = list(snap.temperatures)
-
-    # NVML's reading, with its shutdown threshold as the limit — the
-    # temperature at which this part cuts power, which is the only limit
-    # comparable to a `critical` trip on the other domains. Slowdown (86) is a
-    # throttle, not a limit, and using it here would make the GPU look closer
-    # to death than it is.
-    if snap.gpu is not None and snap.gpu.temp_c is not None:
-        sensors.append(
-            TempSensor(
-                domain="gpu",
-                sensor="gpu",
-                celsius=snap.gpu.temp_c,
-                limit_c=snap.temp_bands.gpu_critical_c if snap.temp_bands else None,
-            )
-        )
 
     if not sensors:
         return

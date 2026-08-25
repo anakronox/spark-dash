@@ -25,6 +25,7 @@ from spark_dash_common.models import (
     RdmaPort,
     Runtimes,
     TempBands,
+    TempSensor,
 )
 from spark_dash_common.thresholds import TempThresholds
 
@@ -468,6 +469,30 @@ class SnapshotBuilder:
             )
 
         gpu_bands, cpu_bands = self._temp_bands()
+
+        # THE GPU JOINS THE LIST HERE, not in the exporter, so the snapshot and
+        # the metrics carry the same set. It was in the exporter first, which
+        # left the live card — which reads the snapshot — as the only surface
+        # missing a GPU row.
+        #
+        # Still read ONCE, by the GPU collector: NVML already reports the
+        # temperature along with the shutdown threshold sysfs does not carry,
+        # and reading it again through /sys would give one question two answers.
+        #
+        # The SHUTDOWN threshold is the limit, not slowdown. Slowdown (86 C) is
+        # where the part throttles itself; shutdown (90 C) is where it cuts
+        # power, which is the only limit comparable to a `critical` trip on
+        # every other domain. Using slowdown would make the GPU look closer to
+        # death than it is.
+        if gpu is not None and gpu.temp_c is not None:
+            temperatures.append(
+                TempSensor(
+                    domain="gpu",
+                    sensor="gpu",
+                    celsius=gpu.temp_c,
+                    limit_c=gpu_bands.critical_c if gpu_bands else None,
+                )
+            )
         # What the node is SUPPOSED to be full of, so health can ask whether
         # the memory is explained rather than merely how much there is.
         model_bytes = sum(

@@ -514,15 +514,25 @@ def test_the_headline_is_the_hottest_sensor_and_a_stable_series():
     )
 
 
-def test_the_gpu_joins_the_same_families_rather_than_being_collected_twice():
-    """NVML already reads the GPU and its shutdown threshold, which sysfs does
-    not carry. Duplicating it through the thermal collector would give one
-    question two answers; the exporter joins it in instead, so a single query
-    covers the whole machine."""
-    snap = make_snapshot(temperatures=[TempSensor(domain="package", sensor="zone0", celsius=60.0)])
-    text = render(snap)
-    gpu_rows = [l for l in text.splitlines() if l.startswith("sparkdash_temperature_celsius{domain=\"gpu\"")]
-    assert len(gpu_rows) == 1, gpu_rows
+def test_the_exporter_adds_no_sensor_of_its_own():
+    """THE GPU IS JOINED UPSTREAM, in the snapshot builder, so the live card and
+    the metrics carry the same set.
+
+    It was joined in the exporter first, and that left the card — which reads
+    the snapshot, not the metrics — as the only surface without a GPU row. This
+    pins the fix from the other side: whatever the exporter emits is exactly
+    what the snapshot held, so the two can never disagree again.
+    """
+    sensors = [
+        TempSensor(domain="package", sensor="zone0", celsius=60.0),
+        TempSensor(domain="gpu", sensor="gpu", celsius=72.0, limit_c=90.0),
+    ]
+    text = render(make_snapshot(temperatures=sensors))
+    emitted = [
+        line for line in text.splitlines()
+        if line.startswith("sparkdash_temperature_celsius{")
+    ]
+    assert len(emitted) == len(sensors), emitted
 
 
 def test_a_node_with_no_sensors_emits_no_thermal_families():
