@@ -90,7 +90,7 @@
   /** Bytes/sec as bits/sec — network gear is rated in bits, and comparing
    *  throughput against a "200 Gb/s" link is the whole point.
    *
-   * The rendering lives in lib/format so the Network history charts below can
+   * The rendering lives in lib/format so the Network Activity charts below can
    * use the same one. This panel and those charts describe the same links, and
    * a table saying "580.2 Mb/s" above a chart saying "0.58 Gb/s" would read as
    * two different measurements. */
@@ -391,7 +391,7 @@
       No RDMA devices found. The agent ran and saw nothing under
       <code class="text-ink">/sys/class/infiniband</code>, which is where a RoCE
       device registers even though it runs over Ethernet. Interfaces without one
-      are in <strong class="text-ink-2">Network history</strong>.
+      are in <strong class="text-ink-2">Network Activity</strong>.
     </p>
   {/if}
 </section>

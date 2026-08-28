@@ -351,7 +351,7 @@
 <section class="panel">
   <header>
     <div class="titles">
-      <h2 class="eyebrow">History</h2>
+      <h2 class="eyebrow">System Activity</h2>
       <!-- THE LEGEND IS THE CONTROL. It was decoration before — it mapped
            colours to nodes while every line on the chart was coloured by
            METRIC, so nothing on the plot used these swatches. Now the swatches

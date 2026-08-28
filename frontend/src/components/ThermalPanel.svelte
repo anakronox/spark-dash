@@ -36,7 +36,7 @@
    * order that answers "what is closest to trouble".
    *
    * Live, from the agent's own snapshot, because a temperature you are looking
-   * at should be the current one. History is the chip row on the History card.
+   * at should be the current one. History is the chip row on System Activity.
    */
   import ColumnGrip from './ColumnGrip.svelte';
   import ColumnMenu from './ColumnMenu.svelte';

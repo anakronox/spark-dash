@@ -4,7 +4,7 @@
    * WHY THIS EXISTS. Preferences were scattered across four independent
    * localStorage keys, each owned by whichever component happened to need it
    * and each with its own control: theme in a header <select>, section order on
-   * drag handles, metric selection and range inside the History panel. Nothing
+   * drag handles, metric selection and range inside the System Activity panel. Nothing
    * told you they were settings, that they persisted, or where to find them.
    *
    * WHAT BELONGS HERE, AND WHAT DOES NOT. This holds preferences that are

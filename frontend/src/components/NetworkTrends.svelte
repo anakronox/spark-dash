@@ -426,7 +426,7 @@
 <section class="panel">
   <header>
     <div class="titles">
-      <h2 class="eyebrow">Network history</h2>
+      <h2 class="eyebrow">Network Activity</h2>
       {#if plotted.length > 1}
         <span class="legend" role="group" aria-label="Nodes">
           {#each plotted as id (id)}
@@ -572,7 +572,7 @@
             <span class="count">{n}</span>
             <span class="note dim">{g.note}</span>
             {#if mode === 'table' && g.key === divisions[0]?.key}
-              <ColumnMenu of="Network history" groups={[{ label: 'Links', view: linkCols }]} />
+              <ColumnMenu of="Network Activity" groups={[{ label: 'Links', view: linkCols }]} />
             {/if}
           </h3>
           {#if mode === 'table' && 'rows' in g}

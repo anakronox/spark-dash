@@ -226,8 +226,14 @@ export interface SectionDef {
  * one, so anyone who has already reordered (or simply visited before) keeps
  * what they had until they use "reset layout".
  */
+/* LABELS ARE NOT IDS. `history` shows as "System Activity" and
+   `network-history` as "Network Activity" — renamed 2026-08-28, ids left alone
+   on purpose: they key saved layouts, row caps and column choices in
+   localStorage, so changing one silently resets every reader's arrangement.
+   The same reason `network` still reads "RDMA ports" under an id that says
+   otherwise. */
 export const SECTIONS: SectionDef[] = [
-  { id: 'history', label: 'History' },
+  { id: 'history', label: 'System Activity' },
   { id: 'processes', label: 'GPU processes' },
   /* WAS 'Network', and drew two tables. The interfaces one moved into Network
      history when that grew a table of its own — six of its seven columns were
@@ -236,7 +242,7 @@ export const SECTIONS: SectionDef[] = [
      and carrying the negotiated rate string, which is an info label rather
      than a series. The id is unchanged so saved layouts keep their place. */
   { id: 'network', label: 'RDMA ports' },
-  /* A SEPARATE CARD, not more chips on History. That panel already carries 15
+  /* A SEPARATE CARD, not more chips on System Activity. That panel already carries 15
      metrics and its chip row wraps to three lines at full width; six network
      chips would not join it, they would bury it.
 
@@ -248,7 +254,7 @@ export const SECTIONS: SectionDef[] = [
      Saved layouts from before this shipped are already handled: `reconcile()`
      appends a section the saved order has never seen rather than dropping it,
      so it turns up in its default position instead of vanishing. */
-  { id: 'network-history', label: 'Network history' },
+  { id: 'network-history', label: 'Network Activity' },
   /* Live, not historical, which is why it sits with the other live cards
      rather than beside History. A GB10 exposes 18-23 thermal sensors and the
      dashboard showed two; this is the rest of them. */
@@ -261,7 +267,7 @@ const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
 
 /** Sections whose body is a list of rows, and can therefore be capped.
  *
- * History is absent because it is a chart: its height is set by the plot, not
+ * System Activity is absent because it is a chart: its height is set by the plot, not
  * by a row count, and a "max rows" control on it would be a setting that does
  * nothing.
  */
@@ -270,8 +276,8 @@ export const PAGED_SECTIONS = new Set([
   'models',
   'network',
   'activity',
-  /* Network history joined this list when it grew an overview table. It is
-     absent from History for the reason stated above — a chart's height is set
+  /* Network Activity joined this list when it grew an overview table. It is
+     absent from System Activity for the reason stated above — a chart's height is set
      by the plot, not by a row count — and that is still true of this card's
      CHART mode. The cap applies to the table, which is the mode that exists
      because the link list can be long. */
@@ -298,7 +304,7 @@ const DEFAULT_ROWS: Record<string, number> = {
   processes: 10,
   models: 10,
   // One table now — the RDMA ports. It was 8 while this card also drew the
-  // interfaces table that Network history absorbed.
+  // interfaces table that Network Activity absorbed.
   network: 10,
   activity: 10,
   /* Lower for the same reason as `network`: this card draws TWO tables, one per
