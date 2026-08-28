@@ -89,9 +89,29 @@
       ]);
       views.set(domain, v);
     }
-    v.pageSize = maxRows;
     return v;
   }
+
+  /* `pageSize` is set HERE, not in `viewFor`.
+   *
+   * `viewFor` is called from the template (`{@const view = viewFor(g.key)}`),
+   * so assigning to a `$state` inside it was a state write during render.
+   * Svelte 5 forbids that — `state_unsafe_mutation` — and the throw cascaded
+   * into `effect_update_depth_exceeded`, which stops the update loop for the
+   * WHOLE PAGE: every button, including Alerts and Settings, silently stopped
+   * responding. Reported 2026-08-28.
+   *
+   * It only threw in dev. These runtime checks are compiled out of a
+   * production build, where the same unsafe write happened quietly.
+   *
+   * `$effect.pre` rather than `$effect`, and the reason is the one ModelsTable
+   * records: it runs before the DOM update, so the first paint already has the
+   * configured cap instead of rendering the constructor's default and
+   * reflowing. Driven off `groups` so a domain appearing later is covered
+   * without `viewFor` needing a side effect again. */
+  $effect.pre(() => {
+    for (const g of groups) viewFor(g.key).pageSize = maxRows;
+  });
 
   /* ONE column view for the card, though — the columns are identical in every
      domain, and a reader who hides `limit` in Package wants it hidden in

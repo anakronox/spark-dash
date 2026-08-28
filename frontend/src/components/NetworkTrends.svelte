@@ -267,6 +267,23 @@
      the arrangement NetworkPanel already rejected for the same reason. */
   const linkCols = new ColumnView('network-history.links', NETWORK_COLUMNS);
 
+  /* Signal columns, forced ONCE for the shared view.
+     `err` and `drop` read zero every day, which is exactly why someone switches
+     them off, and their first non-zero value is the thing they needed to know.
+
+     Computed across EVERY division rather than inside NetworkTable, because
+     `linkCols` is shared by all of them: per-instance forcing had each table
+     fighting the others over one piece of state and locked the page's update
+     loop. See the note in NetworkTable. */
+  const linkTripped = $derived.by(() => {
+    const all = divisions.flatMap((d) => d.rows);
+    return [
+      ...(all.some((r) => r.errors > 0) ? ['err'] : []),
+      ...(all.some((r) => r.drops > 0) ? ['drop'] : []),
+    ];
+  });
+  $effect(() => linkCols.force(linkTripped));
+
   /** The charts the opened rows asked for, in the grid's own order so opening
    *  two links does not depend on which was clicked first. */
   const openCharts = $derived(

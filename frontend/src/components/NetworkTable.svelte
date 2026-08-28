@@ -108,15 +108,21 @@
   });
 
 
-  /* Signal columns with something to say — the rule the Network table already
-     follows. `err` and `drop` read zero every day, which is exactly why someone
-     switches them off, and their first non-zero value is the thing they needed
-     to know. */
-  const tripped = $derived([
-    ...(rows.some((r) => r.errors > 0) ? ['err'] : []),
-    ...(rows.some((r) => r.drops > 0) ? ['drop'] : []),
-  ]);
-  $effect(() => cols.force(tripped));
+  /* The signal-column force USED TO LIVE HERE and could not: `cols` is shared
+     by every division on the card, while `rows` is only this division's. Two
+     instances then disagreed about the same state — one division with an error
+     wanted `['err']`, one without wanted `[]` — and each overwrote the other
+     forever. `effect_update_depth_exceeded`, which stops the update loop for
+     the WHOLE PAGE: every button, Alerts and Settings included, silently
+     stopped responding. Reported 2026-08-28.
+
+     The equality guard in `force` cannot help. It stops a value being rewritten
+     with itself; it cannot arbitrate between two callers that genuinely want
+     different values.
+
+     So the decision belongs where the shared view does — NetworkTrends forces
+     once, across every division's rows. A component must not write state it
+     does not own on evidence it alone can see. */
   $effect(() => dropSortWhenHidden(view, (k) => cols.visible().some((c) => c.key === k)));
 
   /* Importance is the DEFAULT, not a fixed order: `TableView.sorted` returns
