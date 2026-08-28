@@ -4289,7 +4289,43 @@ gain is real on simple components and absent on complex ones. What it did not
 answer is where the reasoning goes, and that is the thing worth solving before
 the tables (phase 3), not during.
 
-- [ ] **AB1. Promote the type scale to tokens.**
+- [x] **AB1. Promote the type scale to tokens.** — shipped 2026-08-28
+
+  **Shipped, and it was half done already.** The Tailwind migration had added
+  `--text-body/label/micro/nano` to `@theme` with 42 uses in converted markup,
+  while 81 raw literals stayed in the CSS of everything not yet converted — two
+  spellings of one scale, which is the state this item existed to end.
+
+  **The one-offs were adjudicated rather than swept**, which AB1 called the
+  actual work:
+
+  | | verdict |
+  |---|---|
+  | 30 / 22 / 19 / 15px | a real **display scale** — deliberate, and what the page's hierarchy is built from. Named `hero`/`headline`/`title`/`title-sm` rather than folded in, which would have flattened it. |
+  | 20px ×2 | one control-glyph role in two components → `--text-glyph` |
+  | 13px | **drift, and the proof AB1 was right** — see below |
+  | 8px | stays a literal: a sort arrow, `aria-hidden`, a glyph rather than text. Reason recorded at its use and in the test's allow-list. |
+
+  **13px was not in AB1's own table.** It appeared in `ThermalPanel` after that
+  table was written and nothing caught it — the exact drift this item predicted,
+  arriving while the item sat open. Folded to `--text-body`: it only needs to
+  out-size its own 10px label, and 12px does that on-scale.
+
+  Tokens live in `@theme`, so Tailwind v4 generates a `text-*` utility for each
+  and markup and CSS name the same size — what a migration would have imposed,
+  had for the cost of the tokens. Verified in the **built** CSS rather than
+  assumed, because AB2's failure mode is a class that looks right and resolves
+  to nothing: `.text-hero{font-size:30px}` and `.text-title-sm{font-size:15px}`
+  are emitted and all nine tokens reach the output.
+
+  The diff is mechanical — zero changed lines are anything but a `font-size`,
+  and no `var(--text-*)` is used that is not defined. The only intended visual
+  change is ThermalPanel's stat values by 1px.
+
+  **Not visually confirmed.** The browser extension was not connected, so this
+  rests on the built-CSS check and the mechanical diff rather than on looking at
+  it. Worth a glance at the node cards and the tokens/sec headline next time the
+  dashboard is open.
 
   The measurement that makes the Tailwind question productive rather than
   academic. `app.css` already tokenises spacing (`--step`) and corners
