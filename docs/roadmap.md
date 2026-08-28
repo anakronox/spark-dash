@@ -5031,6 +5031,102 @@ degrees hotter than the one the dashboard led with.
   says GB10 throttling is usually power delivery, not heat), so it is left for
   a separate look rather than swept in here.
 
+### AE — Card sizing: a second layout regime, not just a drag handle
+
+Planned 2026-08-28, reframed 2026-08-29. The ask started as "draggable sizing"
+and landed somewhere more interesting: **a tall card on the left beside two
+short cards on the right**, with a toggle between that and today's behaviour.
+
+**That is one side of a trade this project has already made once, deliberately.**
+`96a00f4` replaced independent column stacks with a grid of rows, and recorded
+why:
+
+> With the columns filling independently, the second card on the left began
+> beside the MIDDLE of the first card on the right — two lists side by side that
+> happened to finish level, rather than a grid of rows.
+
+and, in the same message:
+
+> This is the row-height **stranding** the original three-zone design avoided,
+> and it is now deliberate: it only appears inside a band, which is a place two
+> cards were explicitly put side by side.
+
+So today's layout knowingly wastes vertical space to buy alignment. The new
+regime spends alignment to reclaim the space. Neither is wrong; they suit
+different content, which is exactly what makes a toggle the honest answer rather
+than a hedge.
+
+| | **Aligned rows** (today) | **Packed columns** (new) |
+|---|---|---|
+| `left[n]` and `right[n]` | share a row and a height | independent |
+| a short card beside a tall one | stretches, leaving slack | keeps its height |
+| tall left, two short right | impossible | the point |
+| scanning across | rows line up | nothing lines up |
+
+- [ ] **AE1. The toggle is a CSS switch, and that is the whole trick.** The
+  machinery that creates alignment is two declarations, and packed mode is their
+  absence:
+
+      .cols  { grid-template-rows: repeat(var(--band-rows, 1), auto); }
+      .zone  { grid-row: 1 / -1; grid-template-rows: subgrid; }
+
+  Drop both and the zones are independent stacks again. `--band-rows` simply
+  goes unused. This is not a rework of the band model: bands still form the same
+  way, the page is still a sequence, and pairing by dragging onto an edge is
+  untouched.
+
+  **Drop targeting survives, and that was not luck.** `96a00f4` chose subgrid
+  over one flat grid of cards precisely so the columns stay separate elements —
+  *"the drag targeting aims at a zone, and a flat grid has no column to aim
+  at."* Packed mode keeps zones as elements too, so the gesture that arranges
+  the page works identically in both regimes.
+
+- [ ] **AE2. Which is the default, and where the toggle lives.** Settings
+  already has `Full / Compact` for node cards; this is the same shape of choice
+  one level up. Naming it for what it buys rather than how it works — *Aligned*
+  vs *Packed* — is what makes it choosable without reading this file.
+
+- [ ] **AE3. Per-card height, which only means something in packed mode.** In
+  aligned mode a card's height is the band's, so there is nothing to drag. In
+  packed mode height is content, and dragging it means overriding that:
+
+  - **tables** already have `maxRows` in settings, so a height drag is a second
+    control for one thing and the two would disagree. If height ships for
+    tables it should *move* that control, not sit beside it.
+  - **charts** are the real gap — the plot is a hardcoded `height: 140px` in
+    `Trends.svelte`, and System Activity can show 15 of them.
+
+  "Drag until they match" is the nicety worth having here: a snap as a card's
+  bottom edge passes its neighbour's, so equal heights stay reachable in packed
+  mode without giving up the mode.
+
+- [ ] **AE4. Width, if it is still wanted.** Separate from the above and
+  smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
+  A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag
+  the tracks — measured, the two "equal halves" were **813.273px and
+  769.727px**, one column having taken 43px from the other by holding wider
+  tables. That is the whole of the dashboard's horizontal layout shift. A
+  resize therefore sets the fr RATIO, never a pixel width.
+
+  It also needs clamping, for the reason the 1100px breakpoint already exists:
+  below that, zones stack because *"a half-width table on a laptop is
+  unreadable"*. A column dragged to 20% recreates that at any viewport.
+
+- [ ] **AE5. Reuse `ColumnGrip`'s contract.** AA settled what a resize gesture
+  owes and the comments are explicit: `role="separator"` because *"keyboard
+  resizing is not optional"*, a 16px step with shift for coarse, and a reset as
+  *"the escape from a column dragged too narrow to grab again."* A card dragged
+  to nothing has the same trap.
+
+  The hazard differs, though. `ColumnGrip` was shaped so a resize could not
+  reach the sort button underneath; here the thing underneath is the
+  **drag-to-move handle and the band drop targeting**, so a mis-aimed resize
+  would rearrange the page rather than merely re-sort a table.
+
+**Explicitly NOT this:** a 12-column grid or per-card pixel widths. The band
+model is carefully built and a general grid would replace its reasoning rather
+than extend it.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
