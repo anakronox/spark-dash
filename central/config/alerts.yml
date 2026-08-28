@@ -776,19 +776,40 @@ groups:
       # Local filesystems only. The GX10 mounts two NFS shares with ~19TB free
       # whose capacity isn't this node's problem, and /boot/efi is small by
       # design and would read as nearly-full forever on a percentage rule.
-      - alert: NodeDiskFillingUp
+      # A FIXED LADDER, not a projection. Replaced `NodeDiskFillingUp`
+      # 2026-08-28, and the reasoning is worth keeping.
+      #
+      # That rule used `predict_linear` over 6h and fired on sparky at 66.7%
+      # full with 1.2 TB free. It was arithmetically correct and practically
+      # wrong: disk here does not slope, it STAIRCASES. Measured over 24h,
+      # sparky sat flat for seven and a half hours overnight, then stepped
+      # down 4, 25, 4, 27 and 23 GiB as models and images landed. A 6h window
+      # containing two of those steps reads ~9.3 GiB/h and extrapolates a week
+      # of it; the real 24h average was 3.5 GiB/h -- 14.5 days of headroom.
+      #
+      # Widening the window to 24h was tried first and does work. The better
+      # objection is that the whole approach guesses at intent the operator
+      # already has: someone pulling a 25 GiB model knows they are pulling it,
+      # and a projection arguing with that is a robot second-guessing a
+      # decision already made. A fixed breakpoint is a fact to act on.
+      #
+      # The three tiers are MUTUALLY EXCLUSIVE by construction, so a filling
+      # disk raises one alert naming the band it is actually in rather than
+      # three saying the same thing louder. No inhibit rules needed.
+      - alert: NodeDiskFilling
         expr: >-
-          predict_linear(
-            node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}[6h], 7 * 24 * 3600
-          ) < 0
+          node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}
+          / node_filesystem_size_bytes < 0.15 >= 0.10
         for: 1h
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} filling within a week"
+          summary: "{{ $labels.mountpoint }} on {{ $labels.instance }} is over 85% full"
           description: >-
-            Projected from the last 6 hours of growth, so a one-off write won't
-            trigger it. Model weights and ComfyUI outputs are the usual cause.
+            First of three breakpoints -- 85, 90, 95. Room to plan rather than
+            room to panic: the point to decide what comes off, not the point
+            at which anything breaks. `for: 1h` because a build or a model
+            pull can cross 85% and come back on its own.
 
       # A WARNING TIER beneath NodeDiskLow's critical floor. 90% full is when
       # someone should go and look; 95% is when writes are about to start
@@ -805,7 +826,7 @@ groups:
       - alert: NodeDiskWarning
         expr: >-
           node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}
-          / node_filesystem_size_bytes < 0.10
+          / node_filesystem_size_bytes < 0.10 >= 0.05
         for: 30m
         labels:
           severity: warning

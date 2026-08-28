@@ -28,7 +28,7 @@ groups:
       # have fired, which is worse than having no rule, because it looked like
       # coverage.
       #
-      # NodeDiskFillingUp now watches this host's disk generally. This rule is
+      # NodeDiskFilling now watches this host's disk generally. This rule is
       # narrower on purpose: it attributes the growth to the TSDB and names the
       # lever (retention), which a generic disk alert can't.
       - alert: PrometheusStorageFillingUp
