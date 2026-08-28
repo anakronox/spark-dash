@@ -4846,13 +4846,74 @@ degrees hotter than the one the dashboard led with.
   node_exporter's own zone republication is removed. Added as a section to
   `scripts/validate-on-gx10.sh`, where a maintainer would look.
 
-- [ ] **AD5. Alerting, deliberately deferred.**
+- [x] **AD5. Alerting — shipped 2026-08-28.**
 
   `CpuTemperatureHigh` reached `pending` **413 times on sparky in 7 days and
   never fired** — the spike always ends before the hold time — and
   `TemperatureBandsNotDerived` has fired on sparkjr. Both are real and neither
   is a drawing problem. Worth doing now that the sensors are visible, and worth
   doing separately: the question is hold times and thresholds, not charts.
+
+  **Measured 2026-08-28, and the problem was bigger and the diagnosis slightly
+  wrong.** It is not one rule, and it is not the threshold.
+
+  | alert | pending, 7d | fired |
+  |---|---|---|
+  | `GpuTemperatureHigh` | 891 | **0** |
+  | `CpuTemperatureHigh` | 463 | **0** |
+  | `GpuThrottled` | 59 | 0 |
+  | `GpuTemperatureCritical` | 22 | 0 |
+
+  **These sensors spike; they do not plateau.** In sparky's hottest 40 minutes
+  of the week the CPU was above its band **51% of the time**, oscillating
+  between 88.1 and 95.1 °C — and the longest CONTINUOUS run above it was **120
+  seconds**, against a 10 minute hold. Every dip reset the timer. The recorded
+  diagnosis ("the spike always ends before the hold time") reads as *brief
+  spikes*; measured at minute granularity sparky had episodes of 14, 19 and 26
+  minutes. The heat lasts. It is the *continuity* the rule required that never
+  existed.
+
+  **Fixed by smoothing the input, not shortening the hold.** Both warnings now
+  ask what fraction of the last 10 minutes was spent above the node's own band,
+  and fire when that exceeds half. Shortening the hold was the tempting fix and
+  is wrong: the observed runs clear a 2 minute hold, so it would have fired on
+  single transient spikes instead.
+
+  **>0.5 was measured, not chosen.** A stricter >0.8 **never occurred** on any
+  node in 7 days — it would have been a second rule that cannot fire.
+
+  Holds calibrated against the same 7 days: CPU `for: 10m` → 2 alerts/week, GPU
+  `for: 15m` → 3, both only on sparky. The GPU's is longer deliberately — it is
+  the part that is supposed to run hot, at 10m it fires 5x/week and would be
+  tuned out by the second week, and `GpuThrottled` already covers the
+  consequence at critical severity.
+
+  **Replayed against the real 08-24 event** rather than trusting the arithmetic:
+  CPU would have fired twice on sparky, GPU three times, and both stayed silent
+  on sparketa and sparkjr. Right now, cool, both evaluate to 0.
+
+  **A bug this change introduced, caught before shipping:** the expression
+  changed what `$value` means. It is a fraction of a window now, and the
+  existing annotation would have sent "CPU on sparky at 1C" to a phone. Both
+  summaries now use `humanizePercentage`.
+
+  **The criticals are deliberately untouched.** They also go pending and never
+  fire, and for them that is correct — the GPU touches its 86 °C slowdown for a
+  handful of 15s samples and backs off, which is the transient a hold exists to
+  filter. A rule quiet because the condition does not happen is not the same as
+  one that cannot fire when it does. `tests/test_thermal_alerts.py` pins that
+  distinction so a later sweep for "rules that never fire" does not merge them.
+
+  **`TemperatureBandsNotDerived` needs nothing.** All six bands across three
+  nodes are hardware-derived (`nvml-slowdown`, `acpi-critical-trip`); it has 0
+  pending and 0 firing in 7 days. The sparkjr firing recorded above predates
+  the window and appears to have been a bring-up transient.
+
+  **Not addressed: `GpuThrottled`**, 59 pending and 0 fired, is the same shape —
+  a spiky state under a continuous 5m hold. It is a clocks rule rather than a
+  temperature one and its threshold question is different (its own description
+  says GB10 throttling is usually power delivery, not heat), so it is left for
+  a separate look rather than swept in here.
 
 ### J — Single-host profile (everything on one GB10)
 

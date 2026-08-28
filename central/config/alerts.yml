@@ -200,15 +200,55 @@ groups:
       # old critical waited for 94C on a part that powers itself off at 90C, so
       # it could never fire; the old warning at 88C only tripped after the GPU
       # had already begun throttling at 86C.
+      # THESE SENSORS SPIKE; THEY DO NOT PLATEAU. Measured over 7 days,
+      # 2026-08-28, and it invalidated how both warning rules were written.
+      #
+      # In sparky's hottest 40 minutes of the week the CPU was above its band
+      # 51% of the time, oscillating between 88.1 and 95.1 — and the longest
+      # CONTINUOUS run above it was 120 seconds, against a 10 minute hold. Every
+      # dip reset the timer.
+      #
+      # The result was two rules that could not fire. CpuTemperatureHigh reached
+      # `pending` 463 times in a week and fired 0 times; GpuTemperatureHigh 891
+      # and 0. That is worse than having no rule, because the dashboard showed
+      # activity that never became a notification.
+      #
+      # Both now smooth the input rather than shorten the hold. Shortening it
+      # was the tempting fix and is wrong: a 2 minute hold clears the observed
+      # runs, so it would fire on single transient spikes instead.
+      #
+      # The CRITICAL rules below are deliberately left alone. They also go
+      # pending and never fire, and for them that is correct — the GPU touches
+      # its 86C slowdown for a handful of 15s samples and backs off, which is a
+      # transient the hold is supposed to filter. A rule that stays quiet
+      # because the condition genuinely does not happen is not the same as one
+      # that cannot fire when it does.
       - alert: GpuTemperatureHigh
+        # Same smoothing as CpuTemperatureHigh, and the same reason: 891 pending
+        # events in seven days and not one of them fired.
         expr: >-
-          sparkdash_gpu_temperature_celsius
-          >= on(node) sparkdash_gpu_temp_warning_celsius
-        for: 10m
+          avg_over_time(
+            (
+              sparkdash_gpu_temperature_celsius
+              >= bool on(node) sparkdash_gpu_temp_warning_celsius
+            )[10m:15s]
+          ) > 0.5
+        # LONGER than the CPU's hold, deliberately. The GPU is the part that is
+        # supposed to run hot, and it earns its warm minutes doing the node's
+        # actual job — at 10m this fires 5x/week on sparky and would be tuned
+        # out by the second week. 15m puts it at 3, which is the rate at which a
+        # phone notification still means something.
+        #
+        # It can also afford to be late: GpuThrottled covers the consequence at
+        # critical severity, so this is the leading indicator rather than the
+        # only one.
+        for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "GPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
+          # $value is now a FRACTION of the window, not a temperature — saying
+          # "at 1C" is what the old wording would have printed.
+          summary: "GPU on {{ $labels.node }} above its limit {{ $value | humanizePercentage }} of the last 10min"
           description: >-
             Approaching the point where this GPU throttles itself. Still
             performing normally, but with little headroom left — check airflow
@@ -233,14 +273,32 @@ groups:
       # The CPU had NO alert rule at all, despite feeding node health and
       # despite being the hotter of the two components in practice.
       - alert: CpuTemperatureHigh
+        # SMOOTHED, not thresholded. See the note above this group: this sensor
+        # oscillates across its own band every few samples, so `temp >= band`
+        # with a hold can never be satisfied. This asks how much of the last ten
+        # minutes was spent above the band instead, which is the question a
+        # reader actually has, and it is immune to the flapping by construction.
+        #
+        # >0.5 rather than something stricter because >0.8 NEVER OCCURRED in
+        # seven days on any node — a stricter bar would have been a second rule
+        # that cannot fire. Measured, not chosen.
         expr: >-
-          sparkdash_cpu_temperature_celsius
-          >= on(node) sparkdash_cpu_temp_warning_celsius
+          avg_over_time(
+            (
+              sparkdash_cpu_temperature_celsius
+              >= bool on(node) sparkdash_cpu_temp_warning_celsius
+            )[10m:15s]
+          ) > 0.5
+        # On top of the 10m window above, so this is 20 minutes of mostly-hot.
+        # Calibrated against 7 days: 2 alerts/week, both on sparky. At 5m it
+        # would be 3/week and at 15m only 1.
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "CPU on {{ $labels.node }} at {{ $value | printf \"%.0f\" }}C"
+          # $value is now a FRACTION of the window, not a temperature — saying
+          # "at 1C" is what the old wording would have printed.
+          summary: "CPU on {{ $labels.node }} above its limit {{ $value | humanizePercentage }} of the last 10min"
           description: >-
             Sustained well above normal working temperature and closing on the
             trip point where the kernel powers the machine off. Check airflow.
