@@ -24,6 +24,7 @@ const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
 const BAND_MODE_KEY = 'spark-dash.band-mode.v1';
+const PLOT_HEIGHT_KEY = 'spark-dash.plot-heights.v1';
 const ROWS_KEY = 'spark-dash.section-rows.v1';
 const COLUMN_KEY = 'spark-dash.section-column.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
@@ -360,6 +361,48 @@ function readColumns(available: string[] = DEFAULT_ORDER): Record<string, Zone> 
 }
 
 
+/** Plot height bounds, in px.
+ *
+ * The floor is where a line still reads as a shape rather than as a smear: at
+ * 60px the axis labels alone eat most of the box. The ceiling is one plot
+ * roughly filling a laptop viewport — past that a grid of eight charts stops
+ * being small multiples, which is the entire reason they are small.
+ */
+export const MIN_PLOT_PX = 80;
+export const MAX_PLOT_PX = 480;
+/** uPlot's height when nobody has dragged one.
+ *
+ * MetricChart imports this for its own prop default rather than repeating the
+ * number. Two literals that had to agree would be a silent divergence: charts
+ * would render at one height and the grip would report another, and nothing
+ * would error. */
+export const DEFAULT_PLOT_PX = 132;
+
+function readPlotHeights(available: string[] = DEFAULT_ORDER): Record<string, number> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PLOT_HEIGHT_KEY) ?? 'null');
+    if (!saved || typeof saved !== 'object') return {};
+    const known = new Set(available);
+    const out: Record<string, number> = {};
+    for (const [id, n] of Object.entries(saved)) {
+      /* Clamped on the way in, not merely type-checked. A hand-edited or
+         stale-from-an-older-range value is the same hazard `readRows` guards:
+         a 4000px plot would push every other card off the page with no visible
+         control to undo it. */
+      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) {
+        out[id] = clampPlot(n);
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function clampPlot(px: number): number {
+  return Math.min(MAX_PLOT_PX, Math.max(MIN_PLOT_PX, Math.round(px)));
+}
+
 function readRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
   try {
     const saved = JSON.parse(localStorage.getItem(ROWS_KEY) ?? 'null');
@@ -459,6 +502,15 @@ export class Layout {
   /** Rows a section shows before it pages. Absent means the section's own
    *  default; `0` means uncapped. */
   rows = $state<Record<string, number>>(readRows());
+
+  /** Plot height per chart-bearing section. Absent means DEFAULT_PLOT_PX.
+   *
+   * Height lives HERE rather than beside `rows` in settings because it is not
+   * the same kind of choice: a row cap is a discrete pick from a list, and a
+   * plot height is a continuous one you make by looking at the chart. So its
+   * control is a grip on the card, and settings does not offer it a second
+   * time — one thing, one control. */
+  plotHeights = $state<Record<string, number>>(readPlotHeights());
 
   /** The column each section was last in, so `half` can return it there. */
   lastColumn = $state<Record<string, Zone>>(readColumns());
@@ -608,6 +660,33 @@ export class Layout {
     this.rows = { ...this.rows, [id]: n };
     try {
       localStorage.setItem(ROWS_KEY, JSON.stringify(this.rows));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  /** Height for one section's plots, in px. */
+  plotHeight(id: string): number {
+    return this.plotHeights[id] ?? DEFAULT_PLOT_PX;
+  }
+
+  setPlotHeight(id: string, px: number) {
+    this.plotHeights = { ...this.plotHeights, [id]: clampPlot(px) };
+    this.#savePlotHeights();
+  }
+
+  /** Back to DEFAULT_PLOT_PX. The escape from a plot dragged to the floor,
+   *  which is the one state a drag alone cannot comfortably undo — an 80px
+   *  chart still has a grip, but finding it means knowing it is there. */
+  resetPlotHeight(id: string) {
+    const { [id]: _drop, ...rest } = this.plotHeights;
+    this.plotHeights = rest;
+    this.#savePlotHeights();
+  }
+
+  #savePlotHeights() {
+    try {
+      localStorage.setItem(PLOT_HEIGHT_KEY, JSON.stringify(this.plotHeights));
     } catch {
       // Still applied for this session.
     }
@@ -900,6 +979,7 @@ export class Layout {
     this.placement = {};
     this.lastColumn = {};
     this.rows = {};
+    this.plotHeights = {};
     this.nodeOrder = [];
     /* Switched-off columns go too. Same unrecoverability rule as hidden
        sections: anything that can remove a thing from the page must have one
@@ -907,10 +987,12 @@ export class Layout {
        is stuck with a table they cannot explain. */
     columnStore.reset();
     this.setCompactCards(false);
+    this.setBandMode('aligned');
     this.#savePlacement();
     try {
       localStorage.removeItem(COLUMN_KEY);
       localStorage.removeItem(ROWS_KEY);
+      localStorage.removeItem(PLOT_HEIGHT_KEY);
       localStorage.removeItem(NODE_ORDER_KEY);
     } catch {
       // Still applied for this session.

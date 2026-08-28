@@ -5063,7 +5063,7 @@ than a hedge.
 | tall left, two short right | impossible | the point |
 | scanning across | rows line up | nothing lines up |
 
-- [ ] **AE1. The toggle is a CSS switch, and that is the whole trick.** The
+- [x] **AE1. The toggle is a CSS switch, and that is the whole trick.** The
   machinery that creates alignment is two declarations, and packed mode is their
   absence:
 
@@ -5081,7 +5081,7 @@ than a hedge.
   at."* Packed mode keeps zones as elements too, so the gesture that arranges
   the page works identically in both regimes.
 
-- [ ] **AE2. Which is the default, and where the toggle lives.** **Decided
+- [x] **AE2. Which is the default, and where the toggle lives.** **Decided
   2026-08-29: aligned stays the default and packed is opt-in** — it is what
   exists, and a layout regime is not something to change under a reader who did
   not ask. Height ships alongside rather than after. Settings
@@ -5089,19 +5089,46 @@ than a hedge.
   one level up. Naming it for what it buys rather than how it works — *Aligned*
   vs *Packed* — is what makes it choosable without reading this file.
 
-- [ ] **AE3. Per-card height, which only means something in packed mode.** In
-  aligned mode a card's height is the band's, so there is nothing to drag. In
-  packed mode height is content, and dragging it means overriding that:
+- [x] **AE3. Per-card height — and it means something in BOTH modes.** The
+  plan said height "only means something in packed mode," on the reasoning that
+  aligned mode fixes a card's height to the band's. That is half right: the
+  band's height is the TALLER card's content, so making the taller card's plots
+  taller still grows the band, and making the shorter one's taller does nothing
+  visible until it becomes the taller. Height is therefore a live control in
+  both modes; packed is where it is *only* about the card you are dragging.
 
-  - **tables** already have `maxRows` in settings, so a height drag is a second
-    control for one thing and the two would disagree. If height ships for
-    tables it should *move* that control, not sit beside it.
-  - **charts** are the real gap — the plot is a hardcoded `height: 140px` in
-    `Trends.svelte`, and System Activity can show 15 of them.
+  What shipped: **charts, not tables**, exactly as the plan divided them.
 
-  "Drag until they match" is the nicety worth having here: a snap as a card's
-  bottom edge passes its neighbour's, so equal heights stay reachable in packed
-  mode without giving up the mode.
+  - **tables** were left alone. `maxRows` already answers "how tall" from
+    settings, and a drag beside it would be two controls for one thing.
+  - **charts** were the real gap, though not where the plan looked. The
+    `height: 140px` in `Trends.svelte` is the card-level "no data in this
+    range" placeholder; the plots themselves came from `height = 132`, a prop
+    default in `MetricChart`. Both surfaces now pass a dragged height:
+    `DEFAULT_PLOT_PX` in the layout store, clamped to 80–480, keyed per section
+    in `spark-dash.plot-heights.v1`, and `MetricChart` imports the same
+    constant for its own default rather than repeating the number.
+
+  ONE GRIP PER CARD, not per plot. Charts that share an x axis and not a height
+  stop being small multiples, which is the entire reason they are a grid.
+  `RowGrip` sits at the foot of the grid and reports the count it moves —
+  *"Applies to all 11 charts"* — because a grid of eleven grows by eleven times
+  what the pointer travelled, and without the warning the card appears to leap.
+
+  **"Drag until they match" was NOT built, deliberately.** The snap exists to
+  make equal heights reachable in packed mode — but aligned mode already
+  delivers equal heights exactly, for free, and it is the default. An
+  approximate snap that reproduces in packed mode what the default mode does
+  precisely is a second mechanism for a solved problem. It is also harder than
+  it sounds: what the reader wants level is the CARD's bottom edge, and a card
+  is header + controls + plots + pager, so the snap would have to solve for a
+  plot height from a card height across four terms that each change on their
+  own.
+
+  Measured on a live band, one plot: drag 132 → 257px, `ArrowDown` +16,
+  `Shift+ArrowUp` −64, clamped at 480 and 80, double-click back to 132 with the
+  stored entry removed — and the section placement untouched throughout, which
+  is the thing AE5's hazard note is about.
 
 - [ ] **AE4. Width, if it is still wanted.** Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
@@ -5115,7 +5142,7 @@ than a hedge.
   below that, zones stack because *"a half-width table on a laptop is
   unreadable"*. A column dragged to 20% recreates that at any viewport.
 
-- [ ] **AE5. Reuse `ColumnGrip`'s contract.** AA settled what a resize gesture
+- [x] **AE5. Reuse `ColumnGrip`'s contract.** AA settled what a resize gesture
   owes and the comments are explicit: `role="separator"` because *"keyboard
   resizing is not optional"*, a 16px step with shift for coarse, and a reset as
   *"the escape from a column dragged too narrow to grab again."* A card dragged
@@ -5125,6 +5152,18 @@ than a hedge.
   reach the sort button underneath; here the thing underneath is the
   **drag-to-move handle and the band drop targeting**, so a mis-aimed resize
   would rearrange the page rather than merely re-sort a table.
+
+  Shipped as `RowGrip`: same `role="separator"` (horizontal), same 16px step
+  with shift for coarse, same Home/Escape/double-click reset. The hazard was
+  handled the way `ColumnGrip` handles its own — `stopPropagation` on
+  pointerdown, so the move gesture never begins — and on keydown as well, which
+  `ColumnGrip` did not need: `Section` listens for Escape on the WINDOW to
+  abandon a move, and its handle moves the card on ArrowUp/ArrowDown, so both
+  of this grip's key bindings collide with one of its neighbour's.
+
+  Both failures are silent by construction — a propagating pointerdown makes
+  the card fly toward a zone with no error anywhere — so they are pinned by
+  `tests/test_plot_height.py`, verified by mutation rather than by passing.
 
 **Explicitly NOT this:** a 12-column grid or per-card pixel widths. The band
 model is carefully built and a general grid would replace its reasoning rather

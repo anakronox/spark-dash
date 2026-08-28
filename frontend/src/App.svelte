@@ -741,7 +741,13 @@
         {:else if id === 'activity'}
           <SwapTimeline maxRows={layout.rowsFor(id)} />
         {:else if id === 'history'}
-          <Trends nodeIds={nodes.map((n) => n.node_id)} themeKey={theme.resolved} />
+          <Trends
+            nodeIds={nodes.map((n) => n.node_id)}
+            themeKey={theme.resolved}
+            plotHeight={layout.plotHeight(id)}
+            onPlotHeight={(px) => layout.setPlotHeight(id, px)}
+            onPlotReset={() => layout.resetPlotHeight(id)}
+          />
         {:else if id === 'thermal'}
           <ThermalPanel {nodes} maxRows={layout.rowsFor(id)} />
         {:else if id === 'network-history'}
@@ -750,6 +756,9 @@
             {nodes}
             maxRows={layout.rowsFor(id)}
             themeKey={theme.resolved}
+            plotHeight={layout.plotHeight(id)}
+            onPlotHeight={(px) => layout.setPlotHeight(id, px)}
+            onPlotReset={() => layout.resetPlotHeight(id)}
           />
         {/if}
       </Section>

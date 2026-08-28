@@ -22,6 +22,7 @@
   import { chartTheme, cssVar, nodeColor } from '../lib/theme';
   import { bitRate, siScale } from '../lib/format';
   import type { MetricSpec } from '../lib/history';
+  import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
 
   interface Props {
     metric: MetricSpec;
@@ -63,7 +64,7 @@
     theme,
     syncKey,
     annotations = [],
-    height = 132,
+    height = DEFAULT_PLOT_PX,
     identity,
   }: Props = $props();
 

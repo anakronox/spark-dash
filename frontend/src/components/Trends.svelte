@@ -6,6 +6,8 @@
    * been climbing for an hour than when it just spiked.
    */
   import MetricChart from './MetricChart.svelte';
+  import RowGrip from './RowGrip.svelte';
+  import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
   import { nodeColor } from '../lib/theme';
@@ -16,8 +18,21 @@
     /** Changes whenever the theme does, so charts rebuild with the new
      *  canvas colours. */
     themeKey: string;
+    /** Plot height in px, dragged from the grip below the grid. Passed in
+     *  rather than read from the layout store, the same way `maxRows` is: this
+     *  card renders charts, it does not own where the page keeps its
+     *  preferences. */
+    plotHeight?: number;
+    onPlotHeight?: (px: number) => void;
+    onPlotReset?: () => void;
   }
-  const { nodeIds, themeKey }: Props = $props();
+  const {
+    nodeIds,
+    themeKey,
+    plotHeight = DEFAULT_PLOT_PX,
+    onPlotHeight,
+    onPlotReset,
+  }: Props = $props();
 
   /* ONE CHART PER METRIC, not one chart per node.
    *
@@ -464,9 +479,22 @@
           theme={themeKey}
           syncKey="spark-dash-history"
           annotations={showEvents ? annotations : []}
+          height={plotHeight}
         />
       {/each}
     </div>
+    {#if onPlotHeight && onPlotReset}
+      <!-- Below the grid, not inside it: one height for the whole set of small
+           multiples, because charts that shared an x axis and not a height
+           would stop being small multiples. -->
+      <RowGrip
+        height={() => plotHeight}
+        onresize={onPlotHeight}
+        onreset={onPlotReset}
+        label="System Activity"
+        plots={charts.length}
+      />
+    {/if}
   {/if}
 
 
