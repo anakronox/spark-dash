@@ -3931,11 +3931,20 @@ lived on one node, and `danflashes` serves **one** vLLM model across two.
   corrected expression peaks at **27.3%** over 7 days and has never exceeded 40%
   on any node. Same ratio, same headroom.
 
-  **What was deliberately NOT folded in:** a named non-model workload holding a
-  large share of the pool is a real question on this hardware — ComfyUI's 33 GiB
-  is 27% of sparky's pool unavailable to models. It is a *different* question,
-  and merging it into this rule is what made this one cry wolf. If it is wanted
-  it belongs in its own rule under its own name.
+  **What was deliberately NOT folded in, and is now closed:** a named non-model
+  workload holding a large share of the pool. ComfyUI reached 48.4 GiB on sparky
+  — 40% of the pool — and it is not going to get a rule.
+
+  **Decided 2026-08-28: it is a dashboard fact, not an alert.** Alerts are for
+  what you did not choose; the dashboard is for what you did. Running ComfyUI on
+  that node is a decision, and a rule that fires because the operator is running
+  the software they chose trains them to ignore the channel — the same objection
+  that replaced `NodeDiskFillingUp` with a fixed ladder.
+
+  The dashboard already answers it in two places: the memory band splits the
+  pool into `models` / `other gpu` / `system` with byte counts, and the header's
+  `largest free block` gives the consequence directly — the number that decides
+  whether the next model fits. Nothing to build.
 
   **Z3 SHIPPED HALF A FIX, and the other half was the visible one.** Corrected
   2026-08-21, same day. The alert was only ever one of TWO independent memory
