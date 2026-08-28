@@ -3888,6 +3888,36 @@ lived on one node, and `danflashes` serves **one** vLLM model across two.
   failed" yields no series at all — because missing attribution must not
   manufacture a memory alert. `CollectorFailing` reports the failure itself.
 
+  **Z3 SHIPPED A THIRD PROBLEM, found 2026-08-28.** The replacement rule fired
+  **93 times in 7 days** on sparky, and every one was a false positive.
+
+  The expression subtracted only `runtime=~"vllm|llama.cpp|sglang|atlas"`, so
+  every *named non-LLM* GPU workload counted as unexplained. sparky runs
+  ComfyUI; with 33 GiB resident the rule read **49.5% "unexplained"** for memory
+  the dashboard names on its own process table two cards down. The description
+  already said "a node full of something nobody can name" — ComfyUI is named.
+  The expression simply did not mean what the name and the description both
+  said.
+
+  Why Z3's own measurement missed it: the table above was taken with sparky at
+  44.5% used and ComfyUI not loaded, so the largest non-LLM consumer on the
+  cluster was absent from the data the threshold was calibrated on.
+
+  **Fixed by subtracting all attributed GPU process memory**, which is what
+  "explained" means. The witness fallback is untouched — that trap is separate
+  and was already guarded by a test that still passes.
+
+  **The threshold needed no change, and that is the evidence it was the
+  expression that drifted.** Z3 set 40% at ~1.5× an observed peak of 25.8%; the
+  corrected expression peaks at **27.3%** over 7 days and has never exceeded 40%
+  on any node. Same ratio, same headroom.
+
+  **What was deliberately NOT folded in:** a named non-model workload holding a
+  large share of the pool is a real question on this hardware — ComfyUI's 33 GiB
+  is 27% of sparky's pool unavailable to models. It is a *different* question,
+  and merging it into this rule is what made this one cry wolf. If it is wanted
+  it belongs in its own rule under its own name.
+
   **Z3 SHIPPED HALF A FIX, and the other half was the visible one.** Corrected
   2026-08-21, same day. The alert was only ever one of TWO independent memory
   rules: `common/health.py` computes node health separately, and it kept its
