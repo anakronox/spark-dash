@@ -4322,10 +4322,31 @@ the tables (phase 3), not during.
   and no `var(--text-*)` is used that is not defined. The only intended visual
   change is ThermalPanel's stat values by 1px.
 
-  **Not visually confirmed.** The browser extension was not connected, so this
-  rests on the built-CSS check and the mechanical diff rather than on looking at
-  it. Worth a glance at the node cards and the tokens/sec headline next time the
-  dashboard is open.
+  **Visually confirmed 2026-08-28** against the live cluster: hero figure, node
+  titles, cluster memory headlines and the thermal stats all render at their
+  intended sizes.
+
+  **That check found two bugs it was not looking for.** Opening the dev server
+  surfaced "the alerts and settings buttons don't work" — neither button was at
+  fault. Two separate reactive loops each put Svelte into
+  `effect_update_depth_exceeded`, and once that fires **nothing on the page
+  responds**:
+
+  - `ThermalPanel` wrote `$state` during render. `viewFor(domain)` is called
+    from a template expression and set `pageSize` as a side effect of being
+    called — `state_unsafe_mutation`. Every other panel already used
+    `$effect.pre`; this one was the outlier.
+  - `NetworkTable` forced columns on a view it does not own. It renders inside
+    `{#each divisions}`, so several instances each computed `tripped` from
+    their own rows while sharing one `linkCols`. One division with an error
+    wanted `['err']`, one without wanted `[]`, and they overwrote each other
+    forever. `force`'s equality guard cannot arbitrate that — it stops a value
+    being rewritten with itself, not two callers wanting different values.
+
+  **Both only THREW in dev.** Svelte compiles these checks out of a production
+  build, so the same unsafe write and the same fight happen silently there. The
+  rule worth keeping: *a component must not write state it does not own on
+  evidence only it can see.*
 
   The measurement that makes the Tailwind question productive rather than
   academic. `app.css` already tokenises spacing (`--step`) and corners
