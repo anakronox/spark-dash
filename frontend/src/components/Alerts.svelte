@@ -100,7 +100,7 @@
     background: var(--panel);
     border: 1px solid var(--rule);
     border-left-width: 3px;
-    font-size: 12px;
+    font-size: var(--text-body);
   }
 
   .row {
@@ -110,13 +110,13 @@
   }
 
   .glyph {
-    font-size: 9px;
+    font-size: var(--text-nano);
     line-height: 1;
     flex: none;
   }
 
   .sev {
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     flex: none;
@@ -128,7 +128,7 @@
   }
 
   .age {
-    font-size: 11px;
+    font-size: var(--text-label);
     flex: none;
   }
 
@@ -151,7 +151,7 @@
 
   .unavailable {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-body);
     padding: 9px 12px;
     border-radius: var(--radius);
     background: var(--panel);

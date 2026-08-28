@@ -338,7 +338,7 @@
   }
 
   .close {
-    font-size: 20px;
+    font-size: var(--text-glyph);
     line-height: 1;
     padding: 2px 8px;
     border-radius: var(--radius);
@@ -358,23 +358,23 @@
   .ranges { display: flex; gap: 4px; }
 
   .range {
-    font-size: 11px;
+    font-size: var(--text-label);
     padding: 2px 8px;
     border-radius: var(--radius);
     color: var(--ink-muted);
   }
   .range.active { color: var(--ink); background: var(--rule); }
 
-  .note { font-size: 12px; margin: 0; }
+  .note { font-size: var(--text-body); margin: 0; }
   .note[data-tone='warning'] { color: var(--warning, var(--ink)); }
 
-  .summary { font-size: 12px; margin: 0 0 4px; }
+  .summary { font-size: var(--text-body); margin: 0 0 4px; }
 
   .row.now {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    font-size: 12px;
+    font-size: var(--text-body);
     padding: 6px 8px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
@@ -386,7 +386,7 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
-    font-size: 11px;
+    font-size: var(--text-label);
     padding: 5px 8px;
     border-radius: var(--radius);
     border: 1px dashed var(--rule);
@@ -404,7 +404,7 @@
   .durations { display: inline-flex; gap: 3px; margin-left: auto; }
 
   .mini {
-    font-size: 10px;
+    font-size: var(--text-micro);
     padding: 1px 6px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
@@ -420,12 +420,12 @@
 
   .scroll { overflow-x: auto; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: var(--text-body); }
 
   th {
     text-align: left;
     font-weight: 500;
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--ink-muted);
@@ -440,7 +440,7 @@
   .num { font-variant-numeric: tabular-nums; }
 
   .tag {
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     padding: 1px 6px;

@@ -641,7 +641,7 @@
     background: none;
     color: var(--ink-2);
     font: inherit;
-    font-size: 11px;
+    font-size: var(--text-label);
     cursor: pointer;
   }
 
@@ -665,7 +665,7 @@
   }
 
   .key {
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.06em;
     color: var(--ink-muted);
     text-transform: uppercase;
@@ -705,7 +705,7 @@
     background: none;
     color: var(--ink-muted);
     font: inherit;
-    font-size: 11px;
+    font-size: var(--text-label);
     cursor: pointer;
   }
 
@@ -765,7 +765,7 @@
        legend under it; a bold subheading would compete with both. A hairline
        divides without adding a third level of emphasis. */
     border-bottom: 1px solid var(--rule);
-    font-size: 11px;
+    font-size: var(--text-label);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -785,7 +785,7 @@
   .division-head .note {
     margin-left: auto;
     font-weight: 400;
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.02em;
     text-transform: none;
   }
@@ -806,7 +806,7 @@
   .owner {
     display: block;
     padding-left: 2px;
-    font-size: 9px;
+    font-size: var(--text-nano);
     letter-spacing: 0.04em;
     color: var(--ink-muted);
   }
@@ -814,7 +814,7 @@
   .empty,
   .error {
     margin: 8px 0 4px;
-    font-size: 12px;
+    font-size: var(--text-body);
   }
 
   .error {

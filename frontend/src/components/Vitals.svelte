@@ -230,7 +230,7 @@
     flex-wrap: wrap;
     gap: 2px 22px;
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-body);
   }
   .v {
     display: flex;
@@ -238,7 +238,7 @@
     gap: 6px;
   }
   dt {
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--ink-muted);
@@ -248,7 +248,7 @@
     color: var(--ink);
   }
   .state {
-    font-size: 10px;
+    font-size: var(--text-micro);
     color: var(--ink-muted);
     margin-left: 2px;
   }

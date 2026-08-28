@@ -332,20 +332,20 @@
   }
 
   .stat .k {
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink-muted);
   }
 
   .stat .v {
-    font-size: 13px;
+    font-size: var(--text-body);
     font-weight: 600;
     color: var(--ink);
   }
 
   .stat .who {
-    font-size: 10px;
+    font-size: var(--text-micro);
     color: var(--ink-muted);
   }
 
@@ -362,7 +362,7 @@
     /* A rule rather than a heavier weight — the card already has a title and
        two headline stats above this. */
     border-bottom: 1px solid var(--rule);
-    font-size: 11px;
+    font-size: var(--text-label);
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -378,7 +378,7 @@
   .head-row .note {
     margin-left: auto;
     font-weight: 400;
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.02em;
     text-transform: none;
   }
@@ -395,6 +395,6 @@
 
   .empty {
     margin: 8px 0 4px;
-    font-size: 12px;
+    font-size: var(--text-body);
   }
 </style>

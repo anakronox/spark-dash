@@ -498,7 +498,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
-    font-size: 11px;
+    font-size: var(--text-label);
     color: var(--ink-2);
   }
 
@@ -549,7 +549,7 @@
 
 
   .clear {
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.04em;
     padding: 2px 7px;
     border-radius: var(--radius);
@@ -582,7 +582,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: var(--text-label);
     padding: 3px 9px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
@@ -653,7 +653,7 @@
 
 
   .empty {
-    font-size: 11px;
+    font-size: var(--text-label);
     /* Holds the chart's height so toggling a metric with no data doesn't make
        the whole stack jump. */
     height: 140px;
@@ -668,7 +668,7 @@
   }
 
   .events {
-    font-size: 11px;
+    font-size: var(--text-label);
     padding: 3px 9px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
@@ -693,7 +693,7 @@
   }
 
   .range {
-    font-size: 11px;
+    font-size: var(--text-label);
     padding: 3px 9px;
     color: var(--ink-muted);
     border-right: 1px solid var(--rule);
@@ -713,7 +713,7 @@
   }
 
   .error {
-    font-size: 12px;
+    font-size: var(--text-body);
     color: var(--warning);
     margin: 0;
   }

@@ -806,7 +806,7 @@
   }
 
   .close {
-    font-size: 20px;
+    font-size: var(--text-glyph);
     line-height: 1;
     padding: 2px 8px;
     border-radius: var(--radius);
@@ -816,12 +816,12 @@
 
   .stack { display: flex; flex-direction: column; gap: 8px; }
 
-  .note { font-size: 11px; margin: 0; }
+  .note { font-size: var(--text-label); margin: 0; }
 
   .choices { display: flex; gap: 4px; flex-wrap: wrap; }
 
   .choice {
-    font-size: 11px;
+    font-size: var(--text-label);
     padding: 4px 10px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
@@ -846,7 +846,7 @@
     display: flex;
     align-items: baseline;
     gap: 8px;
-    font-size: 12px;
+    font-size: var(--text-body);
     padding: 5px 8px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
@@ -863,7 +863,7 @@
     border: 1px solid var(--rule);
   }
 
-  .node-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+  .node-head { display: flex; align-items: baseline; gap: 8px; font-size: var(--text-body); }
 
   .ifaces label.iface {
     display: flex;
@@ -874,12 +874,12 @@
 
   .ifaces .hint {
     margin: 4px 0 0;
-    font-size: 11px;
+    font-size: var(--text-label);
     line-height: 1.4;
   }
 
   .tag {
-    font-size: 9px;
+    font-size: var(--text-nano);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     padding: 1px 5px;
@@ -890,7 +890,7 @@
 
 
   .note[data-tone='warning'] { color: var(--warning); }
-  code { font-size: 10px; }
+  code { font-size: var(--text-micro); }
 
   .tag.warn { color: var(--warning); border-color: var(--warning); }
 
@@ -900,13 +900,13 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
-    font-size: 10px;
+    font-size: var(--text-micro);
     color: var(--ink-muted);
   }
 
   .in {
     font: inherit;
-    font-size: 11px;
+    font-size: var(--text-label);
     color: var(--ink);
     background: var(--page);
     border: 1px solid var(--rule);
@@ -926,7 +926,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 10px;
+    font-size: var(--text-micro);
     color: var(--ink-muted);
     flex-direction: row;
   }
@@ -943,7 +943,7 @@
   .row.off .name { color: var(--ink-muted); }
 
   .mini {
-    font-size: 10px;
+    font-size: var(--text-micro);
     padding: 1px 6px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
@@ -988,7 +988,7 @@
     margin: 6px 0 2px;
     padding: 6px 8px;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 11px;
+    font-size: var(--text-label);
     line-height: 1.45;
     color: var(--ink-2);
     background: var(--panel);
@@ -1002,7 +1002,7 @@
      structure rather than content — the rows are what the reader is scanning. */
   .group {
     margin: 8px 0 3px;
-    font-size: 9px;
+    font-size: var(--text-nano);
   }
 
   .group:first-of-type {

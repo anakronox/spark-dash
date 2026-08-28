@@ -204,7 +204,7 @@
   }
 
   .count {
-    font-size: 11px;
+    font-size: var(--text-label);
   }
 
   .cold-count {
@@ -219,7 +219,7 @@
   }
 
   .window {
-    font-size: 11px;
+    font-size: var(--text-label);
     padding: 3px 9px;
     color: var(--ink-muted);
     border-right: 1px solid var(--rule);
@@ -256,7 +256,7 @@
     align-items: baseline;
     gap: 10px;
     padding: 5px 0;
-    font-size: 12px;
+    font-size: var(--text-body);
     border-bottom: 1px solid color-mix(in srgb, var(--rule) 45%, transparent);
   }
 
@@ -266,7 +266,7 @@
 
   .time {
     color: var(--ink-muted);
-    font-size: 11px;
+    font-size: var(--text-label);
   }
 
   /* A rail down the left edge, so the list reads as a sequence rather than a
@@ -303,7 +303,7 @@
   }
 
   .badge {
-    font-size: 10px;
+    font-size: var(--text-micro);
     color: var(--series-2);
     border: 1px solid color-mix(in srgb, var(--series-2) 40%, transparent);
     border-radius: var(--radius);
@@ -311,13 +311,13 @@
   }
 
   .where {
-    font-size: 11px;
+    font-size: var(--text-label);
     white-space: nowrap;
   }
 
   .empty {
     margin: 0;
-    font-size: 12px;
+    font-size: var(--text-body);
     color: var(--ink-2);
   }
 
@@ -327,7 +327,7 @@
     }
     .where {
       grid-column: 3;
-      font-size: 10px;
+      font-size: var(--text-micro);
     }
   }
 </style>

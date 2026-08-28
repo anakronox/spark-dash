@@ -542,7 +542,7 @@
     align-items: baseline;
     gap: 6px;
     padding: 0 0 2px 2px;
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--ink-muted);
@@ -563,7 +563,7 @@
   }
 
   .rel {
-    font-size: 9px;
+    font-size: var(--text-nano);
     letter-spacing: 0.04em;
     text-transform: none;
   }
@@ -588,7 +588,7 @@
     border: 1px solid var(--rule);
     border-radius: var(--radius);
     padding: 5px 7px;
-    font-size: 11px;
+    font-size: var(--text-label);
     white-space: nowrap;
     box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
   }
@@ -599,7 +599,7 @@
 
   .tip .when {
     color: var(--ink-muted);
-    font-size: 10px;
+    font-size: var(--text-micro);
     margin-bottom: 3px;
   }
 
@@ -639,7 +639,7 @@
   /* Named, and coloured to match the rule it explains. */
   .tip .note {
     color: var(--ink-2);
-    font-size: 10px;
+    font-size: var(--text-micro);
     max-width: 230px;
     white-space: normal;
     margin-top: 2px;

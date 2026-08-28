@@ -109,25 +109,25 @@
   }
 
   .headline strong {
-    font-size: 22px;
+    font-size: var(--text-headline);
     font-weight: 700;
     letter-spacing: -0.02em;
   }
 
   .unit {
-    font-size: 11px;
+    font-size: var(--text-label);
     color: var(--ink-2);
   }
 
   .of {
-    font-size: 11px;
+    font-size: var(--text-label);
   }
 
   .legend {
     display: flex;
     flex-wrap: wrap;
     gap: 4px 14px;
-    font-size: 11px;
+    font-size: var(--text-label);
   }
 
   .item {

@@ -169,7 +169,7 @@
   }
 
   .badge {
-    font-size: 9px;
+    font-size: var(--text-nano);
     line-height: 1;
   }
 
@@ -194,7 +194,7 @@
   .group {
     margin: 6px 0 3px;
     padding: 0 4px;
-    font-size: 9px;
+    font-size: var(--text-nano);
   }
 
   .group:first-child {
@@ -207,7 +207,7 @@
     gap: 7px;
     padding: 3px 4px;
     border-radius: var(--radius);
-    font-size: 11px;
+    font-size: var(--text-label);
     cursor: pointer;
     white-space: nowrap;
   }
@@ -230,7 +230,7 @@
   }
 
   .note {
-    font-size: 9px;
+    font-size: var(--text-nano);
     letter-spacing: 0.04em;
   }
 

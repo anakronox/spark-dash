@@ -38,6 +38,9 @@
          {view.sortKey === id ? 'text-ink' : ''}"
   onclick={() => view.toggle(id)}
 >
-  {label}<span class="text-[8px]" aria-hidden="true"
+  {label}<!-- Deliberately below the type scale: this is a glyph, not text. It is
+       aria-hidden and sized to sit beside a label rather than be read, so a
+       token would imply it belongs to a scale it is not part of. -->
+  <span class="text-[8px]" aria-hidden="true"
     >{view.sortKey === id ? (view.dir === 'asc' ? '▲' : '▼') : ''}</span>
 </button>

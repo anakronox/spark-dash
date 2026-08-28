@@ -276,7 +276,7 @@
   }
 
   .node.dense h2 {
-    font-size: 15px;
+    font-size: var(--text-title-sm);
   }
 
   .node.down {
@@ -295,7 +295,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 19px;
+    font-size: var(--text-title);
     font-weight: 700;
     letter-spacing: -0.02em;
   }
@@ -312,7 +312,7 @@
     display: flex;
     align-items: baseline;
     gap: 12px;
-    font-size: 11px;
+    font-size: var(--text-label);
   }
 
   /* Warning ink, not critical: this is "look at this node before the next
@@ -342,7 +342,7 @@
   }
 
   .straggler {
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.04em;
     padding: 1px 6px;
     border: 1px solid var(--warning);
@@ -357,7 +357,7 @@
   }
 
   .offline {
-    font-size: 12px;
+    font-size: var(--text-body);
     color: var(--ink-2);
     display: flex;
     flex-wrap: wrap;
@@ -365,7 +365,7 @@
   }
 
   .errors {
-    font-size: 11px;
+    font-size: var(--text-label);
     color: var(--warning);
   }
 </style>

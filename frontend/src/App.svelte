@@ -324,7 +324,7 @@
     'flex flex-wrap items-baseline justify-between gap-x-4 gap-y-[10px] ' +
     'pb-1 border-b border-rule';
   const BRAND = 'flex items-baseline gap-[10px]';
-  const H1 = 'text-[15px] font-bold tracking-[0.02em]';
+  const H1 = 'text-title-sm font-bold tracking-[0.02em]';
   const RIGHT = 'flex items-center gap-[14px]';
 
   const MUTED = 'text-ink-muted';
@@ -386,7 +386,7 @@
   /* One figure carries the hierarchy: throughput is the only quantity here
      that legitimately sums across the cluster. */
   const FIGURE = 'flex flex-col gap-px';
-  const VALUE = 'text-[30px] font-bold tracking-[-0.03em] leading-[1.05] tabular-nums';
+  const VALUE = 'text-hero font-bold tracking-[-0.03em] leading-[1.05] tabular-nums';
   const CAPTION = 'text-micro tracking-[0.12em] uppercase text-ink-muted';
 
   const CLUSTER_HEAD =
@@ -1064,7 +1064,7 @@
     inset: 0;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: var(--text-micro);
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--ink-muted);

@@ -61,6 +61,27 @@
   --text-micro: 10px;
   --text-nano: 9px;
 
+  /* THE DISPLAY SCALE, added 2026-08-28 to finish AB1. The four above cover the
+   * interface; these are the figures and headings it is built around, and they
+   * were the "one-offs" AB1 asked to adjudicate. They are not drift — each is
+   * deliberate, and 15px is used twice — so they get names rather than being
+   * folded into the interface scale, which would flatten exactly the hierarchy
+   * they exist to create.
+   *
+   *   hero      the tokens/sec headline, the largest thing on the page
+   *   headline  the free-memory figure on a node card
+   *   title     a node's name
+   *   title-sm  that name when the card is dense, and section headings
+   */
+  --text-hero: 30px;
+  --text-headline: 22px;
+  --text-title: 19px;
+  --text-title-sm: 15px;
+
+  /* A control GLYPH, not text: the fly-out close buttons, sized for a pointer
+   * target rather than for reading. Two components, one role. */
+  --text-glyph: 20px;
+
   --radius-sm: var(--radius);
 }
 
@@ -563,7 +584,7 @@
   /* Shared primitives ------------------------------------------------------ */
 
   .eyebrow {
-    font-size: 10px;
+    font-size: var(--text-micro);
     font-weight: 500;
     letter-spacing: 0.14em;
     text-transform: uppercase;
