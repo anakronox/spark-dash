@@ -117,6 +117,15 @@ def test_memory_alerting_asks_whether_the_use_is_explained():
         "`or 0` makes missing attribution look like unexplained memory, which "
         "inflated the observed peak from 25.8% to 39.4%"
     )
+    assert "runtime=~" not in expr, (
+        "the subtraction is filtered by runtime again. EXPLAINED MEANS "
+        "ATTRIBUTED, not 'is a model': crediting only LLM runtimes made every "
+        "other named GPU workload count as unexplained. sparky runs ComfyUI, "
+        "and at 33 GiB resident the rule read 49.5% and fired 93 times in 7 "
+        "days about memory the dashboard names two cards down. Corrected "
+        "2026-08-28; Z3's 40% threshold needed no change, which is how we know "
+        "it was the expression that had drifted."
+    )
 
 
 def test_harm_alerts_survive_alongside_it():

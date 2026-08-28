@@ -467,12 +467,31 @@ groups:
       # High/Critical read PSI, and SwapThrashing reads swap I/O. This rule is
       # the remaining question -- is the memory explained -- and a node full of
       # weights is not a fault.
+      #
+      # EXPLAINED MEANS ATTRIBUTED, NOT "IS A MODEL". Corrected 2026-08-28.
+      # This subtracted only LLM runtimes, so every other named GPU workload
+      # counted as unexplained. sparky runs ComfyUI, and with 33 GiB resident
+      # the rule read 49.5% "unexplained" for memory the dashboard names on its
+      # own process table two cards down -- 93 firing samples in 7 days, each a
+      # phone notification about a process nobody had lost track of. The
+      # description already said "something nobody can name"; the expression
+      # just did not mean it.
+      #
+      # Z3's threshold survives the correction untouched, which is the check
+      # that the expression had drifted rather than the number: Z3 set 40% at
+      # ~1.5x an observed peak of 25.8%, and the corrected expression peaks at
+      # 27.3% over 7 days. Same ratio, nothing to recalibrate.
+      #
+      # A non-model workload holding a large share of the pool is a real
+      # question on this hardware, and a DIFFERENT one. If it is wanted it
+      # belongs in its own rule with its own name; folding it in here is what
+      # made this one cry wolf.
       - alert: UnexplainedMemoryUse
         expr: >-
           100 * (
             sum by (node) (sparkdash_memory_used_bytes)
             - (
-              sum by (node) (sparkdash_gpu_process_memory_bytes{runtime=~"vllm|llama.cpp|sglang|atlas"})
+              sum by (node) (sparkdash_gpu_process_memory_bytes)
               or (0 * sum by (node) (sparkdash_gpu_utilization_percent))
             )
           ) / sum by (node) (sparkdash_memory_total_bytes) > 40
@@ -482,11 +501,13 @@ groups:
         annotations:
           summary: "{{ $labels.node }}: memory not explained by model weights"
           description: >-
-            Over 40% of the unified pool is held by something other than
-            resident model weights. A node full of weights is expected and does
-            not trigger this; a node full of something nobody can name is worth
-            looking at. Check the GPU process table for a runtime holding memory
-            it should have released, and the host for a non-GPU leak. Held for
+            Over 40% of the unified pool is held by something no process
+            accounts for. A node full of weights is expected and does not
+            trigger this, and neither does a named non-model workload like
+            ComfyUI -- both are attributed. What is left is memory the agent
+            can see used and cannot see held by anything. Check the host for a
+            non-GPU leak, and the GPU process table for a runtime that exited
+            without releasing. Held for
             an hour before firing, so an agent restart or a brief attribution
             gap cannot trip it.
 
