@@ -36,6 +36,13 @@ ALERTS_YML = Path(__file__).resolve().parent.parent / "central" / "config" / "al
 #: covering the consequence at critical severity.
 SMOOTHED = {"CpuTemperatureHigh": 600, "GpuTemperatureHigh": 900}
 
+#: Same defect, different conclusion. `GpuThrottled` was RIGHT to stay quiet —
+#: 20 throttle episodes in 7 days, longest 9 minutes, all under load, which is a
+#: 300W part behaving. What was wrong is that it went PENDING 59 times and wrote
+#: "NEVER FIRED" into the alert history each time. Smoothed so transients do not
+#: reach the bar at all; peak over those 7 days was 35% of a 15m window.
+THROTTLE = "GpuThrottled"
+
 
 def rules() -> dict[str, dict]:
     doc = yaml.safe_load(ALERTS_YML.read_text())
@@ -99,3 +106,23 @@ def test_the_criticals_were_deliberately_left_alone(by_name):
             f"{name} was smoothed — see the note: its silence is the hold working, "
             "not the rule failing"
         )
+
+
+def test_the_throttle_alert_asks_about_a_window_not_an_instant(by_name):
+    """`clock_state == THROTTLED` is true for one scrape at a time on a part
+    that throttles in bursts. Under a continuous hold it could never fire, and
+    it polluted the history with pendings on the way to not firing."""
+    expr = " ".join(by_name[THROTTLE]["expr"].split())
+    assert "avg_over_time" in expr, f"{THROTTLE} lost its smoothing window"
+    assert "[15m:" in expr, f"{THROTTLE} lost the 15m window its threshold was sized against"
+    assert "> 0.5" in expr, (
+        "the threshold moved. 0.5 was chosen because normal operation peaked at "
+        "0.35 over 7 days — below it this fires on ordinary load, above it a "
+        "real fault takes longer to surface."
+    )
+
+
+def test_the_throttle_alert_is_still_critical(by_name):
+    """Sustained throttling is a hardware fault — its own description points at
+    power delivery before heat. Smoothing it must not have demoted it."""
+    assert by_name[THROTTLE]["labels"]["severity"] == "critical"

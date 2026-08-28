@@ -3,17 +3,31 @@
 Phased so that we get a useful dashboard on the single existing node quickly,
 before the other 2 GX10 units even arrive.
 
-**Status as of 2026-08-15.** Phases 1–3 are substantially shipped and running on
-`sparky`. Phase 2 is blocked only on hardware. Checkboxes below were trued up
-against the deployed system, not against memory — items marked *(unverified)*
-are ones that depend on infrastructure outside this repo and were left
-unchecked rather than guessed at.
+**Status as of 2026-08-28.** All three nodes are live — `sparky` standalone plus
+the `danflashes` pair — and the phases below are shipped. Checkboxes are trued
+up against the deployed system rather than against memory.
+
+**Three markers are in use:**
+
+| | meaning |
+|---|---|
+| `[x]` | shipped, or answered |
+| `[ ]` | open — genuinely still to decide or do |
+| `[~]` | **retired**: not done, and deliberately not going to be. The reason is written where the item is, because an item deleted outright comes back as somebody's good idea six months later. |
+
+Swept 2026-08-28: ten open items became three. Most were Phase-1 leftovers
+overtaken by later sections or by the project going public, and two were
+finished without being ticked. What remains open is open on purpose — `V2b` and
+`X4` are deferred decisions with their triggers recorded, and `AB2` is a
+write-up rather than a build.
 
 ## Phase 0 — Project setup
 
 - [x] Requirements, architecture, metrics, deployment, and app-design docs.
-- [ ] Mirror phases below as Forgejo issues/milestones for tracking.
-  *(unverified — not visible from the repo.)*
+- [~] Mirror phases below as Forgejo issues/milestones for tracking.
+  **RETIRED 2026-08-28.** This file is the tracker, and the project is public on
+  GitHub now — issues point there. A second copy in Forgejo would be a third
+  place for the same list to drift.
 
 ## Phase 1 — Single-node MVP
 
@@ -96,10 +110,13 @@ only `sparky` exists today, and it is the only scrape target.
 > because the absence of a visible backup job inside the VM otherwise reads as a
 > gap; it isn't one.
 
-- [ ] Confirm dashboard works through the Cloudflare Tunnel + Google OAuth path.
-  *(unverified.)*
-- [ ] (Optional, defense-in-depth) Validate `Cf-Access-Jwt-Assertion` in the
-  backend.
+- [x] Confirm dashboard works through the Cloudflare Tunnel + Google OAuth path.
+  Answered by use: the dashboard has been reached that way daily for weeks.
+- [~] (Optional, defense-in-depth) Validate `Cf-Access-Jwt-Assertion` in the
+  backend. **RETIRED 2026-08-28** — never started, and the threat it addresses
+  (someone reaching the origin directly, bypassing Access) is a network
+  question rather than an application one. Reopen it as a security item if the
+  origin ever becomes reachable off-tunnel.
 - [x] Set real Prometheus retention based on observed disk usage. **Done** —
   raised 30d → 180d from measured ingest, deployed and confirmed live. See
   [Next up / A7](#a--alerting-correctness) for the numbers.
@@ -474,7 +491,7 @@ pieces that already exist:
   enforced it. The tolerance now scales with the step, taking that window from
   34 marks to 14 with nothing repeated — and fixing the alert history view at
   coarse steps, where the same fragmentation was latent.
-- [ ] **E6.** Cluster outlier detection — **taken up as [Y](#y--straggler-detection-in-a-pooled-cluster-was-e6),
+- [x] **E6.** Cluster outlier detection — **taken up as [Y](#y--straggler-detection-in-a-pooled-cluster-was-e6),
   where the premise is corrected.** Written as "same model, three nodes, one
   slower", which is not the shape the cluster took: `danflashes` runs ONE
   distributed model across two nodes, and only the head node reports throughput
@@ -3409,7 +3426,9 @@ intended.
   view; `health` stays GPU, memory, PSI and temperature. The alert and the panel
   carry it, which is the whole point of having both.
 
-- [ ] **W5. Roll it out, then clear the silences.** Operational, not code.
+- [x] **W5. Roll it out, then clear the silences.** Operational, not code.
+  **Done, confirmed 2026-08-28:** all three agents are on the current build and
+  Alertmanager reports zero active silences. Nothing left to clear.
 
   **Order does not matter for correctness** — that is what the `unless` form
   bought — but it does decide when the noise stops:
@@ -5370,8 +5389,15 @@ header comment in `central/compose.yaml`.
 - [x] Historical trend views — token throughput and GPU utilization over time.
 - [x] Router swap event log/timeline — `/api/models/timeline` and the swap
   timeline component.
-- [ ] Optional Grafana pointed at the same Prometheus for ad hoc exploration.
-- [ ] Job-level drill-down (per-request tracing), if useful.
+- [x] Optional Grafana pointed at the same Prometheus for ad hoc exploration.
+  Superseded by [X](#x--grafana-as-a-first-class-consumer), which shipped a
+  starter dashboard and the metric catalogue behind it. Whether Grafana gets a
+  *container here* is X4 and is still open on purpose.
+- [~] Job-level drill-down (per-request tracing), if useful.
+  **RETIRED 2026-08-28.** "If useful" was doing the work in that sentence and
+  three months of use has not made it useful. Per-request tracing is a
+  different product from a node dashboard; the engines' own metrics already
+  answer queue depth and throughput.
 - [x] **`dcgm-exporter` / `dgx-spark-prometheus` — WILL NOT SHIP.** Decided
   2026-08-21, after being deferred through three phases. Closing it as a
   decision is worth more than carrying it as a maybe.

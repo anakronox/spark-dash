@@ -338,8 +338,33 @@ groups:
       # Load-gated at the source: the agent only reports THROTTLED when the GPU
       # is actually working, so this can't fire on an idle node dropping clocks
       # for power management.
+      # SMOOTHED, for the same reason the temperature warnings are -- but with
+      # the opposite conclusion about what should happen. Changed 2026-08-28.
+      #
+      # Measured over 7 days: 20 throttle episodes on sparky, longest 9 minutes,
+      # 43 minutes in total, every one under load because the agent only reports
+      # THROTTLED while the GPU is working. That is a 300W-ceiling part doing its
+      # job, not a fault, and this rule was RIGHT to stay quiet: 59 pending, 0
+      # fired.
+      #
+      # What was wrong is that it went PENDING at all. Each transient wrote a row
+      # into the alert history reading "NEVER FIRED" -- noise in the one place
+      # someone looks to find out what actually happened.
+      #
+      # So it now asks whether the GPU has been throttled for MOST of the last
+      # quarter hour rather than whether it is throttled this instant. Peak over
+      # those 7 days was 35% of a 15m window, so normal operation does not reach
+      # the bar and stops producing pendings.
+      #
+      # It can still fire, and SOONER than the old form could: a genuine power
+      # fault throttles continuously, crossing 0.5 after ~7.6 minutes and firing
+      # ~5 minutes later. The old rule needed 5 minutes UNBROKEN, and the signal
+      # flickers, which is why it never got there.
       - alert: GpuThrottled
-        expr: sparkdash_gpu_clock_state{state="THROTTLED"} == 1
+        expr: >-
+          avg_over_time(
+            (sparkdash_gpu_clock_state{state="THROTTLED"})[15m:15s]
+          ) > 0.5
         for: 5m
         labels:
           severity: critical
