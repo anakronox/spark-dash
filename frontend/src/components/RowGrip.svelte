@@ -122,9 +122,16 @@
   .grip::after {
     content: '';
     position: absolute;
-    /* Centred in the grab area and inset from the ends, so it reads as a
-       handle rather than as a full-width divider. */
-    inset: 4px 40% auto;
+    /* A FIXED 48px centred, not a percentage. At 40% inset either side the
+       cue was 20% of the card — around 290px on a full-width one — which
+       reads as a rule between sections rather than as something to grab, and
+       it changed size with the card, so the same control looked like two
+       different ones on a half and a full. ColumnGrip's cue is a fixed 2px for
+       the same reason. */
+    left: 50%;
+    top: 4px;
+    width: 48px;
+    margin-left: -24px;
     height: 2px;
     border-radius: 1px;
     background: var(--rule);
@@ -158,7 +165,7 @@
 
     .grip::after {
       opacity: 0.5;
-      inset: 7px 35% auto;
+      top: 7px;
     }
   }
 </style>
