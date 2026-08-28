@@ -5081,7 +5081,10 @@ than a hedge.
   at."* Packed mode keeps zones as elements too, so the gesture that arranges
   the page works identically in both regimes.
 
-- [ ] **AE2. Which is the default, and where the toggle lives.** Settings
+- [ ] **AE2. Which is the default, and where the toggle lives.** **Decided
+  2026-08-29: aligned stays the default and packed is opt-in** — it is what
+  exists, and a layout regime is not something to change under a reader who did
+  not ask. Height ships alongside rather than after. Settings
   already has `Full / Compact` for node cards; this is the same shape of choice
   one level up. Naming it for what it buys rather than how it works — *Aligned*
   vs *Packed* — is what makes it choosable without reading this file.

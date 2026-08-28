@@ -23,6 +23,7 @@ const STORAGE_KEY = 'spark-dash.section-order.v1';
 const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
+const BAND_MODE_KEY = 'spark-dash.band-mode.v1';
 const ROWS_KEY = 'spark-dash.section-rows.v1';
 const COLUMN_KEY = 'spark-dash.section-column.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
@@ -54,6 +55,24 @@ const NODE_ORDER_KEY = 'spark-dash.node-order.v1';
  * loses the time resolution that makes it worth having.
  */
 export type Zone = 'full' | 'left' | 'right';
+
+/** How the two columns of a band relate to each other.
+ *
+ * `aligned` is what the band model was built to do: explicit row tracks and
+ * `subgrid`, so left[n] and right[n] share a row AND a height. Rows line up
+ * across the band, and a short card beside a tall one stretches — the
+ * row-height stranding `96a00f4` accepted deliberately.
+ *
+ * `packed` is the other side of that trade: the columns fill independently, so
+ * a tall card on the left can sit beside two short ones on the right and
+ * nothing is stranded. What it gives up is exactly what the other buys —
+ * "two lists side by side that happened to finish level, rather than a grid of
+ * rows".
+ *
+ * Neither is correct in general; they suit different content. Aligned is the
+ * DEFAULT because it is what exists, and a layout regime should not change
+ * under a reader who did not ask for it. */
+export type BandMode = 'aligned' | 'packed';
 
 export const ZONES: Zone[] = ['full', 'left', 'right'];
 
@@ -198,6 +217,14 @@ function readPlacement(available: string[] = DEFAULT_ORDER): Record<string, Zone
     return out;
   } catch {
     return {};
+  }
+}
+
+function readBandMode(): BandMode {
+  try {
+    return localStorage.getItem(BAND_MODE_KEY) === 'packed' ? 'packed' : 'aligned';
+  } catch {
+    return 'aligned';
   }
 }
 
@@ -419,6 +446,11 @@ export class Layout {
    * Default off; the person who needs it turns it on and it stays on. */
   compactCards = $state<boolean>(readCompact());
 
+  /* Aligned or packed — see BandMode. Only has an effect above the 1100px
+     breakpoint, because below it the zones stack full-width regardless and
+     there are no columns to relate. */
+  bandMode = $state<BandMode>(readBandMode());
+
   /* Which zone each section sits in. Absent means full width, so a section
      added in a later release spans the page rather than silently appearing in
      a column the reader may have scrolled past. */
@@ -531,6 +563,15 @@ export class Layout {
       ? this.collapsed.filter((s) => s !== id)
       : [...this.collapsed, id];
     this.#saveCollapsed();
+  }
+
+  setBandMode(mode: BandMode) {
+    this.bandMode = mode;
+    try {
+      localStorage.setItem(BAND_MODE_KEY, mode);
+    } catch {
+      // Still applied for this session.
+    }
   }
 
   setCompactCards(on: boolean) {

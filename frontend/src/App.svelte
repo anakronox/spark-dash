@@ -691,7 +691,7 @@
         {#if band.kind === 'full'}
           {@render zone('full', i, [band.id], null)}
         {:else}
-          <div class="cols" style:--band-rows={band.rows}>
+          <div class="cols" class:packed={layout.bandMode === 'packed'} style:--band-rows={band.rows}>
             {@render zone('left', i, band.left, band.last)}
             {@render zone('right', i, band.right, band.last)}
           </div>
@@ -1029,6 +1029,31 @@
          the left starts beside the middle of the first card on the right.
          `--band-rows` is the longer column's length, set per band. */
       grid-template-rows: repeat(var(--band-rows, 1), auto);
+    }
+
+    /* PACKED MODE IS THE ABSENCE OF THE TWO DECLARATIONS ABOVE, which is why it
+       costs so little: the columns become independent stacks again, so a tall
+       card on the left can sit beside two short ones on the right and nothing
+       is stranded.
+
+       It gives up exactly what aligned mode buys — rows that line up across the
+       band. `96a00f4` chose alignment knowing that; this offers the same trade
+       to the reader instead of deciding it for them.
+
+       `--band-rows` goes unused here rather than being removed. The band still
+       computes it, so switching back needs nothing rebuilt.
+
+       `align-content: start` is the line that matters. Without it the zone
+       still stretches to the band's height and the last card grows to fill it,
+       which would look like alignment while being something else. */
+    .cols.packed {
+      grid-template-rows: none;
+    }
+
+    .cols.packed > .zone {
+      grid-row: auto;
+      grid-template-rows: none;
+      align-content: start;
     }
 
     /* Each column spans every row of the band and takes its ROW TRACKS from
