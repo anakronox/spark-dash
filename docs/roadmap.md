@@ -4404,21 +4404,22 @@ the tables (phase 3), not during.
   13px — and `tests/test_palettes.py` already shows the shape of the guard that
   could.
 
-- [ ] **AB2. The migration, taken anyway — and what it has actually cost.**
+- [x] **AB2. The migration, taken anyway — and what it has actually cost.** — closed 2026-08-28
 
   AB1 above concluded the migration was not worth it and the type scale was
   the cheap 80%. That call was reversed deliberately: the type scale went in
   as part of the spike, the spike tested well in a live container, and the
   decision was to finish rather than keep two spellings indefinitely.
 
-  **All five phases are done on `spike/tailwind`**, verified against production
-  on `:8080` rather than only against the spike's own history.
+  **All five phases are on `main`** (`baee8b9`), verified against production on
+  `:8080` rather than only against the spike's own history. `spike/tailwind` has
+  no commits that `main` does not; it can be deleted whenever someone is tidying.
 
   Phase 4 (App.svelte) is the one that did NOT convert wholesale, and the rule
   it established is the single judgement call in this migration: **an element
   whose class is a selector hook for an ancestor-state rule keeps its styling
   in CSS.** `.node-grid.compact .cluster .nodes` is three levels of context
-  before one declaration, at four custom breakpoints (600/900/1100/1160/2320,
+  before one declaration, at five custom breakpoints (600/900/1100/1160/2320,
   none of them Tailwind's, each the width where a specific thing stops being
   readable). Utilities can express it — `[.node-grid.compact_&]:min-[2320px]:grid-cols-8`
   is valid — but it inverts the reading order and repeats the context once per
