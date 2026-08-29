@@ -120,16 +120,19 @@
   /* BODY TEXT IS TWO TIERS, and the second was too quiet. Measured on the
      live page: of ~560 text elements inside the cards, 279 were --ink and 269
      were --ink-muted -- the muted tier is half the body, not an accent -- and
-     it sat at 6.0:1 on the panel. Lifted 2026-08-29 to ~8:1 on every dark
-     theme (ink-2 to ~12:1), keeping each theme's tint; the light themes were
-     left alone, since near-black on paper has nowhere to go. Hierarchy still
-     holds: ink 17.4, ink-2 11.8, muted 7.9. */
-  --ink-2: #d6d5ca;
+     it sat at 6.0:1 on the panel. Lifted 2026-08-29 to ~8:1, and the same
+     day again, because 8:1 was still read as muted on a second monitor: every
+     theme now holds the muted tier at 10.5:1 (dark) or 8:1 (light) and ink-2
+     at ~14.5:1 / 12:1, each colour moved toward its theme's own ink so the
+     tint survives. The light themes came along this time -- their muted tier
+     was at 4.6 and 5.4, the least headroom on the page. Hierarchy still
+     holds: ink 17.4, ink-2 14.6, muted 10.5. */
+  --ink-2: #ebebe5;
   /* 4.85 -> 6.02 against --panel. It technically cleared 4.5, but it carries
      `.dim`, every table header and most labels on the page, all at 10-12px and
      some letterspaced uppercase — sizes where the minimum is not enough
      headroom. Same fix, same reason, as the cyberpunk theme. */
-  --ink-muted: #b0afa7;
+  --ink-muted: #cac9c4;
 
   /* Categorical slots, validated for CVD separation in both modes. Used for
      node identity and for the memory band's workload classes. */
@@ -245,8 +248,8 @@
   --track: #1d1638;
 
   --ink: #f6f1ff;
-  --ink-2: #dcd0f8;
-  --ink-muted: #b3a3da;
+  --ink-2: #e7defb;
+  --ink-muted: #c8bce6;
 
   --series-1: #2ee6ff;  /* h 209 — LLM runtimes */
   --series-2: #ff47ff;  /* h 328 — other GPU workloads */
@@ -294,8 +297,8 @@
   --track: #111a11;
 
   --ink: #eaf5ea;
-  --ink-2: #cbdccb;
-  --ink-muted: #a3bba3;
+  --ink-2: #d4e4d4;
+  --ink-muted: #afc5af;
 
   /* Node/runtime hues are the dark theme's, unchanged: they are validated as
      TEXT (the process table prints runtime names in them) and re-checked
@@ -428,8 +431,8 @@
   --track: #1a222c;
 
   --ink: #e4eaf2;
-  --ink-2: #c8d2de;
-  --ink-muted: #9eabbb;
+  --ink-2: #e2e9f1;
+  --ink-muted: #bec8d4;
 
   --series-1: #3987e5;  /* h 255 — LLM runtimes */
   --series-2: #ff5cc2;  /* h 346 — other GPU workloads */
@@ -468,8 +471,8 @@
   --track: #ebe6da;
 
   --ink: #241f18;
-  --ink-2: #4a4238;
-  --ink-muted: #6f6557;
+  --ink-2: #393229;
+  --ink-muted: #544c41;
 
   --series-1: #1f6fd0;  /* h 256 — LLM runtimes */
   --series-2: #701452;  /* h 345 — other GPU workloads */
@@ -503,11 +506,11 @@
   --track: #eceae3;
 
   --ink: #0b0b0b;
-  --ink-2: #52514e;
+  --ink-2: #353433;
   /* WAS #898781 — the same value as the dark theme, which is the bug. A grey
      tuned to sit on #1a1a19 reads at 3.50 on #fcfcfb, well under 4.5, and it
      carries most of the small text on the page. 3.50 -> 4.61. */
-  --ink-muted: #75736e;
+  --ink-muted: #504e4b;
 
   /* Darkened for TEXT contrast, not for the chart. The process table prints
      runtime names in these, so they answer to 4.5:

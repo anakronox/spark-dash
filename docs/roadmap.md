@@ -5750,6 +5750,24 @@ nowhere to go, and High contrast was already at 10.6. Hierarchy holds (dark:
 ink 17.4 / ink-2 11.8 / muted 7.9), and `test_palettes` still gates every
 text token at AA.
 
+**Second lift, same day.** Brian: still not enough. Every theme moved again,
+each token toward its own theme's ink so the tint survives, to a flat target:
+muted 10.5:1 and ink-2 ~14.5:1 on the dark themes, 8:1 and 12:1 on the light
+ones — which came along this time, since their muted tier sat at 4.6 (Light)
+and 5.4 (Paper), the least headroom on the page.
+
+| theme | ink-2 | muted |
+|---|---|---|
+| dark | 11.8 → 14.6 | 7.9 → 10.5 |
+| cyberpunk | 12.9 → 14.5 | 8.2 → 10.5 |
+| forest | 13.5 → 14.6 | 9.4 → 10.5 |
+| slate | 11.7 → 14.6 | 7.6 → 10.5 |
+| paper | 9.4 → 12.0 | 5.4 → 8.0 |
+| light | 7.7 → 12.1 | 4.6 → 8.1 |
+
+High contrast untouched (16.8 / 10.6). Hierarchy on dark: ink 17.4 / ink-2
+14.6 / muted 10.5 — three steps still, each visibly a step.
+
 ### AF — Card instances: more than one copy of a card on the page
 
 **Built 2026-08-29, as designed.** `kindOf` / `isCopy` / `instanceKey` in the
