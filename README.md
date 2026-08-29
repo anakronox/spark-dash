@@ -9,16 +9,9 @@ Supports single node and clusters.
 
 ![The spark-dash dashboard: a pooled two-node cluster and a standalone node, GPU/CPU/memory history, the GPU process table, and per-model throughput and state](Screenshot.jpg)
 
-Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Cards
-are draggable and can be paired side by side, and every card resizes from its
-bottom-right corner: down for height, in increments of one table row and past
-its own content if you want two columns to end level, sideways to flip between
-half and full width. A chart card dragged below its plot floor pages its charts
-rather than refusing — or, with Scroll chosen in Settings, every card keeps all
-its rows and scrolls inside its box. Any card can be added again from the `+ element`
-button, so two Network Activity cards can show ports and charts side by side. Network Activity divides interfaces into RoCE, Management,
-WiFi and Other from the driver, bus and wireless facts the agent reports. The whole page sits on that one vertical module; every
-threshold shown is measured for this hardware rather than guessed.
+Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Every
+threshold shown is measured for this hardware rather than guessed, and the page
+itself is yours to arrange — see [the page is yours](#the-page-is-yours) below.
 
 ## What it monitors
 
@@ -92,6 +85,34 @@ are some.
 Past a dozen links the card switches to a table — one row per link with a
 sparkline, sorted so anything down, faulted or unusually busy is at the top, and
 a column naming which of those put it there. Click a row for its full chart.
+
+## The page is yours
+
+The layout is not fixed. Each card is a thing you can move, size, copy and put
+away, and everything you do is remembered in the browser — nothing is
+configured on the server.
+
+- **Move it.** Drag a card by the grip in its left gutter to reorder, drop it
+  beside another to pair the two side by side, or use the arrow keys.
+- **Size it.** Every card resizes from its bottom-right corner. Down changes
+  height in increments of one table row, so cards stay on one vertical grid,
+  and a card can be dragged *past* its content to make two columns end level.
+  Sideways flips it between half and full width.
+- **Too short for its content?** It pages — tables by row, chart cards by row
+  of charts once the plots hit their floor. Or choose **Scroll** in Settings
+  and every card keeps all its rows and scrolls inside its box, with the card
+  header and the column headers staying put.
+- **More than one.** `+ element` adds another copy of any card. Two Network
+  Activity cards can show the RDMA ports and the charts at once; two System
+  Activity cards can watch different metrics. A copy wears its number on its
+  top edge, and closing it from the gutter removes it.
+- **Each card has its own menus.** System Activity picks its metrics from a
+  fly-out; Network Activity picks which interface groups to show (RoCE,
+  Management, WiFi, Other) and switches between charts, a table and the RDMA
+  ports; every table chooses its columns, and column edges drag.
+- **Seven themes**, from a dark instrument panel to paper and high contrast,
+  and a compact form for the node cards when you have many. **Reset layout**
+  at the foot of the page puts everything back.
 
 ## Quickstart
 
