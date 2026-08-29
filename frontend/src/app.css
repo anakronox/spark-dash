@@ -618,6 +618,64 @@
 
   /* Shared primitives ------------------------------------------------------ */
 
+  /* A SEGMENTED CONTROL: one border around the set, no borders between the
+     options, and the chosen option FILLED, the way Settings' own selectors
+     show their choice. Both chart cards used to
+     draw each option as its own outlined button, so the group read as a row
+     of separate buttons and the chosen one differed from its neighbours only
+     by text colour, which on the muted tier was not much of a difference.
+     One primitive for both cards, so the view switch, the time range and
+     the toggles cannot drift apart again. */
+  .segmented {
+    display: inline-flex;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .segmented > button {
+    padding: 3px 9px;
+    border: 0;
+    background: none;
+    color: var(--ink-muted);
+    font: inherit;
+    font-size: var(--text-label);
+    cursor: pointer;
+  }
+
+  .segmented > button:hover {
+    color: var(--ink);
+  }
+
+  /* The chosen option is FILLED the way Settings' choices are -- the Elements
+     and Node elements selectors: the rule colour under ink text. One
+     vocabulary for "this one is selected" across the page and the panel. */
+  .segmented > button.active {
+    background: var(--rule);
+    color: var(--ink);
+  }
+
+  /* A standalone on/off, styled to match: outlined when off, filled when on. */
+  .toggle {
+    padding: 3px 9px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: none;
+    color: var(--ink-muted);
+    font: inherit;
+    font-size: var(--text-label);
+    cursor: pointer;
+  }
+
+  .toggle:hover {
+    color: var(--ink);
+  }
+
+  .toggle.on {
+    background: var(--rule);
+    color: var(--ink);
+  }
+
   .eyebrow {
     font-size: var(--text-micro);
     font-weight: 500;

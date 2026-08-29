@@ -611,7 +611,7 @@
     <div class="controls">
       <!-- Two words rather than an icon pair: this switches what the card IS,
            and a glyph would have to be learned. -->
-      <div class="modes" role="group" aria-label="View">
+      <div class="modes segmented" role="group" aria-label="View">
         {#each MODES as m (m)}
           <button
             class="range"
@@ -631,7 +631,7 @@
            why it is quiet, so there is nothing to hide and nothing to count. -->
       {#if mode === 'charts' && (grid.quiet || includeQuiet)}
         <button
-          class="events"
+          class="events toggle"
           class:on={includeQuiet}
           aria-pressed={includeQuiet}
           title="Interfaces with no traffic at all in this window"
@@ -643,14 +643,14 @@
       <!-- History controls: the ports view is live from the snapshot, and a time
            range or an events layer would be a control that does nothing. -->
       <button
-        class="events"
+        class="events toggle"
         class:on={showEvents}
         aria-pressed={showEvents}
         title="Mark alerts, cold starts and agent deploys on the charts"
         onclick={() => writeFlag(EVENTS_KEY, (showEvents = !showEvents))}
       >events{annotations.length ? ` · ${annotations.length}` : ''}</button>
 
-      <div class="ranges" role="group" aria-label="Time range">
+      <div class="ranges segmented" role="group" aria-label="Time range">
         {#each RANGES as r (r.key)}
           <button
             class="range"
@@ -890,13 +890,10 @@
     gap: 8px;
   }
 
-  .ranges {
-    display: inline-flex;
-    gap: 2px;
-  }
 
-  .range,
-  .events,
+  /* The view switch, the range and the toggles are the shared .segmented and
+     .toggle primitives in app.css; only the legend's "show all" is styled
+     here. */
   .clear {
     padding: 2px 7px;
     border: 1px solid var(--rule);
@@ -908,16 +905,8 @@
     cursor: pointer;
   }
 
-  .range:hover,
-  .events:hover,
   .clear:hover {
     color: var(--ink-2);
-  }
-
-  .range.active,
-  .events.on {
-    color: var(--ink);
-    border-color: var(--ink-muted);
   }
 
   .charts {

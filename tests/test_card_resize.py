@@ -1046,3 +1046,28 @@ def test_settings_calls_them_elements():
     assert '<h3 class="eyebrow dim">Elements</h3>' in src and '<h3 class="eyebrow dim">Node elements</h3>' in src
     assert '>Cards<' not in src and '>Node cards<' not in src
     assert "Unticked stops" not in src
+
+
+def test_the_chart_cards_controls_are_one_segmented_primitive():
+    """The view switch, the range and the toggles on both chart cards used to
+    be per-component rules: each option its own outlined button, the chosen
+    one differing from its neighbours only by text colour. One border around
+    the set now, no borders between options, and the chosen one filled the
+    way Settings' Elements / Node elements selectors are."""
+    css = APP_CSS.read_text()
+    seg = css_block(APP_CSS, ".segmented {")
+    assert "border: 1px solid var(--rule)" in seg and "overflow: hidden" in seg
+    inner = css_block(APP_CSS, ".segmented > button {")
+    assert "border: 0" in inner, "options still carry their own borders"
+    active = css_block(APP_CSS, ".segmented > button.active {")
+    assert "background: var(--rule)" in active and "color: var(--ink)" in active, (
+        "the chosen option is not filled the way Settings' choices are"
+    )
+    settings_active = css_block(SETTINGS, ".choice.active {")
+    assert "background: var(--rule)" in settings_active, "Settings' choices changed; keep the two in step"
+    for path in (TRENDS, NETWORK):
+        c = path.read_text()
+        assert 'class="ranges segmented"' in c, f"{path.name} range group is not the primitive"
+        assert 'class="events toggle"' in c, f"{path.name} events toggle is not the primitive"
+        assert ".range.active" not in c and ".events.on" not in c, f"{path.name} still styles these itself"
+    assert 'class="modes segmented"' in NETWORK.read_text()

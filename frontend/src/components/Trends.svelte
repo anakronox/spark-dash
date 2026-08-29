@@ -457,14 +457,14 @@
            are showing. The count is on the control: an events layer with
            nothing in the window otherwise reads as broken rather than quiet. -->
       <button
-        class="events"
+        class="events toggle"
         class:on={showEvents}
         aria-pressed={showEvents}
         title="Mark alerts, cold starts and agent deploys on the charts"
         onclick={toggleEvents}
       >events{annotations.length ? ` · ${annotations.length}` : ''}</button>
 
-      <div class="ranges" role="group" aria-label="Time range">
+      <div class="ranges segmented" role="group" aria-label="Time range">
         {#each RANGES as r (r.key)}
           <button
             class="range"
@@ -670,50 +670,13 @@
     gap: 10px;
   }
 
-  .events {
-    font-size: var(--text-label);
-    padding: 3px 9px;
-    border-radius: var(--radius);
-    border: 1px solid var(--rule);
-    color: var(--ink-muted);
-    cursor: pointer;
-  }
 
-  .events:hover {
-    color: var(--ink);
-  }
 
-  .events.on {
-    color: var(--ink);
-    background: var(--panel-raised);
-  }
 
-  .ranges {
-    display: flex;
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
 
-  .range {
-    font-size: var(--text-label);
-    padding: 3px 9px;
-    color: var(--ink-muted);
-    border-right: 1px solid var(--rule);
-  }
 
-  .range:last-child {
-    border-right: none;
-  }
 
-  .range:hover {
-    color: var(--ink);
-  }
 
-  .range.active {
-    color: var(--ink);
-    background: var(--panel-raised);
-  }
 
   .error {
     font-size: var(--text-body);
