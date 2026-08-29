@@ -260,34 +260,6 @@ export const SECTIONS: SectionDef[] = [
 
 const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
 
-/** Sections whose body is a list of rows, and can therefore be capped.
- *
- * System Activity is absent because it is a chart: its height is set by the plot, not
- * by a row count, and a "max rows" control on it would be a setting that does
- * nothing.
- */
-export const PAGED_SECTIONS = new Set([
-  'processes',
-  'models',
-  'network',
-  'activity',
-  /* Network Activity joined this list when it grew an overview table. It is
-     absent from System Activity for the reason stated above — a chart's height is set
-     by the plot, not by a row count — and that is still true of this card's
-     CHART mode. The cap applies to the table, which is the mode that exists
-     because the link list can be long. */
-  'network-history',
-  'thermal',
-]);
-
-/** Row caps offered in settings. `0` means uncapped.
- *
- * A sentinel rather than Infinity because this round-trips through JSON, where
- * `Infinity` serialises to `null` and comes back as a broken value. Translated
- * at the single point of use in `rowsFor`.
- */
-export const ROW_CHOICES = [5, 8, 10, 15, 25, 50, 0];
-
 /** Per section, because the sections are not alike.
  *
  * A card that draws TWO tables gets a lower cap, because the cap applies to
@@ -651,6 +623,12 @@ export class Layout {
    * `Infinity` for uncapped, which is what the table code wants: it makes the
    * page arithmetic degenerate correctly — one page, everything on it, and the
    * pager hides itself because the row count is never greater than the cap.
+   *
+   * `0` is that sentinel in storage, and NOTHING CAN PRODUCE ONE ANY MORE: it
+   * came from a list in settings that the resize corner obviated, and a drag is
+   * floored at MIN_ROWS on purpose so shrinking a card can never flip it to
+   * "show everything". The translation stays because a layout saved before that
+   * still round-trips through here.
    */
   rowsFor(id: string): number {
     const n = this.rows[id] ?? DEFAULT_ROWS[id] ?? 10;

@@ -30,27 +30,12 @@
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
-  import { PAGED_SECTIONS, ROW_CHOICES } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
 
   /* The zones, in the order they appear on the page, plus hidden last. Naming
      them here rather than reusing ZONES because `hidden` is not a zone — it is
      the absence of one — and the panel is the only place the two belong in a
      single list. */
-  /** The offered caps, plus whatever this card is actually set to.
-   *
-   * The corner grip drags the row count continuously, so a card can sit at 13
-   * rows — a value this list does not contain. A `<select>` whose `value`
-   * matches no option renders BLANK, so without this the settings row for a
-   * dragged card would show an empty box that silently reset the card to 5 the
-   * moment it was touched. Merged and re-sorted rather than appended, so the
-   * list stays in order; `0` is kept last because it is "all", not zero. */
-  function rowOptions(current: number): number[] {
-    if (ROW_CHOICES.includes(current)) return ROW_CHOICES;
-    const counts = ROW_CHOICES.filter((n) => n !== 0);
-    return [...counts, current].sort((a, b) => a - b).concat(0);
-  }
-
   const SECTION_GROUPS: { zone: 'full' | 'left' | 'right' | 'hidden'; label: string }[] = [
     { zone: 'full', label: 'Full width' },
     { zone: 'left', label: 'Left column' },
@@ -492,7 +477,15 @@
            Not here: order and collapse live on the sections themselves, and
            which COLUMNS a table shows lives in each card's top-right corner,
            next to the data it affects. Reset below clears all of it. -->
-      <p class="note dim">Width, rows before paging, and whether it shows.</p>
+      <!-- Show and hide only. Size used to live here too — a width toggle and a
+           rows-before-paging select — and the resize corner obviated both: it
+           answers the same two questions with the card in front of you, which
+           is the only place either can be judged. The note says where they went
+           rather than leaving a reader hunting for a control that moved. -->
+      <p class="note dim">
+        Whether each section shows. Size is dragged from a card's own
+        bottom-right corner — down for height, sideways for width.
+      </p>
       <!-- GROUPED BY ZONE, IN DASHBOARD ORDER. The list used to be flat, in
            `layout.order`, which meant the panel looked identical whatever the
            arrangement was — and since the fly-out covers the page, changing a
@@ -509,38 +502,6 @@
               {@const hidden = layout.isHidden(id)}
               <li class="row" class:off={hidden}>
                 <span class="name">{layout.label(id)}</span>
-                <!-- TWO states, not three. Cycling full -> left -> right gave
-                     each click a destination you had to memorise rather than
-                     predict, and it appended to the end of the target column,
-                     so a round trip silently moved a section to the bottom of
-                     one it started at the top of.
-                     Settings answers wide-or-narrow; WHICH column and where in
-                     it needs the page in front of you, so that belongs to the
-                     drag. `half` returns the section to the column it last
-                     occupied. -->
-                <button
-                  class="mini w"
-                  disabled={hidden}
-                  aria-label={`${layout.label(id)}: ${
-                    layout.zoneOf(id) === 'full' ? 'full width' : 'half width'
-                  }`}
-                  onclick={() => layout.toggleWidth(id)}
-                >{layout.zoneOf(id) === 'full' ? 'full' : 'half'}</button>
-                {#if PAGED_SECTIONS.has(id)}
-                  <select
-                    class="mini rows"
-                    disabled={hidden}
-                    aria-label={`${layout.label(id)} rows before paging`}
-                    value={layout.rowChoice(id)}
-                    onchange={(e) => layout.setRows(id, Number(e.currentTarget.value))}
-                  >
-                    {#each rowOptions(layout.rowChoice(id)) as n (n)}
-                      <option value={n}>{n === 0 ? 'all' : `${n} rows`}</option>
-                    {/each}
-                  </select>
-                {:else}
-                  <span class="mini placeholder" aria-hidden="true">—</span>
-                {/if}
                 <button
                   class="mini"
                   aria-pressed={!hidden}
@@ -967,35 +928,6 @@
   .mini:hover:not(:disabled) { color: var(--ink); }
   .mini:disabled { opacity: 0.5; cursor: default; }
 
-  /* Width sits left of the visibility toggle, not pushed right with it —
-     they are different questions and a shared right edge made them read as one
-     control with two halves. */
-  .mini.w { margin-left: auto; }
-  .mini.w + .mini,
-  .mini.w + .rows,
-  .mini.w + .placeholder,
-  .rows + .mini,
-  .placeholder + .mini { margin-left: 0; }
-
-  /* Matches the mini buttons rather than the browser default, which is a
-     chunky control that would tower over the row it sits in. */
-  .rows {
-    appearance: none;
-    padding-right: 6px;
-    cursor: pointer;
-  }
-
-  .rows:disabled { opacity: 0.4; cursor: default; }
-
-  /* Holds the column for a section that has no row cap, so the hide button
-     stays in the same place down the list instead of jumping left on the one
-     row that is a chart. */
-  .placeholder {
-    border-color: transparent;
-    color: var(--ink-muted);
-    opacity: 0.4;
-    cursor: default;
-  }
 
   .yaml {
     width: 100%;

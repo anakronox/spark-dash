@@ -170,14 +170,35 @@ def test_a_dragged_row_count_survives_a_reload():
     assert "clampRows(" in reader, "readRows does not clamp what it loads"
 
 
-def test_settings_still_shows_a_dragged_value():
-    """A <select> whose value matches no option renders BLANK, and would then
-    reset the card to the first choice the moment it was touched."""
+def test_settings_no_longer_duplicates_the_resize_corner():
+    """The width toggle and the rows-before-paging select answered the same two
+    questions the corner now answers, and answered them worse: away from the
+    card, where neither can actually be judged. They are gone, and so is
+    everything that existed only to serve them -- `rowOptions`, `ROW_CHOICES`
+    and `PAGED_SECTIONS`.
+
+    Show/hide stays. It is not a size question, and there is no gesture for it:
+    a hidden card has no corner to drag."""
     src = without_comments(SETTINGS.read_text())
-    assert "function rowOptions" in src, "the row select cannot represent an off-list value"
-    body = src[src.index("function rowOptions") :][:400]
-    assert "ROW_CHOICES.includes(current)" in body, "rowOptions does not check membership"
-    assert "rowOptions(" in src[src.index("<select") :], "the select does not use rowOptions"
+    assert "toggleWidth" not in src, "the width toggle is still in settings"
+    assert "setRows" not in src and "rowChoice" not in src, "the row cap is still in settings"
+    assert "rowOptions" not in src, "the select's helper outlived the select"
+    assert "toggleHidden" in src, "show/hide was removed too, and it should not be"
+
+    layout = without_comments(LAYOUT.read_text())
+    for dead in ("ROW_CHOICES", "PAGED_SECTIONS"):
+        assert dead not in layout, f"{dead} has no callers left but is still exported"
+
+
+def test_an_uncapped_layout_saved_earlier_still_loads():
+    """`0` means uncapped and nothing can produce one any more -- it came from
+    the settings list, and a drag is floored at MIN_ROWS so shrinking a card can
+    never flip it to "show everything". A layout saved before that still has to
+    round-trip."""
+    src = without_comments(LAYOUT.read_text())
+    body = src[src.index("rowsFor(id: string)") :]
+    body = body[: body.index("\n  }")]
+    assert "=== 0 ? Infinity" in body, "a stored 0 no longer reads as uncapped"
 
 
 def test_a_stored_plot_height_is_clamped_on_the_way_in():

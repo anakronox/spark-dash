@@ -5452,6 +5452,28 @@ than a hedge.
   1000px wide nothing armed and the cursor read `ns-resize`. Module grid intact
   throughout and the section order untouched.
 
+- [x] **AE13. Settings gives up the size controls it no longer owns.** The
+  width toggle and the rows-before-paging select answered exactly the two
+  questions the resize corner now answers, and answered them worse: from a
+  fly-out that covers the page, where neither can actually be judged. Both are
+  gone, and with them everything that existed only to serve them —
+  `rowOptions()`, `ROW_CHOICES`, `PAGED_SECTIONS`, and about thirty lines of CSS
+  for a three-control row that is now one control.
+
+  **Show/hide stays**, and the distinction is worth stating: it is not a size
+  question, and unlike size it has no gesture — a hidden card has no corner to
+  drag, so the panel is the only place it can live.
+
+  The section note now says where the controls went, rather than leaving a
+  reader hunting for something that moved.
+
+  **One capability goes with it: `0`, the uncapped "all" sentinel.** It was only
+  ever reachable from that select, and a drag is floored at `MIN_ROWS` on
+  purpose so that shrinking a card can never flip it to "show everything". In
+  practice this costs nothing — a drag reaches `MAX_ROWS` = 200 and the largest
+  table on this dashboard is 43 sensors — but a layout saved with a `0` still
+  round-trips, because `rowsFor` keeps translating it to `Infinity`.
+
 - [ ] **AE4. Column width as an fr ratio, if it is still wanted.** Now clearly
   distinct from AE12, which moves a card between half and full; this would
   change how a band SPLITS its two columns. Separate from the above and
