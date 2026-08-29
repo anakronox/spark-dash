@@ -30,18 +30,9 @@
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
+  import { ZONES } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
 
-  /* The zones, in the order they appear on the page, plus hidden last. Naming
-     them here rather than reusing ZONES because `hidden` is not a zone — it is
-     the absence of one — and the panel is the only place the two belong in a
-     single list. */
-  const SECTION_GROUPS: { zone: 'full' | 'left' | 'right' | 'hidden'; label: string }[] = [
-    { zone: 'full', label: 'Full width' },
-    { zone: 'left', label: 'Left column' },
-    { zone: 'right', label: 'Right column' },
-    { zone: 'hidden', label: 'Hidden' },
-  ];
 
   interface Props {
     theme: Theme;
@@ -50,6 +41,22 @@
     onclose: () => void;
   }
   const { theme, layout, open, onclose }: Props = $props();
+
+  /* IN PAGE ORDER, and no longer labelled by zone.
+   *
+   * The headers existed as feedback: this panel used to carry the width
+   * toggle, and with the fly-out covering the page a row moving from "Left
+   * column" to "Full width" was the only sign the click had done anything.
+   * Width is dragged on the card now, in full view, so the headers were
+   * captioning a change nobody makes from here.
+   *
+   * The ORDER still follows the zones, because that is the order the sections
+   * read in on the page and this list is for finding one.
+   *
+   * `Hidden` keeps its heading: those cards are not on the page at all, so
+   * their position in a page-ordered list would otherwise mean nothing. */
+  const shownSections = $derived(ZONES.flatMap((z) => layout.inZone(z)));
+  const hiddenSections = $derived(layout.order.filter((id) => layout.isHidden(id)));
 
   let dialog = $state<HTMLDialogElement | null>(null);
 
@@ -477,42 +484,34 @@
            Not here: order and collapse live on the sections themselves, and
            which COLUMNS a table shows lives in each card's top-right corner,
            next to the data it affects. Reset below clears all of it. -->
-      <!-- Show and hide only. Size used to live here too — a width toggle and a
-           rows-before-paging select — and the resize corner obviated both: it
-           answers the same two questions with the card in front of you, which
-           is the only place either can be judged. The note says where they went
-           rather than leaving a reader hunting for a control that moved. -->
-      <p class="note dim">
-        Whether each section shows. Size is dragged from a card's own
-        bottom-right corner — down for height, sideways for width.
-      </p>
-      <!-- GROUPED BY ZONE, IN DASHBOARD ORDER. The list used to be flat, in
-           `layout.order`, which meant the panel looked identical whatever the
-           arrangement was — and since the fly-out covers the page, changing a
-           section's placement appeared to do nothing at all. The row moving
-           between groups IS the feedback. -->
-      {#each SECTION_GROUPS as group (group.zone)}
-        {@const ids = group.zone === 'hidden'
-          ? layout.order.filter((id) => layout.isHidden(id))
-          : layout.inZone(group.zone)}
-        {#if ids.length}
-          <p class="eyebrow dim group">{group.label}</p>
-          <ol class="sections">
-            {#each ids as id (id)}
-              {@const hidden = layout.isHidden(id)}
-              <li class="row" class:off={hidden}>
-                <span class="name">{layout.label(id)}</span>
-                <button
-                  class="mini"
-                  aria-pressed={!hidden}
-                  aria-label={`${hidden ? 'Show' : 'Hide'} ${layout.label(id)}`}
-                  onclick={() => layout.toggleHidden(id)}
-                >{hidden ? 'hidden' : 'shown'}</button>
-              </li>
-            {/each}
-          </ol>
-        {/if}
-      {/each}
+      {#snippet sectionRow(id: string, hidden: boolean)}
+        <li class="row" class:off={hidden}>
+          <span class="name">{layout.label(id)}</span>
+          <button
+            class="mini"
+            aria-pressed={!hidden}
+            aria-label={`${hidden ? 'Show' : 'Hide'} ${layout.label(id)}`}
+            onclick={() => layout.toggleHidden(id)}
+          >{hidden ? 'hidden' : 'shown'}</button>
+        </li>
+      {/snippet}
+
+      {#if shownSections.length}
+        <ol class="sections">
+          {#each shownSections as id (id)}
+            {@render sectionRow(id, false)}
+          {/each}
+        </ol>
+      {/if}
+
+      {#if hiddenSections.length}
+        <p class="eyebrow dim group">Hidden</p>
+        <ol class="sections">
+          {#each hiddenSections as id (id)}
+            {@render sectionRow(id, true)}
+          {/each}
+        </ol>
+      {/if}
       <!-- Offered only when there is something to undo: a reset that does
            nothing still invites the click that loses your arrangement. -->
       <button
@@ -949,10 +948,6 @@
   .group {
     margin: 8px 0 3px;
     font-size: var(--text-nano);
-  }
-
-  .group:first-of-type {
-    margin-top: 0;
   }
 
   .reset { margin-left: 0; align-self: flex-start; margin-top: 4px; }
