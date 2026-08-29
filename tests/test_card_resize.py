@@ -1200,3 +1200,32 @@ def test_the_width_cue_speaks_in_the_theme_s_accent():
     assert "var(--good)" in ghost and "var(--warning)" not in ghost, "the ghost is not in the theme's accent"
     grip = css_block(GRIP, ".grip.armed {")
     assert "var(--warning)" not in grip, "the armed corner still turns amber"
+
+
+def test_a_fresh_system_activity_card_shows_four_metrics():
+    """One GPU-utilization line stretched across a full-width card was the
+    first thing a newcomer saw. Four now, one of each kind the card can
+    show, every key filtered against METRICS so a rename cannot leave an
+    empty chart."""
+    src = without_comments(TRENDS.read_text())
+    block = src[src.index("const DEFAULT_SELECTION") : src.index("];", src.index("const DEFAULT_SELECTION"))]
+    keys = re.findall(r"'(\w+)'", block)
+    assert len(keys) == 4, f"the default is {len(keys)} metrics, not 4"
+    history = (FRONTEND / "lib" / "history.ts").read_text()
+    for k in keys:
+        assert f"key: '{k}'" in history, f"default metric {k} is not in METRICS"
+    fn = src[src.index("function readSelection") :]
+    fn = fn[: fn.index("\n  }\n")]
+    assert "DEFAULT_SELECTION.filter((k) => known.has(k))" in fn, "the default is not checked against METRICS"
+    assert "METRICS[0]" not in fn, "still falls back to the first metric alone"
+
+
+def test_reset_layout_leaves_the_theme_alone():
+    """Reset is a layout reset. A theme is a choice about the reader's eyes
+    and screen, not about the arrangement of cards, and stripping it as a
+    side effect of tidying the page would be a surprise every time."""
+    src = without_comments(LAYOUT.read_text())
+    assert "theme" not in src.lower().replace("themes", ""), "the layout store knows about the theme at all"
+    reset = src[src.index("  reset() {") :]
+    reset = reset[: reset.index("\n  }")]
+    assert "spark-dash.theme" not in reset and "THEME" not in reset, "reset touches the theme"

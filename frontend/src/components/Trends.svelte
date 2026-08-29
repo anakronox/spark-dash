@@ -65,14 +65,30 @@
   // component: App keys each card by id, so a different instance is a different mount.
   const EVENTS_KEY = instanceKey('spark-dash.trend-events.v1', instance);
 
+  /* WHAT A NEWCOMER SEES. The first cut defaulted to the first metric alone,
+     which on a full-width card is one GPU-utilization line stretched across
+     the page: correct, and a poor first impression of a card whose point is
+     the menu beside it. Four, one of each kind the card can show -- the GPU
+     working, the memory it is holding, how hot it is, and what all that is
+     producing -- so the first look already says "pick more". Each key is
+     checked against METRICS so a renamed metric drops out rather than
+     rendering an empty chart. */
+  const DEFAULT_SELECTION = [
+    'gpu_utilization',
+    'memory_used_percent',
+    'gpu_temperature',
+    'tokens_per_second',
+  ];
+
   function readSelection(): string[] {
+    const known = new Set(METRICS.map((m) => m.key));
+    const fallback = DEFAULT_SELECTION.filter((k) => known.has(k));
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
-      const known = new Set(METRICS.map((m) => m.key));
       const kept = Array.isArray(saved) ? saved.filter((k) => known.has(k)) : [];
-      return kept.length ? kept : [METRICS[0].key];
+      return kept.length ? kept : fallback;
     } catch {
-      return [METRICS[0].key];
+      return fallback;
     }
   }
 
