@@ -5490,6 +5490,20 @@ than a hedge.
   The groups menu hides in the ports view. ~80 lines plus removals. Trade-off
   — one view at a time — is what AF exists to remove.
 
+- [x] **AE20. Column headers stick in scroll mode.** AE18 kept the card
+  header in view and left `thead` to scroll away, so a table at its fortieth
+  row no longer said what its columns were. The `th`s are sticky now, parked
+  under the card header at the header's *measured* height (`--sticky-top`,
+  written by `measure()` — the controls wrap, so it is not a constant). Two
+  things had to give: a sticky cell sticks to its nearest scroll container,
+  and every wide table sat in an `overflow-x: auto` box, which is one even
+  when nothing overflows — in scroll mode that box releases its overflow and
+  the panel scrolls sideways too, with the card header sticky-left so it stays
+  put; and `border-collapse` leaves a stuck cell's borders behind, so the
+  underline travels as an inset shadow. Verified live: Temperatures held at 14
+  rows and scrolled 300px, `th` top at exactly the header's bottom, panel
+  background behind it, page never scrolls sideways.
+
 - [x] **AE18. Paginate or scroll, chosen in Settings.** Asked for as a costing:
   what would it take to scroll inside a card instead of paging? About 150 lines,
   because the pieces existed. Paging couples height to content through the row

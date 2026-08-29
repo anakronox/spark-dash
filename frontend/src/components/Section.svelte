@@ -389,6 +389,15 @@
     slotEl.style.minHeight = held;
     naturalRows = Math.max(1, Math.ceil((natural + GAP_PX) / unit));
 
+    /* Where a sticky column header stops: just under the card header, which
+       is itself sticky in scroll mode. The header's height is not a constant
+       -- its controls wrap on a narrow card -- so it is read here, on the same
+       observers that catch every other change of shape, and handed to the CSS
+       as a length. Written unconditionally; it is only consumed when the card
+       scrolls. */
+    const header = slotEl.querySelector<HTMLElement>(':scope > section.panel > header');
+    slotEl.style.setProperty('--sticky-top', `${header?.offsetHeight ?? 0}px`);
+
     const plots = slotEl.querySelectorAll<HTMLElement>('.uplot');
     if (plots.length) {
       mode = 'plot';
@@ -1044,8 +1053,35 @@
   .slot.scrolling > :global(section.panel > header) {
     position: sticky;
     top: 0;
+    left: 0;
+    z-index: 2;
+    background: var(--panel);
+  }
+
+  /* THE COLUMN HEADERS STAY TOO, parked under the card header, so a table
+     scrolled to its fortieth row still says what its columns are. `top` is
+     the card header's measured height (see measure()); a constant would be
+     wrong the moment the controls wrap.
+
+     Two things fight this and both are handled here. A sticky cell sticks to
+     its nearest SCROLLING ancestor, and every wide table sits in an
+     `overflow-x: auto` box -- which is a scroll container even when nothing
+     overflows, so the cell would stick to a box that never moves. In scroll
+     mode that box gives up its overflow and the panel, already the vertical
+     scroller, takes the horizontal too; the card header's `left: 0` above is
+     what keeps it in view when that happens. And `border-collapse` leaves a
+     cell's borders behind when it sticks, so the header's underline is
+     re-drawn as an inset shadow, which travels with it. */
+  .slot.scrolling > :global(section.panel thead th) {
+    position: sticky;
+    top: var(--sticky-top, 0px);
     z-index: 1;
     background: var(--panel);
+    box-shadow: inset 0 -1px 0 var(--rule);
+  }
+
+  .slot.scrolling > :global(section.panel :is(.overflow-x-auto, .scroll)) {
+    overflow-x: visible;
   }
 
   /* Just added from the page's button. Lifted for a moment the way a picked-up

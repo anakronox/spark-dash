@@ -886,6 +886,47 @@ def test_a_scrolling_card_is_a_fixed_box_with_a_sticky_header():
     assert "panel.tabIndex = 0" in src, "a scroll region must be focusable to scroll without a mouse"
 
 
+def test_column_headers_stick_under_the_card_header_in_scroll_mode():
+    """A table scrolled to its fortieth row must still say what its columns
+    are. Three things conspire against a sticky `th`, and each is a silent
+    failure -- the cell simply scrolls away:
+
+    - it sticks to its nearest SCROLLING ancestor, and every wide table sits
+      in an `overflow-x: auto` box, which is a scroll container even when
+      nothing overflows. That box must give up its overflow in scroll mode;
+    - the offset under the card header is the header's height, which is not
+      a constant (its controls wrap), so it has to be measured, not typed;
+    - `border-collapse` leaves the cell's borders behind when it sticks, so
+      the underline has to travel as a shadow."""
+    th = css_block(SECTION, ".slot.scrolling > :global(section.panel thead th) {")
+    assert "position: sticky" in th and "top: var(--sticky-top" in th, (
+        "column headers scroll away, or stick at a typed offset"
+    )
+    assert "background: var(--panel)" in th, "the rows show through the stuck header"
+    assert "box-shadow: inset 0 -1px 0 var(--rule)" in th, "the header's underline stays behind"
+
+    wrap = css_block(SECTION, ".slot.scrolling > :global(section.panel :is(.overflow-x-auto, .scroll)) {")
+    assert "overflow-x: visible" in wrap, "the wide-table box is still the scroll container the th sticks to"
+
+    header = css_block(SECTION, ".slot.scrolling > :global(section.panel > header) {")
+    assert "left: 0" in header, (
+        "with the panel now scrolling sideways for a wide table, the card header would scroll off"
+    )
+
+    measure = section_fn("measure")
+    assert "setProperty('--sticky-top'" in measure and "offsetHeight" in measure, (
+        "the sticky offset is not measured from the card header"
+    )
+
+    # Every horizontal scroll box in a card must be one of the two classes the
+    # rule above releases, or its th sticks to nothing.
+    for path in sorted((FRONTEND / "components").glob("*.svelte")):
+        src = without_comments(path.read_text())
+        for m in re.finditer(r"([^{}]+)\{[^{}]*overflow-x:\s*auto", src):
+            selector = m.group(1).strip().split("\n")[-1].strip()
+            assert selector == ".scroll", f"{path.name}: `{selector}` scrolls sideways but is not `.scroll`"
+
+
 def test_overflow_is_a_setting_that_resets():
     src = without_comments(LAYOUT.read_text())
     body = src[src.index("get isDefault()") :]
