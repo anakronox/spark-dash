@@ -34,7 +34,7 @@
   import PickMenu from './PickMenu.svelte';
   import RdmaTable, { RDMA_COLUMNS } from './RdmaTable.svelte';
   import { TableView } from '../lib/table.svelte';
-  import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
+  import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
@@ -86,6 +86,10 @@
      *  counterpart of `maxRows`, and applied per division for the same reason
      *  that cap applies per table. */
     plotRows?: number;
+    /** Which card this is, when there is more than one: keys the view, the
+     *  groups, quiet and events so two copies do not share them -- one on
+     *  ports and one on charts is the whole point of a copy. */
+    instance?: string;
   }
   const {
     nodeIds,
@@ -94,6 +98,7 @@
     themeKey,
     plotHeight = DEFAULT_PLOT_PX,
     plotRows = Infinity,
+    instance = 'network-history',
   }: Props = $props();
 
   /** `linkKey(node, iface)` for every interface with an RDMA device on it.
@@ -150,9 +155,15 @@
     return keys;
   });
 
-  const MODE_KEY = 'spark-dash.network-mode.v1';
-  const QUIET_KEY = 'spark-dash.network-quiet.v1';
-  const EVENTS_KEY = 'spark-dash.network-events.v1';
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const MODE_KEY = instanceKey('spark-dash.network-mode.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const QUIET_KEY = instanceKey('spark-dash.network-quiet.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const EVENTS_KEY = instanceKey('spark-dash.network-events.v1', instance);
 
   const readFlag = (key: string, fallback: boolean) => {
     try {
@@ -205,10 +216,16 @@
    * node is added is worse than one that picked wrong to begin with.
    */
   const TABLE_ABOVE = 12;
-  let chosenMode = $state<Mode | null>(readMode());
-
+  /* DECLARED BEFORE `chosenMode`, and that order is load-bearing. readMode()
+     runs inside the $state initialiser below and reads MODES; a `const`
+     declared after that line is in its temporal dead zone at that moment,
+     the ReferenceError is swallowed by readMode's own try/catch, and every
+     card comes back on its automatic view with its stored choice ignored --
+     which is exactly what happened, silently, until a copy made it visible. */
   type Mode = 'charts' | 'table' | 'ports';
   const MODES: Mode[] = ['charts', 'table', 'ports'];
+  let chosenMode = $state<Mode | null>(readMode());
+
   function readMode(): Mode | null {
     try {
       const raw = localStorage.getItem(MODE_KEY);
@@ -281,7 +298,9 @@
      draws, not about the page. The menu lists all four groups whether or not
      they have interfaces right now, with the count on each, so a group that
      is hidden and NOT empty is visible as a number rather than invisible. */
-  const GROUPS_KEY = 'spark-dash.network-groups.v1';
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const GROUPS_KEY = instanceKey('spark-dash.network-groups.v1', instance);
   function readGroups(): Division[] {
     try {
       const saved = JSON.parse(localStorage.getItem(GROUPS_KEY) ?? 'null');

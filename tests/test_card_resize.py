@@ -911,3 +911,63 @@ def test_rdma_ports_is_a_view_of_network_activity_not_a_card():
     assert card.count("mode !== 'ports'") >= 2, "groups menu or history controls still show in the ports view"
     app = without_comments(APP.read_text())
     assert "NetworkPanel" not in app and "id === 'network'" not in app
+
+
+def test_every_store_reader_keeps_an_instance_id():
+    """THE FAILURE INSTANCES EXIST TO AVOID: a stored `kind#2` that a reader
+    drops on load as unknown is a card that silently vanishes. Readers must
+    validate the KIND of an id, never the id itself."""
+    src = without_comments(LAYOUT.read_text())
+    assert "export function kindOf(id: string)" in src
+    assert "known.has(id)" not in src, "a reader still validates the bare id -- a copy would be dropped on load"
+    assert src.count("known.has(kindOf(id))") >= 7, "not every reader validates by kind"
+    # reconcile appends a KIND with no instance, not an id missing from the list
+    rec = src[src.index("export function reconcile") :]
+    rec = rec[: rec.index("\n}")]
+    assert "fromSaved.map(kindOf)" in rec, "a copy would be treated as missing and its kind re-appended"
+
+
+def test_a_copy_has_its_own_view_state():
+    """Six pieces of state are the component's rather than the layout's -- a
+    chosen view, the groups, metrics, events. Two copies sharing one storage
+    key would fight over it: divergent live, last-writer-wins on reload."""
+    src = without_comments(LAYOUT.read_text())
+    assert "export function instanceKey(key: string, id: string)" in src
+    for path, keys in ((TRENDS, ("trend-metrics", "trend-events")),
+                       (NETWORK, ("network-mode", "network-quiet", "network-events", "network-groups"))):
+        c = without_comments(path.read_text())
+        for k in keys:
+            assert f"instanceKey('spark-dash.{k}.v1', instance)" in c, f"{path.name}: {k} is not keyed per instance"
+        assert "instance?: string" in c, f"{path.name} takes no instance"
+    app = without_comments(APP.read_text())
+    assert app.count("instance={id}") == 2, "App does not tell both chart cards which instance they are"
+    assert "{@const kind = kindOf(id)}" in app and "{#if kind === '" in app, "App still dispatches on the raw id"
+
+
+def test_copies_can_be_made_and_removed_and_reset_clears_them():
+    src = without_comments(LAYOUT.read_text())
+    dup = src[src.index("  duplicate(id: string)") :]
+    dup = dup[: dup.index("\n  }")]
+    assert "while (this.order.includes(`${kind}#${n}`)) n++" in dup, "a second copy would collide with the first"
+    assert "[copy]: this.zoneOf(id)" in dup, "a copy does not land in the same column"
+    rem = src[src.index("  remove(id: string)") :]
+    rem = rem[: rem.index("\n  }")]
+    assert "if (!isCopy(id)) return;" in rem, "the original can be removed, leaving a kind with no card"
+    assert "purgeInstanceKeys(id)" in rem, "a removed copy leaves its view state behind"
+    reset = src[src.index("  reset() {") :]
+    reset = reset[: reset.index("\n  }")]
+    assert "purgeInstanceKeys" in reset, "reset drops copies but keeps their view state"
+    settings = without_comments(SETTINGS.read_text())
+    assert "layout.duplicate(id)" in settings and "layout.remove(id)" in settings
+
+
+def test_network_activity_reads_its_stored_view_back():
+    """MEASURED BUG: MODES was declared after `chosenMode = $state(readMode())`.
+    readMode runs inside that initialiser and reads MODES, which is in its
+    temporal dead zone at that moment; the ReferenceError was swallowed by
+    readMode's own try/catch and every card came back on its automatic view
+    with its stored choice ignored. Silent until a copy made it visible."""
+    src = without_comments(NETWORK.read_text())
+    assert src.index("const MODES: Mode[]") < src.index("let chosenMode = $state<Mode | null>(readMode())"), (
+        "MODES is declared after the initialiser that reads it -- a TDZ error the try/catch swallows"
+    )

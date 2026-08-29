@@ -14,7 +14,7 @@
   import Trends from './components/Trends.svelte';
   import NetworkTrends from './components/NetworkTrends.svelte';
   import ThermalPanel from './components/ThermalPanel.svelte';
-  import { Layout, ZONE_LABEL } from './lib/layout.svelte';
+  import { Layout, ZONE_LABEL, kindOf } from './lib/layout.svelte';
   import type { Zone } from './lib/layout.svelte';
   import { nodeSlots } from './lib/theme';
   import { Theme } from './lib/theme.svelte';
@@ -730,23 +730,25 @@
     class:empty={ids.length === 0}
   >
     {#each ids as id (id)}
+      {@const kind = kindOf(id)}
       <Section {layout} {id}>
-        {#if id === 'models'}
+        {#if kind === 'models'}
           <ModelsTable {nodes} maxRows={layout.rowsFor(id)} />
-        {:else if id === 'processes'}
+        {:else if kind === 'processes'}
           <ProcessTable {nodes} maxRows={layout.rowsFor(id)} />
-        {:else if id === 'activity'}
+        {:else if kind === 'activity'}
           <SwapTimeline maxRows={layout.rowsFor(id)} />
-        {:else if id === 'history'}
+        {:else if kind === 'history'}
           <Trends
             nodeIds={nodes.map((n) => n.node_id)}
             themeKey={theme.resolved}
             plotHeight={layout.plotHeight(id)}
             plotRows={layout.plotRowsFor(id)}
+            instance={id}
           />
-        {:else if id === 'thermal'}
+        {:else if kind === 'thermal'}
           <ThermalPanel {nodes} maxRows={layout.rowsFor(id)} />
-        {:else if id === 'network-history'}
+        {:else if kind === 'network-history'}
           <NetworkTrends
             nodeIds={nodes.map((n) => n.node_id)}
             {nodes}
@@ -754,6 +756,7 @@
             themeKey={theme.resolved}
             plotHeight={layout.plotHeight(id)}
             plotRows={layout.plotRowsFor(id)}
+            instance={id}
           />
         {/if}
       </Section>

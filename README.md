@@ -15,7 +15,8 @@ bottom-right corner: down for height, in increments of one table row and past
 its own content if you want two columns to end level, sideways to flip between
 half and full width. A chart card dragged below its plot floor pages its charts
 rather than refusing — or, with Scroll chosen in Settings, every card keeps all
-its rows and scrolls inside its box. Network Activity divides interfaces into RoCE, Management,
+its rows and scrolls inside its box. Any card can be copied from Settings, so two
+Network Activity cards can show ports and charts side by side. Network Activity divides interfaces into RoCE, Management,
 WiFi and Other from the driver, bus and wireless facts the agent reports. The whole page sits on that one vertical module; every
 threshold shown is measured for this hardware rather than guessed.
 

@@ -171,7 +171,7 @@ function readPlacement(available: string[] = DEFAULT_ORDER): Record<string, Zone
     if (saved && typeof saved === 'object') {
       const out: Record<string, Zone> = {};
       for (const [id, z] of Object.entries(saved)) {
-        if (known.has(id) && isZone(z)) out[id] = z;
+        if (known.has(kindOf(id)) && isZone(z)) out[id] = z;
       }
       return out;
     }
@@ -275,6 +275,54 @@ export const SECTIONS: SectionDef[] = [
 
 const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
 
+/* CARD INSTANCES (roadmap AF).
+ *
+ * A section id is either a KIND -- one of SECTIONS, the card as it has always
+ * been -- or `kind#n`, a further copy of it. Two Network Activity cards can
+ * then sit side by side, one on its ports view and one on its charts, which
+ * is the one thing folding RDMA Ports into that card (AE19) gave up.
+ *
+ * The bare kind IS instance one, unchanged, so no saved layout migrates and
+ * nothing a user has set moves. Everything the store keeps is keyed by id
+ * already, so a copy gets its own position, size and visibility for free;
+ * what had to change is that readers validate the KIND of an id rather than
+ * the id itself, or a stored `kind#2` would be dropped on load as unknown --
+ * which would silently delete the card. Every reader has a test with an
+ * instance id in it for exactly that reason.
+ */
+export function kindOf(id: string): string {
+  const i = id.indexOf('#');
+  return i === -1 ? id : id.slice(0, i);
+}
+
+/** A copy, as opposed to the original: only copies can be removed. */
+export function isCopy(id: string): boolean {
+  return id.includes('#');
+}
+
+/** The card-local storage key for one instance. Instance one keeps the bare
+ *  key it always had; a copy gets the key suffixed with its id, so two copies
+ *  of a card do not fight over one localStorage entry. Components use this
+ *  for the state that is theirs rather than the layout's -- a chosen view, a
+ *  metric selection. */
+export function instanceKey(key: string, id: string): string {
+  return isCopy(id) ? `${key}:${id}` : key;
+}
+
+/** Drop a removed copy's card-local keys, which are suffixed `:kind#n` by
+ *  `instanceKey`. Scanned rather than enumerated: the layout does not know
+ *  which keys a component keeps, and should not have to. */
+function purgeInstanceKeys(id: string) {
+  try {
+    const suffix = `:${id}`;
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('spark-dash.') && k.endsWith(suffix)) localStorage.removeItem(k);
+    }
+  } catch {
+    // Nothing to purge, or no storage.
+  }
+}
+
 /** Per section, because the sections are not alike.
  *
  * A card that draws TWO tables gets a lower cap, because the cap applies to
@@ -303,7 +351,7 @@ function readColumns(available: string[] = DEFAULT_ORDER): Record<string, Zone> 
     const known = new Set(available);
     const out: Record<string, Zone> = {};
     for (const [id, z] of Object.entries(saved)) {
-      if (known.has(id) && (z === 'left' || z === 'right')) out[id] = z;
+      if (known.has(kindOf(id)) && (z === 'left' || z === 'right')) out[id] = z;
     }
     return out;
   } catch {
@@ -340,7 +388,7 @@ function readPlotHeights(available: string[] = DEFAULT_ORDER): Record<string, nu
          stale-from-an-older-range value is the same hazard `readRows` guards:
          a 4000px plot would push every other card off the page with no visible
          control to undo it. */
-      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) {
+      if (known.has(kindOf(id)) && typeof n === 'number' && Number.isFinite(n)) {
         out[id] = clampPlot(n);
       }
     }
@@ -371,7 +419,7 @@ function readPlotRows(available: string[] = DEFAULT_ORDER): Record<string, numbe
     const known = new Set(available);
     const out: Record<string, number> = {};
     for (const [id, n] of Object.entries(saved)) {
-      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) out[id] = clampPlotRows(n);
+      if (known.has(kindOf(id)) && typeof n === 'number' && Number.isFinite(n)) out[id] = clampPlotRows(n);
     }
     return out;
   } catch {
@@ -411,7 +459,7 @@ function readCardSpans(available: string[] = DEFAULT_ORDER): Record<string, numb
     const known = new Set(available);
     const out: Record<string, number> = {};
     for (const [id, n] of Object.entries(saved)) {
-      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) out[id] = clampRows(n);
+      if (known.has(kindOf(id)) && typeof n === 'number' && Number.isFinite(n)) out[id] = clampRows(n);
     }
     return out;
   } catch {
@@ -440,7 +488,7 @@ function readRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
        * is now a thing a reader can ask for. Validating against the list would
        * have thrown away every dragged value on the next reload, silently,
        * with the card simply back at its default. */
-      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) {
+      if (known.has(kindOf(id)) && typeof n === 'number' && Number.isFinite(n)) {
         out[id] = clampRows(n);
       }
     }
@@ -461,11 +509,14 @@ function readRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
 export function reconcile(saved: unknown, available: string[] = DEFAULT_ORDER): string[] {
   const known = new Set(available);
   const fromSaved = Array.isArray(saved)
-    ? saved.filter((id): id is string => typeof id === 'string' && known.has(id))
+    ? saved.filter((id): id is string => typeof id === 'string' && known.has(kindOf(id)))
     : [];
 
-  const seen = new Set(fromSaved);
-  const appended = available.filter((id) => !seen.has(id));
+  /* A kind with NO instance in the saved list is a section added in a later
+     release, and is appended. A kind whose only instance is a copy counts as
+     present: the copy is that card. */
+  const present = new Set(fromSaved.map(kindOf));
+  const appended = available.filter((kind) => !present.has(kind));
   return [...fromSaved, ...appended];
 }
 
@@ -492,7 +543,7 @@ function readIdList(key: string, available: string[] = DEFAULT_ORDER): string[] 
     const saved = JSON.parse(localStorage.getItem(key) ?? 'null');
     if (!Array.isArray(saved)) return [];
     const known = new Set(available);
-    return saved.filter((id): id is string => typeof id === 'string' && known.has(id));
+    return saved.filter((id): id is string => typeof id === 'string' && known.has(kindOf(id)));
   } catch {
     return [];
   }
@@ -687,14 +738,14 @@ export class Layout {
     // Scrolling shows everything; the cap is kept, not cleared, so switching
     // back finds it where it was.
     if (this.overflow === 'scroll') return Infinity;
-    const n = this.rows[id] ?? DEFAULT_ROWS[id] ?? 10;
+    const n = this.rows[id] ?? DEFAULT_ROWS[kindOf(id)] ?? 10;
     return n === 0 ? Infinity : n;
   }
 
   /** The stored value, for settings to display. Distinct from `rowsFor`
    *  because 0 must read as "all" there, not as Infinity. */
   rowChoice(id: string): number {
-    return this.rows[id] ?? DEFAULT_ROWS[id] ?? 10;
+    return this.rows[id] ?? DEFAULT_ROWS[kindOf(id)] ?? 10;
   }
 
   setRows(id: string, n: number) {
@@ -1093,6 +1144,7 @@ export class Layout {
   }
 
   reset() {
+    for (const id of this.order) if (isCopy(id)) purgeInstanceKeys(id);
     this.order = [...DEFAULT_ORDER];
     this.collapsed = [];
     this.hidden = [];
@@ -1165,6 +1217,70 @@ export class Layout {
   }
 
   label(id: string): string {
-    return SECTIONS.find((s) => s.id === id)?.label ?? id;
+    const base = SECTIONS.find((s) => s.id === kindOf(id))?.label ?? kindOf(id);
+    // "Network Activity 2": the number is the instance, and the first has none.
+    return isCopy(id) ? `${base} ${id.slice(id.indexOf('#') + 1)}` : base;
+  }
+
+  /** Another copy of a card, placed right after the one it was copied from,
+   *  in the same zone, with the same size. The copy's own view state -- which
+   *  metrics, which network view -- starts from the defaults: that is what
+   *  the copy is FOR, and copying it would make two identical cards. */
+  duplicate(id: string): string {
+    const kind = kindOf(id);
+    let n = 2;
+    while (this.order.includes(`${kind}#${n}`)) n++;
+    const copy = `${kind}#${n}`;
+    const at = this.order.indexOf(id);
+    const next = [...this.order];
+    next.splice(at === -1 ? next.length : at + 1, 0, copy);
+    this.order = next;
+    this.placement = { ...this.placement, [copy]: this.zoneOf(id) };
+    if (this.lastColumn[id]) this.lastColumn = { ...this.lastColumn, [copy]: this.lastColumn[id] };
+    if (id in this.rows) this.rows = { ...this.rows, [copy]: this.rows[id] };
+    if (id in this.plotHeights) this.plotHeights = { ...this.plotHeights, [copy]: this.plotHeights[id] };
+    if (id in this.plotRows) this.plotRows = { ...this.plotRows, [copy]: this.plotRows[id] };
+    if (id in this.cardSpans) this.cardSpans = { ...this.cardSpans, [copy]: this.cardSpans[id] };
+    this.#saveAll();
+    return copy;
+  }
+
+  /** Remove a copy. The original cannot be removed, only hidden -- a kind
+   *  with no instance would be re-appended on the next load anyway. */
+  remove(id: string) {
+    if (!isCopy(id)) return;
+    const drop = <T>(m: Record<string, T>) => {
+      const { [id]: _gone, ...rest } = m;
+      return rest;
+    };
+    this.order = this.order.filter((x) => x !== id);
+    this.hidden = this.hidden.filter((x) => x !== id);
+    this.collapsed = this.collapsed.filter((x) => x !== id);
+    this.placement = drop(this.placement);
+    this.lastColumn = drop(this.lastColumn);
+    this.rows = drop(this.rows);
+    this.plotHeights = drop(this.plotHeights);
+    this.plotRows = drop(this.plotRows);
+    this.cardSpans = drop(this.cardSpans);
+    this.#saveAll();
+    purgeInstanceKeys(id);
+  }
+
+  /** Every store this class keeps, written. Used where several change at
+   *  once; the single-purpose savers are still what the setters use. */
+  #saveAll() {
+    this.#save();
+    this.#savePlacement();
+    this.#saveCollapsed();
+    try {
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify(this.hidden));
+      localStorage.setItem(COLUMN_KEY, JSON.stringify(this.lastColumn));
+      localStorage.setItem(ROWS_KEY, JSON.stringify(this.rows));
+      localStorage.setItem(PLOT_HEIGHT_KEY, JSON.stringify(this.plotHeights));
+      localStorage.setItem(PLOT_ROWS_KEY, JSON.stringify(this.plotRows));
+      localStorage.setItem(CARD_SPAN_KEY, JSON.stringify(this.cardSpans));
+    } catch {
+      // Still applied for this session.
+    }
   }
 }

@@ -5697,6 +5697,27 @@ than extend it.
 
 ### AF — Card instances: more than one copy of a card on the page
 
+**Built 2026-08-29, as designed.** `kindOf` / `isCopy` / `instanceKey` in the
+store; every reader validates by kind (guarded: no `known.has(id)` survives);
+`reconcile` appends a *kind* with no instance; `duplicate()` places the copy
+right after its source in the same zone with the same size, and `remove()`
+purges the copy's suffixed card-local keys. Settings rows gained `copy` and,
+on copies, `remove`. Copies start on default view state on purpose — two
+identical cards is not what a copy is for.
+
+**Bug it flushed out, pre-existing from AE19:** Network Activity's `MODES`
+const was declared *after* `chosenMode = $state(readMode())`. `readMode` runs
+inside that initialiser and reads `MODES`, which is in its temporal dead zone
+at that moment; the ReferenceError was swallowed by `readMode`'s own
+try/catch, and every card came back on its automatic view with its stored
+choice silently ignored. Only visible once a copy was set to `ports` and
+reloaded to `charts`. Declaration order is now guarded.
+
+Not done: the card's own `<h2>` still says "Network Activity" on a copy — the
+number lives in the Settings row, the move handle's label and the scroll
+region's name. Passing the instance label into seven components for one
+character was judged not worth it; revisit if copies get confusing.
+
 **Where it came from.** Folding RDMA Ports into Network Activity as a third
 view (AE19, planned) costs one thing: you see ports *or* charts, not both.
 Brian's answer: let a card exist twice — one Network Activity set to ports,

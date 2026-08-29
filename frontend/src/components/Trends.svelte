@@ -9,7 +9,7 @@
   import Pager from './Pager.svelte';
   import PickMenu from './PickMenu.svelte';
   import { TableView } from '../lib/table.svelte';
-  import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
+  import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
   import { nodeColor } from '../lib/theme';
@@ -29,8 +29,17 @@
     /** Chart ROWS per page, Infinity for all. Set by the card's resize corner
      *  once the plots are at their floor -- see Section. */
     plotRows?: number;
+    /** Which card this is, when there is more than one: keys the state that
+     *  is this card's own (metrics, events) so two copies do not share it. */
+    instance?: string;
   }
-  const { nodeIds, themeKey, plotHeight = DEFAULT_PLOT_PX, plotRows = Infinity }: Props = $props();
+  const {
+    nodeIds,
+    themeKey,
+    plotHeight = DEFAULT_PLOT_PX,
+    plotRows = Infinity,
+    instance = 'history',
+  }: Props = $props();
 
   /* ONE CHART PER METRIC, not one chart per node.
    *
@@ -49,8 +58,12 @@
    * the same orange, separable only by hovering. Colour is the NODE now, which
    * is what this card's legend always claimed and never did.
    */
-  const STORAGE_KEY = 'spark-dash.trend-metrics.v1';
-  const EVENTS_KEY = 'spark-dash.trend-events.v1';
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const STORAGE_KEY = instanceKey('spark-dash.trend-metrics.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const EVENTS_KEY = instanceKey('spark-dash.trend-events.v1', instance);
 
   function readSelection(): string[] {
     try {

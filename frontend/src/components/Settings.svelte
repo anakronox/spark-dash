@@ -30,7 +30,7 @@
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
-  import { ZONES } from '../lib/layout.svelte';
+  import { ZONES, isCopy } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
 
 
@@ -512,6 +512,25 @@
       {#snippet sectionRow(id: string, hidden: boolean)}
         <li class="row" class:off={hidden}>
           <span class="name">{layout.label(id)}</span>
+          <!-- A COPY of the card, placed after this one in the same column.
+               Two Network Activity cards, one on ports and one on charts, is
+               the case this exists for. Copies can be removed; the original
+               can only be hidden, since a kind with no card at all would be
+               put back on the next load. -->
+          <button
+            class="mini"
+            aria-label={`Add another ${layout.label(id)}`}
+            title="Add another copy of this card"
+            onclick={() => layout.duplicate(id)}
+          >copy</button>
+          {#if isCopy(id)}
+            <button
+              class="mini"
+              aria-label={`Remove ${layout.label(id)}`}
+              title="Remove this copy"
+              onclick={() => layout.remove(id)}
+            >remove</button>
+          {/if}
           <button
             class="mini"
             aria-pressed={!hidden}
