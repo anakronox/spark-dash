@@ -177,7 +177,7 @@
   const SLACK_TH = `${TH_BASE} w-auto`;
 
   const TD_BASE =
-    'px-3 py-[5px] border-b ' +
+    'px-3 py-[var(--row-pad)] leading-[var(--row-line)] border-b ' +
     '[border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
   const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
   const SLACK_TD = `${TD_BASE} w-auto`;

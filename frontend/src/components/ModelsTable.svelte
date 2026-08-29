@@ -351,7 +351,7 @@
      rows the full weight reads as a grid, and the row separation only needs to
      be enough for the eye to track across. */
   const TD_BASE =
-    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
+    'px-3 py-[var(--row-pad)] leading-[var(--row-line)] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
   const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
 
   /* Numbers right-aligned AND tabular, so a column of readings scans as a

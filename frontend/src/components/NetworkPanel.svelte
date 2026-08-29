@@ -220,7 +220,7 @@
   const TH_R = `${TH} text-right`;
 
   const TD_BASE =
-    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
+    'px-3 py-[var(--row-pad)] leading-[var(--row-line)] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
   const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
 
   /* Unsized so it still absorbs whatever `width: 100%` leaves over -- and

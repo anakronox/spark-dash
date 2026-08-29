@@ -158,6 +158,26 @@
 
   --step: 4px;
   --radius: 3px;
+
+  /* THE VERTICAL MODULE — one table row, and the unit every card's height is a
+   * multiple of.
+   *
+   * It is BUILT here rather than measured, and that is the whole point. The row
+   * was 25px by accident: `py-[5px]` around a 12px font at `line-height:
+   * normal` plus a 1px rule, where "normal" is whatever the font's own metrics
+   * say. That is fine for a table and useless as a layout unit — a font
+   * fallback on a machine without the preferred monospace would shift every row
+   * by a pixel or two, and every card height on the page would quietly stop
+   * lining up with the column beside it.
+   *
+   * So the row states its own arithmetic. Change the type scale and you change
+   * `--row-line`; the module, the card heights and the grid follow. The three
+   * parts are named because each is used on its own: the padding and the line
+   * box go on the cell, the rule is the cell's border. */
+  --row-line: 14px;
+  --row-pad: 5px;
+  --row-rule: 1px;
+  --row-unit: calc(var(--row-line) + 2 * var(--row-pad) + var(--row-rule));
 }
 
 /* CYBERPUNK ---------------------------------------------------------------

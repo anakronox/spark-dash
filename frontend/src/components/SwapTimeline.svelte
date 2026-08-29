@@ -255,7 +255,10 @@
     grid-template-columns: 72px 10px minmax(0, 1fr) auto;
     align-items: baseline;
     gap: 10px;
-    padding: 5px 0;
+    /* On the same vertical module as a table row — this list is one of the
+       things a card's height is counted in. */
+    padding: var(--row-pad) 0;
+    line-height: var(--row-line);
     font-size: var(--text-body);
     border-bottom: 1px solid color-mix(in srgb, var(--rule) 45%, transparent);
   }

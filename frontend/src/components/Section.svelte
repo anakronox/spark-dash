@@ -314,9 +314,24 @@
   let pxPerUnit = 1;
   let startValue = 0;
 
-  /** Fallback row height, for the frame before a table has laid out. Measured
-   *  from the live tables, which are 22px at the current type scale. */
-  const ROW_PX = 22;
+  /** The vertical module, read from CSS so there is one source for it.
+   *
+   * Only a FALLBACK for the frame before a table has laid out — the measured
+   * row is preferred, and has to be. A rendered row is not reliably exactly one
+   * module: at dpr 2 with a table starting on a fractional y, individual rows
+   * snap to ±0.5px, and the last row of a table has no bottom border at all.
+   * Measured on the live page: `models` came to exactly 25.000px per row,
+   * `processes` to 25.167 and `network` to 24.938.
+   *
+   * That is fine, and it is why card heights are set by the GRID rather than by
+   * accumulating row heights. Grid tracks are computed in layout units and do
+   * not accumulate snapping error, so two columns stay aligned even when a row
+   * inside one of them renders half a pixel tall. What must never be done is
+   * dividing a pixel budget by a nominal 25 — hence `measure()`. */
+  function rowUnit(): number {
+    const declared = getComputedStyle(document.documentElement).getPropertyValue('--row-unit');
+    return parseFloat(declared) || 25;
+  }
 
   /** Re-read what this card is drawing.
    *
@@ -354,7 +369,7 @@
     mode = 'rows';
     const bodies = slotEl.querySelectorAll('tbody');
     const row = slotEl.querySelector<HTMLElement>('tbody tr');
-    pxPerUnit = (row?.offsetHeight || ROW_PX) * Math.max(1, bodies.length);
+    pxPerUnit = (row?.offsetHeight || rowUnit()) * Math.max(1, bodies.length);
   }
 
   function onResizeStart() {

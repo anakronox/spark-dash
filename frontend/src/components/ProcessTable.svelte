@@ -174,7 +174,7 @@
 
   /* Body cells carry the rule at 45% so the grid recedes behind the data. */
   const TD_BASE =
-    'px-3 py-[5px] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
+    'px-3 py-[var(--row-pad)] leading-[var(--row-line)] border-b [border-bottom-color:color-mix(in_srgb,var(--rule)_45%,transparent)] whitespace-nowrap';
   const TD = `${TD_BASE} overflow-hidden text-ellipsis`;
 
   /* `tabular-nums` is the global `.num` helper, spelled out. Dropping it is
