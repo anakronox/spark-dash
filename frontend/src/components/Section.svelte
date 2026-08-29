@@ -547,12 +547,62 @@
     return dir === 1 ? canWiden : !canWiden;
   }
 
+  /** The footprint a release would produce, in coordinates relative to this
+   *  card. `null` when nothing is aimed at.
+   *
+   * SHOWING THE CURRENT BOX WAS THE BUG. The first cut outlined the card
+   * itself, which says "something will change" and not "it will become this
+   * wide" — and width is the entire point of the gesture. This draws where the
+   * card is going instead.
+   *
+   * The columns are MEASURED from a live band rather than computed from the
+   * gap, because the band is right there and arithmetic would be a second
+   * definition of the same geometry. Only when no band exists — the card is
+   * about to create the first one — is there nothing to measure and the split
+   * has to be worked out.
+   */
+  let ghost = $state<{ left: number; width: number } | null>(null);
+
+  const COLS_GAP = 16;
+
+  function targetBox(dir: -1 | 1): { left: number; width: number } | null {
+    if (!slotEl) return null;
+    /* WALKED UP FROM THIS CARD, never queried from the document.
+       `document.querySelector('.sections')` finds Settings' own three
+       `<ol class="sections">` first — they come earlier in the document and
+       measure 0x0, so the preview was a 2px sliver at the window's left edge.
+       A class name is not a unique address; the card's own ancestor is. */
+    const sections = slotEl.closest('.sections');
+    if (!sections) return null;
+    const page = sections.getBoundingClientRect();
+    const here = slotEl.getBoundingClientRect();
+
+    // Wider: a full-width card spans the whole page column.
+    if (dir === 1) return { left: page.left - here.left, width: page.width };
+
+    const zone = layout.columnFor(id);
+    const band = sections.querySelector('.cols');
+    if (band) {
+      const zones = [...band.children];
+      const target = (zone === 'right' ? zones[1] : zones[0])?.getBoundingClientRect();
+      if (target) return { left: target.left - here.left, width: target.width };
+    }
+
+    // No band yet — this card is about to make one.
+    const half = (page.width - COLS_GAP) / 2;
+    const left = zone === 'right' ? page.left + half + COLS_GAP : page.left;
+    return { left: left - here.left, width: half };
+  }
+
   function onWidthAim(dir: -1 | 0 | 1) {
-    widthAim = meaningful(dir) ? dir : 0;
+    const ok = meaningful(dir);
+    widthAim = ok ? dir : 0;
+    ghost = ok && dir !== 0 ? targetBox(dir) : null;
   }
 
   function onWidthCommit(dir: -1 | 1) {
     widthAim = 0;
+    ghost = null;
     if (!meaningful(dir)) return;
     /* THE HELD HEIGHT GOES WITH IT. A card pinned to 45 rows at half width is
        absurd at full width, where its content reflows shorter — Temperatures
@@ -656,7 +706,6 @@
   bind:this={slotEl}
   data-slot={id}
   class="slot"
-  class:rearming={widthAim !== 0}
   style:--card-rows={cardRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
@@ -721,6 +770,18 @@
     <!-- Not on a collapsed card: there is nothing to resize but a 40px stub,
          and a resize corner on it would offer a gesture that cannot do
          anything. -->
+    {#if ghost}
+      <!-- Absolutely positioned and pointer-transparent, so drawing where the
+           card is GOING cannot move the card it is measured from. Same reason
+           the move gesture draws a line rather than opening a gap. -->
+      <div
+        class="ghost"
+        aria-hidden="true"
+        style:left="{ghost.left}px"
+        style:width="{ghost.width}px"
+      ></div>
+    {/if}
+
     <CardGrip
       onstart={onResizeStart}
       onmove={onResizeMove}
@@ -773,14 +834,20 @@
     min-height: calc(var(--card-rows, 1) * var(--row-unit) - 16px);
   }
 
-  /* Aimed at a width change, pending release. An OUTLINE rather than a border
-     or a size change: outlines are painted outside the box and take no space,
-     so showing the intent cannot move the card that is being aimed at — the
-     same reason the move gesture draws a line instead of opening a gap. */
-  .slot.rearming {
-    outline: 1px dashed var(--warning);
-    outline-offset: 3px;
+  /* The footprint a release would produce. It keeps the card's CURRENT height
+     on purpose: width is what the gesture changes and what this is answering,
+     and the height after the flip is not knowable without performing it —
+     the content reflows and the held height is released. Promising a height
+     here would be a guess drawn as a fact. */
+  .ghost {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    z-index: 4;
+    pointer-events: none;
+    border: 1px dashed var(--warning);
     border-radius: var(--radius);
+    background: color-mix(in srgb, var(--warning) 7%, transparent);
   }
 
   .slot.grabbed {

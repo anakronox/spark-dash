@@ -244,7 +244,10 @@ def test_a_collapsed_card_has_no_resize_corner():
     """A collapsed card is a 40px stub. A resize corner on it would offer a
     gesture with nothing to act on."""
     src = without_comments(SECTION.read_text())
-    branch = src[src.index("{#if collapsed}") : src.index("</div>", src.index("{#if collapsed}"))]
+    # Bounded by the <style> block, not by the first </div>: the markup inside
+    # this branch contains elements of its own, and slicing on a closing tag cut
+    # the guard short the moment one was added.
+    branch = src[src.index("{#if collapsed}") : src.index("<style>")]
     stub, rest = branch.split("{:else}", 1)
     assert "<CardGrip" not in stub, "the collapsed stub renders a resize corner"
     assert "<CardGrip" in rest, "the expanded card does not render one"
@@ -532,4 +535,48 @@ def test_width_is_inert_where_there_are_no_columns():
     assert "wideEnough()" in meaningful, "an aim can arm where width means nothing"
     assert "canWiden" in meaningful, (
         "a full-width card could arm for wider, or a half-width one for narrower"
+    )
+
+
+def test_the_width_cue_draws_the_TARGET_footprint():
+    """Outlining the card itself says "something will change" and not "it will
+    become this wide" -- and width is the entire point of the gesture. The cue
+    has to be the box a release would produce."""
+    src = without_comments(SECTION.read_text())
+    assert "function targetBox" in src, "nothing computes the footprint a release would produce"
+    assert "class=\"ghost\"" in src, "no cue is drawn"
+
+    ghost = css_block(SECTION, ".ghost {")
+    assert "position: absolute" in ghost, (
+        "an in-flow cue would move the card it is measured from"
+    )
+    assert "pointer-events: none" in ghost, "the cue would swallow the drag it is previewing"
+
+    box = section_fn("targetBox")
+    assert "columnFor(" in box, "the cue guesses a column instead of asking where the card goes"
+
+
+def test_the_cue_and_the_move_agree_on_the_column():
+    """A preview that worked out the destination separately could disagree with
+    the move it is previewing. One answer, two callers."""
+    src = without_comments(LAYOUT.read_text())
+    assert "columnFor(id: string)" in src, "the destination has no single home"
+
+    toggle = src[src.index("toggleWidth(id: string)") :]
+    toggle = toggle[: toggle.index("\n  }")]
+    assert "this.columnFor(id)" in toggle, "toggleWidth picks its column some other way"
+    assert "#emptierColumn()" not in toggle, "toggleWidth still resolves the fallback itself"
+
+
+def test_the_cue_finds_the_page_by_walking_up_from_the_card():
+    """MEASURED BUG: `document.querySelector('.sections')` finds Settings' own
+    three `<ol class="sections">` first -- they come earlier in the document and
+    measure 0x0, so the preview rendered as a 2px sliver at the window's left
+    edge. A class name is not a unique address."""
+    box = section_fn("targetBox")
+    assert "slotEl.closest('.sections')" in box, (
+        "the page container is queried from the document rather than from the card"
+    )
+    assert "document.querySelector" not in box, (
+        "a document-wide query can match Settings' own markup"
     )

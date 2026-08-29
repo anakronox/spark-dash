@@ -5423,6 +5423,28 @@ than a hedge.
   edge), which was a deliberate decision: they are not identical, since pairing
   picks a partner and a side while this returns you to your last column.
 
+  **Follow-up: the cue drew the wrong box.** Shipped outlining the CARD, which
+  says "something will change" and not "it will become this wide" — and width is
+  the whole point of the gesture. It draws the target footprint now: the full
+  page width when widening, and the actual column box when narrowing, measured
+  from a live band rather than computed, because the band is right there and
+  arithmetic would be a second definition of the same geometry.
+
+  `columnFor()` came out of `toggleWidth()` so the preview and the move share
+  one answer — a cue that worked out its own destination could disagree with the
+  move it was previewing.
+
+  **And a class-name collision worth remembering:**
+  `document.querySelector('.sections')` finds *Settings'* own three
+  `<ol class="sections">` first — they come earlier in the document and measure
+  0×0, so the preview rendered as a 2px sliver at the window's left edge. It
+  walks up from the card with `closest()` now. A class name is not a unique
+  address.
+
+  Verified against reality rather than by eye: ghost 1649px at left 32 vs card
+  1649px at left 32 when widening; 817 at 32 when narrowing to the left column;
+  817 at **865** when narrowing to the right one.
+
   Measured live: half → full → half by drag; a (30,150) diagonal resized height
   only, zone unchanged; a (120,30) diagonal flipped width only; 20px of travel
   did nothing and 80px armed; cancel abandoned; a half-width card aimed narrower

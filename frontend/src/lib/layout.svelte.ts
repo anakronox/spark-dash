@@ -848,11 +848,18 @@ export class Layout {
    * of you, so it belongs to the drag.
    */
   toggleWidth(id: string) {
-    if (this.zoneOf(id) === 'full') {
-      this.setZone(id, this.lastColumn[id] ?? this.#emptierColumn());
-    } else {
-      this.setZone(id, 'full');
-    }
+    this.setZone(id, this.zoneOf(id) === 'full' ? this.columnFor(id) : 'full');
+  }
+
+  /** WHICH COLUMN a full-width card would return to.
+   *
+   * Exported rather than inlined into `toggleWidth` because the resize corner
+   * has to DRAW this before it happens: it shows the footprint a release would
+   * produce, and a preview that worked it out separately could disagree with
+   * the move it is previewing. One answer, two callers.
+   */
+  columnFor(id: string): Zone {
+    return this.lastColumn[id] ?? this.#emptierColumn();
   }
 
   /** For a section that has never been in a column. */
