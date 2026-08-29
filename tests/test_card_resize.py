@@ -1035,3 +1035,14 @@ def test_the_add_menu_counts_what_is_on_the_page():
     body = src[src.index("  countOf(kind: string)") :]
     body = body[: body.index("\n  }")]
     assert "!this.isHidden(id)" in body, "countOf counts hidden instances"
+
+
+def test_settings_calls_them_elements():
+    """The page's own button says + ELEMENT, so the settings that shape them say
+    the same word; a control named one thing on the page and another in
+    Settings is two things to learn. The per-interface alerting note is gone
+    -- it restated what the documentation already covers, once per node."""
+    src = SETTINGS.read_text()
+    assert '<h3 class="eyebrow dim">Elements</h3>' in src and '<h3 class="eyebrow dim">Node elements</h3>' in src
+    assert '>Cards<' not in src and '>Node cards<' not in src
+    assert "Unticked stops" not in src

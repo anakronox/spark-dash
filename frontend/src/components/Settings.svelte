@@ -417,13 +417,13 @@
 
     <!-- Layout -->
     <section class="stack">
-      <h3 class="eyebrow dim">Cards</h3>
+      <h3 class="eyebrow dim">Elements</h3>
       <!-- What a card does when its content is taller than it is. Paging keeps
            the drag coupled to rows; scrolling makes the drag the height and
            renders everything. A wheel over a scrolling card scrolls the card
            until it reaches its end, then the page -- ordinary browser
            behaviour, and worth saying once. -->
-      <div class="choices" role="group" aria-label="When content is taller than its card">
+      <div class="choices" role="group" aria-label="When content is taller than its element">
         <button
           class="choice"
           class:active={layout.overflow === 'page'}
@@ -438,15 +438,15 @@
         >Scroll</button>
       </div>
       <p class="note dim">
-        Paginate keeps rows to the card's height. Scroll shows every row and
-        scrolls inside the card; the wheel reaches the page again at its end.
+        Paginate keeps rows to the element's height. Scroll shows every row and
+        scrolls inside the element; the wheel reaches the page again at its end.
       </p>
 
-      <h3 class="eyebrow dim">Node cards</h3>
+      <h3 class="eyebrow dim">Node elements</h3>
       <!-- Deliberate, never automatic. Switching on node count would mean the
            page rearranges itself the moment a node joins — which is exactly
            when someone is watching it. -->
-      <div class="choices" role="group" aria-label="Node card density">
+      <div class="choices" role="group" aria-label="Node element density">
         <button
           class="choice"
           class:active={!layout.compactCards}
@@ -597,11 +597,6 @@
                     {/if}
                   </label>
                 {/each}
-                <p class="hint dim">
-                  Unticked stops <span>NetworkLinkDown</span> and its
-                  RoCE port alerting. The interface keeps being collected and
-                  charted.
-                </p>
               {:else}
                 <p class="hint dim">
                   Nothing to list until this node reports its interfaces.
