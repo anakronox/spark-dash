@@ -7,7 +7,7 @@ them.
 
 Supports single node and clusters.
 
-![The spark-dash dashboard: a pooled two-node cluster and a standalone node, GPU/CPU/memory history, the GPU process table, and per-model throughput and state](Screenshot.jpg)
+![The spark-dash dashboard: a pooled two-node cluster and a standalone node under memory pressure, twelve system metrics charted per node, RoCE and management interfaces charted separately, the GPU process table, and per-model state](Screenshot.jpg)
 
 Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Every
 threshold shown is measured for this hardware rather than guessed, and the page
