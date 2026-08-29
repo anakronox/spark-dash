@@ -5474,6 +5474,16 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
+- [ ] **AE19. Fold RDMA Ports into Network Activity as a third view.** Same
+  subject — the fabric, by port instead of by interface. The ports table's
+  unique facts are per-port state, link layer, negotiated rate and error
+  counters; the link table's `roce` column only says up/—. Toggle becomes
+  `charts | table | ports`; the RDMA table component is reused whole, its
+  card chrome lifted off; `ColumnMenu` already takes a list of views. Store
+  readers must drop the retired `network` id on load (confirm, don't assume).
+  The groups menu hides in the ports view. ~80 lines plus removals. Trade-off
+  — one view at a time — is what AF exists to remove.
+
 - [x] **AE18. Paginate or scroll, chosen in Settings.** Asked for as a costing:
   what would it take to scroll inside a card instead of paging? About 150 lines,
   because the pieces existed. Paging couples height to content through the row
@@ -5678,6 +5688,59 @@ than a hedge.
 **Explicitly NOT this:** a 12-column grid or per-card pixel widths. The band
 model is carefully built and a general grid would replace its reasoning rather
 than extend it.
+
+### AF — Card instances: more than one copy of a card on the page
+
+**Where it came from.** Folding RDMA Ports into Network Activity as a third
+view (AE19, planned) costs one thing: you see ports *or* charts, not both.
+Brian's answer: let a card exist twice — one Network Activity set to ports,
+another to charts. Assessed 2026-08-29; **feasible, moderate cost, and it makes
+AE19's trade-off disappear.** Build AE19 first (small, independent), then this.
+
+**What already works per card.** Everything the layout store keeps is keyed by
+section id — `order`, `placement`, `hidden`, `collapsed`, `rows`,
+`plotHeights`, `plotRows`, `cardSpans`, `lastColumn` — so two ids are already
+two cards as far as position, size and visibility go. Drag targets use
+`data-slot={id}`. uPlot's `syncKey` is per component, so two System Activity
+cards would share a crosshair, which is the right thing.
+
+**The one structural obstacle: identity is the section id, and the id is the
+kind.** `SECTIONS` is seven ids; `App.svelte` dispatches `{#if id ===
+'models'}`; every store reader validates against `DEFAULT_ORDER`. And six
+pieces of state are keyed by **component**, not by card — one localStorage key
+each for Network Activity's mode, groups, quiet and events, and System
+Activity's metrics and events. Two instances would initialise from the same
+key and fight over it: divergent live, last-writer-wins on reload.
+
+**The design.**
+
+- An instance id is `kind` or `kind#n` (`network-history`, `network-history#2`).
+  Existing ids are instance 1 unchanged, so **no saved layout migrates**.
+  `kindOf(id)` strips the suffix; `SECTIONS` becomes the list of kinds.
+- Store readers validate the *kind* rather than the id (`known.has(kindOf(id))`),
+  and `order` may hold instance ids. `DEFAULT_ROWS[kindOf(id)]`. `isDefault`
+  is false once any `#n` exists; `reset()` drops them.
+- `App.svelte` dispatches on `kindOf(id)` and passes `instance={id}` down.
+  The six card-local keys take the instance as a suffix
+  (`spark-dash.network-mode.v1:network-history#2`); instance 1 keeps the bare
+  key, so nothing a user has set is lost.
+- **Column views stay shared** (`ColumnView('thermal.sensors')` etc.): the same
+  table wants the same columns wherever it is drawn. Deliberate, and cheap to
+  revisit.
+- Settings: a "duplicate" control per section row; copies get a remove control
+  (the first instance can only be hidden). Label: the kind's label plus a
+  small `2`.
+- Fetching is per instance — two System Activity cards are two history
+  fetches. Acceptable; the polling is light and the WebSocket feed is one.
+
+**Cost.** ~250–350 lines across the store, `App.svelte`, `Section`, `Settings`,
+two components' storage keys, and the guards — a good many source guards pin
+section ids and will need `kindOf`. One to two sessions. The risk is in the
+readers: a stored `kind#n` that a reader drops on load would silently delete a
+card, so every reader gets a test with an instance id in it.
+
+**Explicitly NOT this:** instances of node cards (they are data-driven and
+already one per node), or per-instance column choices.
 
 ### J — Single-host profile (everything on one GB10)
 
