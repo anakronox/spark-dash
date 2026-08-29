@@ -297,7 +297,8 @@ class TestInterfaceKind:
         assert self._one(tmp_path, "enP7s7", {"speed": 10000}).driver is None
 
     def test_bus_comes_from_the_device_path(self, tmp_path):
-        got = self._one(tmp_path, "enx00e04c680001", {"speed": 1000, "bus": "usb", "driver": "r8152"}).bus
+        got = self._one(tmp_path, "enx00e04c680001",
+            {"speed": 1000, "bus": "usb", "driver": "r8152"}).bus
         assert got == "usb"
         assert self._one(tmp_path / "b", "enP7s7", {"speed": 10000}).bus == "pci"
 
