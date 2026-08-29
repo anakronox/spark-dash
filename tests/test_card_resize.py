@@ -836,3 +836,54 @@ def test_the_agent_reports_kind_facts_not_a_verdict():
     model = (Path(__file__).resolve().parent.parent / "common/src/spark_dash_common/models.py").read_text()
     for field in ("wireless: bool = Field(", "driver: str | None = Field(", "bus: str | None = Field("):
         assert field in model, f"NetworkInterface lacks {field.split(':')[0]}"
+
+
+def test_scroll_mode_makes_the_drag_the_height_and_nothing_else():
+    """Paging couples height to content through the row cap; scrolling
+    decouples them -- the held span IS the height, every row renders, the
+    panel scrolls. So in scroll mode the gesture must write the span and never
+    a cap or a plot height."""
+    body = section_fn("applyResize")
+    scroll = body[body.index("layout.overflow === 'scroll'") :]
+    scroll = scroll[: scroll.index("}")]
+    assert "setCardSpan(" in scroll and "return;" in scroll, "scroll mode falls through to the paging gesture"
+    assert "setRows(" not in scroll and "setPlotHeight(" not in scroll
+
+    src = without_comments(LAYOUT.read_text())
+    for fn in ("rowsFor(id: string)", "plotRowsFor(id: string)"):
+        head = src[src.index(fn) :][:220]
+        assert "this.overflow === 'scroll') return Infinity" in head, f"{fn} still caps in scroll mode"
+
+
+def test_a_scrolling_card_is_a_fixed_box_with_a_sticky_header():
+    """`height`, not `min-height`: the resize system measures the card with
+    its fill lifted, and lifting min-height changes nothing when height is
+    set, so measure() reads the span straight back -- no growth, no ratchet.
+    cardRows must be the span itself, not max(natural, span): natural is the
+    full content and max() would grow the card to it and never scroll."""
+    src = without_comments(SECTION.read_text())
+    assert "scrolling ? layout.cardSpan(id) : Math.max(naturalRows" in src, (
+        "a scrolling card still takes max(natural, held) and cannot be shorter than its content"
+    )
+    box = css_block(SECTION, ".slot.scrolling {")
+    assert "height: calc(var(--card-rows" in box and "min-height: 0" in box
+    panel = css_block(SECTION, ".slot.scrolling > :global(section.panel) {")
+    assert "overflow-y: auto" in panel
+    header = css_block(SECTION, ".slot.scrolling > :global(section.panel > header) {")
+    assert "position: sticky" in header and "background: var(--panel)" in header, (
+        "the header scrolls away, or the rows show through it"
+    )
+    assert "overscroll-behavior" not in src, "overscroll containment would trap the page under a card"
+    assert "panel.tabIndex = 0" in src, "a scroll region must be focusable to scroll without a mouse"
+
+
+def test_overflow_is_a_setting_that_resets():
+    src = without_comments(LAYOUT.read_text())
+    body = src[src.index("get isDefault()") :]
+    body = body[: body.index("\n  }")]
+    assert "this.overflow === 'page'" in body, "scroll mode does not make the layout resettable"
+    reset = src[src.index("  reset() {") :]
+    reset = reset[: reset.index("\n  }")]
+    assert "setOverflow('page')" in reset
+    settings = without_comments(SETTINGS.read_text())
+    assert "setOverflow('scroll')" in settings and "setOverflow('page')" in settings, "no control in Settings"

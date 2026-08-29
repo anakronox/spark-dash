@@ -5474,6 +5474,34 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
+- [x] **AE18. Paginate or scroll, chosen in Settings.** Asked for as a costing:
+  what would it take to scroll inside a card instead of paging? About 150 lines,
+  because the pieces existed. Paging couples height to content through the row
+  cap; scrolling decouples them — the held span (AE8) *is* the height, every
+  row renders (`pageSize = Infinity`, the path `TableView` already guards, so
+  `Pager` simply never appears), and the panel scrolls with its header sticky.
+  Global, under Settings → Cards, default Paginate, remembered, in `reset()`.
+
+  **Why it is safe for the measurer:** the resize system measures a card with
+  its fill lifted, and lifting `min-height` changes nothing when `height` is
+  set — so a scrolling card reads its span straight back and writes the same
+  span. `cardRows` must be the span itself in scroll mode, not
+  `max(natural, span)`: natural is the full content and `max()` would grow the
+  card to it and never scroll. The grip stays in the slot, outside the
+  scroller, at the corner of the card.
+
+  In scroll mode the drag is the height and nothing else: no row cap, no plot
+  height, no two-regime gesture. Caps are ignored, not cleared, so switching
+  back finds them where they were. The panel is made focusable from `Section`
+  (it is the child's element) so it scrolls from the keyboard, and un-made when
+  paging. No `overscroll-behavior: contain` — that would trap the page.
+
+  Measured: Temperatures unpinned renders all 43 sensors at 1009px with no
+  pager; pinned to 17 modules it is 409px with `scrollHeight` 1001 over
+  `clientHeight` 407, `--card-rows` stable across polls, header still visible
+  after scrolling 400px inside, grip at the card's corner, no row cap written.
+  Back to Paginate: two pagers and the 29-row view return.
+
 - [x] **AE17. Card titles get a step of their own.** They were the 10px
   uppercase eyebrow — the same size as the column headers beneath them,
   differing only in weight and ink — so on a dense table "GPU PROCESSES" read as

@@ -435,7 +435,7 @@
          lifted; the box is filled again by now, so reading it here would read
          the held height back and never find any room. */
       const held = layout.cardSpan(id);
-      if (held > naturalRows && tops.length < rowsTotal) {
+      if (layout.overflow === 'page' && held > naturalRows && tops.length < rowsTotal) {
         const extra = Math.floor(((held - naturalRows) * unit) / (plotH + rowChrome));
         if (extra > 0) {
           const rows = tops.length + extra;
@@ -541,6 +541,14 @@
      * dragged, after clicks that landed on or near their corners. A held
      * height is a deliberate act; it should take a deliberate gesture. */
     if (modules === 0) return;
+
+    /* Scrolling: the drag is the height and nothing else. No row cap, no plot
+       height, no two-regime gesture -- the content is all there and the box
+       is what moves. */
+    if (layout.overflow === 'scroll') {
+      layout.setCardSpan(id, startSpan + modules);
+      return;
+    }
 
     const unit = rowUnit();
     if (mode === 'plot') resizePlots(modules * unit);
@@ -784,6 +792,22 @@
     }
   }
 
+  /* A scroll region has to be focusable to scroll without a mouse. The panel
+     is the child component's element, so the attribute is set from here rather
+     than in seven components' markup -- and removed again when paging, where a
+     focusable card would be a tab stop with nothing to do. */
+  $effect(() => {
+    const panel = slotEl?.querySelector<HTMLElement>(':scope > section.panel');
+    if (!panel) return;
+    if (scrolling) {
+      panel.tabIndex = 0;
+      panel.setAttribute('aria-label', `${label}, scrolls`);
+    } else {
+      panel.removeAttribute('tabindex');
+      panel.removeAttribute('aria-label');
+    }
+  });
+
   $effect(() => {
     const el = slotEl;
     if (!el) return;
@@ -838,7 +862,13 @@
      quantity nothing else on the page is measured in. */
   /** What the card actually spans: enough for its content, or the height the
    *  reader pinned it to, whichever is larger. */
-  const cardRows = $derived(Math.max(naturalRows, layout.cardSpan(id)));
+  /* SCROLLING is the held span being the height rather than a floor under
+     it. With a span, the card is exactly that tall and the panel scrolls;
+     with none, it is its natural (full) height, as an uncapped card always
+     was, and the first drag pins it. `max()` would defeat this: natural is the
+     full content, so the card would grow to it and never scroll. */
+  const scrolling = $derived(layout.overflow === 'scroll' && layout.cardSpan(id) > 0);
+  const cardRows = $derived(scrolling ? layout.cardSpan(id) : Math.max(naturalRows, layout.cardSpan(id)));
 
   const resizeValue = $derived(mode === 'plot' ? cardRows : layout.rowChoice(id));
   const resizeText = $derived(
@@ -867,6 +897,7 @@
   bind:this={slotEl}
   data-slot={id}
   class="slot"
+  class:scrolling
   style:--card-rows={cardRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
@@ -1009,6 +1040,31 @@
     border: 1px dashed var(--warning);
     border-radius: var(--radius);
     background: color-mix(in srgb, var(--warning) 7%, transparent);
+  }
+
+  /* THE CARD IS A FIXED BOX AND THE PANEL SCROLLS INSIDE IT. `height`, not
+     `min-height`: the whole resize system measures the card with its fill
+     lifted, and lifting min-height changes nothing when height is set, so
+     measure() reads the span straight back and writes the same span -- no
+     growth, no ratchet. The grip stays in the slot, outside the scroller, at
+     the corner of the CARD rather than of the content. */
+  .slot.scrolling {
+    height: calc(var(--card-rows, 1) * var(--row-unit) - 16px);
+    min-height: 0;
+  }
+
+  .slot.scrolling > :global(section.panel) {
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  /* The title, legend and controls stay put while the rows go by. A
+     background, or the rows would show through it. */
+  .slot.scrolling > :global(section.panel > header) {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--panel);
   }
 
   .slot.grabbed {

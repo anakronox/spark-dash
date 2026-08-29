@@ -25,6 +25,7 @@ const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
 const PLOT_HEIGHT_KEY = 'spark-dash.plot-heights.v1';
 const PLOT_ROWS_KEY = 'spark-dash.plot-rows.v1';
+const OVERFLOW_KEY = 'spark-dash.overflow.v1';
 const CARD_SPAN_KEY = 'spark-dash.card-spans.v1';
 const ROWS_KEY = 'spark-dash.section-rows.v1';
 const COLUMN_KEY = 'spark-dash.section-column.v1';
@@ -194,6 +195,17 @@ function readPlacement(available: string[] = DEFAULT_ORDER): Record<string, Zone
     return out;
   } catch {
     return {};
+  }
+}
+
+/** What a card does when its content is taller than it is. */
+export type Overflow = 'page' | 'scroll';
+
+function readOverflow(): Overflow {
+  try {
+    return localStorage.getItem(OVERFLOW_KEY) === 'scroll' ? 'scroll' : 'page';
+  } catch {
+    return 'page';
   }
 }
 
@@ -507,6 +519,14 @@ export class Layout {
    * Default off; the person who needs it turns it on and it stays on. */
   compactCards = $state<boolean>(readCompact());
 
+  /* PAGINATE OR SCROLL. Both answer "the content is taller than the card";
+     they differ in what the drag means. Paging couples height to content
+     through the row cap -- drag sets rows, the height follows. Scrolling
+     decouples them: the held span IS the height, every row renders, and the
+     panel scrolls. Global rather than per card, because it is a way of
+     reading the page, not a property of one card. */
+  overflow = $state<Overflow>(readOverflow());
+
   /* Which zone each section sits in. Absent means full width, so a section
      added in a later release spans the page rather than silently appearing in
      a column the reader may have scrolled past. */
@@ -665,6 +685,9 @@ export class Layout {
    * still round-trips through here.
    */
   rowsFor(id: string): number {
+    // Scrolling shows everything; the cap is kept, not cleared, so switching
+    // back finds it where it was.
+    if (this.overflow === 'scroll') return Infinity;
     const n = this.rows[id] ?? DEFAULT_ROWS[id] ?? 10;
     return n === 0 ? Infinity : n;
   }
@@ -744,6 +767,7 @@ export class Layout {
    *  must translate -- TableView's slice returns nothing for an Infinite page
    *  size, which its own comment warns about. */
   plotRowsFor(id: string): number {
+    if (this.overflow === 'scroll') return Infinity;
     return this.plotRows[id] ?? Infinity;
   }
 
@@ -756,6 +780,15 @@ export class Layout {
     const { [id]: _drop, ...rest } = this.plotRows;
     this.plotRows = rest;
     this.#savePlotRows();
+  }
+
+  setOverflow(mode: Overflow) {
+    this.overflow = mode;
+    try {
+      localStorage.setItem(OVERFLOW_KEY, mode);
+    } catch {
+      // Still applied for this session.
+    }
   }
 
   #savePlotRows() {
@@ -1077,6 +1110,7 @@ export class Layout {
        is stuck with a table they cannot explain. */
     columnStore.reset();
     this.setCompactCards(false);
+    this.setOverflow('page');
     this.#savePlacement();
     try {
       localStorage.removeItem(COLUMN_KEY);
@@ -1126,7 +1160,8 @@ export class Layout {
       Object.keys(this.plotRows).length === 0 &&
       this.nodeOrder.length === 0 &&
       !columnStore.customised &&
-      !this.compactCards
+      !this.compactCards &&
+      this.overflow === 'page'
     );
   }
 
