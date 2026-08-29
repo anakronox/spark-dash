@@ -25,6 +25,7 @@ const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
 const BAND_MODE_KEY = 'spark-dash.band-mode.v1';
 const PLOT_HEIGHT_KEY = 'spark-dash.plot-heights.v1';
+const CARD_SPAN_KEY = 'spark-dash.card-spans.v1';
 const ROWS_KEY = 'spark-dash.section-rows.v1';
 const COLUMN_KEY = 'spark-dash.section-column.v1';
 const WIDTH_KEY = 'spark-dash.section-widths.v1';
@@ -417,6 +418,35 @@ function clampPlot(px: number): number {
 export const MIN_ROWS = 1;
 export const MAX_ROWS = 200;
 
+/** A card's HELD height, in modules — what the reader dragged it to.
+ *
+ * Distinct from the height it needs. A card's span is normally `ceil(content)`,
+ * so dragging it taller than its content did nothing: Models has eleven models,
+ * and once the cap passed eleven the card simply stopped growing. That is the
+ * right default and the wrong ceiling — with two independent columns, holding a
+ * card taller than it needs is how you get their BOTTOMS to line up.
+ *
+ * IT IS ONLY EVER USER INPUT, and that is load-bearing rather than incidental.
+ * `Section` derives a card's span by measuring the rendered card, so anything
+ * that feeds back into that measurement grows without limit. A held value is a
+ * constant: the card measures `max(natural, held)`, which reads back as exactly
+ * `held` and stops. Never write to this from a measurement.
+ */
+function readCardSpans(available: string[] = DEFAULT_ORDER): Record<string, number> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CARD_SPAN_KEY) ?? 'null');
+    if (!saved || typeof saved !== 'object') return {};
+    const known = new Set(available);
+    const out: Record<string, number> = {};
+    for (const [id, n] of Object.entries(saved)) {
+      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) out[id] = clampRows(n);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 function clampRows(n: number): number {
   if (n === 0) return 0;
   return Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.round(n)));
@@ -538,6 +568,10 @@ export class Layout {
    * control is a grip on the card, and settings does not offer it a second
    * time — one thing, one control. */
   plotHeights = $state<Record<string, number>>(readPlotHeights());
+
+  /** Held card height per section, in modules. Absent means "as tall as the
+   *  content needs", which is the default and the common case. */
+  cardSpans = $state<Record<string, number>>(readCardSpans());
 
   /** The column each section was last in, so `half` can return it there. */
   lastColumn = $state<Record<string, Zone>>(readColumns());
@@ -722,6 +756,30 @@ export class Layout {
     const { [id]: _drop, ...rest } = this.plotHeights;
     this.plotHeights = rest;
     this.#savePlotHeights();
+  }
+
+  /** The held height, or 0 for "no floor — fit the content". */
+  cardSpan(id: string): number {
+    return this.cardSpans[id] ?? 0;
+  }
+
+  setCardSpan(id: string, n: number) {
+    this.cardSpans = { ...this.cardSpans, [id]: clampRows(n) };
+    this.#saveCardSpans();
+  }
+
+  clearCardSpan(id: string) {
+    const { [id]: _drop, ...rest } = this.cardSpans;
+    this.cardSpans = rest;
+    this.#saveCardSpans();
+  }
+
+  #saveCardSpans() {
+    try {
+      localStorage.setItem(CARD_SPAN_KEY, JSON.stringify(this.cardSpans));
+    } catch {
+      // Still applied for this session.
+    }
   }
 
   #savePlotHeights() {
@@ -1020,6 +1078,7 @@ export class Layout {
     this.lastColumn = {};
     this.rows = {};
     this.plotHeights = {};
+    this.cardSpans = {};
     this.nodeOrder = [];
     /* Switched-off columns go too. Same unrecoverability rule as hidden
        sections: anything that can remove a thing from the page must have one
@@ -1033,6 +1092,7 @@ export class Layout {
       localStorage.removeItem(COLUMN_KEY);
       localStorage.removeItem(ROWS_KEY);
       localStorage.removeItem(PLOT_HEIGHT_KEY);
+      localStorage.removeItem(CARD_SPAN_KEY);
       localStorage.removeItem(NODE_ORDER_KEY);
     } catch {
       // Still applied for this session.

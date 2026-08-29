@@ -402,10 +402,13 @@
    * on 25px tracks would put every card after the first at 25n + 16, which is
    * never on the grid, and the whole point is that it is. */
   const GAP_PX = 16;
+  /** The card's span when the current gesture began. */
+  let startSpan = 1;
   let cardRows = $state(1);
 
   function onResizeStart() {
     measure();
+    startSpan = cardRows;
     if (mode === 'plot') {
       startValue = layout.plotHeight(id);
       return;
@@ -434,6 +437,36 @@
     return Math.max(MIN_ROWS, Math.min(MAX_ROWS, Math.round(n)));
   }
 
+  /** Grow the card by `modules`, in whichever units it is made of.
+   *
+   * TWO THINGS ARE SET, not one. The content control — a row cap or a plot
+   * height — is what makes the card genuinely taller while it still has
+   * something to show. The held span is what keeps it that tall once it does
+   * not: Models has eleven models, so past a cap of eleven the card used to
+   * stop dead under the pointer. With two independent columns, being able to
+   * hold a card taller than its content is the only way to line their bottoms
+   * up, so both are written on every step and the card takes the larger.
+   *
+   * They do not fight. `cardRows` measures the rendered card, which is
+   * `max(natural, held)`; while content is growing the natural height leads and
+   * the held value is simply below it, contributing nothing. */
+  function applyResize(modules: number) {
+    /* A GESTURE THAT MOVED NOTHING PINS NOTHING.
+     *
+     * Without this, every pointermove that had not yet crossed a module
+     * boundary — including the one a plain click produces — wrote
+     * `startSpan + 0`, silently holding the card at whatever height it
+     * happened to be. Caught by finding spans stored for four cards nobody had
+     * dragged, after clicks that landed on or near their corners. A held
+     * height is a deliberate act; it should take a deliberate gesture. */
+    if (modules === 0) return;
+
+    const unit = rowUnit();
+    if (mode === 'plot') layout.setPlotHeight(id, startValue + (modules * unit) / pxPerUnit);
+    else layout.setRows(id, dragRows(startValue + (modules * unit) / pxPerUnit));
+    layout.setCardSpan(id, startSpan + modules);
+  }
+
   function onResizeMove(dy: number) {
     /* SNAPPED TO THE MODULE, in the card's own units.
      *
@@ -443,10 +476,7 @@
      * is an integer, while a chart card slid continuously and could stop at any
      * pixel. Quantising the pointer travel first means BOTH move a whole table
      * row at a time, which is the whole reason the columns line up. */
-    const unit = rowUnit();
-    const delta = (Math.round(dy / unit) * unit) / pxPerUnit;
-    if (mode === 'plot') layout.setPlotHeight(id, startValue + delta);
-    else layout.setRows(id, dragRows(startValue + delta));
+    applyResize(Math.round(dy / rowUnit()));
   }
 
   /** Keyboard step: one table row of CARD height, in either mode. Shift makes
@@ -459,20 +489,23 @@
    *  a different amount on every card and none of them a row. */
   function onResizeStep(dir: -1 | 1, coarse: boolean) {
     measure();
-    if (mode === 'plot') {
-      const step = (rowUnit() / pxPerUnit) * (coarse ? 4 : 1);
-      layout.setPlotHeight(id, layout.plotHeight(id) + dir * step);
-      return;
-    }
+    startSpan = cardRows;
     /* An uncapped card steps from what it is SHOWING, not from the sentinel:
        arrowing down from "all" should add a row to what is on screen, and
        arrowing up should start trimming it. */
-    const now = layout.rowChoice(id) || (slotEl?.querySelectorAll('tbody tr').length ?? MIN_ROWS);
-    layout.setRows(id, dragRows(now + dir * (coarse ? 5 : 1)));
+    startValue =
+      mode === 'plot'
+        ? layout.plotHeight(id)
+        : layout.rowChoice(id) || (slotEl?.querySelectorAll('tbody tr').length ?? MIN_ROWS);
+    applyResize(dir * (coarse ? 4 : 1));
   }
 
   function onResizeReset() {
     measure();
+    /* The held height goes too. Leaving it would reset the card's CONTENT to
+       its default while the frame stayed wherever it had been dragged, which
+       is a reset that visibly does not reset. */
+    layout.clearCardSpan(id);
     if (mode === 'plot') layout.resetPlotHeight(id);
     else layout.resetRows(id);
   }
@@ -529,6 +562,9 @@
      in; they differ because those are the two different questions a reader has
      about the two kinds of card. Pixels used to be reported here, and named a
      quantity nothing else on the page is measured in. */
+  /** The height the reader has pinned this card to, in modules; 0 for none. */
+  const heldRows = $derived(layout.cardSpan(id));
+
   const resizeValue = $derived(mode === 'plot' ? cardRows : layout.rowChoice(id));
   const resizeText = $derived(
     mode === 'plot'
@@ -558,6 +594,7 @@
   class="slot"
   class:quantised={layout.bandMode === 'packed'}
   style:--card-rows={cardRows}
+  style:--held-rows={heldRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
     ? `translate(${offsetX}px, ${offsetY}px)`
@@ -663,6 +700,15 @@
     /* The line that keeps the measurement honest — see cardRows. */
     align-self: start;
     margin-bottom: 16px;
+    /* THE HELD HEIGHT, and the only reason it is safe to write a height here at
+       all: `--held-rows` is what the reader dragged to, never anything this
+       component measured. The card renders `max(natural, held)`, `cardRows`
+       reads that back as exactly `held`, and it stops. A height derived from
+       the measurement would grow every frame instead.
+       `max(0px, …)` because the subtraction goes negative with no held value,
+       and a negative min-height is not the same as none. The −16px is the gap,
+       which lives inside the span. */
+    min-height: max(0px, calc(var(--held-rows, 0) * var(--row-unit) - 16px));
   }
 
   .slot.grabbed {

@@ -29,6 +29,19 @@ def without_comments(src: str) -> str:
     return re.sub(r"//[^\n]*", "", src)
 
 
+def css_block(path: Path, selector: str) -> str:
+    """One CSS rule's body, COMMENTS STRIPPED.
+
+    Reading the raw file is a trap this file's own header warns about, and it
+    caught me: the comment above `min-height` explains why `max(0px, ...)` is
+    needed, so it contains the string "min-height" and a guard reading the raw
+    text passed against a rule that had been deleted.
+    """
+    src = without_comments(path.read_text())
+    start = src.index(selector)
+    return src[start : src.index("}", start)]
+
+
 def section_fn(name: str) -> str:
     """One function's body out of Section.svelte, comments stripped."""
     src = without_comments(SECTION.read_text())
@@ -76,16 +89,17 @@ def test_every_card_resizes_in_whole_table_rows():
     moves in whole rows too. A table already did, because a row count is an
     integer; a chart card slid continuously and could stop at any pixel."""
     move = section_fn("onResizeMove")
-    assert "rowUnit()" in move, "the drag is not quantised to the module"
-    assert re.search(r"Math\.round\(dy / unit\) \* unit", move), (
-        "pointer travel is not snapped to whole rows before it is scaled"
+    assert re.search(r"Math\.round\(dy / rowUnit\(\)\)", move), (
+        "pointer travel is not snapped to whole rows before it is applied"
+    )
+
+    apply = section_fn("applyResize")
+    assert "modules * unit" in apply.replace("(", "").replace(")", ""), (
+        "the module count is not converted back into the card's own units"
     )
 
     step = section_fn("onResizeStep")
-    assert "rowUnit() / pxPerUnit" in step, (
-        "the keyboard step is not one row of CARD height -- a flat pixel step "
-        "moves a different amount on every card and none of them a row"
-    )
+    assert "applyResize(" in step, "the keyboard does not go through the same path as the drag"
     assert "coarse" in step, "no coarse step"
     assert "coarse" in without_comments(GRIP.read_text()), "shift is not passed through"
 
@@ -113,12 +127,11 @@ def test_a_gesture_can_never_reach_the_uncapped_sentinel():
     assert "MIN_ROWS" in guard, "dragRows does not floor at MIN_ROWS"
     assert "MAX_ROWS" in guard, "dragRows does not cap at MAX_ROWS"
 
-    for fn in ("onResizeMove", "onResizeStep"):
-        body = section_fn(fn)
-        rows = [ln for ln in body.splitlines() if "setRows(" in ln]
-        assert rows, f"{fn} never sets rows"
-        for line in rows:
-            assert "dragRows(" in line, f"{fn} sets a row count without dragRows: {line.strip()}"
+    body = section_fn("applyResize")
+    rows = [ln for ln in body.splitlines() if "setRows(" in ln]
+    assert rows, "applyResize never sets rows"
+    for line in rows:
+        assert "dragRows(" in line, f"applyResize sets a row count without dragRows: {line.strip()}"
 
     lo = int(re.search(r"MIN_ROWS = (\d+)", LAYOUT.read_text()).group(1))
     assert lo >= 1, "MIN_ROWS is itself the sentinel"
@@ -129,7 +142,7 @@ def test_the_card_follows_the_pointer_rather_than_leaping():
     card grows by a multiple of what was dragged -- six tables on Temperatures,
     three chart rows on System Activity. Without dividing by that multiple the
     corner runs away from the pointer."""
-    body = section_fn("onResizeMove")
+    body = section_fn("applyResize")
     assert "pxPerUnit" in body, "the delta is not scaled to what the card actually grows by"
     measure = section_fn("measure")
     assert "offsetTop" in measure, "chart rows are not counted, so a grid leaps"
@@ -276,9 +289,7 @@ def test_the_span_cannot_feed_its_own_measurement():
     new natural height and grow again every frame. effect_update_depth_exceeded
     is compiled out of production builds, so it throws in dev and spins
     silently for a reader."""
-    src = SECTION.read_text()
-    block = src[src.index(".slot.quantised {") :]
-    block = block[: block.index("}")]
+    block = css_block(SECTION, ".slot.quantised {")
     assert "align-self: start" in block, (
         "the card fills its span, so measuring it feeds the span that set it"
     )
@@ -287,14 +298,12 @@ def test_the_span_cannot_feed_its_own_measurement():
 def test_the_gap_is_inside_the_span():
     """A 16px row-gap between 25px tracks puts every card after the first at
     25n + 16, which is never on the grid -- and being on the grid is the point."""
-    app = APP.read_text()
-    packed = app[app.index(".cols.packed > .zone {") :]
-    packed = packed[: packed.index("}")]
+    packed = css_block(APP, ".cols.packed > .zone {")
     assert "grid-auto-rows: var(--row-unit)" in packed, "the zone is not a module grid"
     assert "row-gap: 0" in packed, "a row gap would push every card off the grid"
-    section = SECTION.read_text()
-    block = section[section.index(".slot.quantised {") :]
-    assert "margin-bottom" in block[: block.index("}")], "nothing separates the cards"
+    assert "margin-bottom" in css_block(SECTION, ".slot.quantised {"), (
+        "nothing separates the cards"
+    )
 
 
 def test_packed_is_the_default():
@@ -308,3 +317,61 @@ def test_packed_is_the_default():
     assert body.rstrip().endswith("return 'packed';\n  }"), (
         "the unreadable-storage fallback is not packed"
     )
+
+
+def test_a_card_can_be_held_taller_than_its_content():
+    """With two independent columns, holding a card taller than it needs is the
+    only way to line their BOTTOMS up. A card's span is otherwise ceil(content),
+    so dragging past the last row did nothing: Models has eleven models, and
+    past a cap of eleven the card stopped dead under the pointer."""
+    src = without_comments(LAYOUT.read_text())
+    for name in ("cardSpan(", "setCardSpan(", "clearCardSpan("):
+        assert name in src, f"the store has no {name}"
+
+    apply = section_fn("applyResize")
+    assert "setCardSpan(" in apply, "the gesture never pins a height"
+    assert "setRows(" in apply or "setPlotHeight(" in apply, (
+        "the gesture stopped driving the card's content"
+    )
+
+    block = css_block(SECTION, ".slot.quantised {")
+    assert "min-height" in block, "nothing makes the card fill the height it was held to"
+    assert "--held-rows" in block, "the held height is not what drives it"
+
+
+def test_the_held_height_is_never_written_from_a_measurement():
+    """The held value is a constant the reader supplied. A height derived from
+    the measured card would be read back as the new natural height and grow
+    again every frame -- and effect_update_depth_exceeded is compiled out of
+    production builds, so it spins silently for a reader."""
+    measure = section_fn("measure")
+    assert "setCardSpan" not in measure, "measure() writes the held height, which feeds itself"
+    src = without_comments(SECTION.read_text())
+    effect = src[src.index("$effect(() => {") :]
+    effect = effect[: effect.index("});")]
+    assert "setCardSpan" not in effect, "an effect writes the held height"
+
+
+def test_a_gesture_that_moved_nothing_pins_nothing():
+    """MEASURED BUG: every pointermove that had not yet crossed a module
+    boundary -- including the one a plain click produces -- wrote
+    `startSpan + 0` and silently held the card at its current height. Found by
+    discovering stored spans for four cards nobody had dragged."""
+    apply = section_fn("applyResize")
+    head = apply[: apply.index("rowUnit()")] if "rowUnit()" in apply else apply
+    assert re.search(r"if \(modules === 0\) return;", head), (
+        "a zero-module gesture still writes a held height"
+    )
+
+
+def test_reset_releases_the_held_height():
+    """Leaving it would reset the card's CONTENT to its default while the frame
+    stayed wherever it had been dragged -- a reset that visibly does not."""
+    body = section_fn("onResizeReset")
+    assert "clearCardSpan(" in body, "double-click leaves the card pinned"
+
+    src = without_comments(LAYOUT.read_text())
+    block = src[src.index("  reset() {") :]
+    block = block[: block.index("\n  }")]
+    assert "this.cardSpans = {}" in block, "reset leaves held heights in place"
+    assert "CARD_SPAN_KEY" in block, "reset leaves held heights on disk"

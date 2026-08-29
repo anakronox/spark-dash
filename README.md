@@ -11,7 +11,8 @@ Supports single node and clusters.
 
 Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Cards
 are draggable and can be paired side by side, and every card resizes from its
-bottom-right corner in increments of one table row, so the two columns stay on
+bottom-right corner in increments of one table row — including past its own
+content, so two columns can be made to end level — and the two columns stay on
 a shared vertical grid; every threshold shown is measured for this hardware
 rather than guessed.
 

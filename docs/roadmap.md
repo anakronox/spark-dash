@@ -5232,6 +5232,45 @@ than a hedge.
   0/350/650/1000 and 0/700/1775; a chart card steps 13→14→15→16 rows for three
   key presses (+25px each) and 13→18 for a five-module drag.
 
+- [x] **AE8. A card can be held taller than its content.** AE7 made a card's
+  span `ceil(content)`, which is the right default and the wrong ceiling:
+  dragging past the last row did nothing at all. Models has eleven models, so
+  once the cap passed eleven the card stopped dead under the pointer. With two
+  independent columns, holding a card taller than it needs is the *only* way to
+  line their bottoms up, which is what packed mode gave up when it stopped
+  stretching them.
+
+  So the gesture now writes two things. The content control — a row cap or a
+  plot height — makes the card genuinely taller while it still has something to
+  show; the held span keeps it that tall once it does not. The card renders
+  `max(natural, held)`, so while content is growing the held value sits below it
+  and contributes nothing.
+
+  **The held value is only ever user input, and that is load-bearing.** A span
+  derived from the measured card is read back on the next pass as the new
+  natural height and grows again every frame. A constant is not: the card
+  measures `max(natural, held)`, `cardRows` reads that back as exactly `held`,
+  and it stops. `min-height` is therefore driven by `--held-rows` and never by
+  anything `Section` measured.
+
+  **Bug found while testing it: a click pinned the card.** Every pointermove
+  that had not yet crossed a module boundary — including the one a plain click
+  produces — wrote `startSpan + 0`, silently holding the card wherever it was.
+  Found by noticing stored spans for four cards nobody had dragged, after clicks
+  that landed on or near their corners. A held height is a deliberate act and
+  now takes a deliberate gesture.
+
+  **And a guard that passed against deleted code.** The test asserting the card
+  fills its held height read the raw file, and the comment above `min-height`
+  explains why `max(0px, …)` is needed — so it contains the string "min-height"
+  and the guard passed with the rule removed. This file's own header says
+  comments are stripped before every check; three CSS guards were not doing it.
+  `css_block()` now does.
+
+  Measured live: Models held at 959px with eleven rows shown and the card's own
+  border extending the full height; shrunk to 159px with the table paginated to
+  two rows; double-click back to 358px with both stored entries gone.
+
 - [ ] **AE4. Width, if it is still wanted.** Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
   A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag
