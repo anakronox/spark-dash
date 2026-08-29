@@ -627,6 +627,33 @@
 
   /* Shared primitives ------------------------------------------------------ */
 
+  /* THE PAGER SITS AT THE BOTTOM OF THE CARD, not at the bottom of the
+     content. A card held taller than its content -- which is how two columns
+     are made to end level -- used to leave its prev/next floating mid-card
+     with empty space beneath, so the control moved every time the height did.
+     The panel is a column and its trailing pager takes the slack.
+
+     Only a pager that is the panel's LAST direct child: cards with several
+     tables (Temperatures, Network Activity's divisions) keep each pager under
+     its own table, where it belongs.
+
+     `min-width: 0` on the children is load-bearing. A flex item's minimum
+     width is its content's, so a table's horizontal scroll box would stop
+     shrinking with the card and push it past the page edge -- the same
+     `minmax(0, 1fr)` hazard the grids state, in flex clothing. */
+  .slot > section.panel {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .slot > section.panel > * {
+    min-width: 0;
+  }
+
+  .slot > section.panel > nav:last-child {
+    margin-top: auto;
+  }
+
   /* A SEGMENTED CONTROL: one border around the set, no borders between the
      options, and the chosen option FILLED, the way Settings' own selectors
      show their choice. Both chart cards used to

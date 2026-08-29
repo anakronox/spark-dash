@@ -1080,12 +1080,37 @@ def test_the_chart_card_controls_hold_their_place_across_views():
     was found it elsewhere after switching. Everything renders in every view
     and disables when it does not apply."""
     card = without_comments(NETWORK.read_text())
-    for gone in ("{#if mode === 'charts' && (grid.quiet", "{#if mode !== 'ports'}"):
+    for gone in ("{#if mode !== 'ports'}",):
         assert gone not in card, f"a control still comes and goes: {gone}"
-    assert "disabled={mode !== 'charts'}" in card, "the idle toggle is not disabled off charts"
     assert card.count("disabled={mode === 'ports'}") >= 3, "events, the range and the groups menu are not all disabled on ports"
     css = APP_CSS.read_text()
     assert "--fill: color-mix(in srgb, var(--rule) 72%, var(--ink))" in css, "the selected fill is not a step up from the rule"
     for sel in (".segmented > button.active {", ".toggle.on {"):
         assert "background: var(--fill)" in css_block(APP_CSS, sel)
     assert "background: var(--fill)" in css_block(SETTINGS, ".choice.active {"), "Settings' choices and the page's controls diverged"
+
+
+def test_the_pager_sits_at_the_bottom_of_a_held_card():
+    """A card held taller than its content left its prev/next floating
+    mid-card with empty space beneath, so the control moved every time the
+    height did. The panel is a column and its trailing pager takes the slack
+    -- only a pager that is the panel's last direct child, so multi-table
+    cards keep each pager under its own table."""
+    panel = css_block(APP_CSS, ".slot > section.panel {")
+    assert "flex-direction: column" in panel
+    assert "margin-top: auto" in css_block(APP_CSS, ".slot > section.panel > nav:last-child {")
+    # A flex item's minimum width is its content's: without this a table's
+    # scroll box stops shrinking with the card and pushes past the page edge.
+    assert "min-width: 0" in css_block(APP_CSS, ".slot > section.panel > * {")
+
+
+def test_idle_lives_in_the_groups_menu_not_on_the_card():
+    """Brian: no language about showing idle interfaces on the card's face.
+    The "N idle" toggle beside the view switch and the heading for an
+    all-idle group are gone; the groups menu carries both -- "all idle"
+    beside a group that would draw nothing, and an "Idle links" toggle row."""
+    card = without_comments(NETWORK.read_text())
+    assert "idle</button>" not in card, "the idle chip is still on the card"
+    assert "silentGroups" not in card, "the all-idle heading survives"
+    assert "'all idle'" in card and "label: 'Idle links'" in card, "the groups menu does not carry idle"
+    assert "key === '__idle'" in card, "the idle row does not toggle idle links"

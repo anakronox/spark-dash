@@ -328,8 +328,7 @@
   }
 
   const allGroups = $derived(grid.groups);
-  const groups = $derived(allGroups.filter((g) => shownGroups.includes(g.key)));
-  const total = $derived(groups.reduce((n, g) => n + g.charts.length, 0));
+  const groups = $derived(allGroups.filter((g) => shownGroups.includes(g.key)));  const total = $derived(groups.reduce((n, g) => n + g.charts.length, 0));
 
   /* THE TABLE NEVER FILTERS. `includeQuiet` is a chart-grid concern — a flat
      line is a chart-sized hole — and in a table a quiet link is one short row
@@ -342,24 +341,39 @@
 
   /* Interface counts per group for the menu, from the table's grouping: it
      never filters quiet links, so it is the honest count of what exists. */
+  /* The groups menu also carries what used to be two things on the card: the
+     "N idle" toggle beside the view switch, and a heading for a group whose
+     links are all idle. Both said "idle" on the card's face; neither belongs
+     there. A group that would draw nothing in charts says "all idle" beside
+     its name here, and the last row is the toggle that draws idle links. */
   const groupItems = $derived(
     DIVISIONS.map((d) => {
       const n = allDivisions.find((x) => x.key === d.key)?.rows.length ?? 0;
       const on = shownGroups.includes(d.key);
       const last = on && shownGroups.length === 1;
+      const silent = n > 0 && !includeQuiet && !allGroups.some((g) => g.key === d.key);
       return {
         key: d.key,
         label: n ? `${d.label} · ${n}` : d.label,
         checked: on,
         disabled: last,
-        note: last ? 'last one' : undefined,
+        note: last ? 'last one' : silent ? 'all idle' : undefined,
       };
     }),
   );
+  const idleItem = $derived([
+    {
+      key: '__idle',
+      label: 'Idle links',
+      checked: includeQuiet,
+      note: grid.quiet ? `${grid.quiet} hidden` : undefined,
+    },
+  ]);
   const linkCount = $derived(divisions.reduce((n, d) => n + d.rows.length, 0));
   const portCount = $derived(nodes.reduce((n, x) => n + (x.rdma?.length ?? 0), 0));
 
   const mode = $derived(chosenMode ?? (linkCount > TABLE_ABOVE ? 'table' : 'charts'));
+
 
   /* The ports view's columns, owned here so the card's one column menu can
      list them beside the links'. `network.rdma` is the key the RDMA Ports card
@@ -570,8 +584,8 @@
            groups do not apply there: disabled rather than hidden, so the
            legend beside it does not shift when the view changes. -->
       <PickMenu
-        groups={[{ items: groupItems }]}
-        ontoggle={toggleGroup}
+        groups={[{ items: groupItems }, { label: 'Charts', items: idleItem }]}
+        ontoggle={(key) => (key === '__idle' ? writeFlag(QUIET_KEY, (includeQuiet = !includeQuiet)) : toggleGroup(key))}
         disabled={mode === 'ports'}
         what="Interface groups"
         of="Network Activity"
@@ -629,23 +643,12 @@
         {/each}
       </div>
 
-      <!-- EVERY CONTROL STAYS WHERE IT IS in every view. The idle toggle only
-           means something on charts, and events and the range only on charts
-           and the table -- the ports view is live -- but a control that
-           appears and disappears moves its neighbours, and a reader who has
-           learned where "table" is finds it somewhere else after switching.
-           Disabled and dimmed instead, with the title saying why. -->
-      <button
-        class="events toggle"
-        class:on={includeQuiet && mode === 'charts'}
-        aria-pressed={includeQuiet}
-        disabled={mode !== 'charts'}
-        title={mode === 'charts'
-          ? 'Interfaces with no traffic at all in this window'
-          : 'Idle links are rows in the table and ports; nothing to hide there'}
-        onclick={() => writeFlag(QUIET_KEY, (includeQuiet = !includeQuiet))}
-      >{grid.quiet} idle</button>
-
+      <!-- EVERY CONTROL STAYS WHERE IT IS in every view. Events and the range
+           only mean something on charts and the table -- the ports view is
+           live -- but a control that appears and disappears moves its
+           neighbours, and a reader who has learned where "table" is finds it
+           somewhere else after switching. Disabled and dimmed instead, with
+           the title saying why. -->
       <button
         class="events toggle"
         class:on={showEvents && mode !== 'ports'}
