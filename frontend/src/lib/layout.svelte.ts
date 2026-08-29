@@ -1240,10 +1240,13 @@ export class Layout {
     return kind;
   }
 
-  /** How many cards of each kind the page has, hidden ones included -- what
-   *  the add menu shows beside each name. */
+  /** How many cards of a kind are ON THE PAGE -- what the add menu shows
+   *  beside each name. Visible ones only: a hidden original is still in
+   *  `order`, but a menu that said "1" beside a card nobody can see would be
+   *  counting something the reader cannot. Adding then shows that hidden one
+   *  rather than copying it, which is what a "0" invites. */
   countOf(kind: string): number {
-    return this.order.filter((id) => kindOf(id) === kind).length;
+    return this.order.filter((id) => kindOf(id) === kind && !this.isHidden(id)).length;
   }
 
   /** The card that was just added, for `Section` to lift for a moment so the

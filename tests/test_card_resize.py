@@ -186,7 +186,9 @@ def test_settings_no_longer_duplicates_the_resize_corner():
     assert "toggleWidth" not in src, "the width toggle is still in settings"
     assert "setRows" not in src and "rowChoice" not in src, "the row cap is still in settings"
     assert "rowOptions" not in src, "the select's helper outlived the select"
-    assert "toggleHidden" in src, "show/hide was removed too, and it should not be"
+    # Show/hide moved too, once the page itself could do it: the gutter's close
+    # hides an original, and the add button shows it again in place.
+    assert "toggleHidden" not in src and "Reset sections" not in src, "Settings still lists sections"
 
     layout = without_comments(LAYOUT.read_text())
     for dead in ("ROW_CHOICES", "PAGED_SECTIONS"):
@@ -961,8 +963,11 @@ def test_copies_can_be_made_and_removed_and_reset_clears_them():
     reset = src[src.index("  reset() {") :]
     reset = reset[: reset.index("\n  }")]
     assert "purgeInstanceKeys" in reset, "reset drops copies but keeps their view state"
-    settings = without_comments(SETTINGS.read_text())
-    assert "layout.duplicate(id)" in settings and "layout.remove(id)" in settings
+    # The controls live on the page: + ELEMENT adds, the gutter's close removes.
+    section = without_comments(SECTION.read_text())
+    assert "layout.remove(id)" in section
+    app = without_comments(APP.read_text())
+    assert "layout.addCard(kind)" in app
 
 
 def test_network_activity_reads_its_stored_view_back():
@@ -1019,3 +1024,14 @@ def test_the_add_menu_hangs_from_the_right_and_uses_the_page_type():
     block = css_block(PICK, "button.row {")
     assert "font: inherit" not in block, "font: inherit resets the row's size to the bar's"
     assert "font-family: inherit" in block
+
+
+def test_the_add_menu_counts_what_is_on_the_page():
+    """REPORTED: hide the only Network Activity and the add menu still said
+    "1" beside it -- it counted every instance in `order`, hidden included.
+    A number beside a card nobody can see counts something the reader
+    cannot; "0" is what invites the click that shows it."""
+    src = without_comments(LAYOUT.read_text())
+    body = src[src.index("  countOf(kind: string)") :]
+    body = body[: body.index("\n  }")]
+    assert "!this.isHidden(id)" in body, "countOf counts hidden instances"

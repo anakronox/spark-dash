@@ -30,7 +30,6 @@
   import { THEMES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
-  import { ZONES, isCopy } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
 
 
@@ -42,21 +41,6 @@
   }
   const { theme, layout, open, onclose }: Props = $props();
 
-  /* IN PAGE ORDER, and no longer labelled by zone.
-   *
-   * The headers existed as feedback: this panel used to carry the width
-   * toggle, and with the fly-out covering the page a row moving from "Left
-   * column" to "Full width" was the only sign the click had done anything.
-   * Width is dragged on the card now, in full view, so the headers were
-   * captioning a change nobody makes from here.
-   *
-   * The ORDER still follows the zones, because that is the order the sections
-   * read in on the page and this list is for finding one.
-   *
-   * `Hidden` keeps its heading: those cards are not on the page at all, so
-   * their position in a page-ordered list would otherwise mean nothing. */
-  const shownSections = $derived(ZONES.flatMap((z) => layout.inZone(z)));
-  const hiddenSections = $derived(layout.order.filter((id) => layout.isHidden(id)));
 
   let dialog = $state<HTMLDialogElement | null>(null);
 
@@ -430,6 +414,7 @@
            which is where it is. -->
     </section>
 
+
     <!-- Layout -->
     <section class="stack">
       <h3 class="eyebrow dim">Cards</h3>
@@ -485,84 +470,6 @@
     </section>
 
     <section class="stack">
-      <h3 class="eyebrow dim">Sections</h3>
-      <!-- HIDE, not collapse. Collapsing already has a control on the section
-           itself, and duplicating it here would be two ways to do one thing.
-           Hiding is the one that has to live here: a hidden section renders
-           nothing, so this panel is the only place it can be found again.
-
-           The three controls per row, and the reasoning that used to be printed
-           above them — a settings panel is not the place to teach the layout
-           model, and this all belongs in the docs or in the code that
-           implements it:
-
-           - PLACEMENT (full / left / right). Full-width sections form a band
-             above two columns that fill INDEPENDENTLY, so a short section can
-             sit under another short one whatever the other column is doing.
-             Below 1100px the columns stack and everything is full width
-             regardless, because a half-width table is unreadable there.
-           - ROWS, the cap before a section pages. It puts a ceiling on how tall
-             a section can grow as nodes are added, so one long table cannot set
-             the height of a whole column.
-           - SHOWN / HIDDEN, per the note above.
-
-           Not here: order and collapse live on the sections themselves, and
-           which COLUMNS a table shows lives in each card's top-right corner,
-           next to the data it affects. Reset below clears all of it. -->
-      {#snippet sectionRow(id: string, hidden: boolean)}
-        <li class="row" class:off={hidden}>
-          <span class="name">{layout.label(id)}</span>
-          <!-- A COPY of the card, placed after this one in the same column.
-               Two Network Activity cards, one on ports and one on charts, is
-               the case this exists for. Copies can be removed; the original
-               can only be hidden, since a kind with no card at all would be
-               put back on the next load. -->
-          <button
-            class="mini"
-            aria-label={`Add another ${layout.label(id)}`}
-            title="Add another copy of this card"
-            onclick={() => layout.duplicate(id)}
-          >copy</button>
-          {#if isCopy(id)}
-            <button
-              class="mini"
-              aria-label={`Remove ${layout.label(id)}`}
-              title="Remove this copy"
-              onclick={() => layout.remove(id)}
-            >remove</button>
-          {/if}
-          <button
-            class="mini"
-            aria-pressed={!hidden}
-            aria-label={`${hidden ? 'Show' : 'Hide'} ${layout.label(id)}`}
-            onclick={() => layout.toggleHidden(id)}
-          >{hidden ? 'hidden' : 'shown'}</button>
-        </li>
-      {/snippet}
-
-      {#if shownSections.length}
-        <ol class="sections">
-          {#each shownSections as id (id)}
-            {@render sectionRow(id, false)}
-          {/each}
-        </ol>
-      {/if}
-
-      {#if hiddenSections.length}
-        <p class="eyebrow dim group">Hidden</p>
-        <ol class="sections">
-          {#each hiddenSections as id (id)}
-            {@render sectionRow(id, true)}
-          {/each}
-        </ol>
-      {/if}
-      <!-- Offered only when there is something to undo: a reset that does
-           nothing still invites the click that loses your arrangement. -->
-      <button
-        class="mini reset"
-        disabled={layout.isDefault}
-        onclick={() => layout.reset()}
-      >Reset sections</button>
     </section>
 
     <!-- Cluster -->
@@ -851,26 +758,8 @@
     background: var(--rule);
   }
 
-  .sections {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
 
-  .row {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    font-size: var(--text-body);
-    padding: 5px 8px;
-    border-radius: var(--radius);
-    border: 1px solid var(--rule);
-  }
 
-  .name { font-weight: 500; }
 
   .node {
     display: flex;
@@ -955,10 +844,6 @@
   .actions .mini { margin-left: 0; }
   .save { color: var(--ink); border-color: var(--ink-muted); }
 
-  /* A hidden row stays legible rather than being greyed to the edge of
-     readability — this is the only place it can be switched back on, so it
-     must not look disabled. */
-  .row.off .name { color: var(--ink-muted); }
 
   .mini {
     font-size: var(--text-micro);
@@ -987,14 +872,7 @@
     white-space: pre;
   }
 
-  /* Zone headings inside the Sections block. Tight, because they are
-     structure rather than content — the rows are what the reader is scanning. */
-  .group {
-    margin: 8px 0 3px;
-    font-size: var(--text-nano);
-  }
 
-  .reset { margin-left: 0; align-self: flex-start; margin-top: 4px; }
 
   @media (max-width: 640px) {
     .flyout { width: 100%; border-left: none; }
