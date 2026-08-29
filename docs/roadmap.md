@@ -5474,6 +5474,38 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
+- [x] **AE14. Chart cards paginate below the plot floor.** Reported: Network
+  Activity in chart mode could not be dragged below **584px** — eleven interface
+  charts in three rows, none able to drop under the 80px plot minimum plus ~35px
+  of caption and axis. System Activity has the same shape with up to four rows.
+  Tables obey *content that does not fit paginates*; chart grids were the stated
+  exception. Now they are not: plots shrink to the floor, then chart ROWS per
+  page are cut and a pager appears, using the same `TableView` + `Pager` tables
+  use. Growing reverses in reverse order — rows back first, then plots — so a
+  round trip lands where it began. New store: `plotRows`, in `reset()` and
+  `isDefault()` from day one this time.
+
+  Three things found by measuring while building it:
+
+  - **`offsetTop` counted every chart as one row.** Each plot sits in its
+    chart's own `position: relative` wrapper, so all eleven reported the same
+    offset. Pre-existing, and the reason the corner over-moved on chart cards.
+    Viewport tops now.
+  - **A per-grid cap did not shrink the card.** Fabric has exactly two rows, so
+    a cap of two cut nothing and Management's one row kept itself; the card sat
+    at three rows however far it was dragged. Divisions now draw from ONE
+    budget, each reserving a row for every division after it so none loses its
+    pager. The floor is one row per division.
+  - **`floor()` on the way up restored nothing.** A keyboard step is 100px and a
+    row at the floor is 115, so rows stayed cut while plots climbed 80 → 330.
+    Both directions round now; the over-move is a fraction of a row and the
+    asymmetry was the bug.
+
+  Measured: Network Activity 684 → 584 (plots 99) → 534 (plots 80) → **434, rows
+  3 → 2, pager appears**; back up 434 → 534 with the row restored and plots
+  held at 80, then plots grow. System Activity with eight metrics: 1-row cap
+  shows four charts and a pager; first grow step restores all eight.
+
 - [x] ~~**AE4. Column width as an fr ratio.**~~ **Closed 2026-08-29 without
   building it.** It would have let a band's two columns split other than 50/50.
 

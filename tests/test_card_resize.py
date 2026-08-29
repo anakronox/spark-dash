@@ -205,10 +205,12 @@ def test_a_stored_plot_height_is_clamped_on_the_way_in():
     """A hand-edited or stale value is the same hazard readRows guards: a
     4000px plot would push every control that could undo it off the page."""
     src = without_comments(LAYOUT.read_text())
-    reader = src[src.index("function readPlotHeights") : src.index("function clampPlot")]
+    # "function clampPlot(" with the paren: clampPlotRows now precedes it and
+    # shares the prefix, so a bare "function clampPlot" matched the wrong one.
+    reader = src[src.index("function readPlotHeights") : src.index("function clampPlot(")]
     assert "clampPlot(" in reader, "readPlotHeights does not clamp what it loads"
 
-    clamp = src[src.index("function clampPlot") :][:300]
+    clamp = src[src.index("function clampPlot(") :][:300]
     assert "MAX_PLOT_PX" in clamp and "MIN_PLOT_PX" in clamp, "clampPlot ignores its bounds"
 
     setter = src[src.index("setPlotHeight(") :][:300]
@@ -641,3 +643,84 @@ def test_widening_lands_the_card_where_the_reader_saw_it():
     # Narrowing must NOT re-order: filtering order back into the column is
     # what makes the round trip land where the card left.
     assert "toggleWidth(id)" in commit, "narrowing no longer uses toggleWidth"
+
+
+def test_a_chart_card_paginates_below_the_plot_floor():
+    """Network Activity in chart mode floored at 584px: eleven interface charts
+    in three rows, none able to drop below the 80px plot minimum. Tables obey
+    "content that does not fit paginates"; chart grids were the exception. Now
+    plots shrink to the floor, then ROWS per page are cut and a pager appears."""
+    src = without_comments(SECTION.read_text())
+    body = section_fn("resizePlots")
+    assert "MIN_PLOT_PX" in body, "the plot floor is not what switches regimes"
+    assert "setPlotRows(" in body, "shrinking never cuts chart rows"
+    # Shrink order: plots first, rows only past the floor.
+    shrink = body[body.index("const room") :]
+    assert shrink.index("setPlotHeight(") < shrink.index("setPlotRows("), (
+        "rows are cut before the plots have reached the floor"
+    )
+
+    for card, name in ((TRENDS, "Trends"), (NETWORK, "NetworkTrends")):
+        c = without_comments(card.read_text())
+        assert "data-rows-total" in c, f"{name} does not tell Section how many rows it would draw"
+        assert "<Pager" in c and "chart pages" in c, f"{name} has no pager for its charts"
+        assert "new TableView" in c, f"{name} pages some other way than tables do"
+
+
+def test_growing_restores_rows_before_it_grows_plots():
+    """The round trip has to land where it started. Shrinking takes plots first
+    then rows, so growing must give rows back first then plots -- and with the
+    SAME rounding. MEASURED BUG: floor() on the way up restored nothing for a
+    100px step against a 115px row, so every step went into the plots and rows
+    stayed cut while plots climbed 80 -> 330."""
+    body = section_fn("resizePlots")
+    grow = body[body.index("if (deltaPx >= 0)") : body.index("const room")]
+    assert "rowsTotal - rows0" in grow, "growing does not know how many rows are missing"
+    assert "Math.round(deltaPx" in grow, "growing rounds differently from shrinking"
+    assert "Math.floor(deltaPx" not in grow, "floor() cannot restore a row from one step"
+    assert grow.index("setPlotRows(") < grow.index("setPlotHeight("), (
+        "plots grow before the missing rows come back"
+    )
+    assert "resetPlotRows(" in grow, "a fully restored grid still carries a cap"
+
+
+def test_the_row_budget_is_shared_across_a_card_s_divisions():
+    """MEASURED: a per-grid cap did not shrink the card. Fabric has exactly two
+    rows, so a cap of two cut nothing, Management's single row kept itself, and
+    the card sat at three rows however far it was dragged. Divisions take rows
+    from one budget, each reserving a row for every division after it so none
+    loses its pager."""
+    src = without_comments(NETWORK.read_text())
+    effect = src[src.index("let remaining = plotRows") :]
+    effect = effect[: effect.index("});")]
+    assert "remaining - after" in effect, "divisions do not reserve rows for those after them"
+    assert "Math.max(1," in effect, "a division can be left with no rows and no pager"
+    assert "remaining -= rows" in effect, "the budget is not consumed as divisions take from it"
+
+    section = section_fn("measure")
+    assert ".reduce(" in section and "rowsTotal" in section, (
+        "Section does not sum the grids' rows, so it cannot tell when all are back"
+    )
+
+
+def test_chart_rows_are_counted_from_the_viewport():
+    """Each plot sits inside its chart's own position: relative wrapper, so
+    offsetTop is measured from that wrapper and every plot reports the same
+    number -- three rows counted as one, which both mis-scaled the drag and
+    made the row budget arithmetic start from the wrong place."""
+    body = section_fn("measure")
+    plot = body[body.index("mode = 'plot'") : body.index("mode = 'rows'")]
+    assert "getBoundingClientRect().top" in plot, "chart rows are counted with offsetTop"
+    assert "offsetTop" not in plot, "offsetTop survives in the chart-row count"
+
+
+def test_plot_rows_reset_and_count_as_non_default():
+    src = without_comments(LAYOUT.read_text())
+    body = src[src.index("get isDefault()") :]
+    body = body[: body.index("\n  }")]
+    assert "Object.keys(this.plotRows).length === 0" in body, "a row cap does not make the layout resettable"
+    reset = src[src.index("  reset() {") :]
+    reset = reset[: reset.index("\n  }")]
+    assert "this.plotRows = {}" in reset and "PLOT_ROWS_KEY" in reset, "reset leaves the row cap behind"
+    corner = section_fn("onResizeReset")
+    assert "resetPlotRows(" in corner, "double-click leaves the chart rows cut"

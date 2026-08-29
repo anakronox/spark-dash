@@ -6,6 +6,8 @@
    * been climbing for an hour than when it just spiked.
    */
   import MetricChart from './MetricChart.svelte';
+  import Pager from './Pager.svelte';
+  import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
@@ -23,8 +25,11 @@
      *  preferences, and the gesture belongs to the card frame rather than to
      *  the chart grid. */
     plotHeight?: number;
+    /** Chart ROWS per page, Infinity for all. Set by the card's resize corner
+     *  once the plots are at their floor -- see Section. */
+    plotRows?: number;
   }
-  const { nodeIds, themeKey, plotHeight = DEFAULT_PLOT_PX }: Props = $props();
+  const { nodeIds, themeKey, plotHeight = DEFAULT_PLOT_PX, plotRows = Infinity }: Props = $props();
 
   /* ONE CHART PER METRIC, not one chart per node.
    *
@@ -219,6 +224,17 @@
      that strands a row. The two values are separate because the wide count has
      to fall back on a narrower page, and `repeat()` cannot take a `min()`. */
   const cols = $derived(charts.length >= 4 ? 4 : charts.length >= 2 ? 2 : 1);
+
+  /* PAGED BY CHART ROW, with the machinery tables use. A grid of charts was
+     the one thing on the page that could not paginate, so a card of eight
+     metrics floored at two rows of 80px plots plus chrome. `pageSize` is rows
+     x columns; Infinity for "all" is the path TableView guards for itself. */
+  const pages = new TableView<(typeof charts)[number]>([], Infinity);
+  $effect.pre(() => {
+    pages.pageSize = plotRows * cols;
+  });
+  const shownCharts = $derived(pages.slice(charts));
+  const rowsTotal = $derived(Math.ceil(charts.length / cols));
   const colsMd = $derived(Math.min(cols, 2));
 
   /** Click solos, click the soloed node again to restore. Shift adds.
@@ -464,8 +480,9 @@
       class:loading
       style:--cols={cols}
       style:--cols-md={colsMd}
+      data-rows-total={rowsTotal}
     >
-      {#each charts as c (c.metric.key)}
+      {#each shownCharts as c (c.metric.key)}
         <MetricChart
           metric={c.metric}
           x={c.x}
@@ -479,6 +496,7 @@
         />
       {/each}
     </div>
+    <Pager view={pages} total={charts.length} label="System Activity chart pages" />
   {/if}
 
 

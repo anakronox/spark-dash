@@ -24,6 +24,7 @@ const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
 const PLOT_HEIGHT_KEY = 'spark-dash.plot-heights.v1';
+const PLOT_ROWS_KEY = 'spark-dash.plot-rows.v1';
 const CARD_SPAN_KEY = 'spark-dash.card-spans.v1';
 const ROWS_KEY = 'spark-dash.section-rows.v1';
 const COLUMN_KEY = 'spark-dash.section-column.v1';
@@ -338,6 +339,35 @@ function readPlotHeights(available: string[] = DEFAULT_ORDER): Record<string, nu
   }
 }
 
+/** Chart ROWS per page, for a card dragged below the plot floor.
+ *
+ * Tables obey "content that does not fit paginates" through their row cap.
+ * Chart grids were the exception because a plot cannot shrink below readable --
+ * MIN_PLOT_PX -- and so a card of eleven interface charts in three rows floored
+ * at 584px, measured. This is the other half of the rule for charts: once the
+ * plots are at the floor, further shrinking cuts rows per page instead, and the
+ * rest is a page away. Absent means every row. */
+export const MAX_PLOT_ROWS = 16;
+
+function clampPlotRows(n: number): number {
+  return Math.min(MAX_PLOT_ROWS, Math.max(1, Math.round(n)));
+}
+
+function readPlotRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PLOT_ROWS_KEY) ?? 'null');
+    if (!saved || typeof saved !== 'object') return {};
+    const known = new Set(available);
+    const out: Record<string, number> = {};
+    for (const [id, n] of Object.entries(saved)) {
+      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) out[id] = clampPlotRows(n);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 function clampPlot(px: number): number {
   return Math.min(MAX_PLOT_PX, Math.max(MIN_PLOT_PX, Math.round(px)));
 }
@@ -494,6 +524,10 @@ export class Layout {
    * control is a grip on the card, and settings does not offer it a second
    * time — one thing, one control. */
   plotHeights = $state<Record<string, number>>(readPlotHeights());
+
+  /** Chart rows per page, for chart cards shrunk past the plot floor. Absent
+   *  means all rows. */
+  plotRows = $state<Record<string, number>>(readPlotRows());
 
   /** Held card height per section, in modules. Absent means "as tall as the
    *  content needs", which is the default and the common case. */
@@ -701,6 +735,32 @@ export class Layout {
   #saveCardSpans() {
     try {
       localStorage.setItem(CARD_SPAN_KEY, JSON.stringify(this.cardSpans));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  /** Chart rows per page, or Infinity for all. Infinity is what the CALLER
+   *  must translate -- TableView's slice returns nothing for an Infinite page
+   *  size, which its own comment warns about. */
+  plotRowsFor(id: string): number {
+    return this.plotRows[id] ?? Infinity;
+  }
+
+  setPlotRows(id: string, n: number) {
+    this.plotRows = { ...this.plotRows, [id]: clampPlotRows(n) };
+    this.#savePlotRows();
+  }
+
+  resetPlotRows(id: string) {
+    const { [id]: _drop, ...rest } = this.plotRows;
+    this.plotRows = rest;
+    this.#savePlotRows();
+  }
+
+  #savePlotRows() {
+    try {
+      localStorage.setItem(PLOT_ROWS_KEY, JSON.stringify(this.plotRows));
     } catch {
       // Still applied for this session.
     }
@@ -1009,6 +1069,7 @@ export class Layout {
     this.rows = {};
     this.plotHeights = {};
     this.cardSpans = {};
+    this.plotRows = {};
     this.nodeOrder = [];
     /* Switched-off columns go too. Same unrecoverability rule as hidden
        sections: anything that can remove a thing from the page must have one
@@ -1021,6 +1082,7 @@ export class Layout {
       localStorage.removeItem(COLUMN_KEY);
       localStorage.removeItem(ROWS_KEY);
       localStorage.removeItem(PLOT_HEIGHT_KEY);
+      localStorage.removeItem(PLOT_ROWS_KEY);
       localStorage.removeItem(CARD_SPAN_KEY);
       localStorage.removeItem(NODE_ORDER_KEY);
     } catch {
@@ -1061,6 +1123,7 @@ export class Layout {
          Found by a bug sweep, not by a user, which is the only good way. */
       Object.keys(this.plotHeights).length === 0 &&
       Object.keys(this.cardSpans).length === 0 &&
+      Object.keys(this.plotRows).length === 0 &&
       this.nodeOrder.length === 0 &&
       !columnStore.customised &&
       !this.compactCards

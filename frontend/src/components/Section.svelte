@@ -30,6 +30,7 @@
     ZONE_LABEL,
     MIN_ROWS,
     MAX_ROWS,
+    MIN_PLOT_PX,
   } from '../lib/layout.svelte';
   import CardGrip from './CardGrip.svelte';
 
@@ -391,7 +392,31 @@
       // Rows of the chart GRID, counted by distinct vertical offset. The grid
       // is 1-4 across depending on width, so the count cannot be derived from
       // the number of charts.
-      pxPerUnit = new Set([...plots].map((p) => p.offsetTop)).size || 1;
+      /* VIEWPORT tops, not offsetTop. Each plot sits inside its chart's own
+         `position: relative` wrapper, so offsetTop is measured from that
+         wrapper and every plot on the card reports the same number -- three
+         rows counted as one. Rounded, because canvases land on fractional
+         pixels and a row must be one row. */
+      const tops = [
+        ...new Set([...plots].map((p) => Math.round(p.getBoundingClientRect().top))),
+      ].sort((a, b) => a - b);
+      pxPerUnit = tops.length || 1;
+      /* What the card needs to cross the plot floor: how tall a chart ROW is
+         beyond its plot (caption, axis, gap), and how many rows the grids would
+         draw if nothing were paged. The latter comes from the components --
+         only they know their chart count and column count -- as
+         `data-rows-total` on each grid; a card with several grids (Network
+         Activity's divisions) SUMS them, because the row budget it is handed
+         is for the whole card and the divisions share it. */
+      const plotH = plots[0].getBoundingClientRect().height;
+      rowChrome = tops.length > 1 ? tops[1] - tops[0] - plotH : ROW_CHROME_FALLBACK;
+      rowsTotal = Math.max(
+        1,
+        [...slotEl.querySelectorAll<HTMLElement>('[data-rows-total]')].reduce(
+          (n, el) => n + (Number(el.dataset.rowsTotal) || 0),
+          0,
+        ),
+      );
       return;
     }
 
@@ -424,6 +449,14 @@
   const GAP_PX = 16;
   /** The card's span when the current gesture began. */
   let startSpan = 1;
+
+  /* Chart-card geometry for crossing the plot floor. `rowChrome` is a chart
+     row's height beyond its plot; `rowsTotal` is the rows a grid would draw
+     unpaged; `startRows` is the rows shown when the gesture began. */
+  const ROW_CHROME_FALLBACK = 35;
+  let rowChrome = ROW_CHROME_FALLBACK;
+  let rowsTotal = 1;
+  let startRows = 1;
   /** Modules this card's CONTENT needs, measured. */
   let naturalRows = $state(1);
 
@@ -432,6 +465,7 @@
     startSpan = cardRows;
     if (mode === 'plot') {
       startValue = layout.plotHeight(id);
+      startRows = pxPerUnit;
       return;
     }
     startValue = layout.rowChoice(id);
@@ -483,9 +517,57 @@
     if (modules === 0) return;
 
     const unit = rowUnit();
-    if (mode === 'plot') layout.setPlotHeight(id, startValue + (modules * unit) / pxPerUnit);
+    if (mode === 'plot') resizePlots(modules * unit);
     else layout.setRows(id, dragRows(startValue + (modules * unit) / pxPerUnit));
     layout.setCardSpan(id, startSpan + modules);
+  }
+
+  /** A chart card's drag, in px of CARD height, across the plot floor.
+   *
+   * TWO REGIMES ON ONE AXIS. Tables obey "content that does not fit paginates"
+   * through their row cap; chart grids were exempt because a plot cannot shrink
+   * below readable, so a card of eleven interface charts in three rows floored
+   * at 584px, measured. Now: shrinking spends the delta on the plots until they
+   * reach MIN_PLOT_PX, then cuts chart ROWS per page at whatever a row costs at
+   * the floor. Growing does the reverse in the reverse order -- rows come back
+   * before plots grow -- so a round trip lands where it started.
+   *
+   * Everything is computed from where the gesture BEGAN (`startValue`,
+   * `startRows`), the same way the table drag is, so no step depends on a
+   * measurement taken mid-drag.
+   */
+  function resizePlots(deltaPx: number) {
+    const plot0 = startValue;
+    const rows0 = startRows;
+    const pitchAtFloor = MIN_PLOT_PX + rowChrome;
+
+    if (deltaPx >= 0) {
+      // Restore rows first, each at the current pitch, then grow the plots.
+      // ROUNDED, like the cut below, or the two are not inverses: a keyboard
+      // step is 100px and a row at the floor is 115, so floor() restored
+      // nothing and every step went into the plots instead -- measured, rows
+      // stayed at 2 while plots climbed 80 -> 330. Rounding over-moves by a
+      // fraction of a row, which the pointer never notices; asymmetry it does.
+      const missing = Math.max(0, rowsTotal - rows0);
+      const rowsBack = Math.min(missing, Math.round(deltaPx / (plot0 + rowChrome)));
+      const rest = Math.max(0, deltaPx - rowsBack * (plot0 + rowChrome));
+      const rowsShown = rows0 + rowsBack;
+      layout.setPlotRows(id, rowsShown);
+      if (rowsShown >= rowsTotal) layout.resetPlotRows(id);
+      layout.setPlotHeight(id, plot0 + rest / rowsShown);
+      return;
+    }
+
+    // Shrink the plots first; anything past the floor cuts rows.
+    const room = (plot0 - MIN_PLOT_PX) * rows0;
+    const want = -deltaPx;
+    if (want <= room) {
+      layout.setPlotHeight(id, plot0 - want / rows0);
+      return;
+    }
+    layout.setPlotHeight(id, MIN_PLOT_PX);
+    const cut = Math.round((want - room) / pitchAtFloor);
+    layout.setPlotRows(id, Math.max(1, rows0 - cut));
   }
 
   function onResizeMove(dy: number) {
@@ -511,6 +593,7 @@
   function onResizeStep(dir: -1 | 1, coarse: boolean) {
     measure();
     startSpan = cardRows;
+    startRows = pxPerUnit;
     /* An uncapped card steps from what it is SHOWING, not from the sentinel:
        arrowing down from "all" should add a row to what is on screen, and
        arrowing up should start trimming it. */
@@ -667,8 +750,12 @@
        its default while the frame stayed wherever it had been dragged, which
        is a reset that visibly does not reset. */
     layout.clearCardSpan(id);
-    if (mode === 'plot') layout.resetPlotHeight(id);
-    else layout.resetRows(id);
+    if (mode === 'plot') {
+      layout.resetPlotHeight(id);
+      layout.resetPlotRows(id);
+    } else {
+      layout.resetRows(id);
+    }
   }
 
   $effect(() => {

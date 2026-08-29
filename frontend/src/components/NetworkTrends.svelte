@@ -30,6 +30,8 @@
    */
   import ColumnMenu from './ColumnMenu.svelte';
   import MetricChart from './MetricChart.svelte';
+  import Pager from './Pager.svelte';
+  import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
@@ -75,6 +77,10 @@
      *  every division: charts that share an x axis and not a height stop being
      *  comparable, which is the whole reason they are a grid. */
     plotHeight?: number;
+    /** Chart ROWS per page per division, Infinity for all -- the chart-mode
+     *  counterpart of `maxRows`, and applied per division for the same reason
+     *  that cap applies per table. */
+    plotRows?: number;
   }
   const {
     nodeIds,
@@ -82,6 +88,7 @@
     maxRows = 8,
     themeKey,
     plotHeight = DEFAULT_PLOT_PX,
+    plotRows = Infinity,
   }: Props = $props();
 
   /** `linkKey(node, iface)` for every interface with an RDMA device on it.
@@ -315,6 +322,40 @@
   const colsFor = (n: number) => (n >= 4 ? 4 : n >= 2 ? 2 : 1);
   const cols = $derived(colsFor(Math.max(0, ...groups.map((g) => g.charts.length))));
   const colsMd = $derived(Math.min(cols, 2));
+
+  /* One page view per division grid, the way ThermalPanel keeps one per
+     domain. `pageSize` is set from the effect below, never inside `pagesFor`,
+     for the reason ThermalPanel spells out: this is called from the template.
+     The OPEN grid in table mode is deliberately not paged -- those are the
+     rows the reader clicked into, and should not vanish behind a page. */
+  type Chart = (typeof groups)[number]['charts'][number];
+  const pageViews = new Map<string, TableView<Chart>>();
+  function pagesFor(key: string): TableView<Chart> {
+    let v = pageViews.get(key);
+    if (!v) {
+      v = new TableView<Chart>([], Infinity);
+      pageViews.set(key, v);
+    }
+    return v;
+  }
+  /* ONE ROW BUDGET FOR THE CARD, shared across its divisions in order.
+     A per-grid cap does not shrink the card: Fabric has exactly two rows, so a
+     cap of two cut nothing and Management's single row kept itself, and the
+     card sat at three rows however far it was dragged -- measured. Divisions
+     take rows from a shared budget, each reserving one row for every division
+     after it so that none disappears: a division with no rows would have no
+     pager, and the reader could not page to what it holds. The floor is one
+     row per division. Infinity flows through as "all". */
+  $effect.pre(() => {
+    let remaining = plotRows;
+    groups.forEach((g, i) => {
+      const after = groups.length - i - 1;
+      const rows = Math.min(rowsTotal(g.charts.length), Math.max(1, remaining - after));
+      pagesFor(g.key).pageSize = rows * cols;
+      remaining -= rows;
+    });
+  });
+  const rowsTotal = (n: number) => Math.ceil(n / cols);
 
   const isActive = (id: string) => active === null || active.includes(id);
 
@@ -599,8 +640,14 @@
               ontoggle={toggleOpen}
             />
           {:else if 'charts' in g}
-          <div class="charts" style:--cols={cols} style:--cols-md={colsMd}>
-            {#each g.charts as c (c.key)}
+          {@const pages = pagesFor(g.key)}
+          <div
+            class="charts"
+            style:--cols={cols}
+            style:--cols-md={colsMd}
+            data-rows-total={rowsTotal(g.charts.length)}
+          >
+            {#each pages.slice(g.charts) as c (c.key)}
               <div class="cell">
                 <!-- The node above the interface, because the interface name is
                      the chart's title and the node is what disambiguates it:
@@ -621,6 +668,7 @@
               </div>
             {/each}
           </div>
+          <Pager view={pages} total={g.charts.length} label="{g.label} chart pages" />
           {/if}
         </section>
       {/each}
