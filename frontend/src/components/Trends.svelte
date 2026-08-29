@@ -7,6 +7,7 @@
    */
   import MetricChart from './MetricChart.svelte';
   import Pager from './Pager.svelte';
+  import PickMenu from './PickMenu.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
@@ -114,6 +115,17 @@
   /* Kept in METRICS order rather than click order, so the stack doesn't
      reshuffle as you toggle things on and off. */
   const chosen = $derived(METRICS.filter((m) => selected.includes(m.key)));
+
+  /* The last metric standing cannot be switched off, and says so, for the
+     reason `toggle` already gives: an empty chart area reads as broken rather
+     than as a choice. Locked in the list rather than silently refused. */
+  const metricItems = $derived(
+    METRICS.map((m) => {
+      const on = selected.includes(m.key);
+      const last = on && selected.length === 1;
+      return { key: m.key, label: m.label, checked: on, disabled: last, note: last ? 'last one' : undefined };
+    }),
+  );
 
   /* Every metric that has LOADED gets a chart, including one that came back
      empty.
@@ -375,6 +387,21 @@
   <header>
     <div class="titles">
       <h2 class="eyebrow">System Activity</h2>
+      <!-- THE CHIPS BECAME A MENU. Twenty toggles took three rows of the
+           card -- about 130px, measured -- which at the default plot height is
+           a whole row of charts. Their one real virtue was that OFF was as
+           visible as ON, which a checkbox list keeps. The count on the trigger
+           says how much of the set is drawn without opening it. -->
+      <PickMenu
+        groups={[{ items: metricItems }]}
+        ontoggle={toggle}
+        what="Metrics"
+        of="System Activity"
+        text="metrics"
+        count={selected.length}
+        countLabel={`of ${METRICS.length} shown`}
+        icon="list"
+      />
       <!-- THE LEGEND IS THE CONTROL. It was decoration before — it mapped
            colours to nodes while every line on the chart was coloured by
            METRIC, so nothing on the plot used these swatches. Now the swatches
@@ -439,30 +466,6 @@
     </div>
   </header>
 
-  <!-- Metric picker. Toggles rather than a multi-select listbox: the whole set
-       is small enough to show at once, and seeing which are OFF matters as
-       much as which are on. Each carries its own colour, so this doubles as the
-       legend for the stack below. -->
-  <div class="picker" role="group" aria-label="Metrics">
-    {#each METRICS as m (m.key)}
-      {@const on = selected.includes(m.key)}
-      <button
-        class="metric"
-        class:on
-        aria-pressed={on}
-        onclick={() => toggle(m.key)}
-      >
-        <!-- Filled when on, hollow when off — a STATE mark, not an identity
-             colour. It used to be the metric's own hue, which was right when
-             every metric was a line on one shared plot. It is not any more:
-             each metric has its own chart and the lines in it are coloured by
-             NODE, so a per-metric hue here named a colour that appears nowhere
-             on the page. Same fault the node legend had. -->
-        <span class="swatch" class:on></span>
-        {m.label}
-      </button>
-    {/each}
-  </div>
 
   {#if error}
     <p class="error">Couldn't load history: {error}</p>
@@ -599,53 +602,12 @@
     flex: none;
   }
 
-  /* Metric picker ------------------------------------------------------- */
-
-  .picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding-bottom: 8px;
-  }
-
-  .metric {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: var(--text-label);
-    padding: 3px 9px;
-    border-radius: var(--radius);
-    border: 1px solid var(--rule);
-    color: var(--ink-muted);
-  }
-
-  .metric:hover {
-    color: var(--ink-2);
-  }
-
-  /* Selected state carries a filled swatch AND a brighter label, so it never
-     rests on colour alone — the same reason every status here ships with a
-     word. An unselected chip keeps its outline so the set reads as a group of
-     options rather than as some labels and some buttons. */
-  .metric.on {
-    color: var(--ink);
-    background: var(--panel-raised);
-  }
 
 
-  .metric .swatch {
-    width: 8px;
-    height: 8px;
-    border-radius: 2px;
-    border: 1px solid var(--ink-muted);
-    background: transparent;
-  }
 
-  /* Fill plus the brighter label and panel behind it, so selection is never
-     carried by one channel alone. */
-  .metric .swatch.on {
-    background: currentColor;
-  }
+
+
+
 
   /* Small multiples ------------------------------------------------------ */
 

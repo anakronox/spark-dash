@@ -21,6 +21,8 @@ APP = FRONTEND / "App.svelte"
 CHART = FRONTEND / "components" / "MetricChart.svelte"
 TRENDS = FRONTEND / "components" / "Trends.svelte"
 NETWORK = FRONTEND / "components" / "NetworkTrends.svelte"
+PICK = FRONTEND / "components" / "PickMenu.svelte"
+COLMENU = FRONTEND / "components" / "ColumnMenu.svelte"
 
 
 def without_comments(src: str) -> str:
@@ -724,3 +726,52 @@ def test_plot_rows_reset_and_count_as_non_default():
     assert "this.plotRows = {}" in reset and "PLOT_ROWS_KEY" in reset, "reset leaves the row cap behind"
     corner = section_fn("onResizeReset")
     assert "resetPlotRows(" in corner, "double-click leaves the chart rows cut"
+
+
+def test_the_metric_chips_became_a_menu():
+    """Twenty toggle chips took three rows of System Activity -- about 130px,
+    measured -- which at the default plot height is a whole row of charts. The
+    picker is a fly-out of checkboxes now, sharing PickMenu with the column
+    picker so the two menus on the page cannot drift apart."""
+    trends = without_comments(TRENDS.read_text())
+    assert 'class="picker"' not in trends, "the chip strip is still rendered"
+    assert "<PickMenu" in trends, "System Activity has no metric menu"
+    assert "text=" in trends[trends.index("<PickMenu") :][:400], (
+        "the metric trigger has no text -- a primary control that only appears on hover"
+    )
+    col = without_comments(COLMENU.read_text())
+    assert "<PickMenu" in col, "ColumnMenu does not share the menu it was extracted into"
+    assert "addEventListener('pointerdown'" not in col, (
+        "ColumnMenu still carries its own close-on-outside logic alongside PickMenu's"
+    )
+
+
+def test_the_last_metric_cannot_be_switched_off():
+    """Trends.toggle refuses to empty the selection -- an empty chart area reads
+    as broken rather than as a choice. The menu has to SAY so rather than let a
+    click silently do nothing."""
+    trends = without_comments(TRENDS.read_text())
+    items = trends[trends.index("const metricItems") :][:500]
+    assert "selected.length === 1" in items, "the last metric is not recognised as last"
+    assert "disabled: last" in items, "the last metric can still be unchecked"
+    assert "'last one'" in items, "the lock is silent"
+
+
+def test_the_menu_closes_from_outside_and_from_escape():
+    """Not modal and no backdrop: glanced at and dismissed. The failure mode of
+    getting this wrong is a menu that will not close."""
+    pick = without_comments(PICK.read_text())
+    assert "addEventListener('pointerdown'" in pick, "no outside-click close"
+    assert "e.target instanceof Node && host.contains(e.target)" in pick, (
+        "the inside/outside test casts instead of checking, and contains() on a non-Node is not reliably falsy"
+    )
+    assert "'Escape'" in pick and ".trigger')?.focus()" in pick, "Escape does not return focus to the trigger"
+
+
+def test_a_labelled_menu_sizes_to_its_content():
+    """MEASURED: fr tracks inside an absolutely positioned, shrink-to-fit box
+    resolved to nothing -- the metric menu was 90px wide with every label
+    clipped. max-content tracks, and a width to match."""
+    block = css_block(PICK, ".host.labelled .menu {")
+    assert "max-content" in block, "the labelled menu's columns can collapse to nothing"
+    assert "minmax(0, 1fr)" not in block, "fr tracks in a shrink-to-fit box collapse"

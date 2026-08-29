@@ -5474,6 +5474,33 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
+- [x] **AE15. System Activity's metric chips became a menu.** Twenty toggle
+  chips took three rows of the card — about 130px, measured — which at the
+  default plot height is a whole row of charts. They are a fly-out of
+  checkboxes now, behind a labelled `metrics N` trigger in the title row that
+  says how much of the set is drawn without opening it. The chips' one real
+  virtue — OFF as visible as ON — a checkbox list keeps.
+
+  The fly-out is `PickMenu`, **extracted from `ColumnMenu`**, which is now a
+  thin adapter over it. Data in, not markup in: rows are rendered from a list
+  because scoped styles do not reach snippet content, and two menus each
+  carrying their own row CSS would drift apart. The column picker's two facts —
+  a required column is locked and says *always*, a column forced visible says
+  so in warning colour — are items with a `note`. The last metric standing is
+  locked the same way and says *last one*, rather than a click silently doing
+  nothing.
+
+  **Measured while building:** fr tracks inside an absolutely positioned,
+  shrink-to-fit box resolved to nothing — the menu was 90px wide with every
+  label clipped. `max-content` tracks. The `minmax(0, 1fr)` rule is about
+  tracks that share a *known* width; these have only their content to size
+  them.
+
+  Verified: header 29px where the chips had been 130 above it; menu 351px in
+  two columns, nothing clipped, closes on outside click and Escape; toggling
+  updates the count and the charts; the column picker still locks `process`
+  and badges hidden columns.
+
 - [x] **AE14. Chart cards paginate below the plot floor.** Reported: Network
   Activity in chart mode could not be dragged below **584px** — eleven interface
   charts in three rows, none able to drop under the 80px plot minimum plus ~35px
