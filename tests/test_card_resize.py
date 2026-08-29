@@ -615,3 +615,29 @@ def test_a_resized_card_makes_the_layout_non_default():
         assert f"Object.keys(this.{store}).length === 0" in body, (
             f"a change to {store} does not make the layout non-default, so it cannot be reset"
         )
+
+
+def test_widening_lands_the_card_where_the_reader_saw_it():
+    """REPORTED FROM PRODUCTION: RDMA ports at the bottom of the left column was
+    dragged full width, and the two cards at the TOP of the right column jumped
+    below it. A column's contents are `order` filtered by zone, so where a
+    right-column card sits in `order` relative to a left-column one is
+    invisible -- and a card going full width becomes a band boundary at exactly
+    that invisible position.
+
+    The rule: every card in the band whose top edge is above this one's stays
+    above; the card lands right after the last of them. Verified live in three
+    positions, each round-tripping."""
+    src = without_comments(SECTION.read_text())
+    commit = section_fn("onWidthCommit")
+    assert "widen()" in commit, "widening still goes through toggleWidth, at the hidden order position"
+
+    body = section_fn("widen")
+    assert "getBoundingClientRect().top" in body, "the anchor is not chosen from what is visually above"
+    assert "placeAt(id, 'full'" in body, "the card is not re-ordered as it goes full width"
+    assert "layout.order.filter" in body, (
+        "the cards above are not resolved through page order, so the anchor could be any of them"
+    )
+    # Narrowing must NOT re-order: filtering order back into the column is
+    # what makes the round trip land where the card left.
+    assert "toggleWidth(id)" in commit, "narrowing no longer uses toggleWidth"

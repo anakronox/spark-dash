@@ -610,7 +610,55 @@
        chosen for a width that no longer applies, so keeping it would be
        carrying over an answer to a question nobody asked again. */
     layout.clearCardSpan(id);
-    layout.toggleWidth(id);
+    if (dir === 1) widen();
+    else layout.toggleWidth(id);
+  }
+
+  /** Full width, landing where the reader SAW the card, not where `order` had it.
+   *
+   * THE BUG THIS FIXES, reported from production: RDMA ports at the bottom of
+   * the left column was dragged full width, and the two cards at the TOP of the
+   * right column jumped below it. A column's contents are `order` filtered by
+   * zone, so each column's relative order is faithful — but where a right-column
+   * card sits in `order` relative to a left-column one is invisible, and a card
+   * going full width becomes a band boundary at exactly that invisible
+   * position. `toggleWidth` leaves `order` alone on purpose (it is what makes
+   * half <-> full reversible), which is right for the panel it was built for and
+   * wrong for a gesture performed on the page, where the card has a position
+   * the reader can see.
+   *
+   * THE RULE: every card in the band whose top edge is above this one's stays
+   * above it; this card lands immediately after the last of them. From the top
+   * of a column that puts the full-width card at the top of the band; from the
+   * bottom, below the whole band; from the middle, between the rows that were
+   * above and below it. Narrowing again filters `order` back into the column,
+   * and because the cards above it are still before it in `order`, it returns
+   * to the same place in the column it left.
+   */
+  function widen() {
+    const band = slotEl?.closest('.cols');
+    if (!band || !slotEl) {
+      layout.toggleWidth(id);
+      return;
+    }
+    const top = slotEl.getBoundingClientRect().top;
+    const above = new Set(
+      [...band.querySelectorAll<HTMLElement>('[data-slot]')]
+        .filter((el) => el.dataset.slot !== id && el.getBoundingClientRect().top < top - 1)
+        .map((el) => el.dataset.slot as string),
+    );
+    /* The anchor is the LAST of those in page order, so every one of them
+       precedes this card and nothing else does. With none above, the card
+       goes before the band's first card instead. */
+    const ordered = layout.order.filter((x) => above.has(x));
+    if (ordered.length) {
+      layout.placeAt(id, 'full', ordered[ordered.length - 1], false);
+    } else {
+      const first = layout.order.find(
+        (x) => x !== id && band.querySelector(`[data-slot="${x}"]`),
+      );
+      layout.placeAt(id, 'full', first ?? null, true);
+    }
   }
 
   function onResizeReset() {
