@@ -316,8 +316,9 @@ def test_the_measure_coalescer_survives_a_background_tab():
     card's span froze at 4 while the card grew to 668px and overlapped its
     neighbour. This dashboard's job is to sit on a second monitor."""
     src = without_comments(SECTION.read_text())
-    effect = src[src.index("$effect(() => {") :]
-    effect = effect[: effect.index("});")]
+    # The effect that OWNS the observers, not the first effect in the file --
+    # a focus-management effect now precedes it.
+    effect = src[src.index("new MutationObserver") - 600 : src.index("new MutationObserver")]
     assert "requestAnimationFrame" not in effect, "the coalescer stalls in a background tab"
     assert "setTimeout" in effect, "nothing coalesces the measurements"
 
@@ -379,8 +380,10 @@ def test_a_card_can_be_held_taller_than_its_content():
     assert "--card-rows" in block, "the fill is not driven by the card's span"
 
     src = without_comments(SECTION.read_text())
-    assert re.search(r"cardRows = \$derived\(Math\.max\(naturalRows, layout\.cardSpan\(id\)\)\)", src), (
-        "the span is not max(content, held), so one of the two cannot win"
+    # In paging mode the span is max(content, held); scroll mode is the span
+    # alone, which test_a_scrolling_card_is_a_fixed_box... covers.
+    assert re.search(r"cardRows = \$derived\(scrolling \? layout\.cardSpan\(id\) : Math\.max\(naturalRows, layout\.cardSpan\(id\)\)\)", src), (
+        "the span is not max(content, held) when paging, so one of the two cannot win"
     )
 
 
