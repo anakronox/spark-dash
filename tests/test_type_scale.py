@@ -106,8 +106,3 @@ def test_a_card_title_is_a_step_above_the_body():
     rule = rule[: rule.index("}")]
     assert "font-size: var(--text-heading)" in rule, "card titles still borrow the eyebrow's size"
     assert "letter-spacing: 0.1em" in rule, "eyebrow tracking at 13px reads as gaps"
-    stub = (Path(__file__).resolve().parent.parent / "frontend/src/components/Section.svelte").read_text()
-    block = stub[stub.index(".stub .eyebrow {") :]
-    assert "var(--text-heading)" in block[: block.index("}")], (
-        "a collapsed card's title is the same title and must be the same size"
-    )

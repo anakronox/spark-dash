@@ -1,5 +1,5 @@
 <script lang="ts">
-  /* Wraps a dashboard section so it can be moved between zones and collapsed.
+  /* Wraps a dashboard section so it can be moved between zones and closed.
    *
    * Pointer events rather than HTML5 drag-and-drop: HTML5 DnD doesn't fire on
    * touch at all, and its drag image is not stylable. Pointer events cover
@@ -17,11 +17,13 @@
    * oscillation, the stutter, and the FLIP bookkeeping that came with it. None
    * of it exists here, because nothing moves during the drag.
    *
-   * COLLAPSING UNMOUNTS, rather than hiding with CSS. Two sections poll on a
-   * timer — the activity timeline every 60s and history on its range's period
-   * — so a merely-hidden section would go on fetching data nobody is looking
-   * at. Unmounting stops that, at the cost of a refetch when it reopens, which
-   * is the right trade for a panel you deliberately put away.
+   * CLOSING, NOT COLLAPSING. The gutter used to fold a card to a one-line stub.
+   * That stopped meaning anything once cards could be held at a height: the
+   * held span won over the stub, so a held card "collapsed" to exactly the
+   * height it already had -- measured at 659px both ways. And with cards able
+   * to exist more than once, the useful gesture is the other one: put this
+   * card away. The original is HIDDEN (Settings and the add button bring it
+   * back, in place); a copy is REMOVED, since a copy is a moment to recreate.
    */
   import { onDestroy } from 'svelte';
   import type { Snippet } from 'svelte';
@@ -33,6 +35,7 @@
     MIN_PLOT_PX,
   } from '../lib/layout.svelte';
   import CardGrip from './CardGrip.svelte';
+  import { isCopy } from '../lib/layout.svelte';
 
   interface Props {
     layout: Layout;
@@ -55,7 +58,7 @@
   // whole page describes a sequence the reader cannot see, now that the page is
   // three independent stacks rather than one.
   const position = $derived(`${siblings.indexOf(id) + 1} of ${siblings.length}, ${ZONE_LABEL[zone]}`);
-  const collapsed = $derived(layout.isCollapsed(id));
+  const copy = $derived(isCopy(id));
 
   /** Squared distance from a point to a rect; 0 when inside. */
   function distance(r: DOMRect, px: number, py: number): number {
@@ -924,45 +927,23 @@
     </svg>
   </button>
 
-  <!-- The toggle stays in one place and rotates, rather than moving into the
-       panel when collapsed. A control that changes position depending on the
-       state it's in reads as two different controls. -->
+  <!-- Put this card away. Under the move handle in the gutter, revealed with
+       it. What it does depends on what the card is: the original hides (and
+       keeps its place, for Settings or the add button to bring back); a copy
+       is removed. Named for what it will do, so the label is never a lie. -->
   <button
-    class="fold"
-    class:collapsed
-    aria-expanded={!collapsed}
-    aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
-    title={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
-    onclick={() => layout.toggleCollapsed(id)}
+    class="close"
+    aria-label={`${copy ? 'Remove' : 'Hide'} ${label}`}
+    title={copy ? 'Remove this copy' : 'Hide this card (Settings shows it again)'}
+    onclick={() => (copy ? layout.remove(id) : layout.toggleHidden(id))}
   >
     <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-      <path d="M1 3.5 L5 7 L9 3.5" fill="none" stroke="currentColor" stroke-width="1.6" />
+      <path d="M2 2 L8 8 M8 2 L2 8" fill="none" stroke="currentColor" stroke-width="1.6" />
     </svg>
   </button>
 
-  {#if collapsed}
-    <!-- A stub that still names what's here: collapsing should tidy the page,
-         not make you expand things to find out what they were.
-         Also clickable, as a bigger target than a 10px chevron — the same
-         reason a form label activates its input. The chevron above remains the
-         control; this is the same action with more room.
-
-         No "collapsed" caption. A single thin bar where a panel used to be
-         already says so, and the state is carried properly anyway: the chevron
-         has aria-expanded and this button is labelled "Expand {label}". -->
-    <button
-      class="panel stub"
-      aria-label={`Expand ${label}`}
-      onclick={() => layout.toggleCollapsed(id)}
-    >
-      <span class="eyebrow">{label}</span>
-    </button>
-  {:else}
     {@render children()}
 
-    <!-- Not on a collapsed card: there is nothing to resize but a 40px stub,
-         and a resize corner on it would offer a gesture that cannot do
-         anything. -->
     {#if ghost}
       <!-- Absolutely positioned and pointer-transparent, so drawing where the
            card is GOING cannot move the card it is measured from. Same reason
@@ -989,7 +970,6 @@
       valuemax={MAX_ROWS}
       valuetext={resizeText}
     />
-  {/if}
 </div>
 
 <style>
@@ -1122,7 +1102,7 @@
   }
 
   /* Shares the gutter with the drag handle, stacked beneath it. Both are
-     section-level controls, so they belong together and outside the panel —
+     card-level controls, so they belong together and outside the panel —
      the headers already carry a title at one end and their own controls at
      the other. */
   /* NOT `.collapse`, and the name is the whole point.
@@ -1138,7 +1118,7 @@
    * Pinned by test_no_scoped_class_shadows_a_tailwind_utility, which builds the
    * CSS and compares the two sets. The failure is silent by construction: no
    * error, no warning, and nothing wrong with either file on its own. */
-  .fold {
+  .close {
     position: absolute;
     left: -20px;
     top: 38px;
@@ -1150,65 +1130,26 @@
     transition: opacity 120ms ease, color 120ms ease;
   }
 
-  .fold svg {
+  .close svg {
     display: block;
     transition: transform 140ms ease;
   }
 
-  /* Points down when open (press to fold away), right when closed (press to
-     open out) — the direction the content will move. */
-  .fold.collapsed svg {
-    transform: rotate(-90deg);
-  }
 
-  /* A collapsed section is a single thin bar, so a control that only appears
-     on hover of a 40px strip is easy to miss. Once folded, the chevron stays
-     faintly visible as the marker for what is there. */
-  .fold.collapsed {
-    opacity: 0.55;
-  }
 
   .slot:hover .handle,
-  .slot:hover .fold,
+  .slot:hover .close,
   .handle:focus-visible,
-  .fold:focus-visible,
-  .slot:hover .fold.collapsed {
+  .close:focus-visible,
+  .slot:hover .close {
     opacity: 1;
   }
 
   .handle:hover,
-  .fold:hover {
+  .close:hover {
     color: var(--ink);
   }
 
-  /* Reads as a panel that's been folded away, not as a different kind of
-     object: same frame and eyebrow as a real header, just nothing under it. */
-  .stub {
-    display: flex;
-    align-items: baseline;
-    width: 100%;
-    padding: 14px 16px;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  /* The frame lifts toward the foreground ink on hover — enough to read as
-     interactive without inventing a colour the themes don't define. */
-  .stub:hover {
-    border-color: var(--ink-muted);
-  }
-
-  /* Matches h2.eyebrow, because this IS the card's title — just in its folded
-     state. A collapsed section that renders its name more quietly than the
-     open one would read as a lesser kind of thing rather than the same thing
-     put away. (A span rather than an h2 here: the whole stub is a button, and
-     a heading inside a button is a heading you cannot navigate to.) */
-  .stub .eyebrow {
-    font-size: var(--text-heading);
-    letter-spacing: 0.1em;
-    color: var(--ink);
-    font-weight: 700;
-  }
 
   .handle:active {
     cursor: grabbing;
@@ -1229,7 +1170,7 @@
       left: -22px;
     }
 
-    .fold {
+    .close {
       opacity: 0.45;
       padding: 8px 6px;
       left: -22px;

@@ -5713,6 +5713,15 @@ try/catch, and every card came back on its automatic view with its stored
 choice silently ignored. Only visible once a copy was set to `ports` and
 reloaded to `charts`. Declaration order is now guarded.
 
+**The gutter closes a card now; collapse is gone.** Brian: "collapse just hides
+the contents, not the height" — and measured, that is exactly right once a card
+is held: the held span won over the one-line stub, so a held card collapsed to
+659px both ways. With held heights in use every collapse did nothing. The
+chevron is a `×`: an **original hides** (it keeps its place; Settings or
+`+ ELEMENT` bring it back), a **copy is removed**. The label says which. The
+`collapsed` state, its key, reader and saver are deleted; a stored
+`section-collapsed.v1` is simply ignored.
+
 **`+ ELEMENT`, on the page.** Left of Settings, filled in the theme's accent
 so it reads as the one control on that bar that *does* something. Opens the
 same fly-out as the pickers (third use of `PickMenu`, which grew an `action`

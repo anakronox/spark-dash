@@ -7,20 +7,18 @@
  * and a layout tuned for a 34" monitor is rarely the one you want on a phone.
  * Per-browser is the behaviour you'd actually want here, not a limitation.
  *
- * Order, collapse and visibility live under separate keys so that a corrupt or
+ * Order and visibility live under separate keys so that a corrupt or
  * outdated value for one can't take the others down with it.
  *
- * COLLAPSED AND HIDDEN ARE DIFFERENT THINGS. A collapsed section is still on
- * the page as a named bar, one click from coming back — that control lives on
- * the section itself. A hidden one is not rendered at all, so nothing on the
- * page can bring it back; that is precisely why it is toggled from settings,
- * which is the only place it can be found again.
+ * HIDDEN keeps a card's place. A hidden card stays in `order` and its zone, so
+ * showing it again puts it back where it was; that is what makes hide the
+ * right meaning for the card's own close control, and why only COPIES are
+ * removed outright (there is nothing of theirs worth keeping).
  */
 
 import { columnStore } from './columns.svelte';
 
 const STORAGE_KEY = 'spark-dash.section-order.v1';
-const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
 const PLOT_HEIGHT_KEY = 'spark-dash.plot-heights.v1';
@@ -549,14 +547,9 @@ function readIdList(key: string, available: string[] = DEFAULT_ORDER): string[] 
   }
 }
 
-function readCollapsed(available: string[] = DEFAULT_ORDER): string[] {
-  return readIdList(COLLAPSE_KEY, available);
-}
 
 export class Layout {
   order = $state<string[]>(read());
-  /** Section ids currently collapsed — present on the page, but folded. */
-  collapsed = $state<string[]>(readCollapsed());
   /** Section ids not rendered at all. Recoverable only from settings. */
   hidden = $state<string[]>(readIdList(HIDDEN_KEY));
 
@@ -689,24 +682,8 @@ export class Layout {
     }
   }
 
-  #saveCollapsed() {
-    try {
-      localStorage.setItem(COLLAPSE_KEY, JSON.stringify(this.collapsed));
-    } catch {
-      // Same reasoning as #save: the toggle still works for this session.
-    }
-  }
 
-  isCollapsed(id: string): boolean {
-    return this.collapsed.includes(id);
-  }
 
-  toggleCollapsed(id: string) {
-    this.collapsed = this.isCollapsed(id)
-      ? this.collapsed.filter((s) => s !== id)
-      : [...this.collapsed, id];
-    this.#saveCollapsed();
-  }
 
 
   setCompactCards(on: boolean) {
@@ -1106,9 +1083,6 @@ export class Layout {
 
   /** Take a section off the dashboard entirely, or put it back.
    *
-   * Collapse state is left untouched rather than cleared: hiding is not a
-   * stronger collapse, it is a different axis. Something you folded away and
-   * then hid should come back folded, not sprung open.
    */
   toggleHidden(id: string) {
     this.hidden = this.isHidden(id)
@@ -1146,7 +1120,6 @@ export class Layout {
   reset() {
     for (const id of this.order) if (isCopy(id)) purgeInstanceKeys(id);
     this.order = [...DEFAULT_ORDER];
-    this.collapsed = [];
     this.hidden = [];
     this.placement = {};
     this.lastColumn = {};
@@ -1187,17 +1160,15 @@ export class Layout {
       // Still applied for this session.
     }
     this.#save();
-    this.#saveCollapsed();
   }
 
   /** True when nothing has been customised — order untouched, nothing
-   *  collapsed AND nothing hidden. Drives whether "reset layout" is offered at
+   *  nothing hidden. Drives whether "reset layout" is offered at
    *  all, so it has to account for all three or a customised dashboard has no
    *  way back. */
   get isDefault(): boolean {
     return (
       this.order.join(',') === DEFAULT_ORDER.join(',') &&
-      this.collapsed.length === 0 &&
       this.hidden.length === 0 &&
       Object.keys(this.placement).length === 0 &&
       Object.keys(this.rows).length === 0 &&
@@ -1290,7 +1261,6 @@ export class Layout {
     };
     this.order = this.order.filter((x) => x !== id);
     this.hidden = this.hidden.filter((x) => x !== id);
-    this.collapsed = this.collapsed.filter((x) => x !== id);
     this.placement = drop(this.placement);
     this.lastColumn = drop(this.lastColumn);
     this.rows = drop(this.rows);
@@ -1306,7 +1276,6 @@ export class Layout {
   #saveAll() {
     this.#save();
     this.#savePlacement();
-    this.#saveCollapsed();
     try {
       localStorage.setItem(HIDDEN_KEY, JSON.stringify(this.hidden));
       localStorage.setItem(COLUMN_KEY, JSON.stringify(this.lastColumn));

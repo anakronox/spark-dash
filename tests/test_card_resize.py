@@ -266,17 +266,21 @@ def test_every_card_has_exactly_one_resize_corner():
         )
 
 
-def test_a_collapsed_card_has_no_resize_corner():
-    """A collapsed card is a 40px stub. A resize corner on it would offer a
-    gesture with nothing to act on."""
+def test_the_gutter_closes_a_card_instead_of_folding_it():
+    """MEASURED: collapse folded an unheld card to 59px but a HELD card stayed
+    at its held height -- 659px both ways -- because the held span won over
+    the stub. With held heights in use, every collapse did nothing. The gutter
+    control closes now: the original hides (Settings and the add button bring
+    it back in place), a copy is removed."""
     src = without_comments(SECTION.read_text())
-    # Bounded by the <style> block, not by the first </div>: the markup inside
-    # this branch contains elements of its own, and slicing on a closing tag cut
-    # the guard short the moment one was added.
-    branch = src[src.index("{#if collapsed}") : src.index("<style>")]
-    stub, rest = branch.split("{:else}", 1)
-    assert "<CardGrip" not in stub, "the collapsed stub renders a resize corner"
-    assert "<CardGrip" in rest, "the expanded card does not render one"
+    assert "collapsed" not in src and ".stub" not in src, "the fold-to-stub path survives"
+    assert 'class="close"' in src, "no close control"
+    assert "copy ? layout.remove(id) : layout.toggleHidden(id)" in src, (
+        "closing does not distinguish an original (hide) from a copy (remove)"
+    )
+    assert "`${copy ? 'Remove' : 'Hide'} ${label}`" in src, "the label does not say which it will do"
+    layout = without_comments(LAYOUT.read_text())
+    assert "toggleCollapsed" not in layout and "COLLAPSE_KEY" not in layout, "collapse state survives in the store"
 
 
 def test_the_module_is_declared_rather_than_discovered():

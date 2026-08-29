@@ -111,14 +111,15 @@ def test_no_scoped_class_shadows_a_tailwind_utility(tmp_path: Path):
 @pytest.mark.skipif(
     not (FRONTEND / "node_modules" / "vite").is_dir(), reason="frontend deps are not installed"
 )
-def test_the_collapse_control_is_visible(tmp_path: Path):
+def test_the_close_control_is_visible(tmp_path: Path):
     """The specific regression, named.
 
     Belt and braces over the general check above: that one compares sets of
     names, and this one asserts the thing a reader actually cares about — that
-    nothing in the built sheet hides the fold control.
+    nothing in the built sheet hides the close control (the fold control it
+    replaced was the original victim, and the hazard is the same).
     """
     css = build_css(tmp_path / "dist")
-    assert re.search(r"\.fold\.svelte-[\w-]+", css), "the fold control lost its scoped styles"
-    hidden = re.findall(r"\.(fold)[^{}]*\{[^{}]*visibility\s*:\s*(collapse|hidden)", css)
-    assert not hidden, f"something sets the fold control invisible: {hidden}"
+    assert re.search(r"\.close\.svelte-[\w-]+", css), "the close control lost its scoped styles"
+    hidden = re.findall(r"\.(close)[^{}]*\{[^{}]*visibility\s*:\s*(collapse|hidden)", css)
+    assert not hidden, f"something sets the close control invisible: {hidden}"
