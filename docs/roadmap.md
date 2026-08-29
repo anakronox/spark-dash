@@ -5474,19 +5474,50 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
-- [ ] **AE4. Column width as an fr ratio, if it is still wanted.** Now clearly
-  distinct from AE12, which moves a card between half and full; this would
-  change how a band SPLITS its two columns. Separate from the above and
-  smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
-  A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag
-  the tracks — measured, the two "equal halves" were **813.273px and
-  769.727px**, one column having taken 43px from the other by holding wider
-  tables. That is the whole of the dashboard's horizontal layout shift. A
-  resize therefore sets the fr RATIO, never a pixel width.
+- [x] ~~**AE4. Column width as an fr ratio.**~~ **Closed 2026-08-29 without
+  building it.** It would have let a band's two columns split other than 50/50.
 
-  It also needs clamping, for the reason the 1100px breakpoint already exists:
-  below that, zones stack because *"a half-width table on a laptop is
-  unreadable"*. A column dragged to 20% recreates that at any viewport.
+  **AE12 obviated most of it.** The motivating case was a dense card wanting
+  more room, and one sideways drag on the resize corner now gives it the whole
+  page. The arithmetic on a 1728px window, where the content area is 1649px and
+  Temperatures needs 1300px of its own to pair its domains:
+
+  | split | Temperatures | its neighbour |
+  |---|---|---|
+  | 50/50 | 817px — one column of domains | 817px |
+  | 80/20 | 1306px — pairs, just | **333px — unusable** |
+  | full width (ships today) | 1649px — pairs comfortably | — |
+
+  No split gets a dense card past its threshold while leaving a usable
+  neighbour. On a 2560px display it does work — 60/40 gives 1430/954 — so the
+  payoff is real but confined to wide screens, and it is polish rather than
+  capability: letting a column of small cards sit beside a dense one at 60/40.
+
+  **Three costs, against that.**
+
+  1. **A measured control collision.** The gutter is 16px, at x=849–865, and
+     every left-column card's resize corner ends at **x=847**. Four corners
+     would sit two pixels from a full-height gutter grip. Solvable — a short
+     handle at the top of the gutter rather than its full height — but it is a
+     new control designed around an existing one.
+  2. **Bands have no stable identity.** They are derived from `order` and
+     `placement` and keyed by INDEX (`{#each layout.bands as band, i (i)}`), so
+     a per-band split would silently migrate to a different band when cards
+     move. It would have to be one page-level split, which is a weaker feature
+     than the one described here.
+  3. **Held heights across the reflow.** Changing the split reflows every card
+     in both columns. AE8 clears a card's held height on a width flip for
+     exactly this reason — but that is one card, and this is up to seven at
+     once. Clearing them all is drastic; clearing none leaves them wrong.
+
+  The `minmax(0, 1fr)` finding it was written around is NOT closed and stays
+  load-bearing wherever a grid track is declared: a bare `1fr` is
+  `minmax(auto, 1fr)`, whose `auto` minimum lets content drag the track —
+  measured, two "equal halves" came out at **813.273px and 769.727px**, one
+  column having taken 43px from the other by holding wider tables. `.cols`,
+  `.zone`, `.sections`, `.slot` and `.domains` all state it.
+
+  Reopen if a wide display makes the polish worth the three costs.
 
 - [x] **AE5. Reuse `ColumnGrip`'s contract.** AA settled what a resize gesture
   owes and the comments are explicit: `role="separator"` because *"keyboard
@@ -5509,7 +5540,8 @@ than a hedge.
 
   Both failures are silent by construction — a propagating pointerdown makes
   the card fly toward a zone with no error anywhere — so they are pinned by
-  `tests/test_plot_height.py`, verified by mutation rather than by passing.
+  `tests/test_card_resize.py` (`test_plot_height.py` until the bottom-centre
+  bar became a corner), verified by mutation rather than by passing.
 
 **Explicitly NOT this:** a 12-column grid or per-card pixel widths. The band
 model is carefully built and a general grid would replace its reasoning rather
