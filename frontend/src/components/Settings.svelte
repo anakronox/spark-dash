@@ -750,7 +750,7 @@
   .choice:hover { color: var(--ink); }
   .choice.active {
     color: var(--ink);
-    background: var(--rule);
+    background: var(--fill);
   }
 
 

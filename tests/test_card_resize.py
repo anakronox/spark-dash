@@ -914,7 +914,7 @@ def test_rdma_ports_is_a_view_of_network_activity_not_a_card():
     )
     # A port is RoCE by definition and a live table has no time range: the
     # groups menu and the history controls hide in that view.
-    assert card.count("mode !== 'ports'") >= 2, "groups menu or history controls still show in the ports view"
+    assert "disabled={mode === 'ports'}" in card, "the groups menu and history controls do not disable in the ports view"
     app = without_comments(APP.read_text())
     assert "NetworkPanel" not in app and "id === 'network'" not in app
 
@@ -1060,14 +1060,32 @@ def test_the_chart_cards_controls_are_one_segmented_primitive():
     inner = css_block(APP_CSS, ".segmented > button {")
     assert "border: 0" in inner, "options still carry their own borders"
     active = css_block(APP_CSS, ".segmented > button.active {")
-    assert "background: var(--rule)" in active and "color: var(--ink)" in active, (
+    assert "background: var(--fill)" in active and "color: var(--ink)" in active, (
         "the chosen option is not filled the way Settings' choices are"
     )
     settings_active = css_block(SETTINGS, ".choice.active {")
-    assert "background: var(--rule)" in settings_active, "Settings' choices changed; keep the two in step"
+    assert "background: var(--fill)" in settings_active, "Settings' choices changed; keep the two in step"
     for path in (TRENDS, NETWORK):
         c = path.read_text()
         assert 'class="ranges segmented"' in c, f"{path.name} range group is not the primitive"
         assert 'class="events toggle"' in c, f"{path.name} events toggle is not the primitive"
         assert ".range.active" not in c and ".events.on" not in c, f"{path.name} still styles these itself"
     assert 'class="modes segmented"' in NETWORK.read_text()
+
+
+def test_the_chart_card_controls_hold_their_place_across_views():
+    """REPORTED: the view switch moved between charts, table and ports because
+    the idle toggle appeared only on charts and events + range vanished on
+    ports, and the row is right-aligned -- a reader who learned where "table"
+    was found it elsewhere after switching. Everything renders in every view
+    and disables when it does not apply."""
+    card = without_comments(NETWORK.read_text())
+    for gone in ("{#if mode === 'charts' && (grid.quiet", "{#if mode !== 'ports'}"):
+        assert gone not in card, f"a control still comes and goes: {gone}"
+    assert "disabled={mode !== 'charts'}" in card, "the idle toggle is not disabled off charts"
+    assert card.count("disabled={mode === 'ports'}") >= 3, "events, the range and the groups menu are not all disabled on ports"
+    css = APP_CSS.read_text()
+    assert "--fill: color-mix(in srgb, var(--rule) 72%, var(--ink))" in css, "the selected fill is not a step up from the rule"
+    for sel in (".segmented > button.active {", ".toggle.on {"):
+        assert "background: var(--fill)" in css_block(APP_CSS, sel)
+    assert "background: var(--fill)" in css_block(SETTINGS, ".choice.active {"), "Settings' choices and the page's controls diverged"

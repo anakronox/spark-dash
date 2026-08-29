@@ -566,10 +566,13 @@
   <header>
     <div class="titles">
       <h2 class="eyebrow">Network Activity</h2>
-      {#if mode !== 'ports'}
+      <!-- Stays put in every view. A port is RoCE by definition, so the
+           groups do not apply there: disabled rather than hidden, so the
+           legend beside it does not shift when the view changes. -->
       <PickMenu
         groups={[{ items: groupItems }]}
         ontoggle={toggleGroup}
+        disabled={mode === 'ports'}
         what="Interface groups"
         of="Network Activity"
         text="groups"
@@ -577,7 +580,6 @@
         countLabel={`of ${DIVISIONS.length} shown`}
         icon="list"
       />
-      {/if}
       {#if plotted.length > 1}
         <span class="legend" role="group" aria-label="Nodes">
           {#each plotted as id (id)}
@@ -627,26 +629,31 @@
         {/each}
       </div>
 
-      <!-- Chart mode only. In a table a quiet link is one short row that says
-           why it is quiet, so there is nothing to hide and nothing to count. -->
-      {#if mode === 'charts' && (grid.quiet || includeQuiet)}
-        <button
-          class="events toggle"
-          class:on={includeQuiet}
-          aria-pressed={includeQuiet}
-          title="Interfaces with no traffic at all in this window"
-          onclick={() => writeFlag(QUIET_KEY, (includeQuiet = !includeQuiet))}
-        >{grid.quiet} idle</button>
-      {/if}
-
-      {#if mode !== 'ports'}
-      <!-- History controls: the ports view is live from the snapshot, and a time
-           range or an events layer would be a control that does nothing. -->
+      <!-- EVERY CONTROL STAYS WHERE IT IS in every view. The idle toggle only
+           means something on charts, and events and the range only on charts
+           and the table -- the ports view is live -- but a control that
+           appears and disappears moves its neighbours, and a reader who has
+           learned where "table" is finds it somewhere else after switching.
+           Disabled and dimmed instead, with the title saying why. -->
       <button
         class="events toggle"
-        class:on={showEvents}
+        class:on={includeQuiet && mode === 'charts'}
+        aria-pressed={includeQuiet}
+        disabled={mode !== 'charts'}
+        title={mode === 'charts'
+          ? 'Interfaces with no traffic at all in this window'
+          : 'Idle links are rows in the table and ports; nothing to hide there'}
+        onclick={() => writeFlag(QUIET_KEY, (includeQuiet = !includeQuiet))}
+      >{grid.quiet} idle</button>
+
+      <button
+        class="events toggle"
+        class:on={showEvents && mode !== 'ports'}
         aria-pressed={showEvents}
-        title="Mark alerts, cold starts and agent deploys on the charts"
+        disabled={mode === 'ports'}
+        title={mode === 'ports'
+          ? 'The ports view is live; it has no window to mark events on'
+          : 'Mark alerts, cold starts and agent deploys on the charts'}
         onclick={() => writeFlag(EVENTS_KEY, (showEvents = !showEvents))}
       >events{annotations.length ? ` · ${annotations.length}` : ''}</button>
 
@@ -656,13 +663,14 @@
             class="range"
             class:active={r.key === rangeKey}
             aria-pressed={r.key === rangeKey}
+            disabled={mode === 'ports'}
+            title={mode === 'ports' ? 'The ports view is live; it has no time range' : undefined}
             onclick={() => (rangeKey = r.key)}
           >
             {r.label}
           </button>
         {/each}
       </div>
-      {/if}
     </div>
   </header>
 

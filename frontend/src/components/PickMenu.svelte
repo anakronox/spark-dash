@@ -68,6 +68,9 @@
      *  leftward or it runs past the viewport and gives the whole page a
      *  horizontal scrollbar. */
     align?: 'start' | 'end';
+    /** The control does not apply right now. It stays where it is, dimmed,
+     *  rather than disappearing and shifting its neighbours. */
+    disabled?: boolean;
   }
   const {
     groups,
@@ -81,6 +84,7 @@
     mode = 'check',
     tone = 'plain',
     align,
+    disabled = false,
   }: Props = $props();
 
   const hangsEnd = $derived(align ? align === 'end' : !text);
@@ -135,6 +139,7 @@
     aria-haspopup="true"
     aria-label={name}
     title={`Choose ${what.toLowerCase()}`}
+    {disabled}
     onclick={() => (open = !open)}
   >
     {#if icon === 'columns'}
@@ -270,6 +275,11 @@
 
   .host.labelled .trigger:hover {
     border-color: var(--ink-muted);
+  }
+
+  .trigger:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   /* THE ACTION on a bar of outlines. Filled in the theme's accent -- the same

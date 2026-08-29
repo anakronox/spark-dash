@@ -193,6 +193,15 @@
   --row-pad: 5px;
   --row-rule: 1px;
   --row-unit: calc(var(--row-line) + 2 * var(--row-pad) + var(--row-rule));
+
+  /* THE SELECTED FILL, for a chosen option in a segmented control, a toggle
+     that is on, and Settings' own selectors. It used to be --rule itself,
+     which is a hairline colour: against the panel it stood 1.4:1, and a
+     chosen option read as barely different from its neighbours. Mixed from
+     the rule towards the ink so it steps up in every theme by the same
+     proportion -- dark themes get a lighter fill, light themes a darker one
+     -- without a hand-picked value per theme to drift. */
+  --fill: color-mix(in srgb, var(--rule) 72%, var(--ink));
 }
 
 /* CYBERPUNK ---------------------------------------------------------------
@@ -651,8 +660,16 @@
      and Node elements selectors: the rule colour under ink text. One
      vocabulary for "this one is selected" across the page and the panel. */
   .segmented > button.active {
-    background: var(--rule);
+    background: var(--fill);
     color: var(--ink);
+  }
+
+  /* An option that does not apply in the current view stays where it is,
+     dimmed, rather than disappearing and shifting its neighbours. */
+  .segmented > button:disabled,
+  .toggle:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   /* A standalone on/off, styled to match: outlined when off, filled when on. */
@@ -672,7 +689,7 @@
   }
 
   .toggle.on {
-    background: var(--rule);
+    background: var(--fill);
     color: var(--ink);
   }
 
