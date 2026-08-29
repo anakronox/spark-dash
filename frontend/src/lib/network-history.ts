@@ -315,8 +315,24 @@ export function chartsFor(
 }
 
 /** One labelled division of the card. */
+/** Which of the four groups an interface belongs to. `fabric` is RoCE -- the
+ *  key predates the other three and is what the tests and the drop targets
+ *  know it as; the label says RoCE. */
+export type Division = 'fabric' | 'management' | 'wifi' | 'other';
+
+/** The facts about an interface that have no time series -- from the live
+ *  snapshot, keyed by `linkKey(node, iface)`. The three kind facts are
+ *  optional because an older agent does not send them. */
+export interface LinkFacts {
+  speedMbps: number | null;
+  monitored: boolean;
+  wireless?: boolean;
+  driver?: string | null;
+  bus?: string | null;
+}
+
 export interface ChartGroup {
-  key: 'fabric' | 'management';
+  key: Division;
   label: string;
   /** One line under the heading saying what the division MEANS, since "fabric"
    *  is a word people use loosely and this one has an exact definition. */
@@ -330,30 +346,61 @@ export interface ChartGroup {
  * under Fabric in one view and Management in the other — which would be worse
  * than having no division at all, because each view on its own would look
  * right. */
-export const DIVISIONS: { key: 'fabric' | 'management'; label: string; note: string }[] = [
+export const DIVISIONS: { key: Division; label: string; note: string }[] = [
+  { key: 'fabric', label: 'RoCE', note: 'interfaces paired with an RDMA device — the cluster fabric' },
+  { key: 'management', label: 'Management', note: 'wired NICs on the PCI bus with no RDMA device' },
+  { key: 'wifi', label: 'WiFi', note: 'wireless radios' },
   {
-    key: 'fabric',
-    label: 'Fabric',
-    note: 'RoCE links — interfaces paired with an RDMA device',
-  },
-  {
-    key: 'management',
-    label: 'Management',
-    note: 'everything else — no RDMA device on this interface',
+    key: 'other',
+    label: 'Other',
+    note: 'USB adapters, and ConnectX ports with no RDMA pairing — links to fabrics this cluster does not use',
   },
 ];
 
-/** Which division a link belongs to.
+/** Shown on a fresh install. WiFi is down on these boxes more often than not
+ *  and Other is empty until unusual hardware appears; both are one click away,
+ *  and the trigger counts them so a hidden non-empty group is still visible. */
+export const DEFAULT_DIVISIONS: Division[] = ['fabric', 'management'];
+
+/** Which group an interface belongs to.
  *
- * ONE RULE, in one place. An interface with an RDMA port observed on it is
- * fabric whatever the caller's set says: the pairing IS the definition, and an
- * attached port is that pairing observed directly. */
+ * RoCE is the pairing -- an interface with an RDMA device on it IS a fabric
+ * link, whatever else is true of it -- so it is decided first and from the
+ * agent's own answer. The other three need facts a name cannot give: a
+ * ConnectX-7 port with no RDMA pairing looks exactly like the onboard 10G
+ * (`enP7s7` against `enP2p1s0f0np0`), and a USB adapter can be renamed to
+ * anything. So the agent reports the driver, the bus and the wireless flag
+ * as they are, and the rule lives here:
+ *
+ *   wireless                                  -> wifi
+ *   USB, or ConnectX (mlx5_core) with no RDMA -> other
+ *   any other wired PCI NIC                   -> management
+ *
+ * Management is the remainder on purpose. On a GB10 that is exactly the
+ * onboard 10G, and "the wired port that is not any of the special cases" is
+ * what management means on a box like this.
+ *
+ * AN OLDER AGENT SENDS NONE OF THE FACTS. Then the only thing left is the
+ * name, and only one name says anything: `wl*` is the kernel's own wireless
+ * prefix. Everything else is management, which is what the card showed
+ * before the four groups existed -- so a node that has not been redeployed
+ * looks as it did, rather than emptying into Other.
+ */
 export function divide(
   key: string,
   hasPort: boolean,
   fabric: ReadonlySet<string>,
-): 'fabric' | 'management' {
-  return fabric.has(key) || hasPort ? 'fabric' : 'management';
+  facts?: LinkFacts,
+): Division {
+  if (fabric.has(key) || hasPort) return 'fabric';
+  const iface = key.slice(key.indexOf(SEP) + 1);
+  const known = facts !== undefined && (facts.wireless !== undefined || facts.driver !== undefined);
+  if (!known) return iface.startsWith('wl') ? 'wifi' : 'management';
+  if (facts.wireless) return 'wifi';
+  if (facts.bus === 'usb') return 'other';
+  if (facts.driver === 'mlx5_core') return 'other';
+  if (facts.driver == null) return 'other';
+  return 'management';
 }
 
 /** The grid, divided into fabric and management.
@@ -388,6 +435,7 @@ export function buildGrid(
   rdma: Port[] = [],
   /** `linkKey(node, iface)` for every interface paired with an RDMA device. */
   fabric: ReadonlySet<string> = new Set(),
+  live: ReadonlyMap<string, LinkFacts> = new Map(),
 ): { groups: ChartGroup[]; quiet: number } {
   const byName = new Map(names.map((n, i) => [n, columns[i]]));
   const wanted = (node: string) => activeNodes === null || activeNodes.includes(node);
@@ -414,8 +462,7 @@ export function buildGrid(
     }
   }
 
-  const inFabric: LinkChart[] = [];
-  const inManagement: LinkChart[] = [];
+  const by: Record<Division, LinkChart[]> = { fabric: [], management: [], wifi: [], other: [] };
   let quiet = 0;
   for (const link of all) {
     const built = chartsFor(link, byName);
@@ -431,15 +478,13 @@ export function buildGrid(
       // worth seeing.
       if (!includeQuiet && !attached.length) continue;
     }
-    const isFabric = divide(link.key, attached.length > 0, fabric) === 'fabric';
-    (isFabric ? inFabric : inManagement).push(...built, ...attached);
+    by[divide(link.key, attached.length > 0, fabric, live.get(link.key))].push(...built, ...attached);
   }
-  inFabric.push(...unpaired.map(portChart));
+  by.fabric.push(...unpaired.map(portChart));
 
-  const charts = { fabric: inFabric, management: inManagement };
-  const groups: ChartGroup[] = DIVISIONS.filter((d) => charts[d.key].length).map((d) => ({
+  const groups: ChartGroup[] = DIVISIONS.filter((d) => by[d.key].length).map((d) => ({
     ...d,
-    charts: charts[d.key],
+    charts: by[d.key],
   }));
   return { groups, quiet };
 }
@@ -464,7 +509,7 @@ export interface LinkRow {
   key: string;
   node: string;
   iface: string;
-  division: 'fabric' | 'management';
+  division: Division;
   /** rx + tx per sample. One wire, one line: the row answers "how much did
    *  this carry", and the direction split is what opening the chart is for. */
   series: (number | null)[];
@@ -541,7 +586,7 @@ const total = (c: (number | null)[] | undefined) =>
 /** One link's row. `port` is the worst state among the RDMA ports on it. */
 export function linkRow(
   link: Link,
-  division: 'fabric' | 'management',
+  division: Division,
   byName: Map<string, (number | null)[]>,
   onThisLink: Port[] = [],
   /** Per-interface facts that have no time series: the negotiated speed and
@@ -678,8 +723,8 @@ export function buildRows(
   rdma: Port[] = [],
   fabric: ReadonlySet<string> = new Set(),
   /** `linkKey(node, iface)` -> the facts with no time series. */
-  live: ReadonlyMap<string, { speedMbps: number | null; monitored: boolean }> = new Map(),
-): { key: 'fabric' | 'management'; label: string; note: string; rows: LinkRow[] }[] {
+  live: ReadonlyMap<string, LinkFacts> = new Map(),
+): { key: Division; label: string; note: string; rows: LinkRow[] }[] {
   const byName = new Map(names.map((n, i) => [n, columns[i]]));
   const wanted = (node: string) => activeNodes === null || activeNodes.includes(node);
   const portsOn = new Map<string, Port[]>();
@@ -694,7 +739,7 @@ export function buildRows(
     .map((l) =>
       linkRow(
         l,
-        divide(l.key, (portsOn.get(l.key) ?? []).length > 0, fabric),
+        divide(l.key, (portsOn.get(l.key) ?? []).length > 0, fabric, live.get(l.key)),
         byName,
         portsOn.get(l.key),
         live.get(l.key) ?? { speedMbps: null, monitored: true },

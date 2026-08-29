@@ -167,6 +167,24 @@ class NetworkInterface(BaseModel):
         "Distinct from `unmonitored_runtimes`, which is the opposite kind of "
         "fact: that is a gap to be fixed, this is a deliberate exclusion.",
     )
+    wireless: bool = Field(
+        default=False,
+        description="A wireless interface -- /sys/class/net/<if>/wireless exists. The "
+        "dashboard groups these apart from wired NICs.",
+    )
+    driver: str | None = Field(
+        default=None,
+        description="Kernel driver bound to the device, from the device/driver "
+        "symlink: mlx5_core for a ConnectX, igc/ixgbe/... for an onboard NIC, "
+        "r8152/ax88179 for a USB adapter. FACTS, not a classification: the "
+        "dashboard decides what a ConnectX with no RDMA pairing counts as, and "
+        "that rule can change without a node redeploy.",
+    )
+    bus: str | None = Field(
+        default=None,
+        description="The bus the device sits on -- 'pci' or 'usb' -- from the "
+        "device symlink's path. None when it cannot be told.",
+    )
     speed_mbps: int | None = Field(
         default=None,
         description="Negotiated link speed. None when the driver doesn't report "

@@ -109,6 +109,13 @@ export interface NetworkInterface {
    *  configured is still watched, so forgetting the list is noisy rather than
    *  silent. Reported either way: the panel keeps showing it. */
   monitored: boolean;
+  /** Three FACTS about what kind of NIC this is, from sysfs, so the card can
+   *  divide interfaces into RoCE, Management, WiFi and Other. Optional because
+   *  an older agent does not send them, and absent must read as "not known"
+   *  rather than as any group. The rule lives in network-history.ts. */
+  wireless?: boolean;
+  driver?: string | null;
+  bus?: string | null;
   /** Negotiated link speed. Null when the driver doesn't report one. */
   speed_mbps: number | null;
   rx_bytes_per_sec: number;

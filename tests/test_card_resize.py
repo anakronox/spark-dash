@@ -22,6 +22,7 @@ CHART = FRONTEND / "components" / "MetricChart.svelte"
 TRENDS = FRONTEND / "components" / "Trends.svelte"
 NETWORK = FRONTEND / "components" / "NetworkTrends.svelte"
 PICK = FRONTEND / "components" / "PickMenu.svelte"
+NETHIST = FRONTEND / "lib" / "network-history.ts"
 COLMENU = FRONTEND / "components" / "ColumnMenu.svelte"
 
 
@@ -800,3 +801,38 @@ def test_a_row_cap_yields_when_the_card_is_held_taller_than_its_content():
     assert "getBoundingClientRect().height + GAP_PX" not in after, (
         "the room is measured through the fill, so it is always zero"
     )
+
+
+def test_network_activity_has_four_interface_groups_behind_a_menu():
+    """RoCE, Management, WiFi and Other, chosen from the same PickMenu the
+    metric picker uses. The rule that sorts an interface into one of them is
+    exercised for real under node in test_network_history; this pins the
+    wiring around it."""
+    src = without_comments(NETHIST.read_text())
+    assert "export type Division = 'fabric' | 'management' | 'wifi' | 'other'" in src
+    assert "DEFAULT_DIVISIONS: Division[] = ['fabric', 'management']" in src, (
+        "a fresh install should show RoCE and Management"
+    )
+    assert "label: 'RoCE'" in src, "the fabric division is not labelled RoCE"
+
+    card = without_comments(NETWORK.read_text())
+    assert "<PickMenu" in card and 'what="Interface groups"' in card, "no group menu on the card"
+    assert "spark-dash.network-groups.v1" in card, "the choice is not remembered"
+    assert "if (!next.length) return;" in card, "the card can be emptied of every group"
+    for fact in ("wireless: i.wireless", "driver: i.driver", "bus: i.bus"):
+        assert fact in card, f"the live snapshot's {fact.split(':')[0]} never reaches the rule"
+
+
+def test_the_agent_reports_kind_facts_not_a_verdict():
+    """The rule lives in the frontend so it can change without a node redeploy;
+    the agent sends the three facts a name cannot give."""
+    net = (Path(__file__).resolve().parent.parent / "agent/src/spark_dash_agent/collectors/network.py").read_text()
+    for fn in ("_is_wireless", "_driver", "_bus"):
+        assert f"def {fn}(" in net, f"the collector has no {fn}"
+    assert "wireless=self._is_wireless(name)" in net and "driver=self._driver(name)" in net and "bus=self._bus(name)" in net
+    assert "if not link.is_symlink():" in net, (
+        "resolve() on an absent driver symlink returns the path itself, whose basename is 'driver'"
+    )
+    model = (Path(__file__).resolve().parent.parent / "common/src/spark_dash_common/models.py").read_text()
+    for field in ("wireless: bool = Field(", "driver: str | None = Field(", "bus: str | None = Field("):
+        assert field in model, f"NetworkInterface lacks {field.split(':')[0]}"

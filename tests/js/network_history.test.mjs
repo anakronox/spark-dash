@@ -29,6 +29,9 @@ import {
   TIER_STATE,
   TIER_STEADY,
   buildGrid,
+  divide,
+  DIVISIONS,
+  DEFAULT_DIVISIONS,
   buildRows,
   byImportance,
   chartsFor,
@@ -749,9 +752,13 @@ test('190 links across 32 nodes build, rank and divide', () => {
   const all = divs.flatMap((d) => d.rows);
 
   assert.equal(all.length, 32 * 6, `expected 192 rows, got ${all.length}`);
-  assert.deepEqual(divs.map((d) => d.key), ['fabric', 'management']);
+  // With no facts from the agent, wl* is the one name that still says
+  // something: every node's wireless port files under wifi now.
+  assert.deepEqual(divs.map((d) => d.key), ['fabric', 'management', 'wifi']);
   assert.equal(divs[0].rows.length, 32 * 4);
-  assert.equal(divs[1].rows.length, 32 * 2);
+  // enP7s7 alone: the wireless port is its own division now.
+  assert.equal(divs[1].rows.length, 32);
+  assert.equal(divs[2].rows.length, 32);
   // The one bad link is the first row of its division, out of 128.
   assert.equal(divs[0].rows[0].iface, 'enp1s0f1np1');
   assert.equal(divs[0].rows[0].node, 'gx10-17');
@@ -842,3 +849,60 @@ for (const [label, fn] of tests) {
 }
 console.log(`${tests.length - failed}/${tests.length} passed`);
 process.exit(failed ? 1 : 0);
+
+
+// ---- the four groups --------------------------------------------------------
+//
+// RoCE is the pairing; the other three need facts a name cannot give. The rule
+// is a pure function, so it is tested as one.
+
+const facts = (o) => ({ speedMbps: null, monitored: true, ...o });
+const key = (iface) => `sparky${SEP}${iface}`;
+
+test('an RDMA pairing wins over every other fact', () => {
+  const paired = new Set([key('enp1s0f1np1')]);
+  assert.equal(divide(key('enp1s0f1np1'), false, paired, facts({ driver: 'mlx5_core', bus: 'usb' })), 'fabric');
+  assert.equal(divide(key('x'), true, new Set(), facts({ wireless: true })), 'fabric', 'a port chart is fabric by construction');
+});
+
+test('wireless is wifi, whatever the name', () => {
+  assert.equal(divide(key('renamed0'), false, new Set(), facts({ wireless: true, driver: 'mt7921e', bus: 'pci' })), 'wifi');
+});
+
+test('a ConnectX with no RDMA pairing is other, not management', () => {
+  // The case the groups exist for: a CX-7 port cabled to some other fabric.
+  assert.equal(divide(key('enp1s0f1np1'), false, new Set(), facts({ wireless: false, driver: 'mlx5_core', bus: 'pci' })), 'other');
+});
+
+test('a USB adapter is other', () => {
+  assert.equal(divide(key('enx00e04c680001'), false, new Set(), facts({ wireless: false, driver: 'r8152', bus: 'usb' })), 'other');
+});
+
+test('an unknown driver with facts present is other, not management', () => {
+  assert.equal(divide(key('eth9'), false, new Set(), facts({ wireless: false, driver: null, bus: 'pci' })), 'other');
+});
+
+test('the onboard wired PCI NIC is management', () => {
+  assert.equal(divide(key('enP7s7'), false, new Set(), facts({ wireless: false, driver: 'igc', bus: 'pci' })), 'management');
+});
+
+test('an older agent with no facts falls back to the name, and only for wireless', () => {
+  // No facts at all: the card must look as it did before the groups existed.
+  assert.equal(divide(key('wlP9s9'), false, new Set(), facts({})), 'wifi');
+  assert.equal(divide(key('enP7s7'), false, new Set(), facts({})), 'management');
+  assert.equal(divide(key('enx00e04c680001'), false, new Set(), facts({})), 'management', 'a USB NIC must not empty into Other on an old agent');
+  assert.equal(divide(key('enP7s7'), false, new Set(), undefined), 'management');
+});
+
+test('the default groups are RoCE and Management, and every division has a label', () => {
+  assert.deepEqual(DEFAULT_DIVISIONS, ['fabric', 'management']);
+  assert.deepEqual(DIVISIONS.map((d) => d.key), ['fabric', 'management', 'wifi', 'other']);
+  assert.equal(DIVISIONS[0].label, 'RoCE');
+});
+
+test('buildGrid files a wireless link under wifi when the facts say so', () => {
+  const { names, columns } = dataset({ 'sparky/wlP9s9/rx': [1, 2, 3], 'sparky/enP7s7/rx': [1, 2, 3] });
+  const live = new Map([[key('wlP9s9'), facts({ wireless: true })], [key('enP7s7'), facts({ wireless: false, driver: 'igc', bus: 'pci' })]]);
+  const grid = buildGrid(names, columns, ['sparky'], null, true, [], new Set(), live);
+  assert.deepEqual(grid.groups.map((g) => g.key), ['management', 'wifi']);
+});

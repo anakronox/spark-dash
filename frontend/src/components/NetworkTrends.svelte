@@ -31,6 +31,7 @@
   import ColumnMenu from './ColumnMenu.svelte';
   import MetricChart from './MetricChart.svelte';
   import Pager from './Pager.svelte';
+  import PickMenu from './PickMenu.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
@@ -41,6 +42,9 @@
     PORT_STATE,
     buildGrid,
     buildRows,
+    DIVISIONS,
+    DEFAULT_DIVISIONS,
+    type Division,
     columnName,
     columnNode,
     pairPorts,
@@ -111,6 +115,9 @@
               linkKey(n.node_id, i.name),
               {
                 speedMbps: i.speed_mbps,
+                wireless: i.wireless,
+                driver: i.driver,
+                bus: i.bus,
                 /* Defaulted true for a snapshot from an agent that predates the
                    flag: an older agent watches everything, which is what the
                    field means. */
@@ -264,17 +271,68 @@
   });
 
   const grid = $derived(
-    buildGrid(names, columns, nodeIds, active, includeQuiet, rdma, fabric),
+    buildGrid(names, columns, nodeIds, active, includeQuiet, rdma, fabric, liveFacts),
   );
-  const groups = $derived(grid.groups);
+  /* WHICH GROUPS TO SHOW. Card-local like the metric selection on System
+     Activity, and for the same reason: it is a choice about what this card
+     draws, not about the page. The menu lists all four groups whether or not
+     they have interfaces right now, with the count on each, so a group that
+     is hidden and NOT empty is visible as a number rather than invisible. */
+  const GROUPS_KEY = 'spark-dash.network-groups.v1';
+  function readGroups(): Division[] {
+    try {
+      const saved = JSON.parse(localStorage.getItem(GROUPS_KEY) ?? 'null');
+      if (Array.isArray(saved)) {
+        const valid = saved.filter((k): k is Division => DIVISIONS.some((d) => d.key === k));
+        if (valid.length) return valid;
+      }
+    } catch {
+      // fall through to the default
+    }
+    return [...DEFAULT_DIVISIONS];
+  }
+  let shownGroups = $state<Division[]>(readGroups());
+  function toggleGroup(key: string) {
+    const k = key as Division;
+    const next = shownGroups.includes(k) ? shownGroups.filter((g) => g !== k) : [...shownGroups, k];
+    // Never leave the card empty -- the same rule the metric picker keeps.
+    if (!next.length) return;
+    shownGroups = next;
+    try {
+      localStorage.setItem(GROUPS_KEY, JSON.stringify(shownGroups));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  const allGroups = $derived(grid.groups);
+  const groups = $derived(allGroups.filter((g) => shownGroups.includes(g.key)));
   const total = $derived(groups.reduce((n, g) => n + g.charts.length, 0));
 
   /* THE TABLE NEVER FILTERS. `includeQuiet` is a chart-grid concern — a flat
      line is a chart-sized hole — and in a table a quiet link is one short row
      that says, in the `why` column, that it is down. Hiding it there would be
      hiding the answer. */
-  const divisions = $derived(
+  const allDivisions = $derived(
     buildRows(names, columns, nodeIds, active, rdma, fabric, liveFacts),
+  );
+  const divisions = $derived(allDivisions.filter((d) => shownGroups.includes(d.key)));
+
+  /* Interface counts per group for the menu, from the table's grouping: it
+     never filters quiet links, so it is the honest count of what exists. */
+  const groupItems = $derived(
+    DIVISIONS.map((d) => {
+      const n = allDivisions.find((x) => x.key === d.key)?.rows.length ?? 0;
+      const on = shownGroups.includes(d.key);
+      const last = on && shownGroups.length === 1;
+      return {
+        key: d.key,
+        label: n ? `${d.label} · ${n}` : d.label,
+        checked: on,
+        disabled: last,
+        note: last ? 'last one' : undefined,
+      };
+    }),
   );
   const linkCount = $derived(divisions.reduce((n, d) => n + d.rows.length, 0));
 
@@ -480,6 +538,16 @@
   <header>
     <div class="titles">
       <h2 class="eyebrow">Network Activity</h2>
+      <PickMenu
+        groups={[{ items: groupItems }]}
+        ontoggle={toggleGroup}
+        what="Interface groups"
+        of="Network Activity"
+        text="groups"
+        count={shownGroups.length}
+        countLabel={`of ${DIVISIONS.length} shown`}
+        icon="list"
+      />
       {#if plotted.length > 1}
         <span class="legend" role="group" aria-label="Nodes">
           {#each plotted as id (id)}

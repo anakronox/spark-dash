@@ -5474,6 +5474,42 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
+- [x] **AE16. Network Activity divides into RoCE, Management, WiFi and Other,
+  behind a menu.** Asked for with a specific case in mind: a non-RDMA
+  ConnectX-7 port cabled to some other fabric belongs in *Other*, not
+  Management — and that cannot be told from a name, since `enp1s0f1np1` and
+  the onboard `enP7s7` look alike. The agent exported only `name`, `up`,
+  `monitored` and `speed_mbps`.
+
+  **The agent now sends three FACTS, not a verdict:** `wireless`
+  (`/sys/class/net/<if>/wireless` exists), `driver` (the `device/driver`
+  symlink's basename — `mlx5_core`, `igc`, `r8152`), and `bus` (`pci` or `usb`,
+  off the device symlink's path). The RULE lives in `network-history.ts` so it
+  can change without redeploying every node:
+
+  | | |
+  |---|---|
+  | RDMA-paired (or a port chart) | RoCE — decided first, from the agent's own pairing |
+  | wireless | WiFi |
+  | USB bus, or `mlx5_core` with no pairing, or unknown driver | Other |
+  | any other wired PCI NIC | Management |
+
+  Management is the remainder on purpose: on a GB10 that is exactly the
+  onboard 10G. **An older agent sends none of the facts**, and then the only
+  name that says anything is `wl*` — everything else is Management, so an
+  un-redeployed node looks as it did rather than emptying into Other.
+
+  The card's `groups N` trigger opens the same `PickMenu` as the metric picker,
+  listing all four with interface counts (so a hidden non-empty group shows as
+  a number), defaulting to RoCE + Management, remembered in
+  `spark-dash.network-groups.v1`, last group locked. One thing to know: a group
+  whose links are all quiet still shows no *charts* unless "idle" is on — the
+  table view shows them regardless.
+
+  Bug caught by its test: `Path.resolve()` on an absent `driver` symlink
+  returns the path itself, whose basename is the word `driver`. Checked with
+  `is_symlink()` first. Live: RoCE · 8, Management · 3, WiFi · 3, Other empty.
+
 - [x] **AE15. System Activity's metric chips became a menu.** Twenty toggle
   chips took three rows of the card — about 130px, measured — which at the
   default plot height is a whole row of charts. They are a fly-out of

@@ -22,10 +22,10 @@ GX10_INTERFACES = {
         "rx_dropped": 2,
         "tx_errors": 1,
     },
-    "enP7s7": {"speed": 10000},
+    "enP7s7": {"speed": 10000, "driver": "igc"},
     # Wireless: physical, but reading `speed` raises EINVAL rather than
     # returning a number. Real — this is the GX10's wlP9s9.
-    "wlP9s9": {"speed_unreadable": True},
+    "wlP9s9": {"speed_unreadable": True, "wireless": True, "driver": "mt7921e"},
     "docker0": {"physical": False, "speed": 10000},
     "br-05dc61118f7c": {"physical": False, "speed": 10000},
     "vethbeef01": {"physical": False, "speed": 10000},
@@ -49,7 +49,21 @@ def build_sysfs(tmp_path, interfaces):
             # OSError on read, which is the only thing the collector can see.
             (d / "speed").mkdir()
         if spec.get("physical", True):
-            (d / "device").mkdir()
+            # The device symlink points INTO a bus tree, because that path is
+            # how the collector tells USB from PCI. A bare directory would
+            # report neither.
+            bus = spec.get("bus", "pci")
+            dev = tmp_path / "devices" / (
+                "usb1/1-2/1-2:1.0" if bus == "usb" else "pci0000:00/0000:00:1f.6"
+            ) / name
+            dev.mkdir(parents=True)
+            (d / "device").symlink_to(dev)
+            if "driver" in spec:
+                drv = tmp_path / "bus" / bus / "drivers" / spec["driver"]
+                drv.mkdir(parents=True, exist_ok=True)
+                (dev / "driver").symlink_to(drv)
+        if spec.get("wireless"):
+            (d / "wireless").mkdir()
         for counter in (
             "rx_bytes",
             "tx_bytes",
@@ -258,3 +272,37 @@ def test_strip_enum():
     assert _strip_enum("4: ACTIVE") == "ACTIVE"
     assert _strip_enum("ACTIVE") == "ACTIVE"
     assert _strip_enum("") == ""
+
+
+class TestInterfaceKind:
+    """Three facts, not a verdict: the dashboard's RoCE / Management / WiFi /
+    Other split needs the driver, the bus and the wireless flag, and none of
+    the three can be told from a name."""
+
+    def _one(self, tmp_path, name, spec):
+        build_sysfs(tmp_path, {name: spec})
+        (ifaces,) = NetworkCollector(tmp_path).collect()
+        return ifaces
+
+    def test_wireless_is_read_from_sysfs_not_the_name(self, tmp_path):
+        i = self._one(tmp_path, "renamed0", {"speed_unreadable": True, "wireless": True})
+        assert i.wireless is True
+        assert self._one(tmp_path / "b", "wlP9s9", {"speed": 10000}).wireless is False
+
+    def test_driver_is_the_symlink_basename(self, tmp_path):
+        assert self._one(tmp_path, "enp1s0f1np1", {"speed": 100000, "driver": "mlx5_core"}).driver == "mlx5_core"
+
+    def test_no_driver_symlink_is_none_not_a_failure(self, tmp_path):
+        assert self._one(tmp_path, "enP7s7", {"speed": 10000}).driver is None
+
+    def test_bus_comes_from_the_device_path(self, tmp_path):
+        assert self._one(tmp_path, "enx00e04c680001", {"speed": 1000, "bus": "usb", "driver": "r8152"}).bus == "usb"
+        assert self._one(tmp_path / "b", "enP7s7", {"speed": 10000}).bus == "pci"
+
+    def test_older_snapshots_default_to_wired_unknown(self):
+        """A node still on an older agent sends none of these; the model must
+        fill them with values the dashboard treats as 'not known'."""
+        from spark_dash_common.models import NetworkInterface
+
+        i = NetworkInterface(name="enP7s7")
+        assert (i.wireless, i.driver, i.bus) == (False, None, None)

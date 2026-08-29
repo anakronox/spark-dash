@@ -74,6 +74,9 @@ class NetworkCollector(Collector[list[NetworkInterface]]):
                 NetworkInterface(
                     name=name,
                     up=self._is_up(name),
+                    wireless=self._is_wireless(name),
+                    driver=self._driver(name),
+                    bus=self._bus(name),
                     speed_mbps=self._speed(name),
                     rx_bytes_per_sec=self._rates.rate(rx_key, rx_bytes),
                     tx_bytes_per_sec=self._rates.rate(tx_key, tx_bytes),
@@ -99,6 +102,52 @@ class NetworkCollector(Collector[list[NetworkInterface]]):
         if name.startswith(_VIRTUAL_PREFIXES):
             return False
         return (self._sys_path / "class" / "net" / name / "device").exists()
+
+    # WHAT KIND OF NIC, as three facts rather than one verdict.
+    #
+    # The dashboard divides interfaces into RoCE, Management, WiFi and Other,
+    # and the last three cannot be told apart by name: a ConnectX-7 port with
+    # no RDMA pairing looks exactly like the onboard 10G (`enP7s7` vs
+    # `enP2p1s0f0np0`), and a USB adapter can be renamed to anything. sysfs
+    # knows -- the driver, the bus, and whether there is a `wireless/`
+    # directory -- so those are reported as they are. The RULE that turns them
+    # into a group lives in the frontend, where it can change without a
+    # redeploy of every node.
+
+    def _is_wireless(self, name: str) -> bool:
+        d = self._sys_path / "class" / "net" / name
+        return (d / "wireless").is_dir() or (d / "phy80211").exists()
+
+    def _driver(self, name: str) -> str | None:
+        """Basename of the device/driver symlink, e.g. `mlx5_core`."""
+        link = self._sys_path / "class" / "net" / name / "device" / "driver"
+        # is_symlink first: resolve() on a path that does not exist returns
+        # the path itself, whose basename is the word "driver".
+        if not link.is_symlink():
+            return None
+        try:
+            return link.resolve().name or None
+        except OSError:
+            return None
+
+    def _bus(self, name: str) -> str | None:
+        """`usb` or `pci`, read off the device symlink's resolved path.
+
+        A USB NIC's device sits under .../usbN/...; a PCI one under
+        .../pci0000:00/.... Anything else is reported as None rather than
+        guessed, and the dashboard treats None as "not known" rather than as
+        either.
+        """
+        link = self._sys_path / "class" / "net" / name / "device"
+        try:
+            parts = link.resolve().parts
+        except OSError:
+            return None
+        if any(p.startswith("usb") for p in parts):
+            return "usb"
+        if any(p.startswith("pci") for p in parts):
+            return "pci"
+        return None
 
     def _is_up(self, name: str) -> bool:
         return _read_text(self._sys_path / "class" / "net" / name / "operstate") == "up"
