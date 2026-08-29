@@ -474,6 +474,7 @@
         icon="plus"
         mode="action"
         tone="accent"
+        align="end"
       />
 
       <button

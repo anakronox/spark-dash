@@ -999,3 +999,19 @@ def test_the_page_has_an_add_element_button_that_lands_the_card():
     assert "mode === 'action'" in pick and "<button" in pick, "PickMenu has no action rows"
     block = css_block(PICK, ".host.accent .trigger {")
     assert "background: var(--good)" in block, "the accent trigger is not filled"
+
+
+def test_the_add_menu_hangs_from_the_right_and_uses_the_page_type():
+    """REPORTED: the add menu opened rightward from the far right of the bar,
+    ran past the viewport and gave the page a horizontal scrollbar; and its
+    rows came up in a bigger, different typeface. The first was a labelled
+    trigger defaulting to open rightward; the second was `font: inherit` on
+    the action rows -- the shorthand resets the size .row had just set."""
+    app = without_comments(APP.read_text())
+    add = app[app.index('text="element"') :][:300]
+    assert 'align="end"' in add, "the add menu opens rightward from the right edge of the page"
+    pick = without_comments(PICK.read_text())
+    assert "class:end={hangsEnd}" in pick and ".host.end .menu" in pick, "PickMenu cannot hang from its end"
+    block = css_block(PICK, "button.row {")
+    assert "font: inherit" not in block, "font: inherit resets the row's size to the bar's"
+    assert "font-family: inherit" in block

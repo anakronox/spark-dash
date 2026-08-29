@@ -61,6 +61,13 @@
     /** `accent`: the trigger is filled in the theme's accent, for the one
      *  control on a bar of outlines that is THE action. */
     tone?: 'plain' | 'accent';
+    /** Which edge the menu hangs from. Defaults to the trigger's natural side
+     *  -- an icon trigger sits top-right and opens leftward, a labelled one
+     *  sits at the left of a title row and opens rightward -- but a labelled
+     *  trigger at the far right of the page (the add button) must open
+     *  leftward or it runs past the viewport and gives the whole page a
+     *  horizontal scrollbar. */
+    align?: 'start' | 'end';
   }
   const {
     groups,
@@ -73,7 +80,10 @@
     icon = 'columns',
     mode = 'check',
     tone = 'plain',
+    align,
   }: Props = $props();
+
+  const hangsEnd = $derived(align ? align === 'end' : !text);
 
   let open = $state(false);
   let host = $state<HTMLElement | null>(null);
@@ -116,6 +126,7 @@
   class:active={count > 0}
   class:labelled={!!text}
   class:accent={tone === 'accent'}
+  class:end={hangsEnd}
   bind:this={host}
 >
   <button
@@ -287,7 +298,11 @@
     width: 100%;
     text-align: left;
     color: inherit;
-    font: inherit;
+    /* The family only. `font: inherit` is the shorthand and would reset the
+       size and weight .row just set, back to whatever the bar's button has --
+       which is how the add menu came up in a bigger typeface than the page. */
+    font-family: inherit;
+    line-height: inherit;
   }
 
   button.row:disabled {
@@ -318,12 +333,15 @@
   /* An icon trigger sits in the card's top-right, so its menu opens leftward
      to stay inside the card; a labelled one sits at the left of the title row
      and opens rightward for the same reason. */
-  .host:not(.labelled) .menu {
+  .host.end .menu {
     right: 0;
   }
 
-  .host.labelled .menu {
+  .host:not(.end) .menu {
     left: 0;
+  }
+
+  .host.labelled .menu {
     /* Twenty metrics is a long single column; two columns keep the menu
        inside the viewport on a laptop.
        `max-content` tracks, NOT minmax(0, 1fr): an absolutely positioned box
