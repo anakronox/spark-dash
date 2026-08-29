@@ -290,13 +290,15 @@ class TestInterfaceKind:
         assert self._one(tmp_path / "b", "wlP9s9", {"speed": 10000}).wireless is False
 
     def test_driver_is_the_symlink_basename(self, tmp_path):
-        assert self._one(tmp_path, "enp1s0f1np1", {"speed": 100000, "driver": "mlx5_core"}).driver == "mlx5_core"
+        got = self._one(tmp_path, "enp1s0f1np1", {"speed": 100000, "driver": "mlx5_core"}).driver
+        assert got == "mlx5_core"
 
     def test_no_driver_symlink_is_none_not_a_failure(self, tmp_path):
         assert self._one(tmp_path, "enP7s7", {"speed": 10000}).driver is None
 
     def test_bus_comes_from_the_device_path(self, tmp_path):
-        assert self._one(tmp_path, "enx00e04c680001", {"speed": 1000, "bus": "usb", "driver": "r8152"}).bus == "usb"
+        got = self._one(tmp_path, "enx00e04c680001", {"speed": 1000, "bus": "usb", "driver": "r8152"}).bus
+        assert got == "usb"
         assert self._one(tmp_path / "b", "enP7s7", {"speed": 10000}).bus == "pci"
 
     def test_older_snapshots_default_to_wired_unknown(self):
