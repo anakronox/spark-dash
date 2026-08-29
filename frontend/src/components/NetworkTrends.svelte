@@ -30,7 +30,6 @@
    */
   import ColumnMenu from './ColumnMenu.svelte';
   import MetricChart from './MetricChart.svelte';
-  import RowGrip from './RowGrip.svelte';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
@@ -72,12 +71,10 @@
     /** Rows before each division's table pages. Infinity = uncapped. */
     maxRows?: number;
     themeKey: string;
-    /** Plot height in px, dragged from the grip at the foot of the card. One
-     *  height for every division: charts that share an x axis and not a height
-     *  stop being comparable, which is the whole reason they are a grid. */
+    /** Plot height in px, dragged from the card's resize corner. One height for
+     *  every division: charts that share an x axis and not a height stop being
+     *  comparable, which is the whole reason they are a grid. */
     plotHeight?: number;
-    onPlotHeight?: (px: number) => void;
-    onPlotReset?: () => void;
   }
   const {
     nodeIds,
@@ -85,8 +82,6 @@
     maxRows = 8,
     themeKey,
     plotHeight = DEFAULT_PLOT_PX,
-    onPlotHeight,
-    onPlotReset,
   }: Props = $props();
 
   /** `linkKey(node, iface)` for every interface with an RDMA device on it.
@@ -306,12 +301,6 @@
     groups.flatMap((g) => g.charts).filter((c) => openSet.has(c.link.key)),
   );
 
-  /** Plots actually on screen, for the grip's label. Table mode draws none of
-   *  its own, so the only charts there are the rows the reader opened. */
-  const plotCount = $derived(
-    openCharts.length +
-      (mode === 'table' ? 0 : groups.reduce((n, g) => n + g.charts.length, 0)),
-  );
 
   /* Up to 4 across, snapping 1 / 2 / 4 — the same powers-of-two reasoning as
      the History grid and the node grid, so the three cards line up when they
@@ -636,18 +625,6 @@
         </section>
       {/each}
     </div>
-    {#if onPlotHeight && onPlotReset && plotCount}
-      <!-- Hidden when there is nothing to resize. Table mode with no rows
-           opened draws no plots at all, and a height control for zero charts
-           is a control that appears to do nothing. -->
-      <RowGrip
-        height={() => plotHeight}
-        onresize={onPlotHeight}
-        onreset={onPlotReset}
-        label="Network Activity"
-        plots={plotCount}
-      />
-    {/if}
   {/if}
 </section>
 

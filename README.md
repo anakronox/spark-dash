@@ -11,8 +11,9 @@ Supports single node and clusters.
 
 Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Cards
 are draggable and can be paired side by side, paired cards either share a row
-height or pack independently, and chart heights drag; every threshold shown is
-measured for this hardware rather than guessed.
+height or pack independently, and every card resizes from its bottom-right
+corner; every threshold shown is measured for this hardware rather than
+guessed.
 
 ## What it monitors
 

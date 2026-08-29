@@ -745,8 +745,6 @@
             nodeIds={nodes.map((n) => n.node_id)}
             themeKey={theme.resolved}
             plotHeight={layout.plotHeight(id)}
-            onPlotHeight={(px) => layout.setPlotHeight(id, px)}
-            onPlotReset={() => layout.resetPlotHeight(id)}
           />
         {:else if id === 'thermal'}
           <ThermalPanel {nodes} maxRows={layout.rowsFor(id)} />
@@ -757,8 +755,6 @@
             maxRows={layout.rowsFor(id)}
             themeKey={theme.resolved}
             plotHeight={layout.plotHeight(id)}
-            onPlotHeight={(px) => layout.setPlotHeight(id, px)}
-            onPlotReset={() => layout.resetPlotHeight(id)}
           />
         {/if}
       </Section>

@@ -5130,6 +5130,58 @@ than a hedge.
   stored entry removed — and the section placement untouched throughout, which
   is the thing AE5's hazard note is about.
 
+- [x] **AE6. The corner, because the bar at the bottom was not findable.**
+  Shipped to production, and the first person to use it in packed mode went
+  looking for the control and could not find it. Two things were wrong, and the
+  second is the one worth remembering.
+
+  1. **It was in the wrong place.** A 48px bar at the bottom CENTRE of the chart
+     grid, invisible until hover. People look for a resize control in the
+     bottom-RIGHT corner, because that is where every window and every textarea
+     puts one. It is there now, and it stays faintly visible at rest — a
+     deliberate exception to how this page treats card controls, since the move
+     handle and fold chevron are both hover-to-reveal. Hover-to-reveal only
+     works if you already know to hover, and the failure mode is a control
+     nobody finds.
+  2. **It was on two cards out of seven.** AE3 divided charts from tables and
+     shipped only charts, on the reasoning that `maxRows` already answers "how
+     tall" for a table and a drag beside it would be two controls for one thing.
+     That reasoning holds for a SETTINGS entry and does not hold for a corner:
+     the answer to "where is it on the Models card" was "nowhere". So the grip
+     lives in `Section`, every card has one, and on a table it MOVES the row cap
+     rather than sitting beside it — which is what AE3's own note said to do if
+     height ever shipped for tables.
+
+  Three things fell out of making one gesture serve both units:
+
+  - **`ROW_CHOICES` stopped being the validator.** `readRows` accepted only the
+    seven offered caps, so every dragged value — 13 rows — was silently
+    discarded on reload, the card simply back at its default. It clamps to a
+    range now. The settings `<select>` grew `rowOptions()` for the same reason:
+    a `<select>` whose value matches no option renders BLANK and resets the card
+    to the first choice the moment it is touched.
+  - **`0` is a sentinel and arithmetic must not reach it.** Measured bug: forty
+    `ArrowUp`s from 12 rows landed on `all rows` — shrinking a card as far as it
+    goes made it show everything, at twice the size. `dragRows()` floors every
+    gesture at `MIN_ROWS`; picking "all" stays deliberate, from the list.
+  - **A ResizeObserver was the WRONG SIGNAL** for "what is this card drawing?".
+    System Activity's plot replaces a 140px placeholder with a 132px plot and
+    its caption, so the card's box lands within a pixel or two of where it
+    started and the observer never fires again — the card went on reporting
+    itself as a table of rows minutes after it had drawn a chart. What changes
+    is the DOM, so a MutationObserver watches that instead, coalesced to one
+    read per frame because a paging table mutates on every poll.
+
+  The delta is divided by what the card actually grows by — rows of the chart
+  grid, or tables sharing the cap — so the corner follows the pointer instead of
+  running from it. Temperatures moves five tables at once; the earlier version
+  had to warn *"applies to all 11 charts"* in its label to explain the leap.
+
+  Measured live: Models 10 → 14 rows by drag, persisted off-list; Temperatures
+  8 → 7 across five tables; `ArrowDown` +1, `Shift+ArrowDown` +5, clamped at 1
+  and 200, double-click back to the default with the entry removed — and the
+  section order untouched through 340 arrow presses, which is the hazard.
+
 - [ ] **AE4. Width, if it is still wanted.** Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
   A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag

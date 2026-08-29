@@ -37,6 +37,20 @@
      them here rather than reusing ZONES because `hidden` is not a zone — it is
      the absence of one — and the panel is the only place the two belong in a
      single list. */
+  /** The offered caps, plus whatever this card is actually set to.
+   *
+   * The corner grip drags the row count continuously, so a card can sit at 13
+   * rows — a value this list does not contain. A `<select>` whose `value`
+   * matches no option renders BLANK, so without this the settings row for a
+   * dragged card would show an empty box that silently reset the card to 5 the
+   * moment it was touched. Merged and re-sorted rather than appended, so the
+   * list stays in order; `0` is kept last because it is "all", not zero. */
+  function rowOptions(current: number): number[] {
+    if (ROW_CHOICES.includes(current)) return ROW_CHOICES;
+    const counts = ROW_CHOICES.filter((n) => n !== 0);
+    return [...counts, current].sort((a, b) => a - b).concat(0);
+  }
+
   const SECTION_GROUPS: { zone: 'full' | 'left' | 'right' | 'hidden'; label: string }[] = [
     { zone: 'full', label: 'Full width' },
     { zone: 'left', label: 'Left column' },
@@ -546,7 +560,7 @@
                     value={layout.rowChoice(id)}
                     onchange={(e) => layout.setRows(id, Number(e.currentTarget.value))}
                   >
-                    {#each ROW_CHOICES as n (n)}
+                    {#each rowOptions(layout.rowChoice(id)) as n (n)}
                       <option value={n}>{n === 0 ? 'all' : `${n} rows`}</option>
                     {/each}
                   </select>

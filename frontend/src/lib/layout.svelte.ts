@@ -403,6 +403,18 @@ function clampPlot(px: number): number {
   return Math.min(MAX_PLOT_PX, Math.max(MIN_PLOT_PX, Math.round(px)));
 }
 
+/** Row-cap bounds for a dragged value. `0` (uncapped) bypasses these — it is a
+ *  sentinel, not a count. One row is a table that can still be read one row at
+ *  a time; the ceiling is well past any table this dashboard draws, and exists
+ *  only so a stored value cannot make a card taller than the page. */
+export const MIN_ROWS = 1;
+export const MAX_ROWS = 200;
+
+function clampRows(n: number): number {
+  if (n === 0) return 0;
+  return Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.round(n)));
+}
+
 function readRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
   try {
     const saved = JSON.parse(localStorage.getItem(ROWS_KEY) ?? 'null');
@@ -410,10 +422,18 @@ function readRows(available: string[] = DEFAULT_ORDER): Record<string, number> {
     const known = new Set(available);
     const out: Record<string, number> = {};
     for (const [id, n] of Object.entries(saved)) {
-      // Validated against the offered choices rather than merely "is a number":
-      // a hand-edited 100000 would silently defeat the whole point of the cap,
-      // and a negative would render nothing at all.
-      if (known.has(id) && typeof n === 'number' && ROW_CHOICES.includes(n)) out[id] = n;
+      /* Any whole number in range, NOT just the offered choices.
+       *
+       * It used to be `ROW_CHOICES.includes(n)`, on the reasoning that a
+       * hand-edited 100000 would defeat the point of the cap. The cap is still
+       * defended — by the range — but the list is no longer the only source of
+       * values: the corner grip drags the row count continuously, so 13 rows
+       * is now a thing a reader can ask for. Validating against the list would
+       * have thrown away every dragged value on the next reload, silently,
+       * with the card simply back at its default. */
+      if (known.has(id) && typeof n === 'number' && Number.isFinite(n)) {
+        out[id] = clampRows(n);
+      }
     }
     return out;
   } catch {
@@ -657,7 +677,7 @@ export class Layout {
   }
 
   setRows(id: string, n: number) {
-    this.rows = { ...this.rows, [id]: n };
+    this.rows = { ...this.rows, [id]: clampRows(n) };
     try {
       localStorage.setItem(ROWS_KEY, JSON.stringify(this.rows));
     } catch {
@@ -673,6 +693,19 @@ export class Layout {
   setPlotHeight(id: string, px: number) {
     this.plotHeights = { ...this.plotHeights, [id]: clampPlot(px) };
     this.#savePlotHeights();
+  }
+
+  /** Back to this section's default cap — the counterpart of
+   *  `resetPlotHeight`, and the same escape: a card dragged down to one row
+   *  has a grip too small to aim at comfortably. */
+  resetRows(id: string) {
+    const { [id]: _drop, ...rest } = this.rows;
+    this.rows = rest;
+    try {
+      localStorage.setItem(ROWS_KEY, JSON.stringify(this.rows));
+    } catch {
+      // Still applied for this session.
+    }
   }
 
   /** Back to DEFAULT_PLOT_PX. The escape from a plot dragged to the floor,

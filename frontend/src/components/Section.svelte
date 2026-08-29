@@ -26,7 +26,14 @@
   import { onDestroy } from 'svelte';
   import type { Snippet } from 'svelte';
   import type { Layout, Zone } from '../lib/layout.svelte';
-  import { ZONE_LABEL } from '../lib/layout.svelte';
+  import {
+    ZONE_LABEL,
+    MIN_ROWS,
+    MAX_ROWS,
+    MIN_PLOT_PX,
+    MAX_PLOT_PX,
+  } from '../lib/layout.svelte';
+  import CardGrip from './CardGrip.svelte';
 
   interface Props {
     layout: Layout;
@@ -279,6 +286,165 @@
   // window listeners behind, and `grabbed` latched on in a detached closure.
   onDestroy(stopTracking);
 
+  /* --- RESIZE -------------------------------------------------------------
+   *
+   * WHAT A CARD'S HEIGHT IS MADE OF depends on what the card is drawing, and
+   * the two units are not interchangeable:
+   *
+   *   - a CHART card's height is its plot height, continuous, in pixels;
+   *   - a TABLE card's height is its row cap, discrete, in rows.
+   *
+   * So the grip reports pixels and this decides what they mean, by looking at
+   * what is rendered rather than by consulting a list. That is not a shortcut
+   * around a static rule — it is the only thing that answers correctly for
+   * Network Activity, which draws a table or a grid of charts depending on a
+   * mode of its own that this component cannot see.
+   *
+   * A ROW CAP APPLIES PER TABLE, and a plot height applies per ROW of charts.
+   * Both mean the card grows by a multiple of what the reader dragged: six
+   * tables on Temperatures, three rows of charts on System Activity. Dividing
+   * the pointer delta by that multiple is what makes the corner follow the
+   * pointer instead of leaping away from it — the earlier version did not, and
+   * had to warn "applies to all 11 charts" in its label to explain why.
+   */
+
+  let slotEl: HTMLElement | undefined = $state();
+  let mode = $state<'plot' | 'rows'>('rows');
+  /** Pixels the CARD grows per one unit of the value being dragged. */
+  let pxPerUnit = 1;
+  let startValue = 0;
+
+  /** Fallback row height, for the frame before a table has laid out. Measured
+   *  from the live tables, which are 22px at the current type scale. */
+  const ROW_PX = 22;
+
+  /** Re-read what this card is drawing.
+   *
+   * Driven by a MutationObserver, because the answer changes at moments no
+   * pointer is involved: charts arrive from a fetch after mount, and Network
+   * Activity swaps its whole body between a table and a chart grid from its own
+   * controls.
+   *
+   * A ResizeObserver was the obvious choice and is the WRONG SIGNAL, measured:
+   * System Activity's plot replaces a 140px "Loading…" placeholder with a 132px
+   * plot plus its caption, so the card's box lands within a pixel or two of
+   * where it started and the observer never fires a second time. The card was
+   * still reporting itself as a table of rows minutes after it had drawn a
+   * chart. What actually changes is the DOM, so that is what to watch.
+   *
+   * Coalesced to one read per frame: a paging table mutates its rows on every
+   * poll, and this would otherwise re-query the subtree once per row.
+   *
+   * It cannot loop: `mode` and `pxPerUnit` feed the grip's aria values and its
+   * arithmetic, never the layout, so nothing this writes can change the DOM
+   * that triggered it. */
+  function measure() {
+    if (!slotEl) return;
+
+    const plots = slotEl.querySelectorAll<HTMLElement>('.uplot');
+    if (plots.length) {
+      mode = 'plot';
+      // Rows of the chart GRID, counted by distinct vertical offset. The grid
+      // is 1-4 across depending on width, so the count cannot be derived from
+      // the number of charts.
+      pxPerUnit = new Set([...plots].map((p) => p.offsetTop)).size || 1;
+      return;
+    }
+
+    mode = 'rows';
+    const bodies = slotEl.querySelectorAll('tbody');
+    const row = slotEl.querySelector<HTMLElement>('tbody tr');
+    pxPerUnit = (row?.offsetHeight || ROW_PX) * Math.max(1, bodies.length);
+  }
+
+  function onResizeStart() {
+    measure();
+    if (mode === 'plot') {
+      startValue = layout.plotHeight(id);
+      return;
+    }
+    startValue = layout.rowChoice(id);
+    /* `0` is the uncapped sentinel, not a count, so a drag from it would start
+       the arithmetic at zero rows and snap the card shut on the first pixel.
+       Start from what is actually on screen instead — which is what the reader
+       is looking at when they grab the corner. */
+    if (startValue === 0) {
+      const shown = slotEl?.querySelectorAll('tbody tr').length ?? 0;
+      const bodies = Math.max(1, slotEl?.querySelectorAll('tbody').length ?? 1);
+      startValue = Math.max(MIN_ROWS, Math.round(shown / bodies));
+    }
+  }
+
+  /** A row count arrived at by gesture, which must never land on `0`.
+   *
+   * `0` is the UNCAPPED sentinel, not a count, so arithmetic that passes
+   * through it turns "as small as this card goes" into "show me everything" —
+   * measured: forty ArrowUps from 12 rows ended on `all rows`, with the card
+   * twice the size it started. The sentinel stays reachable from the settings
+   * list, where picking "all" is a deliberate act; it is not reachable by
+   * dragging past the bottom. */
+  function dragRows(n: number): number {
+    return Math.max(MIN_ROWS, Math.min(MAX_ROWS, Math.round(n)));
+  }
+
+  function onResizeMove(dy: number) {
+    const delta = dy / pxPerUnit;
+    if (mode === 'plot') layout.setPlotHeight(id, startValue + delta);
+    else layout.setRows(id, dragRows(startValue + delta));
+  }
+
+  /** Keyboard step, in the unit being dragged: 16px of plot, or one row.
+   *  Shift makes both coarse, the same as every other grip on the page. */
+  function onResizeStep(dir: -1 | 1, coarse: boolean) {
+    measure();
+    if (mode === 'plot') {
+      layout.setPlotHeight(id, layout.plotHeight(id) + dir * (coarse ? 64 : 16));
+      return;
+    }
+    /* An uncapped card steps from what it is SHOWING, not from the sentinel:
+       arrowing down from "all" should add a row to what is on screen, and
+       arrowing up should start trimming it. */
+    const now = layout.rowChoice(id) || (slotEl?.querySelectorAll('tbody tr').length ?? MIN_ROWS);
+    layout.setRows(id, dragRows(now + dir * (coarse ? 5 : 1)));
+  }
+
+  function onResizeReset() {
+    measure();
+    if (mode === 'plot') layout.resetPlotHeight(id);
+    else layout.resetRows(id);
+  }
+
+  $effect(() => {
+    const el = slotEl;
+    if (!el) return;
+
+    measure();
+
+    let queued = 0;
+    const mo = new MutationObserver(() => {
+      if (queued) return;
+      queued = requestAnimationFrame(() => {
+        queued = 0;
+        measure();
+      });
+    });
+    mo.observe(el, { childList: true, subtree: true });
+
+    return () => {
+      mo.disconnect();
+      if (queued) cancelAnimationFrame(queued);
+    };
+  });
+
+  const resizeValue = $derived(mode === 'plot' ? layout.plotHeight(id) : layout.rowChoice(id));
+  const resizeText = $derived(
+    mode === 'plot'
+      ? `${Math.round(resizeValue)} pixels tall`
+      : resizeValue === 0
+        ? 'all rows'
+        : `${resizeValue} row${resizeValue === 1 ? '' : 's'}`,
+  );
+
   function onKeyDown(event: KeyboardEvent) {
     const moves: Record<string, () => void> = {
       ArrowUp: () => layout.moveInZone(id, -1),
@@ -294,6 +460,7 @@
 </script>
 
 <div
+  bind:this={slotEl}
   data-slot={id}
   class="slot"
   class:grabbed
@@ -355,6 +522,21 @@
     </button>
   {:else}
     {@render children()}
+
+    <!-- Not on a collapsed card: there is nothing to resize but a 40px stub,
+         and a resize corner on it would offer a gesture that cannot do
+         anything. -->
+    <CardGrip
+      onstart={onResizeStart}
+      onmove={onResizeMove}
+      onstep={onResizeStep}
+      onreset={onResizeReset}
+      label={label}
+      valuenow={Math.round(resizeValue)}
+      valuemin={mode === 'plot' ? MIN_PLOT_PX : MIN_ROWS}
+      valuemax={mode === 'plot' ? MAX_PLOT_PX : MAX_ROWS}
+      valuetext={resizeText}
+    />
   {/if}
 </div>
 
