@@ -37,7 +37,7 @@ COMPONENTS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "comp
 #: Tables whose rows are ColumnDef-driven. Network holds two, so its keys are
 #: checked as one pooled set -- they share a snippet namespace by convention,
 #: and a key used by both tables is legitimate.
-TABLES = ("ModelsTable", "ProcessTable", "NetworkPanel", "NetworkTable", "ThermalPanel")
+TABLES = ("ModelsTable", "ProcessTable", "RdmaTable", "NetworkTable", "ThermalPanel")
 
 
 def lists(name: str) -> tuple[set[str], set[str], set[str]]:
@@ -95,13 +95,13 @@ def test_every_declared_column_is_sortable(table):
 SLACK_TABLES = {
     "ModelsTable": 1,
     "ProcessTable": 1,
-    # One each. NetworkPanel drew a second table of INTERFACES until the
+    # One each. RdmaTable (once the RDMA Ports card, NetworkPanel) drew a second table of INTERFACES until the
     # Network history table absorbed it: six of its seven columns were already
     # there, and the history version adds trend, peak and why. What is left here
     # is the RDMA table, which history cannot replace — it is per device:port
     # where history collapses to one row per interface, and it carries the
     # negotiated rate string, which is an info label and not a series.
-    "NetworkPanel": 1,
+    "RdmaTable": 1,
     "NetworkTable": 1,
     "ThermalPanel": 1,
 }
@@ -398,7 +398,7 @@ DIST = FRONTEND / "dist" / "assets"
 #: here is a regression being tolerated rather than fixed.
 KNOWN_INERT: dict[str, set[str]] = {
     "ModelsTable": set(),
-    "NetworkPanel": set(),
+    "RdmaTable": set(),
     "ProcessTable": set(),
     "Settings": set(),
 }
@@ -467,7 +467,7 @@ def test_no_static_class_is_dead(component):
 #: Tables converted to utilities. The CSS-spelled ones get the same guarantee
 #: from their `th {...}` / `td {...}` element selectors, which cannot miss a
 #: cell; these have to state it.
-CONVERTED = ("ModelsTable", "ProcessTable", "NetworkPanel")
+CONVERTED = ("ModelsTable", "ProcessTable", "RdmaTable")
 
 
 @pytest.mark.parametrize("table", CONVERTED)

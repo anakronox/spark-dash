@@ -61,9 +61,9 @@ each other to find the straggler setting the pace.
 **The fabric.** Every interface and RoCE port: link state, negotiated rate,
 throughput, errors and drops. You can exclude a port you've unplugged from
 alerting by name, and the RoCE device behind it is excluded with it, since one
-cable carries both. RDMA ports get their own card, listing each device and port
-with the rate it actually negotiated — a ConnectX-7 that comes up at 10 Gb/sec
-instead of 200 is otherwise invisible.
+cable carries both. Network Activity has three views — charts, a table, and the
+RDMA ports themselves, each device and port with the rate it actually negotiated
+— a ConnectX-7 that comes up at 10 Gb/sec instead of 200 is otherwise invisible.
 
 **Every sensor, not just the GPU.** A GB10 exposes 18-23 temperature sensors —
 seven SoC zones, the NVMe, one per ConnectX port, the radio — and they're ranked

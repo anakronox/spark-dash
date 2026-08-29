@@ -1,4 +1,37 @@
+<script module lang="ts">
+  import type { ColumnDef } from '../lib/table.svelte';
+  export const RDMA_COLUMNS: ColumnDef[] = [
+    { key: 'port', label: 'rdma port', required: true, width: 18 },
+    { key: 'state', label: 'state', width: 12 },
+    { key: 'link', label: 'link', width: 12 },
+    // "rate", not "negotiated": the longer word was setting this column's
+    // width all by itself, and the value beneath it is self-evidently a rate.
+    { key: 'rate', label: 'rate', width: 16 },
+    { key: 'iface', label: 'interface', width: 17 },
+    { key: 'node', label: 'node', width: 13 },
+    /* 13ch, measured: at 11 the content box is 55px and "619 kb/s" needs 58,
+       so any port above 100 kb/s clipped its own last character. Pre-existing
+       and invisible until the fabric carried enough traffic to show it — found
+       by comparing scrollWidth against clientWidth across every cell on the
+       page, which is the check that should have caught it. A Gb/s reading is
+       wider still, so the headroom is deliberate. */
+    { key: 'rx', label: 'rx', right: true, width: 13 },
+    { key: 'tx', label: 'tx', right: true, width: 13 },
+    { key: 'err', label: 'err', right: true, signal: true, width: 8 },
+  ];
+</script>
+
 <script lang="ts">
+  /* THE PORTS VIEW OF NETWORK ACTIVITY. This was the RDMA Ports card until
+   * AE19 folded it in: the same subject -- the fabric -- seen by port rather
+   * than by interface, and the link table's `roce` column only ever said
+   * up or dash. What is unique here is per-port state, link layer, the
+   * NEGOTIATED RATE, and the port's own error counters: a ConnectX-7 that
+   * comes up at 10 Gb/sec instead of 200 is otherwise invisible.
+   *
+   * A body, not a card: Network Activity owns the frame, the header and the
+   * column menu; this owns the table and its sort/page state, the way
+   * NetworkTable does for the link rows. */
   /* Network interfaces and RDMA ports.
    *
    * RDMA leads when present, because on a clustered pair it's the interconnect
@@ -11,24 +44,24 @@
    * statement of what actually happened.
    */
   import { bitRate } from '../lib/format';
-  import ColumnMenu from './ColumnMenu.svelte';
   import ColumnGrip from './ColumnGrip.svelte';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
-  import { ColumnView } from '../lib/columns.svelte';
-  import type { ColumnDef } from '../lib/table.svelte';
+  import type { ColumnView } from '../lib/columns.svelte';
   import type { NodeSnapshot } from '../lib/types';
   import { pageFocus } from '../lib/focus.svelte';
 
   interface Props {
+    /** The column view, owned by the card so its one menu can list it. */
+    cols: ColumnView;
     nodes: NodeSnapshot[];
     /** Rows before each of the two tables pages. Infinity = uncapped.
      *  Applied per table, not shared: they answer different questions and an
      *  RDMA port list is not competing with an interface list for the cap. */
     maxRows?: number;
   }
-  const { nodes, maxRows = 8 }: Props = $props();
+  const { nodes, cols: rdmaCols, maxRows = 8 }: Props = $props();
 
   interface RdmaRow {
     key: string;
@@ -149,27 +182,7 @@
     rdmaView.pageSize = maxRows;
   });
 
-  const RDMA_COLUMNS: ColumnDef[] = [
-    { key: 'port', label: 'rdma port', required: true, width: 18 },
-    { key: 'state', label: 'state', width: 12 },
-    { key: 'link', label: 'link', width: 12 },
-    // "rate", not "negotiated": the longer word was setting this column's
-    // width all by itself, and the value beneath it is self-evidently a rate.
-    { key: 'rate', label: 'rate', width: 16 },
-    { key: 'iface', label: 'interface', width: 17 },
-    { key: 'node', label: 'node', width: 13 },
-    /* 13ch, measured: at 11 the content box is 55px and "619 kb/s" needs 58,
-       so any port above 100 kb/s clipped its own last character. Pre-existing
-       and invisible until the fabric carried enough traffic to show it — found
-       by comparing scrollWidth against clientWidth across every cell on the
-       page, which is the check that should have caught it. A Gb/s reading is
-       wider still, so the headroom is deliberate. */
-    { key: 'rx', label: 'rx', right: true, width: 13 },
-    { key: 'tx', label: 'tx', right: true, width: 13 },
-    { key: 'err', label: 'err', right: true, signal: true, width: 8 },
-  ];
 
-  const rdmaCols = new ColumnView('network.rdma', RDMA_COLUMNS);
 
   /* Signal columns that currently have something to say.
    *
@@ -258,7 +271,6 @@
 
 
 
-  const COUNT = 'text-ink-muted text-label';
   const SCROLL = 'overflow-x-auto';
 
 
@@ -296,15 +308,6 @@
   {/if}
 {/snippet}
 
-<section class="panel">
-  <header>
-    <h2 class="eyebrow">RDMA ports</h2>
-    <span class={COUNT}>
-      {rdma.length}
-      {rdma.length === 1 ? 'port' : 'ports'}
-    </span>
-    <ColumnMenu of="RDMA ports" groups={[{ label: 'RDMA ports', view: rdmaCols }]} />
-  </header>
 
   {#if rdma.length}
     <div class={SCROLL}>
@@ -391,10 +394,9 @@
       No RDMA devices found. The agent ran and saw nothing under
       <code class="text-ink">/sys/class/infiniband</code>, which is where a RoCE
       device registers even though it runs over Ethernet. Interfaces without one
-      are in <strong class="text-ink-2">Network Activity</strong>.
+      are under <strong class="text-ink-2">charts</strong> and <strong class="text-ink-2">table</strong>.
     </p>
   {/if}
-</section>
 
 <style>
   /* THE RESIDUAL, and it is deliberate -- see `lib/styles.md`. Everything that
@@ -426,15 +428,5 @@
 
   /* Section chrome stays until phase 4 converts App.svelte, which owns the
      layout these belong to. */
-  section {
-    padding: 14px 0 4px;
-  }
 
-  header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 0 16px 10px;
-  }
 </style>

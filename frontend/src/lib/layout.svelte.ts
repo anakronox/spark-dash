@@ -249,7 +249,9 @@ export const SECTIONS: SectionDef[] = [
      replace: per device:port where history collapses to one row per interface,
      and carrying the negotiated rate string, which is an info label rather
      than a series. The id is unchanged so saved layouts keep their place. */
-  { id: 'network', label: 'RDMA ports' },
+  /* `network` -- the RDMA Ports card -- was retired 2026-08-29 (AE19): it is
+     Network Activity's `ports` view now. A saved layout that still names it is
+     read through the same `known` filter as any other unknown id and dropped. */
   /* A SEPARATE CARD, not more chips on System Activity. That panel already carries 15
      metrics and its chip row wraps to three lines at full width; six network
      chips would not join it, they would bury it.
@@ -283,9 +285,6 @@ const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
 const DEFAULT_ROWS: Record<string, number> = {
   processes: 10,
   models: 10,
-  // One table now — the RDMA ports. It was 8 while this card also drew the
-  // interfaces table that Network Activity absorbed.
-  network: 10,
   activity: 10,
   /* Lower for the same reason as `network`: this card draws TWO tables, one per
      division, and the cap applies to each — so 8 here is up to 16 rows of

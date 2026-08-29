@@ -32,6 +32,7 @@
   import MetricChart from './MetricChart.svelte';
   import Pager from './Pager.svelte';
   import PickMenu from './PickMenu.svelte';
+  import RdmaTable, { RDMA_COLUMNS } from './RdmaTable.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
@@ -204,18 +205,20 @@
    * node is added is worse than one that picked wrong to begin with.
    */
   const TABLE_ABOVE = 12;
-  let chosenMode = $state<'charts' | 'table' | null>(readMode());
+  let chosenMode = $state<Mode | null>(readMode());
 
-  function readMode(): 'charts' | 'table' | null {
+  type Mode = 'charts' | 'table' | 'ports';
+  const MODES: Mode[] = ['charts', 'table', 'ports'];
+  function readMode(): Mode | null {
     try {
       const raw = localStorage.getItem(MODE_KEY);
-      return raw === 'charts' || raw === 'table' ? raw : null;
+      return MODES.includes(raw as Mode) ? (raw as Mode) : null;
     } catch {
       return null;
     }
   }
 
-  function setMode(next: 'charts' | 'table') {
+  function setMode(next: Mode) {
     chosenMode = next;
     try {
       localStorage.setItem(MODE_KEY, next);
@@ -335,8 +338,14 @@
     }),
   );
   const linkCount = $derived(divisions.reduce((n, d) => n + d.rows.length, 0));
+  const portCount = $derived(nodes.reduce((n, x) => n + (x.rdma?.length ?? 0), 0));
 
   const mode = $derived(chosenMode ?? (linkCount > TABLE_ABOVE ? 'table' : 'charts'));
+
+  /* The ports view's columns, owned here so the card's one column menu can
+     list them beside the links'. `network.rdma` is the key the RDMA Ports card
+     used, so a column someone hid there stays hidden here. */
+  const rdmaCols = new ColumnView('network.rdma', RDMA_COLUMNS);
 
   /* One menu for the card, so both divisions' tables share a column set and a
      storage key. Two menus would be two controls in two corners of one card —
@@ -538,6 +547,7 @@
   <header>
     <div class="titles">
       <h2 class="eyebrow">Network Activity</h2>
+      {#if mode !== 'ports'}
       <PickMenu
         groups={[{ items: groupItems }]}
         ontoggle={toggleGroup}
@@ -548,6 +558,7 @@
         countLabel={`of ${DIVISIONS.length} shown`}
         icon="list"
       />
+      {/if}
       {#if plotted.length > 1}
         <span class="legend" role="group" aria-label="Nodes">
           {#each plotted as id (id)}
@@ -582,14 +593,16 @@
       <!-- Two words rather than an icon pair: this switches what the card IS,
            and a glyph would have to be learned. -->
       <div class="modes" role="group" aria-label="View">
-        {#each ['charts', 'table'] as const as m (m)}
+        {#each MODES as m (m)}
           <button
             class="range"
             class:active={mode === m}
             aria-pressed={mode === m}
             title={m === 'table'
               ? 'One row per link — the whole cluster at once'
-              : 'One chart per link, on its own axis'}
+              : m === 'ports'
+                ? 'One row per RDMA port — state, negotiated rate and errors'
+                : 'One chart per link, on its own axis'}
             onclick={() => setMode(m)}
           >{m}</button>
         {/each}
@@ -607,6 +620,9 @@
         >{grid.quiet} idle</button>
       {/if}
 
+      {#if mode !== 'ports'}
+      <!-- History controls: the ports view is live from the snapshot, and a time
+           range or an events layer would be a control that does nothing. -->
       <button
         class="events"
         class:on={showEvents}
@@ -627,6 +643,7 @@
           </button>
         {/each}
       </div>
+      {/if}
     </div>
   </header>
 
@@ -644,6 +661,21 @@
         : 'No interfaces to draw.'}
     </p>
   {:else}
+    {#if mode === 'ports'}
+      <!-- THE FABRIC BY PORT. Live from the snapshot rather than from history
+           like the other two views -- a port negotiating at the wrong rate is
+           something you check, not something you watch. The groups menu does
+           not apply: a port is RoCE by definition. -->
+      <section class="division" data-division="ports">
+        <h3 class="division-head">
+          Ports
+          <span class="count">{portCount}</span>
+          <span class="note dim">RDMA devices and the rate each actually negotiated</span>
+          <ColumnMenu of="Network Activity" groups={[{ label: 'RDMA ports', view: rdmaCols }]} />
+        </h3>
+        <RdmaTable {nodes} cols={rdmaCols} {maxRows} />
+      </section>
+    {:else}
     <div class="divisions" class:loading>
       <!-- OPENED CHARTS FIRST, above every division. A link opened from the
            Management table is still a chart, and filing it back under its own
@@ -741,6 +773,7 @@
         </section>
       {/each}
     </div>
+    {/if}
   {/if}
 </section>
 

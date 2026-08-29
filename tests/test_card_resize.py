@@ -289,7 +289,7 @@ def test_the_module_is_declared_rather_than_discovered():
         assert token in css, f"{token} is not declared"
     assert re.search(r"--row-unit:\s*calc\(", css), "the module does not state its arithmetic"
 
-    for name in ("ModelsTable", "ProcessTable", "NetworkTable", "NetworkPanel", "ThermalPanel"):
+    for name in ("ModelsTable", "ProcessTable", "NetworkTable", "RdmaTable", "ThermalPanel"):
         src = (FRONTEND / "components" / f"{name}.svelte").read_text()
         assert "py-[5px]" not in src, f"{name} still hard-codes the row padding"
         assert "var(--row-pad)" in src, f"{name} does not take its padding from the module"
@@ -890,3 +890,24 @@ def test_overflow_is_a_setting_that_resets():
     assert "setOverflow('page')" in reset
     settings = without_comments(SETTINGS.read_text())
     assert "setOverflow('scroll')" in settings and "setOverflow('page')" in settings, "no control in Settings"
+
+
+def test_rdma_ports_is_a_view_of_network_activity_not_a_card():
+    """Same subject -- the fabric, by port instead of by interface. The ports
+    table's unique facts (state, link layer, NEGOTIATED RATE, per-port errors)
+    live on as Network Activity's third view; the card is retired, and a saved
+    layout that still names it is dropped by the store's known-id filter."""
+    layout = without_comments(LAYOUT.read_text())
+    assert "{ id: 'network'," not in layout, "the RDMA Ports card is still a section"
+    assert not (FRONTEND / "components" / "NetworkPanel.svelte").exists(), "NetworkPanel survives"
+    assert (FRONTEND / "components" / "RdmaTable.svelte").exists()
+    card = without_comments(NETWORK.read_text())
+    assert "const MODES: Mode[] = ['charts', 'table', 'ports']" in card
+    assert "<RdmaTable" in card and "new ColumnView('network.rdma'" in card, (
+        "the ports view does not reuse the RDMA table, or lost its column choices"
+    )
+    # A port is RoCE by definition and a live table has no time range: the
+    # groups menu and the history controls hide in that view.
+    assert card.count("mode !== 'ports'") >= 2, "groups menu or history controls still show in the ports view"
+    app = without_comments(APP.read_text())
+    assert "NetworkPanel" not in app and "id === 'network'" not in app

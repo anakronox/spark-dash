@@ -7,7 +7,6 @@
   import NodeGroup from './components/NodeGroup.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
   import ModelsTable from './components/ModelsTable.svelte';
-  import NetworkPanel from './components/NetworkPanel.svelte';
   import MemoryBand from './components/MemoryBand.svelte';
   import NodeCard from './components/NodeCard.svelte';
   import ProcessTable from './components/ProcessTable.svelte';
@@ -736,8 +735,6 @@
           <ModelsTable {nodes} maxRows={layout.rowsFor(id)} />
         {:else if id === 'processes'}
           <ProcessTable {nodes} maxRows={layout.rowsFor(id)} />
-        {:else if id === 'network'}
-          <NetworkPanel {nodes} maxRows={layout.rowsFor(id)} />
         {:else if id === 'activity'}
           <SwapTimeline maxRows={layout.rowsFor(id)} />
         {:else if id === 'history'}

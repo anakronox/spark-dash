@@ -5474,7 +5474,13 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
-- [ ] **AE19. Fold RDMA Ports into Network Activity as a third view.** Same
+- [x] **AE19. Fold RDMA Ports into Network Activity as a third view.** Built
+  2026-08-29 as planned: `NetworkPanel` became `RdmaTable`, a body without
+  card chrome that takes its column view from the card, keyed `network.rdma`
+  so hidden columns carry over. The store's known-id filter drops the retired
+  `network` id from saved layouts (confirmed, not assumed). Events, time range
+  and the groups menu hide in the ports view: a live table has no window and a
+  port is RoCE by definition. Original note: Same
   subject — the fabric, by port instead of by interface. The ports table's
   unique facts are per-port state, link layer, negotiated rate and error
   counters; the link table's `roce` column only says up/—. Toggle becomes
