@@ -6326,9 +6326,17 @@ get lost:
    separate-but-documented, since paging thresholds genuinely should be laxer.
    Settle this before doing A1–A3, because it decides whether the thresholds
    live in one place or two.
-6. **Deployment: settled 2026-08-16 — one repo, started by hand.** Dockhand was
-   tried and dropped. Everything now lives in `spark-dash-homegrown`: clone it
-   on a host, `cd central` or `cd node`, `docker compose up -d`.
+6. **Deployment: settled 2026-08-16 — one repo; corrected 2026-08-18 — both
+   stacks orchestrated by Dockhand.** The 2026-08-16 entry said Dockhand had
+   been tried and dropped and the stacks were started by hand. That was true
+   for two days. Dockhand deploys both stacks now: `spark-dash-vm` on the
+   monitoring host from a tiny hand-maintained repo holding only
+   `compose.yaml` + `.env`, and `spark-dash-node` on each GX10. The source
+   still lives in one place, `spark-dash-homegrown`, and the public path is
+   unchanged — clone it, `cd central` or `cd node`, `docker compose up -d`;
+   Dockhand is how *this* installation is run, not a requirement. See
+   [deployment.md](deployment.md) for the two deployment paths (mounted
+   config vs baked images) and why a stack restart refreshes neither.
 
    **What the three repos were for, and why they went away.** `spark-dash-stack-central`
    and `spark-dash-stack-node` existed only because Dockhand deploys *a repo* —
