@@ -484,7 +484,8 @@
              stack carries nothing cluster-specific and asks for this on a
              timer. True and worth knowing once, which is what the README is
              for; the path is the part you need while looking at this panel. -->
-        <p class="note dim">Stored in <code>{cfg?.path}</code> on the monitoring VM.</p>
+        <p class="note dim">Stored in <code>central/cluster/cluster.yml</code> on the monitoring host
+          (<code>{cfg?.path}</code> inside the backend container).</p>
 
         {#each draft as n, i (i)}
           <div class="node">
