@@ -1188,3 +1188,15 @@ def test_a_copy_wears_its_number():
     assert "position: absolute" in css and "pointer-events: none" in css, (
         "the badge is in the flow, or intercepts the header's controls"
     )
+
+
+def test_the_width_cue_speaks_in_the_theme_s_accent():
+    """There is no `--accent` token; the accent is `--good`, and the resize
+    corner, the `+ element` button and a just-landed card all use it. The
+    ghost used `--warning` -- a status colour, the same amber on every theme,
+    so on Forest, Paper and High Contrast it was a colour nothing else on the
+    page spoke. A width flip is not a warning."""
+    ghost = css_block(SECTION, ".ghost {")
+    assert "var(--good)" in ghost and "var(--warning)" not in ghost, "the ghost is not in the theme's accent"
+    grip = css_block(GRIP, ".grip.armed {")
+    assert "var(--warning)" not in grip, "the armed corner still turns amber"

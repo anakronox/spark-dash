@@ -267,10 +267,12 @@
   }
 
   /* Aimed far enough sideways to mean it. The card itself carries the real cue
-     — see `.slot.rearming` in Section — this only keeps the thing under the
-     pointer in step with it. */
+     — the ghost in Section — this only keeps the thing under the pointer in
+     step with it: brighter, not a different colour. It used to turn amber,
+     which on every theme but the default was the one amber thing on screen. */
   .grip.armed {
-    color: var(--warning);
+    color: var(--good);
+    filter: brightness(1.25);
   }
 
   .grip:focus-visible {

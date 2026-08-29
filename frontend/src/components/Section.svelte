@@ -1051,15 +1051,21 @@
      and the height after the flip is not knowable without performing it —
      the content reflows and the held height is released. Promising a height
      here would be a guess drawn as a fact. */
+  /* In the theme's accent, which is `--good` (there is no `--accent` token;
+     see app.css). The first cut used `--warning` -- a status colour, and the
+     same amber on every theme, so on Forest, Paper and High Contrast the
+     cue sat on the page in a colour nothing else there used. A width flip is
+     not a warning; it is the same gesture the corner lights green for, and
+     the `+ element` button and a just-landed card already speak in it. */
   .ghost {
     position: absolute;
     top: 0;
     height: 100%;
     z-index: 4;
     pointer-events: none;
-    border: 1px dashed var(--warning);
+    border: 1px dashed var(--good);
     border-radius: var(--radius);
-    background: color-mix(in srgb, var(--warning) 7%, transparent);
+    background: color-mix(in srgb, var(--good) 9%, transparent);
   }
 
   /* THE CARD IS A FIXED BOX AND THE PANEL SCROLLS INSIDE IT. `height`, not

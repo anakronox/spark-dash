@@ -5505,6 +5505,14 @@ than a hedge.
   straddling the border so it labels the card as a thing rather than joining a
   header whose right end the frame cannot see. Always on.
 
+- [x] **AE23. The width cue speaks in the theme's accent.** The ghost that
+  shows where a sideways drag will land was `--warning` — a status colour, and
+  the same amber on every theme, so on Forest, Paper and High Contrast it was
+  the one amber thing on the page. There is no `--accent` token; the accent is
+  `--good`, which the resize corner, `+ element` and a just-landed card already
+  use. Ghost and armed corner both moved to it; the corner brightens rather
+  than changing colour when armed.
+
 - [x] **AE20. Column headers stick in scroll mode.** AE18 kept the card
   header in view and left `thead` to scroll away, so a table at its fortieth
   row no longer said what its columns were. The `th`s are sticky now, parked
