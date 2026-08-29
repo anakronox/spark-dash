@@ -396,9 +396,16 @@
     }
 
     mode = 'rows';
-    const bodies = slotEl.querySelectorAll('tbody');
+    /* ROWS OF TABLES, not the number of tables — the same distinction the chart
+       grid above makes, and for the same reason. A card's cap applies to every
+       table it draws, so one more row grows the card once per table ROW: five
+       stacked tables grow it by five, but the same five paired two-across grow
+       it by three. Counting tables would make the corner under-move by however
+       many share a line. */
+    const bodies = [...slotEl.querySelectorAll<HTMLElement>('tbody')];
     const row = slotEl.querySelector<HTMLElement>('tbody tr');
-    pxPerUnit = (row?.offsetHeight || rowUnit()) * Math.max(1, bodies.length);
+    const stacked = new Set(bodies.map((b) => b.offsetTop)).size;
+    pxPerUnit = (row?.offsetHeight || rowUnit()) * Math.max(1, stacked);
   }
 
   /** How many modules this card spans.

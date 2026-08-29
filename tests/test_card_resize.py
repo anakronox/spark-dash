@@ -148,6 +148,16 @@ def test_the_card_follows_the_pointer_rather_than_leaping():
     assert "offsetTop" in measure, "chart rows are not counted, so a grid leaps"
     assert "tbody" in measure, "tables are not counted, so a multi-table card leaps"
 
+    # ROWS of tables, not the NUMBER of tables. Temperatures pairs its five
+    # domains two-across on a wide card, so one more row grows the card by three
+    # table-heights there and five when they are stacked. Counting tables would
+    # make the corner under-move by however many share a line.
+    bodies = measure[measure.index("mode = 'rows'") :]
+    assert "new Set(bodies.map((b) => b.offsetTop)).size" in bodies, (
+        "tables sharing a line are counted separately, so the corner under-moves"
+    )
+    assert "bodies.length" not in bodies, "the raw table count is still what scales the drag"
+
 
 def test_a_dragged_row_count_survives_a_reload():
     """The cap used to be validated against ROW_CHOICES. The grip drags it

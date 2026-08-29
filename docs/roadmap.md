@@ -5330,6 +5330,56 @@ than a hedge.
   columns (offsets 0/13/25/39 and 0/28/73); resize still 359 → 759 → 359 with
   the gaps holding.
 
+- [x] **AE11. Temperatures: the slack goes to the bar, and the domains pair
+  up.** Reported as "a ton of wasted space to the right of the temperatures
+  card", and measured at **154px of an 817px card — 19%** in a half-width
+  column, more on a full-width one.
+
+  The spacer was deliberate: columns declare their widths in `ch` (87ch ≈
+  629px) and a trailing `<col />` with no width absorbs the difference so the
+  declared widths do not stretch. Because it takes *whatever remains*, it grew
+  with the card.
+
+  **Two corrections to the premise, both measured before building anything:**
+
+  - **Removing the note text frees no space.** Every division heading is a
+    single 18px line and the notes never wrapped, so the line stays regardless
+    for the domain name and count. It is a decluttering decision, not the thing
+    that recovers the room.
+  - **Two sensor blocks need ~1272px**, so they cannot fit in a half-width
+    column at all — and a card's width no longer follows the viewport, since the
+    same window shows this card at 817px in a column and 1649px full width.
+
+  So: the **bar** takes the leftover width at every size (a longer track is a
+  finer reading of headroom), and the domains pair two-across under a
+  **container query** — the first in this codebase, and warranted precisely
+  because the viewport stopped being a proxy for a card's width.
+
+  **The spacer was load-bearing in two cases** and dropping it outright brings
+  back the stretching it prevented: `bar` can be switched off from the
+  ColumnMenu, and it can be given a pixel width by its ColumnGrip. The rule is
+  therefore conditional — the flexible column is `bar` when it is visible *and*
+  unpinned, otherwise the spacer returns, in all three of `<colgroup>`,
+  `<thead>` and `<tbody>` (two out of three is a malformed table, not a
+  narrower one).
+
+  The notes come off the heading and survive as its `title`, so the reason the
+  GPU limit reads 90° where the package reads 104.8° is still one hover away.
+
+  **Hazard handled:** `Section.measure()` scaled the resize drag by the NUMBER
+  of tables. Five stacked domains grow the card by five rows per press; the same
+  five paired two-across grow it by three. It counts distinct `offsetTop` now —
+  the same technique the chart grid already used — so one expression covers both
+  layouts.
+
+  Measured live. Half width: `to limit` 116 → 270px, column widths summing to
+  783 = the table width, no spacer. Full width (1649px): domains pair
+  Package|GPU, Storage|Network, Wireless, and the card goes **1109 → 709px, a
+  36% cut**. Bar pinned to 120px and bar hidden both bring the spacer back with
+  every other column keeping its `ch` width. Module grid intact throughout —
+  every gap 16px, every card top on the module — and the corner still moves the
+  card exactly 25px per press.
+
 - [ ] **AE4. Width, if it is still wanted.** Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
   A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag

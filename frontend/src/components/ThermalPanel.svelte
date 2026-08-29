@@ -118,6 +118,25 @@
      Storage too. Two menus would be two controls in two corners of one card,
      which is the arrangement NetworkPanel already rejected. */
   const cols = new ColumnView('thermal.sensors', THERMAL_COLUMNS);
+
+  /* WHICH COLUMN TAKES THE LEFTOVER WIDTH.
+   *
+   * Every column declares a width in `ch`, so on any card wider than their sum
+   * — 87ch, about 629px — something has to absorb the difference or the
+   * declared widths stretch. That used to be a seventh column containing
+   * nothing, which meant 154px of a 817px card was empty by design, and more
+   * than that on a full-width one, because it takes whatever remains.
+   *
+   * The bar is a better home for it: a longer track is a finer reading of how
+   * close a sensor is to its limit, so the space does some work.
+   *
+   * BUT THE SPACER WAS LOAD-BEARING IN TWO CASES, and dropping it outright
+   * brings back the stretching it prevented. `bar` can be switched off from the
+   * ColumnMenu, and it can be given a pixel width by its own ColumnGrip. Either
+   * way it is no longer able to flex, and the empty column has to come back. */
+  const barFlexes = $derived(
+    cols.visible().some((c) => c.key === 'bar') && cols.width('bar') === null,
+  );
   $effect(() => {
     for (const v of views.values()) {
       dropSortWhenHidden(v, (k) => cols.visible().some((c) => c.key === k));
@@ -261,26 +280,35 @@
       with the host's <code>/sys</code> mounted.
     </p>
   {:else}
-    {#each groups as g (g.key)}
+    <div class="domains">
+      {#each groups as g (g.key)}
       {@const view = viewFor(g.key)}
       {@const shown = view.slice(ordered(view, g.rows))}
       <section class="domain">
-        <h3 class="head-row">
+        <!-- The note is the heading's TITLE rather than a line of text. It
+             explains something the numbers cannot — why the GPU limit reads 90°
+             where the package reads 104.8° — but it never wrapped, so it was
+             costing horizontal room in a card that had none to spare and no
+             vertical room at all. -->
+        <h3 class="head-row" title={g.note}>
           {g.label}
           <span class="count">{g.rows.length}</span>
-          <span class="note dim">{g.note}</span>
         </h3>
         <div class="scroll">
           <table class={TABLE}>
             <colgroup>
               {#each cols.visible() as c (c.key)}
                 <col
-                  style="width: {cols.width(c.key) !== null
-                    ? `${cols.width(c.key)}px`
-                    : `${c.width}ch`}"
+                  style="width: {barFlexes && c.key === 'bar'
+                    ? 'auto'
+                    : cols.width(c.key) !== null
+                      ? `${cols.width(c.key)}px`
+                      : `${c.width}ch`}"
                 />
               {/each}
-              <col />
+              {#if !barFlexes}
+                <col />
+              {/if}
             </colgroup>
             <thead>
               <tr>
@@ -300,7 +328,9 @@
                     />
                   </th>
                 {/each}
-                <th class={SLACK_TH}></th>
+                {#if !barFlexes}
+                  <th class={SLACK_TH}></th>
+                {/if}
               </tr>
             </thead>
             <tbody>
@@ -309,7 +339,9 @@
                   {#each cols.visible() as c (c.key)}
                     {@render cell(c, r)}
                   {/each}
-                  <td class={SLACK_TD}></td>
+                  {#if !barFlexes}
+                    <td class={SLACK_TD}></td>
+                  {/if}
                 </tr>
               {/each}
             </tbody>
@@ -317,13 +349,22 @@
         </div>
         <Pager {view} total={g.rows.length} label="{g.label} pages" />
       </section>
-    {/each}
+      {/each}
+    </div>
   {/if}
 </section>
 
 <style>
   section.panel {
     padding: 12px 16px 12px;
+    /* A CONTAINER, and the first one in this codebase. Every other responsive
+       rule here keys off the viewport, which stopped being a proxy for how much
+       room a card has: the same window shows this card at 817px in a column and
+       at 1700px full width. Two sensor blocks need about 1272px, so only the
+       card's own width can decide whether they fit.
+       `inline-size` contains the inline axis only, so the card's height still
+       follows its content — which the layout depends on. */
+    container-type: inline-size;
   }
 
   header {
@@ -369,8 +410,24 @@
     color: var(--ink-muted);
   }
 
-  .domain + .domain {
-    margin-top: 12px;
+  .domains {
+    display: grid;
+    /* minmax(0, 1fr), never a bare 1fr — a bare track takes its minimum from
+       the content, and these tables are wide enough to hold a column open and
+       stop the card ever shrinking. The same rule .cols, .zone and .sections
+       all state. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px 16px;
+  }
+
+  /* 1272px is two 629px blocks plus the gap; below that a column would push its
+     table into the horizontal scroll box, which is worse than stacking. A lone
+     last domain simply takes half a row — what a grid does, and what
+     NetworkTrends already does with a short division. */
+  @container (min-width: 1300px) {
+    .domains {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .head-row {
@@ -395,19 +452,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .head-row .note {
-    margin-left: auto;
-    font-weight: 400;
-    font-size: var(--text-micro);
-    letter-spacing: 0.02em;
-    text-transform: none;
-  }
 
-  @media (max-width: 700px) {
-    .head-row .note {
-      display: none;
-    }
-  }
 
   .scroll {
     overflow-x: auto;
