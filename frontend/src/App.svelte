@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import Alerts from './components/Alerts.svelte';
   import AlertHistory from './components/AlertHistory.svelte';
   import Settings from './components/Settings.svelte';
+  import PickMenu from './components/PickMenu.svelte';
   import Section from './components/Section.svelte';
   import NodeGroup from './components/NodeGroup.svelte';
   import ConnectionStateView from './components/ConnectionState.svelte';
@@ -14,7 +15,7 @@
   import Trends from './components/Trends.svelte';
   import NetworkTrends from './components/NetworkTrends.svelte';
   import ThermalPanel from './components/ThermalPanel.svelte';
-  import { Layout, ZONE_LABEL, kindOf } from './lib/layout.svelte';
+  import { Layout, ZONE_LABEL, kindOf, SECTIONS } from './lib/layout.svelte';
   import type { Zone } from './lib/layout.svelte';
   import { nodeSlots } from './lib/theme';
   import { Theme } from './lib/theme.svelte';
@@ -31,6 +32,29 @@
   let historyOpen = $state(false);
   let settingsOpen = $state(false);
   const layout = new Layout();
+
+  /** Add a card, then take the reader to it. `tick()` so the new slot exists
+   *  before it is scrolled to; the lift clears itself after a moment. */
+  async function addCard(kind: string) {
+    const id = layout.addCard(kind);
+    await tick();
+    layout.landed = id;
+    /* TWICE, and the second time matters. The new slot exists after tick(),
+       but its span is still one module: Section measures its content on a
+       0ms timer and only then spans the rows it needs, at which point the
+       page below it reflows and the target moves. A scroll fired once at
+       mount landed 950px short, measured. The first scroll gets close; the
+       second, once the grid has settled, lands. */
+    const goto = (behavior: ScrollBehavior) =>
+      document
+        .querySelector<HTMLElement>(`[data-slot="${id}"]`)
+        ?.scrollIntoView({ block: 'center', behavior });
+    setTimeout(() => goto('smooth'), 30);
+    setTimeout(() => goto('auto'), 450);
+    setTimeout(() => {
+      if (layout.landed === id) layout.landed = null;
+    }, 1800);
+  }
   const theme = new Theme();
 
   onMount(() => {
@@ -435,6 +459,23 @@
       <!-- The theme picker used to be a <select> here. It moved into settings:
            the header is the most valuable strip on the page, and a control you
            touch twice a year should not hold a permanent seat in it. -->
+      <!-- ADD A CARD. Left of Settings, filled in the accent: the one control on
+           this bar that does something rather than opens something. Lists every
+           kind with how many the page has; picking one copies its last visible
+           card (or shows it, if every copy is hidden), then scrolls to it and
+           lifts it for a moment -- on a long page, a click with nothing visibly
+           happening would read as broken. -->
+      <PickMenu
+        groups={[{ items: SECTIONS.map((s) => ({ key: s.id, label: s.label, checked: false, note: String(layout.countOf(s.id)) })) }]}
+        ontoggle={addCard}
+        what="Add an element"
+        of="the dashboard"
+        text="element"
+        icon="plus"
+        mode="action"
+        tone="accent"
+      />
+
       <button
         class={SETTINGS_TRIGGER}
         aria-label="Open settings"

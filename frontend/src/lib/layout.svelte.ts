@@ -1245,6 +1245,41 @@ export class Layout {
     return copy;
   }
 
+  /** Add a card of a kind from the page's own button.
+   *
+   * If the kind has a visible card, this is a COPY of its last instance --
+   * placed right after it, so two Network Activity cards sit together, which
+   * is the whole use case. If every instance of the kind is hidden, the
+   * reader almost certainly wants the one they have back rather than a second
+   * hidden one, so the last instance is shown instead. Returns the id that is
+   * now on the page, for the caller to scroll to. */
+  addCard(kind: string): string {
+    const mine = this.order.filter((id) => kindOf(id) === kind);
+    const visible = mine.filter((id) => !this.isHidden(id));
+    if (visible.length) return this.duplicate(visible[visible.length - 1]);
+    if (mine.length) {
+      const id = mine[mine.length - 1];
+      this.toggleHidden(id);
+      return id;
+    }
+    // A kind with no instance at all cannot happen through the UI; reconcile
+    // re-appends one on load. Make one anyway rather than fail.
+    this.order = [...this.order, kind];
+    this.#save();
+    return kind;
+  }
+
+  /** How many cards of each kind the page has, hidden ones included -- what
+   *  the add menu shows beside each name. */
+  countOf(kind: string): number {
+    return this.order.filter((id) => kindOf(id) === kind).length;
+  }
+
+  /** The card that was just added, for `Section` to lift for a moment so the
+   *  reader sees where it landed on a page that may be long. Cleared by the
+   *  same code that set it, after the moment. */
+  landed = $state<string | null>(null);
+
   /** Remove a copy. The original cannot be removed, only hidden -- a kind
    *  with no instance would be re-appended on the next load anyway. */
   remove(id: string) {

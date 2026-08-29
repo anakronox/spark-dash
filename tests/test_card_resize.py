@@ -971,3 +971,31 @@ def test_network_activity_reads_its_stored_view_back():
     assert src.index("const MODES: Mode[]") < src.index("let chosenMode = $state<Mode | null>(readMode())"), (
         "MODES is declared after the initialiser that reads it -- a TDZ error the try/catch swallows"
     )
+
+
+def test_the_page_has_an_add_element_button_that_lands_the_card():
+    """Left of Settings, filled in the accent: the one control on the bar that
+    does something rather than opens something. Picking a kind copies its last
+    visible card, or shows it if every copy is hidden; then the page scrolls
+    to it and lifts it -- on a long page a click with nothing visibly
+    happening reads as broken. The scroll fires twice because the new slot
+    spans one module until Section has measured it, and the page below it
+    reflows: a single scroll at mount landed 950px short, measured."""
+    app = without_comments(APP.read_text())
+    assert 'text="element"' in app and 'mode="action"' in app and 'tone="accent"' in app, "no add button"
+    assert "layout.countOf(s.id)" in app, "the menu does not say how many of each kind the page has"
+    fn = app[app.index("async function addCard") :]
+    fn = fn[: fn.index("\n  }")]
+    assert fn.count("scrollIntoView") >= 1 and fn.count("goto(") >= 2, "the scroll does not retry after the grid settles"
+    assert "layout.landed = id" in fn, "the new card is not lifted"
+
+    src = without_comments(LAYOUT.read_text())
+    add = src[src.index("  addCard(kind: string)") :]
+    add = add[: add.index("\n  }")]
+    assert "this.duplicate(visible[visible.length - 1])" in add, "a visible kind is not copied after its last instance"
+    assert "this.toggleHidden(id)" in add, "a wholly hidden kind is copied instead of shown"
+
+    pick = without_comments(PICK.read_text())
+    assert "mode === 'action'" in pick and "<button" in pick, "PickMenu has no action rows"
+    block = css_block(PICK, ".host.accent .trigger {")
+    assert "background: var(--good)" in block, "the accent trigger is not filled"

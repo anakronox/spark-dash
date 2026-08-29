@@ -54,7 +54,13 @@
     text?: string;
     /** The trigger's mark. `columns` is three bars; `list` is three lines with
      *  boxes, the conventional checklist. */
-    icon?: 'columns' | 'list';
+    icon?: 'columns' | 'list' | 'plus';
+    /** `check`: rows are checkboxes and `ontoggle` flips one. `action`: rows
+     *  are buttons and `ontoggle` performs one -- the menu closes after. */
+    mode?: 'check' | 'action';
+    /** `accent`: the trigger is filled in the theme's accent, for the one
+     *  control on a bar of outlines that is THE action. */
+    tone?: 'plain' | 'accent';
   }
   const {
     groups,
@@ -65,6 +71,8 @@
     countLabel = '',
     text,
     icon = 'columns',
+    mode = 'check',
+    tone = 'plain',
   }: Props = $props();
 
   let open = $state(false);
@@ -103,7 +111,13 @@
   });
 </script>
 
-<span class="host" class:active={count > 0} class:labelled={!!text} bind:this={host}>
+<span
+  class="host"
+  class:active={count > 0}
+  class:labelled={!!text}
+  class:accent={tone === 'accent'}
+  bind:this={host}
+>
   <button
     class="trigger"
     aria-expanded={open}
@@ -119,6 +133,11 @@
         <rect x="0.5" y="1" width="2.6" height="10" rx="0.7" />
         <rect x="4.7" y="1" width="2.6" height="10" rx="0.7" />
         <rect x="8.9" y="1" width="2.6" height="10" rx="0.7" />
+      </svg>
+    {:else if icon === 'plus'}
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <rect x="5" y="1" width="2" height="10" rx="0.6" />
+        <rect x="1" y="5" width="10" height="2" rx="0.6" />
       </svg>
     {:else}
       <!-- Three lines with boxes: a checklist, which is what opens. -->
@@ -148,6 +167,23 @@
           <p class="eyebrow dim group">{group.label}</p>
         {/if}
         {#each group.items as item (item.key)}
+          {#if mode === 'action'}
+            <!-- An action, not a state: a button, and the menu closes once it
+                 has done its one thing. -->
+            <button
+              class="row"
+              disabled={item.disabled}
+              onclick={() => {
+                ontoggle(item.key);
+                close();
+              }}
+            >
+              <span class="name">{item.label}</span>
+              {#if item.note}
+                <span class="note" class:warn={item.warn} class:dim={!item.warn}>{item.note}</span>
+              {/if}
+            </button>
+          {:else}
           <label class="row" class:locked={item.disabled}>
             <input
               type="checkbox"
@@ -162,6 +198,7 @@
               <span class="note" class:warn={item.warn} class:dim={!item.warn}>{item.note}</span>
             {/if}
           </label>
+          {/if}
         {/each}
       {/each}
     </div>
@@ -222,6 +259,40 @@
 
   .host.labelled .trigger:hover {
     border-color: var(--ink-muted);
+  }
+
+  /* THE ACTION on a bar of outlines. Filled in the theme's accent -- the same
+     green the resize corners light up with -- so it reads as the one thing
+     here that does something rather than shows something, without shouting.
+     Inherits each theme's accent, so it holds up in Forest, Paper and High
+     Contrast alike. */
+  .host.accent .trigger {
+    background: var(--good);
+    border-color: var(--good);
+    color: var(--page);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: var(--text-micro);
+  }
+
+  .host.accent .trigger:hover {
+    color: var(--page);
+    filter: brightness(1.12);
+  }
+
+  /* An action row is a button, styled as the checkbox rows are and with the
+     same text alignment: a button centres by default. */
+  button.row {
+    width: 100%;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+  }
+
+  button.row:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .badge {

@@ -898,6 +898,7 @@
   data-slot={id}
   class="slot"
   class:scrolling
+  class:landed={layout.landed === id}
   style:--card-rows={cardRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
@@ -1065,6 +1066,17 @@
     top: 0;
     z-index: 1;
     background: var(--panel);
+  }
+
+  /* Just added from the page's button. Lifted for a moment the way a picked-up
+     card is, so on a long page the reader sees where it went; App clears the
+     state once the moment has passed. An outline, painted outside the box, so
+     nothing around it moves. */
+  .slot.landed {
+    outline: 2px solid var(--good);
+    outline-offset: 3px;
+    border-radius: var(--radius);
+    transition: outline-color 600ms ease;
   }
 
   .slot.grabbed {

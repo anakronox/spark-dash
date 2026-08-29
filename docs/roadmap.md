@@ -5713,6 +5713,17 @@ try/catch, and every card came back on its automatic view with its stored
 choice silently ignored. Only visible once a copy was set to `ports` and
 reloaded to `charts`. Declaration order is now guarded.
 
+**`+ ELEMENT`, on the page.** Left of Settings, filled in the theme's accent
+so it reads as the one control on that bar that *does* something. Opens the
+same fly-out as the pickers (third use of `PickMenu`, which grew an `action`
+row mode and an `accent` tone), listing every kind with how many the page
+has. Picking one copies the kind's last visible card — placed right after it,
+so related cards stay together — or, if every copy is hidden, shows it rather
+than making a second hidden one. Then the page scrolls to the card and lifts
+it for a moment. The scroll fires twice on purpose: after `tick()` the new
+slot spans one module until `Section` has measured it, the page below reflows,
+and a single scroll at mount landed 950px short, measured.
+
 Not done: the card's own `<h2>` still says "Network Activity" on a copy — the
 number lives in the Settings row, the move handle's label and the scroll
 region's name. Passing the instance label into seven components for one
