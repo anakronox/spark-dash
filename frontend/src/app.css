@@ -117,12 +117,19 @@
   --track: #232321;
 
   --ink: #ffffff;
-  --ink-2: #c3c2b7;
+  /* BODY TEXT IS TWO TIERS, and the second was too quiet. Measured on the
+     live page: of ~560 text elements inside the cards, 279 were --ink and 269
+     were --ink-muted -- the muted tier is half the body, not an accent -- and
+     it sat at 6.0:1 on the panel. Lifted 2026-08-29 to ~8:1 on every dark
+     theme (ink-2 to ~12:1), keeping each theme's tint; the light themes were
+     left alone, since near-black on paper has nowhere to go. Hierarchy still
+     holds: ink 17.4, ink-2 11.8, muted 7.9. */
+  --ink-2: #d6d5ca;
   /* 4.85 -> 6.02 against --panel. It technically cleared 4.5, but it carries
      `.dim`, every table header and most labels on the page, all at 10-12px and
      some letterspaced uppercase — sizes where the minimum is not enough
      headroom. Same fix, same reason, as the cyberpunk theme. */
-  --ink-muted: #999892;
+  --ink-muted: #b0afa7;
 
   /* Categorical slots, validated for CVD separation in both modes. Used for
      node identity and for the memory band's workload classes. */
@@ -229,8 +236,8 @@
   --track: #1d1638;
 
   --ink: #f6f1ff;
-  --ink-2: #cebdf5;
-  --ink-muted: #9d8ac9;
+  --ink-2: #dcd0f8;
+  --ink-muted: #b3a3da;
 
   --series-1: #2ee6ff;  /* h 209 — LLM runtimes */
   --series-2: #ff47ff;  /* h 328 — other GPU workloads */
@@ -278,8 +285,8 @@
   --track: #111a11;
 
   --ink: #eaf5ea;
-  --ink-2: #b8ccb8;
-  --ink-muted: #8fa88f;
+  --ink-2: #cbdccb;
+  --ink-muted: #a3bba3;
 
   /* Node/runtime hues are the dark theme's, unchanged: they are validated as
      TEXT (the process table prints runtime names in them) and re-checked
@@ -412,8 +419,8 @@
   --track: #1a222c;
 
   --ink: #e4eaf2;
-  --ink-2: #b3bfcd;
-  --ink-muted: #8695a6;
+  --ink-2: #c8d2de;
+  --ink-muted: #9eabbb;
 
   --series-1: #3987e5;  /* h 255 — LLM runtimes */
   --series-2: #ff5cc2;  /* h 346 — other GPU workloads */

@@ -5695,6 +5695,26 @@ than a hedge.
 model is carefully built and a general grid would replace its reasoning rather
 than extend it.
 
+### AG — Body text contrast (2026-08-29)
+
+Brian: the body text is still slightly muted against the background. Measured
+on the live page before touching anything: of ~560 text elements inside the
+cards, **279 were `--ink` and 269 were `--ink-muted`** — the muted tier is half
+the body, not an accent — and on the dark theme it sat at **6.0:1**. Lifted to
+~8:1 on every dark theme (ink-2 to ~12:1), keeping each theme's tint:
+
+| theme | ink-2 | muted |
+|---|---|---|
+| dark | 9.7 → 11.8 | 6.0 → 7.9 |
+| cyberpunk | 10.9 → 12.9 | 6.2 → 8.2 |
+| forest | 11.4 → 13.5 | 7.5 → 9.4 |
+| slate | 9.6 → 11.7 | 5.8 → 7.6 |
+
+Light, Paper and High contrast were left alone — near-black on paper has
+nowhere to go, and High contrast was already at 10.6. Hierarchy holds (dark:
+ink 17.4 / ink-2 11.8 / muted 7.9), and `test_palettes` still gates every
+text token at AA.
+
 ### AF — Card instances: more than one copy of a card on the page
 
 **Built 2026-08-29, as designed.** `kindOf` / `isCopy` / `instanceKey` in the
