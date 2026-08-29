@@ -5490,6 +5490,21 @@ than a hedge.
   The groups menu hides in the ports view. ~80 lines plus removals. Trade-off
   — one view at a time — is what AF exists to remove.
 
+- [x] **AE21. GPU Processes stopped scrolling by two pixels.** Its columns
+  declared 111ch (~802px) against a stated 620px minimum, so on an 800px card
+  the spacer column hit zero and the table overflowed by the difference —
+  invisible with overlay scrollbars, a permanent scrollbar without them. The
+  share bar now absorbs the leftover width the way the Temperatures bar does
+  (spacer returns when the bar is hidden or pinned), the text columns lost a
+  character each, and `min-w` is the honest sum: 91ch + the bar's 120px floor,
+  which fixed layout would otherwise not honour. Measured: fits at 800 exactly,
+  bar 123px at the floor.
+- [x] **AE22. A copy wears its number.** `+ element` made a second Network
+  Activity indistinguishable from the first except by its accessible name. A
+  small tab on the card's top edge, right end, shows the instance number —
+  straddling the border so it labels the card as a thing rather than joining a
+  header whose right end the frame cannot see. Always on.
+
 - [x] **AE20. Column headers stick in scroll mode.** AE18 kept the card
   header in view and left `thead` to scroll away, so a table at its fortieth
   row no longer said what its columns were. The `th`s are sticky now, parked

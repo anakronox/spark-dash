@@ -102,10 +102,10 @@
   const shown = $derived(view.slice(rows));
 
   const COLUMNS: ColumnDef[] = [
-    { key: 'name', label: 'process', required: true, width: 20 },
-    { key: 'runtime', label: 'runtime', width: 13 },
-    { key: 'model', label: 'model', width: 22 },
-    { key: 'node', label: 'node', width: 13 },
+    { key: 'name', label: 'process', required: true, width: 19 },
+    { key: 'runtime', label: 'runtime', width: 12 },
+    { key: 'model', label: 'model', width: 21 },
+    { key: 'node', label: 'node', width: 12 },
     { key: 'pid', label: 'pid', right: true, width: 9 },
     { key: 'sm', label: 'sm', right: true, width: 7 },
     { key: 'mem', label: 'gpu mem', right: true, width: 11 },
@@ -113,6 +113,28 @@
   ];
 
   const cols = new ColumnView('processes', COLUMNS);
+
+  /* THE SHARE BAR ABSORBS THE LEFTOVER WIDTH, the way the Temperatures bar
+   * does. Every column declared a `ch` width and they summed to 111ch -- about
+   * 802px -- while the table's stated minimum was 620px. On any card narrower
+   * than that sum the slack column went to zero and the table overflowed by
+   * the difference: a two-pixel sideways scroll on an 800px card, invisible
+   * with overlay scrollbars and a permanent scrollbar without them. Letting
+   * the bar take `auto` makes it the one column that gives as well as takes,
+   * so the declared widths hold and the table fits the card.
+   *
+   * The table's `min-w` is now an honest number: the 91ch the other columns
+   * declare plus the 120px floor the bar needs to read as a magnitude. Under
+   * `table-layout: fixed` a cell's `min-width` is not honoured, so without it
+   * the bar is the first thing to vanish on a narrow card; with it the table
+   * scrolls sideways instead, which is what a narrow card did anyway.
+   *
+   * Same two exceptions as ThermalPanel: hidden from the
+   * menu or pinned to pixels, the bar cannot flex and the slack column has to
+   * come back or the fixed widths stretch to fill. */
+  const shareFlexes = $derived(
+    cols.visible().some((c) => c.key === 'share') && cols.width('share') === null,
+  );
 
   // Sorting by a column you just switched off would leave the rows in an order
   // nothing on screen explains.
@@ -188,10 +210,12 @@
      that appears and disappears with the workload. Measured 114-120px. */
   const COMPUTE = `${NUM} min-w-[120px]`;
 
-  /* Share is 34% by design -- the bar needs room to be readable as a
-     magnitude, which is the only reason this column exists. */
-  const SHARE = `${TD} w-[34%] min-w-[120px]`;
-  const SHARE_TH = `${TH} w-[34%] min-w-[120px]`;
+  /* The bar needs room to be readable as a magnitude, which is the only
+     reason this column exists; the floor is what keeps it one when the card
+     is narrow. No percentage: the column's width is the `<col>`'s business,
+     and `auto` there is how it flexes (see shareFlexes). */
+  const SHARE = `${TD} min-w-[120px]`;
+  const SHARE_TH = `${TH} min-w-[120px]`;
 
   /* Unsized so it still absorbs whatever `width: 100%` leaves over, but
      otherwise a normal cell -- it carries the rule to the table's edge. */
@@ -306,7 +330,7 @@
 
   {#if rows.length}
     <div class="overflow-x-auto">
-      <table class="table-fixed text-body min-w-[620px]">
+      <table class="table-fixed text-body min-w-[780px]">
         <!-- WIDTHS LIVE HERE, not on the cells. Under `table-layout: fixed`
              the first row's widths decide the whole table, and a `<colgroup>`
              states them once instead of relying on whichever row happens to
@@ -320,11 +344,17 @@
              across every column and undo the point of setting them. -->
         <colgroup>
           {#each cols.visible() as c (c.key)}
-            <col style="width: {cols.width(c.key) !== null
-              ? `${cols.width(c.key)}px`
-              : `${c.width}ch`}" />
+            <col
+              style="width: {shareFlexes && c.key === 'share'
+                ? 'auto'
+                : cols.width(c.key) !== null
+                  ? `${cols.width(c.key)}px`
+                  : `${c.width}ch`}"
+            />
           {/each}
-          <col />
+          {#if !shareFlexes}
+            <col />
+          {/if}
         </colgroup>
         <thead>
           <tr>
@@ -343,8 +373,11 @@
                 />
               </th>
             {/each}
-            <!-- SLACK PARKS HERE. Its width is the point; its styling is ordinary. -->
-            <th class={SLACK_TH}></th>
+            <!-- SLACK PARKS HERE when the bar cannot take it. Its width is the
+                 point; its styling is ordinary. -->
+            {#if !shareFlexes}
+              <th class={SLACK_TH}></th>
+            {/if}
           </tr>
         </thead>
         <tbody>
@@ -359,7 +392,9 @@
               {#each cols.visible() as c (c.key)}
                 {@render cell(c, row)}
               {/each}
-              <td class={SLACK_TD}></td>
+              {#if !shareFlexes}
+                <td class={SLACK_TD}></td>
+              {/if}
             </tr>
           {/each}
         </tbody>

@@ -967,6 +967,20 @@
     </svg>
   </button>
 
+    <!-- WHICH COPY THIS IS. A second Network Activity looks exactly like the
+         first, and two identical titles on one page is the kind of thing a
+         reader resolves by scrolling back and forth. The number sits on the
+         card's top edge, at the end away from the title, straddling the
+         border the way a tab does -- so it labels the card as a thing rather
+         than joining the header, whose right end already carries controls
+         this frame cannot see. Always on: a copy is a copy whether or not
+         the pointer is near it. The same number the accessible name uses. -->
+    {#if copy}
+      <span class="badge" title={`${label} — copy ${id.slice(id.indexOf('#') + 1)}`} aria-hidden="true">
+        {id.slice(id.indexOf('#') + 1)}
+      </span>
+    {/if}
+
     {@render children()}
 
     {#if ghost}
@@ -1180,6 +1194,26 @@
    * Pinned by test_no_scoped_class_shadows_a_tailwind_utility, which builds the
    * CSS and compares the two sets. The failure is silent by construction: no
    * error, no warning, and nothing wrong with either file on its own. */
+  .badge {
+    position: absolute;
+    top: -8px;
+    right: 14px;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    height: 16px;
+    padding: 0 6px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--panel);
+    color: var(--ink-muted);
+    font-size: var(--text-micro);
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    line-height: 1;
+    pointer-events: none;
+  }
+
   .close {
     position: absolute;
     left: -20px;

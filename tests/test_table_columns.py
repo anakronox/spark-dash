@@ -539,3 +539,49 @@ def test_app_css_element_rules_are_layered():
         "the :root variable block was moved into @layer base — it has to stay "
         "unlayered to win against @theme inline's own definitions"
     )
+
+
+# --- the bar that flexes -----------------------------------------------------
+#
+# ThermalPanel's bar and ProcessTable's share bar absorb the leftover width
+# instead of a spacer column: a longer track is a finer reading, where a spacer
+# is nothing. But every column declares a `ch` width, so on a card narrower
+# than their sum the spacer went to zero and the table overflowed by the
+# difference -- a two-pixel sideways scroll on an 800px GPU Processes card.
+# The bar flexing is what makes the declared widths fit.
+
+
+@pytest.mark.parametrize(
+    "table,flag,key",
+    [("ThermalPanel", "barFlexes", "bar"), ("ProcessTable", "shareFlexes", "share")],
+)
+def test_the_bar_absorbs_the_width_and_the_spacer_returns_when_it_cannot(table, flag, key):
+    """Hidden from the menu or pinned to pixels, the bar cannot flex and the
+    spacer must come back in all three places (colgroup, thead, tbody) or the
+    fixed widths stretch to fill and the table is malformed."""
+    src = without_comments((COMPONENTS / f"{table}.svelte").read_text())
+    rule = src[src.index(f"const {flag}") :]
+    rule = rule[: rule.index(");") + 2]
+    assert f"'{key}'" in rule and "visible()" in rule, f"{table}: the flexing column is not the {key}"
+    assert re.search(rf"width\('{key}'\)\s*===\s*null", rule), f"{table}: a pinned {key} would still flex"
+    assert src.count(f"{{#if !{flag}}}") == 3, f"{table}: the spacer is not conditional in all three places"
+    assert f"{flag} && c.key === '{key}'" in src and "'auto'" in src, f"{table}: the {key} col is never auto"
+
+
+def test_the_process_table_minimum_is_the_sum_of_its_columns():
+    """`min-w` is what lets a narrow card scroll instead of crushing the bar,
+    and it is only honest if it equals what the columns declare: 91ch of
+    text columns at the 7.2px/ch the table's font measures, plus the 120px
+    floor the bar needs. A minimum below that sum crushes the bar to nothing
+    first (fixed layout ignores a cell's min-width); one above it scrolls a
+    card that would have fit."""
+    src = without_comments((COMPONENTS / "ProcessTable.svelte").read_text())
+    cols = src[src.index("const COLUMNS") : src.index("];", src.index("const COLUMNS"))]
+    widths = {m.group(1): int(m.group(2)) for m in re.finditer(r"key: '(\w+)'.*?width: (\d+)", cols)}
+    text_ch = sum(w for k, w in widths.items() if k != "share")
+    m = re.search(r"<table[^>]*min-w-\[(\d+)px\]", src)
+    assert m, "the table has no minimum width"
+    expected = round(text_ch * 7.2 + 120)
+    assert abs(int(m.group(1)) - expected) <= 12, (
+        f"min-w is {m.group(1)}px but the columns declare {text_ch}ch + 120px ~ {expected}px"
+    )

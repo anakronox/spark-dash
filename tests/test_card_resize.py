@@ -1169,3 +1169,22 @@ def test_idle_lives_in_the_groups_menu_not_on_the_card():
     assert "silentGroups" not in card, "the all-idle heading survives"
     assert "'all idle'" in card and "label: 'Idle links'" in card, "the groups menu does not carry idle"
     assert "key === '__idle'" in card, "the idle row does not toggle idle links"
+
+def test_a_copy_wears_its_number():
+    """Two Network Activity cards look identical, and the accessible name
+    ("Network Activity 2") is not something a sighted reader sees. The copy
+    carries its instance number on the card frame, always visible -- a copy
+    is a copy whether or not the pointer is near it -- and the number is the
+    same one the label uses, sliced from the same id."""
+    src = without_comments(SECTION.read_text())
+    assert "{#if copy}" in src, "nothing on the frame says which copy this is"
+    block = src[src.index("{#if copy}") :]
+    block = block[: block.index("{/if}")]
+    assert 'class="badge"' in block and "id.slice(id.indexOf('#') + 1)" in block, (
+        "the badge does not show the instance number"
+    )
+    css = css_block(SECTION, ".badge {")
+    assert "opacity" not in css, "the badge is hover-revealed; a copy must say so at rest"
+    assert "position: absolute" in css and "pointer-events: none" in css, (
+        "the badge is in the flow, or intercepts the header's controls"
+    )
