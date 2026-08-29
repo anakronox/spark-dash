@@ -5380,7 +5380,59 @@ than a hedge.
   every gap 16px, every card top on the module — and the corner still moves the
   card exactly 25px per press.
 
-- [ ] **AE4. Width, if it is still wanted.** Separate from the above and
+- [x] **AE12. The corner drags sideways too: half width ↔ full width.** Asked
+  for after the height resize proved itself, and it was mostly already built —
+  `layout.toggleWidth()` already existed, already reversible, already
+  remembering the column a card came from in `lastColumn`. It was simply only
+  reachable from Settings. All that was missing was the gesture.
+
+  **The one hard part is that the two axes are not the same kind of thing.**
+  Height is continuous — many rows, tracking the pointer, nudgeable. Width is a
+  single flip with a large consequence. Letting a diagonal do both is not untidy
+  but WRONG: changing the width changes the card's content layout (Temperatures
+  pairs its domains when wide), which changes its natural height, which
+  invalidates the span and the scale `onstart` captured. So the gesture **locks
+  to one axis** after 8px and ignores the other for its life. That also stops a
+  horizontal wobble during a height drag from reflowing the page under the hand.
+
+  The width half **aims and commits on release**, never mid-drag — the rule
+  `Section` already states for moving a card, and a width flip rearranges more
+  than a move does. 48px of travel to arm it, six times the axis-lock threshold,
+  because a card jumping between half and full width should take some saying.
+  The cue is an `outline` on the card: painted outside the box, so showing the
+  intent cannot move the thing being aimed at.
+
+  **The held height is cleared on a width change** (Brian's call). A card pinned
+  to 45 rows at half width is absurd at full width, where its content reflows
+  shorter.
+
+  **Bug found while testing it:** `pointerup` and `pointercancel` were bound to
+  one handler, so an interrupted gesture — the browser taking the pointer back,
+  a touch leaving the screen — flipped the card anyway. Height never needed that
+  care because it applies as it goes; width is aimed, so it has something to
+  abandon. Same reasoning as `Section.onCancel`.
+
+  Inert below 1100px, where the zones stack and every card is full width
+  whatever its placement says; the cursor drops back to `ns-resize` there rather
+  than promising a drag that does nothing. ARIA keeps the height contract — a
+  `separator` has one orientation and one value, and two axes are not expressible
+  — with `ArrowLeft`/`ArrowRight` on the grip for width alongside the existing
+  Settings toggle.
+
+  Coexists with the pair gesture (dragging a full-width card onto another's
+  edge), which was a deliberate decision: they are not identical, since pairing
+  picks a partner and a side while this returns you to your last column.
+
+  Measured live: half → full → half by drag; a (30,150) diagonal resized height
+  only, zone unchanged; a (120,30) diagonal flipped width only; 20px of travel
+  did nothing and 80px armed; cancel abandoned; a half-width card aimed narrower
+  and a full-width one aimed wider both stayed dark; keyboard did both ways; at
+  1000px wide nothing armed and the cursor read `ns-resize`. Module grid intact
+  throughout and the section order untouched.
+
+- [ ] **AE4. Column width as an fr ratio, if it is still wanted.** Now clearly
+  distinct from AE12, which moves a card between half and full; this would
+  change how a band SPLITS its two columns. Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
   A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag
   the tracks — measured, the two "equal halves" were **813.273px and

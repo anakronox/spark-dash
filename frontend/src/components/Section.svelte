@@ -521,6 +521,48 @@
     applyResize(dir * (coarse ? 4 : 1));
   }
 
+  /* --- WIDTH ------------------------------------------------------------
+   *
+   * The same corner, the other axis. The state change already existed and is
+   * already reversible: `toggleWidth` sends a full-width card back to the
+   * column it was last in, and a column card to full width.
+   *
+   * INERT BELOW THE BREAKPOINT. Under 1100px the zones stack and every card is
+   * full width whatever its placement says, so a flip there would change a
+   * stored value and nothing a reader can see.
+   */
+  let widthAim = $state<-1 | 0 | 1>(0);
+
+  const canWiden = $derived(layout.zoneOf(id) !== 'full');
+
+  function wideEnough(): boolean {
+    return globalThis.matchMedia?.('(min-width: 1100px)').matches ?? true;
+  }
+
+  /** Does aiming this way change anything? A full-width card cannot get wider
+   *  and a half-width one cannot get narrower, and an aim that would do nothing
+   *  must not light up as though it would. */
+  function meaningful(dir: -1 | 0 | 1): boolean {
+    if (dir === 0 || !wideEnough()) return false;
+    return dir === 1 ? canWiden : !canWiden;
+  }
+
+  function onWidthAim(dir: -1 | 0 | 1) {
+    widthAim = meaningful(dir) ? dir : 0;
+  }
+
+  function onWidthCommit(dir: -1 | 1) {
+    widthAim = 0;
+    if (!meaningful(dir)) return;
+    /* THE HELD HEIGHT GOES WITH IT. A card pinned to 45 rows at half width is
+       absurd at full width, where its content reflows shorter — Temperatures
+       pairs its five domains and loses a third of its height. The height was
+       chosen for a width that no longer applies, so keeping it would be
+       carrying over an answer to a question nobody asked again. */
+    layout.clearCardSpan(id);
+    layout.toggleWidth(id);
+  }
+
   function onResizeReset() {
     measure();
     /* The held height goes too. Leaving it would reset the card's CONTENT to
@@ -614,6 +656,7 @@
   bind:this={slotEl}
   data-slot={id}
   class="slot"
+  class:rearming={widthAim !== 0}
   style:--card-rows={cardRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
@@ -681,6 +724,9 @@
     <CardGrip
       onstart={onResizeStart}
       onmove={onResizeMove}
+      onaim={onWidthAim}
+      oncommit={onWidthCommit}
+      armed={widthAim !== 0}
       onstep={onResizeStep}
       onreset={onResizeReset}
       label={label}
@@ -725,6 +771,16 @@
        Safe only because `cardRows` is measured with this lifted — see
        measure(). A height that fed its own input would ratchet. */
     min-height: calc(var(--card-rows, 1) * var(--row-unit) - 16px);
+  }
+
+  /* Aimed at a width change, pending release. An OUTLINE rather than a border
+     or a size change: outlines are painted outside the box and take no space,
+     so showing the intent cannot move the card that is being aimed at — the
+     same reason the move gesture draws a line instead of opening a gap. */
+  .slot.rearming {
+    outline: 1px dashed var(--warning);
+    outline-offset: 3px;
+    border-radius: var(--radius);
   }
 
   .slot.grabbed {

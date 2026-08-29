@@ -450,3 +450,86 @@ def test_the_module_grid_reaches_full_width_bands_too():
     assert "grid-auto-rows: var(--row-unit)" in zone, (
         "the module grid is scoped to something narrower than every zone"
     )
+
+
+def test_the_two_axes_are_locked_apart():
+    """THE FAILURE THIS EXISTS FOR: height is continuous and width is one
+    discrete flip, and flipping the width changes the card's content layout --
+    Temperatures pairs its domains when wide -- which changes its natural
+    height, which invalidates the span and the scale `onstart` captured. A
+    diagonal drag doing both would corrupt the height it was computing.
+
+    It also stops a horizontal wobble during a height drag from reflowing the
+    page under the reader's hand."""
+    body = without_comments(GRIP.read_text())
+    down = body[body.index("function onpointerdown") : body.index("function onkeydown")]
+    assert "axis" in down, "the gesture never commits to an axis"
+    assert re.search(r"axis = Math\.abs\(dx\) > Math\.abs\(dy\) \? 'x' : 'y'", down), (
+        "the axis is not chosen by which way the pointer actually went"
+    )
+    assert re.search(r"if \(axis === 'y'\) \{\s*onmove\(dy\);\s*return;", down), (
+        "a height-locked gesture can still reach the width path"
+    )
+
+
+def test_a_width_drag_aims_before_it_commits():
+    """`Section` states the rule for moving a card -- nothing rearranges while
+    it is being aimed at -- and a width flip is a bigger rearrangement than a
+    move. It must show what a release would do and do nothing else."""
+    body = without_comments(GRIP.read_text())
+    down = body[body.index("function onpointerdown") : body.index("function onkeydown")]
+    move = down[down.index("const move") : down.index("const stop")]
+    assert "oncommit" not in move, "the width flip applies mid-drag instead of on release"
+    assert "onaim(" in move, "nothing previews what the release will do"
+
+    assert re.search(r"const ARM = (\d+)", body), "no threshold before a width aim counts"
+    arm = int(re.search(r"const ARM = (\d+)", body).group(1))
+    lock = int(re.search(r"const LOCK = (\d+)", body).group(1))
+    assert arm > lock * 3, (
+        f"ARM {arm} is too close to LOCK {lock} -- a card would flip width on a nudge"
+    )
+
+
+def test_a_cancelled_width_gesture_abandons():
+    """MEASURED BUG in the first cut: pointerup and pointercancel were bound to
+    one handler, so an interrupted gesture -- the browser taking the pointer
+    back, a touch leaving the screen -- flipped the card anyway. Height needs no
+    such care because it applies as it goes; width is aimed, so it has something
+    to abandon."""
+    body = without_comments(GRIP.read_text())
+    down = body[body.index("function onpointerdown") : body.index("function onkeydown")]
+    assert "const cancel" in down, "cancel is not handled separately from release"
+    cancel = down[down.index("const cancel") :]
+    cancel = cancel[: cancel.index(";") + 1]
+    assert "oncommit" not in cancel, "a cancelled gesture still commits the flip"
+
+    assert "addEventListener('pointercancel', cancel)" in down, (
+        "pointercancel is still wired to the release handler"
+    )
+
+
+def test_a_width_change_releases_the_held_height():
+    """A card pinned to 45 rows at half width is absurd at full width, where its
+    content reflows shorter. The height was chosen for a width that no longer
+    applies."""
+    body = section_fn("onWidthCommit")
+    assert "clearCardSpan(" in body, "the held height survives a width change"
+    assert "toggleWidth(" in body, "the width never actually changes"
+    assert body.index("clearCardSpan") < body.index("toggleWidth"), (
+        "the height is cleared after the reflow rather than before it"
+    )
+
+
+def test_width_is_inert_where_there_are_no_columns():
+    """Below 1100px the zones stack and every card is full width whatever its
+    placement says. A flip there would change a stored value and nothing a
+    reader can see."""
+    src = without_comments(SECTION.read_text())
+    assert "min-width: 1100px" in src, "nothing checks that there are columns to move between"
+    assert "function wideEnough" in src, "the breakpoint test has no single home"
+
+    meaningful = section_fn("meaningful")
+    assert "wideEnough()" in meaningful, "an aim can arm where width means nothing"
+    assert "canWiden" in meaningful, (
+        "a full-width card could arm for wider, or a half-width one for narrower"
+    )
