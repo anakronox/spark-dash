@@ -328,9 +328,24 @@
    * not accumulate snapping error, so two columns stay aligned even when a row
    * inside one of them renders half a pixel tall. What must never be done is
    * dividing a pixel budget by a nominal 25 — hence `measure()`. */
+  /** Resolved once; the module does not vary by theme. */
+  let unitCache = 0;
+
   function rowUnit(): number {
-    const declared = getComputedStyle(document.documentElement).getPropertyValue('--row-unit');
-    return parseFloat(declared) || 25;
+    if (unitCache) return unitCache;
+    /* MEASURED FROM A PROBE, not read from the property.
+     * `getComputedStyle().getPropertyValue('--row-unit')` returns the literal
+     * `calc(14px + 2 * 5px + 1px)` — custom properties are substituted, not
+     * computed — so parseFloat gives NaN and any `|| 25` fallback beside it
+     * hides the fact that the token was never read at all. Restating the
+     * arithmetic in JS would be the same formula in two places. An element
+     * asked for that height resolves it the way CSS does, once. */
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;height:var(--row-unit)';
+    document.body.appendChild(probe);
+    unitCache = probe.getBoundingClientRect().height;
+    probe.remove();
+    return unitCache;
   }
 
   /** Re-read what this card is drawing.
@@ -356,6 +371,9 @@
   function measure() {
     if (!slotEl) return;
 
+    const unit = rowUnit();
+    cardRows = Math.max(1, Math.ceil((slotEl.getBoundingClientRect().height + GAP_PX) / unit));
+
     const plots = slotEl.querySelectorAll<HTMLElement>('.uplot');
     if (plots.length) {
       mode = 'plot';
@@ -371,6 +389,22 @@
     const row = slotEl.querySelector<HTMLElement>('tbody tr');
     pxPerUnit = (row?.offsetHeight || rowUnit()) * Math.max(1, bodies.length);
   }
+
+  /** How many modules this card spans in packed mode.
+   *
+   * THE LOOP THIS IS SHAPED AROUND: a span that made the card taller would be
+   * measured on the next pass as the new natural height, spanning further every
+   * frame. `align-self: start` is what breaks it — the card keeps its own
+   * height inside whatever span it is given, so what is measured never depends
+   * on what was written. `effect_update_depth_exceeded` is compiled out of
+   * production builds, so a loop here would throw in dev and silently spin for
+   * a reader.
+   *
+   * The gap is inside the span rather than between the tracks: `row-gap: 16px`
+   * on 25px tracks would put every card after the first at 25n + 16, which is
+   * never on the grid, and the whole point is that it is. */
+  const GAP_PX = 16;
+  let cardRows = $state(1);
 
   function onResizeStart() {
     measure();
@@ -435,19 +469,44 @@
 
     measure();
 
-    let queued = 0;
-    const mo = new MutationObserver(() => {
+    /* Coalesced with a TIMER, not requestAnimationFrame, and the difference is
+       a real bug rather than a preference.
+       rAF does not run in a hidden or occluded tab. With a `queued` flag
+       guarding it, one notification arriving while the tab is in the
+       background sets the flag, the frame never comes, the flag is never
+       cleared — and every future mutation returns early for the life of the
+       component. Measured: the card's span froze at its pre-content value of 4
+       while the card itself grew to 668px, so it overlapped its neighbour, and
+       no amount of poking the DOM would shake it loose. This dashboard's whole
+       job is to sit on a second monitor, which is exactly where that happens.
+       A timer is throttled in the background but it does fire, and
+       `getBoundingClientRect()` flushes layout itself, so rAF bought nothing
+       here anyway. */
+    let queued: ReturnType<typeof setTimeout> | 0 = 0;
+    const soon = () => {
       if (queued) return;
-      queued = requestAnimationFrame(() => {
+      queued = setTimeout(() => {
         queued = 0;
         measure();
-      });
-    });
+      }, 0);
+    };
+
+    /* BOTH observers, because they answer different questions and each misses
+       what the other catches. The MutationObserver is the one that notices a
+       chart arriving where a placeholder was — measured, a ResizeObserver does
+       NOT fire for that, because the 132px plot lands within a pixel of the
+       140px placeholder it replaced. The ResizeObserver is the one that
+       notices a card growing without its structure changing, which is what the
+       span depends on. */
+    const mo = new MutationObserver(soon);
     mo.observe(el, { childList: true, subtree: true });
+    const ro = new ResizeObserver(soon);
+    ro.observe(el);
 
     return () => {
       mo.disconnect();
-      if (queued) cancelAnimationFrame(queued);
+      ro.disconnect();
+      if (queued) clearTimeout(queued);
     };
   });
 
@@ -478,6 +537,8 @@
   bind:this={slotEl}
   data-slot={id}
   class="slot"
+  class:quantised={layout.bandMode === 'packed'}
+  style:--card-rows={cardRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
     ? `translate(${offsetX}px, ${offsetY}px)`
@@ -574,6 +635,15 @@
        because its declared column widths sum highest — the bug was in every
        panel and visible in one. */
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Packed mode only. Aligned mode's zone is a subgrid of the band's rows and
+     has its own answer to where a card sits; a span would fight it. */
+  .slot.quantised {
+    grid-row: span var(--card-rows, 1);
+    /* The line that keeps the measurement honest — see cardRows. */
+    align-self: start;
+    margin-bottom: 16px;
   }
 
   .slot.grabbed {

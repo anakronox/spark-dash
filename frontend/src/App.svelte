@@ -1055,9 +1055,22 @@
       grid-template-rows: none;
     }
 
+    /* THE MODULE GRID. Packed mode's columns are independent, so nothing makes
+       a card in one line up with a card in the other — the two stacks drift
+       apart by whatever their contents happen to measure. Putting both on a
+       track grid of one table row fixes that without reintroducing the
+       stretching that aligned mode pays for it: every card's TOP lands on a
+       multiple of `--row-unit` in both columns, because every card spans a
+       whole number of them.
+
+       `row-gap: 0` and the gap moved inside the span (see `.slot.quantised` in
+       Section.svelte) — a 16px gap between 25px tracks would put every card
+       after the first at 25n + 16, which is never on the grid. */
     .cols.packed > .zone {
       grid-row: auto;
       grid-template-rows: none;
+      grid-auto-rows: var(--row-unit);
+      row-gap: 0;
       align-content: start;
     }
 
