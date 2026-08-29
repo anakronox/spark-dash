@@ -451,7 +451,11 @@
   {#if error}
     <p class="error">Couldn't load history: {error}</p>
   {:else if !charts.length || !anyData}
-    <p class="empty dim">
+    <!-- The card's OWN plot height, not a fixed one. This placeholder exists so
+         toggling a metric with no data does not make the stack jump, and a
+         fixed 140px stopped delivering that the moment plot height became
+         draggable: a card at 432px would drop to 140 and back. -->
+    <p class="empty dim" style:height="{plotHeight}px">
       {loading ? 'Loading…' : 'No data in this range.'}
     </p>
   {:else}
@@ -662,9 +666,7 @@
 
   .empty {
     font-size: var(--text-label);
-    /* Holds the chart's height so toggling a metric with no data doesn't make
-       the whole stack jump. */
-    height: 140px;
+    /* Height is set inline from plotHeight -- see the markup. */
     display: flex;
     align-items: center;
   }

@@ -601,3 +601,17 @@ def test_the_cue_finds_the_page_by_walking_up_from_the_card():
     assert "document.querySelector" not in box, (
         "a document-wide query can match Settings' own markup"
     )
+
+
+def test_a_resized_card_makes_the_layout_non_default():
+    """FOUND BY THE BUG SWEEP: isDefault checked `rows` but not `plotHeights` or
+    `cardSpans`. A chart card's drag writes only those two, so its "reset
+    layout" button never appeared and Settings' reset stayed disabled -- the
+    card could be dragged and then only un-dragged corner by corner."""
+    src = without_comments(LAYOUT.read_text())
+    body = src[src.index("get isDefault()") :]
+    body = body[: body.index("\n  }")]
+    for store in ("rows", "plotHeights", "cardSpans"):
+        assert f"Object.keys(this.{store}).length === 0" in body, (
+            f"a change to {store} does not make the layout non-default, so it cannot be reset"
+        )

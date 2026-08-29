@@ -583,7 +583,7 @@
 
             <div class="fields">
               <label>host
-                <input class="in" placeholder="192.168.50.61" bind:value={n.host} />
+                <input class="in" placeholder="192.168.1.10" bind:value={n.host} />
               </label>
               <label>cluster
                 <!-- A NAME, never a count: "pair" stops being true at three

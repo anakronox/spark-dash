@@ -1054,6 +1054,13 @@ export class Layout {
       this.hidden.length === 0 &&
       Object.keys(this.placement).length === 0 &&
       Object.keys(this.rows).length === 0 &&
+      /* BOTH resize maps, not just `rows`. A chart card's drag writes only
+         plotHeights and cardSpans, so with these missing the "reset layout"
+         button never appeared for it and Settings' reset stayed disabled --
+         the card could be dragged and then only un-dragged corner by corner.
+         Found by a bug sweep, not by a user, which is the only good way. */
+      Object.keys(this.plotHeights).length === 0 &&
+      Object.keys(this.cardSpans).length === 0 &&
       this.nodeOrder.length === 0 &&
       !columnStore.customised &&
       !this.compactCards

@@ -30,6 +30,7 @@ without someone first checking that the sensors appeared.
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 from pathlib import Path
 
 from spark_dash_common.models import TempSensor
@@ -176,18 +177,14 @@ def read_hwmon(sys_path: Path) -> list[TempSensor]:
                 continue
             stem = temp_input.name.removesuffix("_input")
             label = None
-            try:
+            with suppress(OSError):
                 label = (chip / f"{stem}_label").read_text().strip() or None
-            except OSError:
-                pass
             # The chip's own label where it has one -- `Composite` says more
             # than `temp1` -- and the device address where several identical
             # chips share a name, which is every mlx5 on this hardware.
             device = ""
-            try:
+            with suppress(OSError):
                 device = (chip / "device").resolve().name
-            except OSError:
-                pass
             parts = [name]
             if device and device != name:
                 parts.append(device)

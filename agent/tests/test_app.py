@@ -484,12 +484,21 @@ def test_thermal_metrics_carry_every_sensor_and_its_own_limit():
         ]
     )
     text = render(snap)
-    assert 'sparkdash_temperature_celsius{domain="package",node="gx10-1",sensor="zone0"} 95.4' in text
-    assert 'sparkdash_temperature_limit_celsius{domain="package",node="gx10-1",sensor="zone0"} 104.8' in text
+    assert (
+        'sparkdash_temperature_celsius{domain="package",node="gx10-1",sensor="zone0"} 95.4'
+        in text
+    )
+    assert (
+        'sparkdash_temperature_limit_celsius{domain="package",node="gx10-1",sensor="zone0"}'
+        " 104.8" in text
+    )
     # OMITTED, never zeroed. A wifi phy states no limit, and reporting 0 would
     # give it the worst headroom on the card.
     assert 'sparkdash_temperature_limit_celsius{domain="wireless"' not in text
-    assert 'sparkdash_temperature_celsius{domain="wireless",node="gx10-1",sensor="phy0"} 42.0' in text
+    assert (
+        'sparkdash_temperature_celsius{domain="wireless",node="gx10-1",sensor="phy0"} 42.0'
+        in text
+    )
 
 
 def test_the_headline_is_the_hottest_sensor_and_a_stable_series():
@@ -509,7 +518,8 @@ def test_the_headline_is_the_hottest_sensor_and_a_stable_series():
     text = render(snap)
     assert 'sparkdash_system_temperature_celsius{node="gx10-1"} 95.4' in text
     assert (
-        'sparkdash_system_temperature_source_info{domain="package",node="gx10-1",sensor="zone0"} 1.0'
+        'sparkdash_system_temperature_source_info{domain="package",node="gx10-1",sensor="zone0"}'
+        " 1.0"
         in text
     )
 
@@ -589,13 +599,16 @@ def test_every_rdma_port_gets_both_state_and_info():
     )
     text = render(snap)
     for device, port in (("roceP2p1s0f0", 1), ("mlx5_9", 2)):
-        assert f'sparkdash_rdma_port_active{{device="{device}",node="gx10-1",port="{port}"}}' in text
+        assert (
+            f'sparkdash_rdma_port_active{{device="{device}",node="gx10-1",port="{port}"}}'
+            in text
+        )
         info = [
-            l
-            for l in text.splitlines()
-            if l.startswith("sparkdash_rdma_port_info{")
-            and f'device="{device}"' in l
-            and f'port="{port}"' in l
+            ln
+            for ln in text.splitlines()
+            if ln.startswith("sparkdash_rdma_port_info{")
+            and f'device="{device}"' in ln
+            and f'port="{port}"' in ln
         ]
         assert len(info) == 1, f"{device}:{port} has {len(info)} info rows, need exactly 1"
 
@@ -621,7 +634,7 @@ def test_rdma_port_info_carries_the_paired_interface():
     text = render(snap)
     assert 'interface="enP2p1s0f0np0"' in text
     assert "sparkdash_rdma_port_info{" in text
-    line = next(l for l in text.splitlines() if l.startswith("sparkdash_rdma_port_info{"))
+    line = next(ln for ln in text.splitlines() if ln.startswith("sparkdash_rdma_port_info{"))
     # Read from sysfs, not munged out of the device name: `roceP2p1s0f0` and
     # `enP2p1s0f0np0` look derivable and a regex over them would be a guess
     # that happens to work on this hardware.
@@ -634,7 +647,7 @@ def test_rdma_port_info_reports_no_pairing_as_empty_not_missing():
     accepts and every `on (interface)` join then silently drops."""
     snap = make_snapshot(rdma=[RdmaPort(device="mlx5_0", port=1, state="ACTIVE")])
     text = render(snap)
-    line = next(l for l in text.splitlines() if l.startswith("sparkdash_rdma_port_info{"))
+    line = next(ln for ln in text.splitlines() if ln.startswith("sparkdash_rdma_port_info{"))
     assert 'interface=""' in line
 
 

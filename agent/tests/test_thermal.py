@@ -18,17 +18,18 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from spark_dash_common.models import GpuMetrics
 from spark_dash_agent.collectors.thermal import (
     ThermalCollector,
     classify,
     read_hwmon,
     read_thermal_zones,
 )
+from spark_dash_common.models import GpuMetrics
 
 
-def zone(root: Path, index: int, *, temp_c: float, kind: str = "acpitz", trip_c: float | None = 104.8):
+def zone(
+    root: Path, index: int, *, temp_c: float, kind: str = "acpitz", trip_c: float | None = 104.8
+):
     z = root / "class" / "thermal" / f"thermal_zone{index}"
     z.mkdir(parents=True)
     (z / "type").write_text(f"{kind}\n")
@@ -67,7 +68,10 @@ def gb10(tmp_path: Path) -> Path:
     # hwmon0 IS thermal_zone0's hwmon child and republishes all seven zones.
     hwmon(
         tmp_path, 0, name="acpitz",
-        temps={f"temp{i + 1}": {"input": t} for i, t in enumerate([74.5, 59.0, 58.2, 59.8, 67.8, 74.5, 61.8])},
+        temps={
+            f"temp{i + 1}": {"input": t}
+            for i, t in enumerate([74.5, 59.0, 58.2, 59.8, 67.8, 74.5, 61.8])
+        },
     )
     hwmon(
         tmp_path, 1, name="nvme", device="nvme0",
@@ -256,7 +260,10 @@ def test_the_gpu_limit_is_shutdown_not_slowdown(monkeypatch):
     monkeypatch.setattr(builder._gpu, "shutdown_temp_c", 90.0, raising=False)
     monkeypatch.setattr(builder._gpu, "slowdown_temp_c", 86.0, raising=False)
     monkeypatch.setattr(
-        builder._gpu, "safe_collect", lambda errors: GpuMetrics(util_pct=10.0, temp_c=70.0), raising=False
+        builder._gpu,
+        "safe_collect",
+        lambda errors: GpuMetrics(util_pct=10.0, temp_c=70.0),
+        raising=False,
     )
     monkeypatch.setattr(builder._thermal, "safe_collect", lambda errors: [], raising=False)
 
