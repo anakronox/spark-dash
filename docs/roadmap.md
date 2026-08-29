@@ -5271,6 +5271,40 @@ than a hedge.
   border extending the full height; shrunk to 159px with the table paginated to
   two rows; double-click back to 358px with both stored entries gone.
 
+- [x] **AE9. Even gaps: the card fills its span.** Reported from a screenshot,
+  then measured: gaps between consecutive cards of **18, 21, 23, 32 and 34px**
+  where there had been a uniform 16. A regression introduced by AE7.
+
+  The cause is the quantisation itself. A card left at its natural height inside
+  a taller span puts the slack — up to one whole module — into the gap *below*
+  it, so the spacing is 16px plus however much that card happened to round up
+  by, and no two match. Filling the span moves the slack inside the card, under
+  its own content where it reads as padding, and every gap becomes the 16px the
+  margin declares.
+
+  **Filling it is what made the measurement hard, and the failure is a RATCHET
+  rather than a runaway.** The card now fills its span, so reading its rendered
+  height reads the span straight back — and a span that only ever came from its
+  own output can never go down. A card whose content shrank would keep the
+  height it once needed for ever. So `measure()` lifts `min-height` for the
+  length of one read; `getBoundingClientRect()` flushes layout, so the value is
+  real and the restore lands in the same frame.
+
+  `align-self: start` and `min-height` are not in tension, which is worth
+  stating because they look it. Start-alignment is what makes the lifted
+  measurement return the CONTENT's height instead of the grid area's;
+  `min-height` is what makes the card occupy the whole span. Remove either and
+  the gaps go uneven again, for opposite reasons.
+
+  The held height folded into the same number — `cardRows = max(natural, held)`
+  — so there is now one span driving one `min-height`, rather than two heights
+  competing.
+
+  Verified live: every gap exactly 16px with all cards still on the grid;
+  Network Activity switched charts → table → charts at 684 → 609 → 684px, so
+  the ratchet is genuinely gone; a card grown to 834px and dragged back landed
+  on 334px, its starting height.
+
 - [ ] **AE4. Width, if it is still wanted.** Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
   A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag

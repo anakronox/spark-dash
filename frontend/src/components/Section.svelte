@@ -369,8 +369,21 @@
   function measure() {
     if (!slotEl) return;
 
+    /* MEASURED WITH THE FLOOR LIFTED, which is the only way this can also be
+       the thing that sets the floor.
+       The card fills its span, so reading its rendered height would just read
+       the span back — and a span that only ever grew from its own output is a
+       ratchet: a card whose content shrank (fewer processes, Network Activity
+       switching from charts to a table) would keep the height it once needed
+       for ever. Dropping `min-height` for the length of one read gives the
+       height the CONTENT wants; `getBoundingClientRect()` flushes layout, so
+       the value is real and the restore lands in the same frame. */
     const unit = rowUnit();
-    cardRows = Math.max(1, Math.ceil((slotEl.getBoundingClientRect().height + GAP_PX) / unit));
+    const held = slotEl.style.minHeight;
+    slotEl.style.minHeight = '0px';
+    const natural = slotEl.getBoundingClientRect().height;
+    slotEl.style.minHeight = held;
+    naturalRows = Math.max(1, Math.ceil((natural + GAP_PX) / unit));
 
     const plots = slotEl.querySelectorAll<HTMLElement>('.uplot');
     if (plots.length) {
@@ -404,7 +417,8 @@
   const GAP_PX = 16;
   /** The card's span when the current gesture began. */
   let startSpan = 1;
-  let cardRows = $state(1);
+  /** Modules this card's CONTENT needs, measured. */
+  let naturalRows = $state(1);
 
   function onResizeStart() {
     measure();
@@ -562,8 +576,9 @@
      in; they differ because those are the two different questions a reader has
      about the two kinds of card. Pixels used to be reported here, and named a
      quantity nothing else on the page is measured in. */
-  /** The height the reader has pinned this card to, in modules; 0 for none. */
-  const heldRows = $derived(layout.cardSpan(id));
+  /** What the card actually spans: enough for its content, or the height the
+   *  reader pinned it to, whichever is larger. */
+  const cardRows = $derived(Math.max(naturalRows, layout.cardSpan(id)));
 
   const resizeValue = $derived(mode === 'plot' ? cardRows : layout.rowChoice(id));
   const resizeText = $derived(
@@ -594,7 +609,6 @@
   class="slot"
   class:quantised={layout.bandMode === 'packed'}
   style:--card-rows={cardRows}
-  style:--held-rows={heldRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
     ? `translate(${offsetX}px, ${offsetY}px)`
@@ -700,15 +714,16 @@
     /* The line that keeps the measurement honest — see cardRows. */
     align-self: start;
     margin-bottom: 16px;
-    /* THE HELD HEIGHT, and the only reason it is safe to write a height here at
-       all: `--held-rows` is what the reader dragged to, never anything this
-       component measured. The card renders `max(natural, held)`, `cardRows`
-       reads that back as exactly `held`, and it stops. A height derived from
-       the measurement would grow every frame instead.
-       `max(0px, …)` because the subtraction goes negative with no held value,
-       and a negative min-height is not the same as none. The −16px is the gap,
-       which lives inside the span. */
-    min-height: max(0px, calc(var(--held-rows, 0) * var(--row-unit) - 16px));
+    /* THE CARD FILLS ITS SPAN, and this is what keeps the gaps even.
+       Left to its natural height inside a taller span, a card put the
+       quantisation slack — up to 24px — into the gap BELOW it, so the spacing
+       between cards ran 16 to 40px and no two were alike. Measured on the live
+       page: 18, 21, 23, 32, 34. Filling the span moves that slack inside the
+       card, under its own content where it reads as padding, and every gap
+       becomes the 16px this margin declares.
+       Safe only because `cardRows` is measured with this lifted — see
+       measure(). A height that fed its own input would ratchet. */
+    min-height: calc(var(--card-rows, 1) * var(--row-unit) - 16px);
   }
 
   .slot.grabbed {

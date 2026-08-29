@@ -336,7 +336,12 @@ def test_a_card_can_be_held_taller_than_its_content():
 
     block = css_block(SECTION, ".slot.quantised {")
     assert "min-height" in block, "nothing makes the card fill the height it was held to"
-    assert "--held-rows" in block, "the held height is not what drives it"
+    assert "--card-rows" in block, "the fill is not driven by the card's span"
+
+    src = without_comments(SECTION.read_text())
+    assert re.search(r"cardRows = \$derived\(Math\.max\(naturalRows, layout\.cardSpan\(id\)\)\)", src), (
+        "the span is not max(content, held), so one of the two cannot win"
+    )
 
 
 def test_the_held_height_is_never_written_from_a_measurement():
@@ -375,3 +380,37 @@ def test_reset_releases_the_held_height():
     block = block[: block.index("\n  }")]
     assert "this.cardSpans = {}" in block, "reset leaves held heights in place"
     assert "CARD_SPAN_KEY" in block, "reset leaves held heights on disk"
+
+
+def test_every_gap_between_cards_is_the_same():
+    """REGRESSION, reported from a screenshot and then measured: 18, 21, 23, 32,
+    34px between consecutive cards where there had been a uniform 16.
+
+    A card left at its natural height inside a taller span puts the
+    quantisation slack -- up to one whole module -- into the gap BELOW it, so
+    no two gaps match. Filling the span moves that slack inside the card, under
+    its own content where it reads as padding."""
+    block = css_block(SECTION, ".slot.quantised {")
+    assert "min-height" in block, "the card does not fill its span, so the slack lands in the gap"
+    assert "margin-bottom: 16px" in block, "nothing declares the gap"
+
+    # `align-self: start` stays, and is not in tension with the fill -- see
+    # test_the_span_cannot_feed_its_own_measurement. Start-alignment is what
+    # makes the lifted measurement return the CONTENT's height rather than the
+    # grid area's; min-height is what makes the card occupy the whole span.
+    # Remove either and the gaps go uneven again, for opposite reasons.
+    assert "align-self: start" in block, "the lifted measurement would read the grid area"
+
+
+def test_the_span_is_measured_with_the_fill_lifted():
+    """The card fills its span, so reading its rendered height reads the span
+    straight back. That is not a runaway -- it is a RATCHET: a card whose
+    content shrank would keep the height it once needed for ever. Verified
+    live by switching Network Activity from charts to a table and back:
+    684 -> 609 -> 684."""
+    body = section_fn("measure")
+    assert "minHeight = '0px'" in body, "the natural height is measured through the fill"
+    assert body.index("minHeight = '0px'") < body.index("getBoundingClientRect"), (
+        "the fill is lifted after the measurement, not before"
+    )
+    assert "naturalRows" in body, "measure() does not record the content's own height"
