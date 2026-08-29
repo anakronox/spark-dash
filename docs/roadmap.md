@@ -5474,6 +5474,15 @@ than a hedge.
   table on this dashboard is 43 sensors — but a layout saved with a `0` still
   round-trips, because `rowsFor` keeps translating it to `Infinity`.
 
+- [x] **AE17. Card titles get a step of their own.** They were the 10px
+  uppercase eyebrow — the same size as the column headers beneath them,
+  differing only in weight and ink — so on a dense table "GPU PROCESSES" read as
+  one more row of column labels. New token `--text-heading: 13px`, one step
+  above the body, with tracking pulled in from 0.14em to 0.1em because what
+  reads as texture at 10px reads as gaps at 13. The collapsed stub is the same
+  title and takes the same size. Measured: title 13px/700, column header
+  10px/500, body 12px; module grid and gaps unchanged.
+
 - [x] **AE16. Network Activity divides into RoCE, Management, WiFi and Other,
   behind a menu.** Asked for with a specific case in mind: a non-RDMA
   ConnectX-7 port cabled to some other fabric belongs in *Other*, not

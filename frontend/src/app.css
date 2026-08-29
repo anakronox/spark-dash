@@ -78,6 +78,14 @@
   --text-title: 19px;
   --text-title-sm: 15px;
 
+  /* A CARD'S TITLE. Added 2026-08-29, when the titles were found to be nearly
+   * indistinguishable from the column headers beneath them: both were the
+   * 10px uppercase eyebrow, differing only in weight and ink, and on a dense
+   * table "GPU PROCESSES" read as one more row of column labels. One step
+   * above the body, so a title is the largest thing on its card's first line
+   * without competing with the figures the cards are built around. */
+  --text-heading: 13px;
+
   /* A control GLYPH, not text: the fly-out close buttons, sized for a pointer
    * target rather than for reading. Two components, one role. */
   --text-glyph: 20px;
@@ -627,7 +635,11 @@
    * every label within one is an h3, a span, or carries `dim`.
    */
   h2.eyebrow {
+    font-size: var(--text-heading);
     font-weight: 700;
+    /* Tighter than the eyebrow's 0.14em: tracking that reads as texture at
+       10px reads as gaps at 13. */
+    letter-spacing: 0.1em;
     color: var(--ink);
   }
 

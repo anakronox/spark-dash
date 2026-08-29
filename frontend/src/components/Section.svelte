@@ -1136,6 +1136,8 @@
      put away. (A span rather than an h2 here: the whole stub is a button, and
      a heading inside a button is a heading you cannot navigate to.) */
   .stub .eyebrow {
+    font-size: var(--text-heading);
+    letter-spacing: 0.1em;
     color: var(--ink);
     font-weight: 700;
   }

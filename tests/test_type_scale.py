@@ -90,3 +90,24 @@ def test_the_display_scale_survives(token):
     is built from them — so folding them into the interface scale would flatten
     it. Pinned so a later tidy does not mistake considered for stray."""
     assert token in APP_CSS.read_text(), f"{token} was removed"
+
+
+def test_a_card_title_is_a_step_above_the_body():
+    """Titles were the 10px uppercase eyebrow, the same size as the column
+    headers beneath them and differing only in weight and ink -- on a dense
+    table "GPU PROCESSES" read as one more row of column labels. A title is
+    the largest thing on its card's first line now: 13px, one step above the
+    12px body, with its tracking pulled in because 0.14em reads as gaps at
+    that size."""
+    from pathlib import Path
+    css = (Path(__file__).resolve().parent.parent / "frontend/src/app.css").read_text()
+    assert "--text-heading: 13px;" in css, "the title has no step of its own"
+    rule = css[css.index("h2.eyebrow {") :]
+    rule = rule[: rule.index("}")]
+    assert "font-size: var(--text-heading)" in rule, "card titles still borrow the eyebrow's size"
+    assert "letter-spacing: 0.1em" in rule, "eyebrow tracking at 13px reads as gaps"
+    stub = (Path(__file__).resolve().parent.parent / "frontend/src/components/Section.svelte").read_text()
+    block = stub[stub.index(".stub .eyebrow {") :]
+    assert "var(--text-heading)" in block[: block.index("}")], (
+        "a collapsed card's title is the same title and must be the same size"
+    )
