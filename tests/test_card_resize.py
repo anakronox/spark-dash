@@ -205,7 +205,7 @@ def test_the_default_plot_height_is_stated_once():
         assert "plotHeight = DEFAULT_PLOT_PX" in src, f"{name} repeats the default height"
 
 
-def test_reset_puts_the_heights_the_caps_and_the_band_mode_back():
+def test_reset_puts_the_heights_and_the_caps_back():
     """The rule layout.reset() already states for hidden sections and switched
     off columns: one control has to put everything back."""
     src = without_comments(LAYOUT.read_text())
@@ -214,7 +214,6 @@ def test_reset_puts_the_heights_the_caps_and_the_band_mode_back():
     assert "this.plotHeights = {}" in body, "reset leaves dragged plot heights in place"
     assert "this.rows = {}" in body, "reset leaves dragged row caps in place"
     assert "PLOT_HEIGHT_KEY" in body, "reset leaves the stored heights on disk"
-    assert "setBandMode('packed')" in body, "reset does not restore the default band mode"
 
 
 def test_every_card_has_exactly_one_resize_corner():
@@ -289,7 +288,7 @@ def test_the_span_cannot_feed_its_own_measurement():
     new natural height and grow again every frame. effect_update_depth_exceeded
     is compiled out of production builds, so it throws in dev and spins
     silently for a reader."""
-    block = css_block(SECTION, ".slot.quantised {")
+    block = css_block(SECTION, ".slot {")
     assert "align-self: start" in block, (
         "the card fills its span, so measuring it feeds the span that set it"
     )
@@ -298,24 +297,26 @@ def test_the_span_cannot_feed_its_own_measurement():
 def test_the_gap_is_inside_the_span():
     """A 16px row-gap between 25px tracks puts every card after the first at
     25n + 16, which is never on the grid -- and being on the grid is the point."""
-    packed = css_block(APP, ".cols.packed > .zone {")
-    assert "grid-auto-rows: var(--row-unit)" in packed, "the zone is not a module grid"
-    assert "row-gap: 0" in packed, "a row gap would push every card off the grid"
-    assert "margin-bottom" in css_block(SECTION, ".slot.quantised {"), (
+    zone = css_block(APP, ".zone {")
+    assert "grid-auto-rows: var(--row-unit)" in zone, "the zone is not a module grid"
+    assert "row-gap: 0" in zone, "a row gap would push every card off the grid"
+    assert "margin-bottom" in css_block(SECTION, ".slot {"), (
         "nothing separates the cards"
     )
 
 
-def test_packed_is_the_default():
-    """Measured on the same seven cards: aligned hid 1342px of stretch inside
-    three of them; packed left 530px in one visible block, and once both
-    columns sit on the module grid the cards line up anyway."""
-    src = without_comments(LAYOUT.read_text())
-    body = src[src.index("function readBandMode") :]
-    body = body[: body.index("\n}")]
-    assert "'aligned' ? 'aligned' : 'packed'" in body, "the stored value does not default to packed"
-    assert body.rstrip().endswith("return 'packed';\n  }"), (
-        "the unreadable-storage fallback is not packed"
+def test_there_is_no_band_mode_left():
+    """Aligned mode was the other half of a trade the module grid removed: it
+    bought rows that line up across a band by stretching the shorter card, and
+    the grid lines them up without stretching anything. A second layout regime
+    that is strictly worse is a second thing to maintain and a second thing to
+    explain."""
+    for path in (LAYOUT, APP, SECTION, SETTINGS):
+        src = without_comments(path.read_text())
+        for token in ("bandMode", "BandMode", "BAND_MODE", "quantised"):
+            assert token not in src, f"{path.name} still refers to {token}"
+    assert "subgrid" not in without_comments(APP.read_text()), (
+        "the aligned-mode subgrid rule survives"
     )
 
 
@@ -334,7 +335,7 @@ def test_a_card_can_be_held_taller_than_its_content():
         "the gesture stopped driving the card's content"
     )
 
-    block = css_block(SECTION, ".slot.quantised {")
+    block = css_block(SECTION, ".slot {")
     assert "min-height" in block, "nothing makes the card fill the height it was held to"
     assert "--card-rows" in block, "the fill is not driven by the card's span"
 
@@ -390,7 +391,7 @@ def test_every_gap_between_cards_is_the_same():
     quantisation slack -- up to one whole module -- into the gap BELOW it, so
     no two gaps match. Filling the span moves that slack inside the card, under
     its own content where it reads as padding."""
-    block = css_block(SECTION, ".slot.quantised {")
+    block = css_block(SECTION, ".slot {")
     assert "min-height" in block, "the card does not fill its span, so the slack lands in the gap"
     assert "margin-bottom: 16px" in block, "nothing declares the gap"
 
@@ -414,3 +415,28 @@ def test_the_span_is_measured_with_the_fill_lifted():
         "the fill is lifted after the measurement, not before"
     )
     assert "naturalRows" in body, "measure() does not record the content's own height"
+
+
+def test_the_gap_between_cards_is_declared_exactly_once():
+    """MEASURED REGRESSION: full-width cards sat 32px apart while cards in a
+    column sat 16px apart, because the slot's own margin stacked on the gap
+    `.sections` was still applying between bands. Every card carries its own
+    gap now, so no container may add another."""
+    sections = css_block(APP, ".sections {")
+    assert re.search(r"gap:\s*0", sections), ".sections adds a second gap between bands"
+
+    zone = css_block(APP, ".zone {")
+    assert re.search(r"row-gap:\s*0", zone), ".zone adds a second gap between cards"
+
+    slot = css_block(SECTION, ".slot {")
+    assert "margin-bottom: 16px" in slot, "the card no longer carries its own gap"
+
+
+def test_the_module_grid_reaches_full_width_bands_too():
+    """A full-width band is a zone as well, and it renders outside `.cols`. When
+    the module grid lived on `.cols.packed > .zone` it never applied there, so
+    the rhythm restarted at every full-width card."""
+    zone = css_block(APP, ".zone {")
+    assert "grid-auto-rows: var(--row-unit)" in zone, (
+        "the module grid is scoped to something narrower than every zone"
+    )

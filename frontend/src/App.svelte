@@ -691,7 +691,7 @@
         {#if band.kind === 'full'}
           {@render zone('full', i, [band.id], null)}
         {:else}
-          <div class="cols" class:packed={layout.bandMode === 'packed'} style:--band-rows={band.rows}>
+          <div class="cols">
             {@render zone('left', i, band.left, band.last)}
             {@render zone('right', i, band.right, band.last)}
           </div>
@@ -961,7 +961,11 @@
      is just "share a row or take it". */
   .sections {
     display: grid;
-    gap: 16px;
+    /* NO GAP OF ITS OWN. Every card carries its own 16px below it, so a gap
+       here would stack on top of that between bands — measured at 32px between
+       full-width cards against 16px between cards in a column, which is the
+       kind of inconsistency nobody can name but everybody sees. */
+    gap: 0;
     /* Stated rather than left implicit. Without a template the implicit track
        is `auto`, which sizes to CONTENT — so a table that wants more room
        widens the track instead of scrolling inside it. See .cols. */
@@ -976,16 +980,22 @@
   .zone {
     position: relative;
     display: grid;
-    gap: 16px;
-    /* STRETCH, so a band's two columns end on the same line.
-       `start` left each column at its content height, which is what made a
-       band read as two unrelated stacks that happened to be adjacent rather
-       than as one row. Where a column holds several cards the slack is shared
-       between them, which is what `stretch` does by default and is the only
-       distribution that needs no rule to explain it.
-       A full-width band is unaffected: its zone is already exactly as tall as
-       its content, so there is no slack to share. */
-    align-content: stretch;
+    /* THE MODULE GRID, and it is every zone's now rather than a mode's.
+       Tracks of one table row with each card spanning a whole number of them,
+       so card tops land on the same multiples in both columns — and, because
+       full-width bands are zones too, the rhythm carries down the whole page
+       rather than restarting at each band.
+       `row-gap: 0` with the gap inside the span: a 16px gap between 25px tracks
+       would put every card after the first at 25n + 16, which is never on the
+       grid. */
+    grid-auto-rows: var(--row-unit);
+    column-gap: 16px;
+    row-gap: 0;
+    /* START, not stretch. Stretch was aligned mode's: it made a band's two
+       columns end on the same line by growing the last card in the shorter one.
+       With the module grid the columns line up row by row without that, and
+       stretching would put the difference back inside a card. */
+    align-content: start;
     /* Same reason as .sections — an implicit `auto` track sizes to content. */
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1028,61 +1038,6 @@
   @media (min-width: 1100px) {
     .cols {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      /* THE BAND IS A GRID OF ROWS, and this is the line that makes it one.
-         Without explicit rows the two columns are independent stacks: they
-         end together but nothing inside them lines up, so the second card on
-         the left starts beside the middle of the first card on the right.
-         `--band-rows` is the longer column's length, set per band. */
-      grid-template-rows: repeat(var(--band-rows, 1), auto);
-    }
-
-    /* PACKED MODE IS THE ABSENCE OF THE TWO DECLARATIONS ABOVE, which is why it
-       costs so little: the columns become independent stacks again, so a tall
-       card on the left can sit beside two short ones on the right and nothing
-       is stranded.
-
-       It gives up exactly what aligned mode buys — rows that line up across the
-       band. `96a00f4` chose alignment knowing that; this offers the same trade
-       to the reader instead of deciding it for them.
-
-       `--band-rows` goes unused here rather than being removed. The band still
-       computes it, so switching back needs nothing rebuilt.
-
-       `align-content: start` is the line that matters. Without it the zone
-       still stretches to the band's height and the last card grows to fill it,
-       which would look like alignment while being something else. */
-    .cols.packed {
-      grid-template-rows: none;
-    }
-
-    /* THE MODULE GRID. Packed mode's columns are independent, so nothing makes
-       a card in one line up with a card in the other — the two stacks drift
-       apart by whatever their contents happen to measure. Putting both on a
-       track grid of one table row fixes that without reintroducing the
-       stretching that aligned mode pays for it: every card's TOP lands on a
-       multiple of `--row-unit` in both columns, because every card spans a
-       whole number of them.
-
-       `row-gap: 0` and the gap moved inside the span (see `.slot.quantised` in
-       Section.svelte) — a 16px gap between 25px tracks would put every card
-       after the first at 25n + 16, which is never on the grid. */
-    .cols.packed > .zone {
-      grid-row: auto;
-      grid-template-rows: none;
-      grid-auto-rows: var(--row-unit);
-      row-gap: 0;
-      align-content: start;
-    }
-
-    /* Each column spans every row of the band and takes its ROW TRACKS from
-       it, so left[n] and right[n] share a row and a height. `subgrid` is what
-       lets the columns stay separate elements — which the drag targeting
-       needs, since it aims at a zone — while still sharing the band's rows.
-       The alternative, one flat grid of cards, would have no column to aim
-       at. */
-    .cols > .zone {
-      grid-row: 1 / -1;
-      grid-template-rows: subgrid;
     }
   }
 

@@ -23,7 +23,6 @@ const STORAGE_KEY = 'spark-dash.section-order.v1';
 const COLLAPSE_KEY = 'spark-dash.section-collapsed.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
 const COMPACT_KEY = 'spark-dash.compact-cards.v1';
-const BAND_MODE_KEY = 'spark-dash.band-mode.v1';
 const PLOT_HEIGHT_KEY = 'spark-dash.plot-heights.v1';
 const CARD_SPAN_KEY = 'spark-dash.card-spans.v1';
 const ROWS_KEY = 'spark-dash.section-rows.v1';
@@ -57,24 +56,6 @@ const NODE_ORDER_KEY = 'spark-dash.node-order.v1';
  * loses the time resolution that makes it worth having.
  */
 export type Zone = 'full' | 'left' | 'right';
-
-/** How the two columns of a band relate to each other.
- *
- * `aligned` is what the band model was built to do: explicit row tracks and
- * `subgrid`, so left[n] and right[n] share a row AND a height. Rows line up
- * across the band, and a short card beside a tall one stretches — the
- * row-height stranding `96a00f4` accepted deliberately.
- *
- * `packed` is the other side of that trade: the columns fill independently, so
- * a tall card on the left can sit beside two short ones on the right and
- * nothing is stranded. What it gives up is exactly what the other buys —
- * "two lists side by side that happened to finish level, rather than a grid of
- * rows".
- *
- * Neither is correct in general; they suit different content. Aligned is the
- * DEFAULT because it is what exists, and a layout regime should not change
- * under a reader who did not ask for it. */
-export type BandMode = 'aligned' | 'packed';
 
 export const ZONES: Zone[] = ['full', 'left', 'right'];
 
@@ -125,13 +106,6 @@ export type Band =
       left: string[];
       right: string[];
       last: string;
-      /** How many ROWS the band has — the longer of its two columns.
-       *
-       * A band is a grid of rows, not two stacks that happen to end together.
-       * Without this the columns filled independently and the second card on
-       * the left began beside the middle of the first card on the right, which
-       * is two lists side by side rather than a row. */
-      rows: number;
     };
 
 /** What a release would do. TWO SHAPES, because there are two gestures.
@@ -219,21 +193,6 @@ function readPlacement(available: string[] = DEFAULT_ORDER): Record<string, Zone
     return out;
   } catch {
     return {};
-  }
-}
-
-function readBandMode(): BandMode {
-  try {
-    /* PACKED IS THE DEFAULT since 2026-08-29, and the measurement is why.
-     * Same seven cards, one band: aligned stretched `RDMA ports` from 280px to
-     * 1040px, `System Activity` by 345 and `Model activity` by 237 — 1342px of
-     * empty space hidden INSIDE three cards. Packed left 530px, in one visible
-     * block, and once both columns sit on the module grid the cards line up
-     * anyway. Aligned buys equal heights per row; that is worth less than what
-     * it costs, so it is now the option rather than the default. */
-    return localStorage.getItem(BAND_MODE_KEY) === 'aligned' ? 'aligned' : 'packed';
-  } catch {
-    return 'packed';
   }
 }
 
@@ -546,11 +505,6 @@ export class Layout {
    * Default off; the person who needs it turns it on and it stays on. */
   compactCards = $state<boolean>(readCompact());
 
-  /* Aligned or packed — see BandMode. Only has an effect above the 1100px
-     breakpoint, because below it the zones stack full-width regardless and
-     there are no columns to relate. */
-  bandMode = $state<BandMode>(readBandMode());
-
   /* Which zone each section sits in. Absent means full width, so a section
      added in a later release spans the page rather than silently appearing in
      a column the reader may have scrolled past. */
@@ -678,14 +632,6 @@ export class Layout {
     this.#saveCollapsed();
   }
 
-  setBandMode(mode: BandMode) {
-    this.bandMode = mode;
-    try {
-      localStorage.setItem(BAND_MODE_KEY, mode);
-    } catch {
-      // Still applied for this session.
-    }
-  }
 
   setCompactCards(on: boolean) {
     this.compactCards = on;
@@ -815,7 +761,6 @@ export class Layout {
         kind: 'cols',
         left,
         right,
-        rows: Math.max(left.length, right.length),
         /* The anchor for a drop into this band's EMPTY side. Without it such a
            drop has no card to position against and would fall to the end of
            the page — the very bug bands exist to fix, reappearing in the one
@@ -1086,7 +1031,6 @@ export class Layout {
        is stuck with a table they cannot explain. */
     columnStore.reset();
     this.setCompactCards(false);
-    this.setBandMode('packed');
     this.#savePlacement();
     try {
       localStorage.removeItem(COLUMN_KEY);

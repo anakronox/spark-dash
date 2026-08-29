@@ -440,32 +440,6 @@
 
     <!-- Layout -->
     <section class="stack">
-      <h3 class="eyebrow dim">Paired cards</h3>
-      <!-- The two sides of one trade, offered rather than decided. Aligned
-           gives rows that line up across a band and strands vertical space when
-           one card is shorter; packed reclaims the space and gives up the
-           alignment. Aligned is the default because it is what the band model
-           was built to do, and a layout regime should not change under a reader
-           who did not ask for it. -->
-      <div class="choices" role="group" aria-label="How paired cards share a row">
-        <button
-          class="choice"
-          class:active={layout.bandMode === 'aligned'}
-          aria-pressed={layout.bandMode === 'aligned'}
-          onclick={() => layout.setBandMode('aligned')}
-        >Aligned</button>
-        <button
-          class="choice"
-          class:active={layout.bandMode === 'packed'}
-          aria-pressed={layout.bandMode === 'packed'}
-          onclick={() => layout.setBandMode('packed')}
-        >Packed</button>
-      </div>
-      <p class="note dim">
-        Aligned keeps side-by-side cards level. Packed lets a tall card sit
-        beside two short ones.
-      </p>
-
       <h3 class="eyebrow dim">Node cards</h3>
       <!-- Deliberate, never automatic. Switching on node count would mean the
            page rearranges itself the moment a node joins — which is exactly

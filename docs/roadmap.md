@@ -5305,6 +5305,31 @@ than a hedge.
   the ratchet is genuinely gone; a card grown to 834px and dragged back landed
   on 334px, its starting height.
 
+- [x] **AE10. Aligned mode deleted, and the grid becomes the layout.** Aligned
+  was one half of a trade the module grid dissolved: it bought rows that line up
+  across a band by *stretching* the shorter card, and the grid lines them up
+  without stretching anything. Keeping a second layout regime that is strictly
+  worse is a second thing to maintain and a second thing to explain, so it is
+  gone — `BandMode`, `bandMode`, `setBandMode`, `readBandMode`, the storage key,
+  the `subgrid` rule, `--band-rows` and `Band.rows`, and the Settings control.
+
+  **Deleting it exposed a regression the flag had been hiding.** A full-width
+  band is a zone too, and it renders *outside* `.cols` — so `.cols.packed >
+  .zone` never matched it. Full-width cards were laid out with the old
+  `grid-auto-rows: auto` while their slots still carried the span and the 16px
+  margin, which stacked on `.sections`' own gap: **32px between full-width cards
+  against 16px between cards in a column.** Nobody could have named it; everyone
+  would have seen it.
+
+  So the module grid moved to `.zone`, which is every zone, and `.sections`
+  gives up its gap — each card carries its own, so no container may add another.
+  The rhythm now runs down the whole page instead of restarting at each band.
+
+  Verified live: every gap on the page exactly 16px, in both a page of
+  full-width bands and a two-column band; every card top on the module in both
+  columns (offsets 0/13/25/39 and 0/28/73); resize still 359 → 759 → 359 with
+  the gaps holding.
+
 - [ ] **AE4. Width, if it is still wanted.** Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
   A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag

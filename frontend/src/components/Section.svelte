@@ -401,7 +401,7 @@
     pxPerUnit = (row?.offsetHeight || rowUnit()) * Math.max(1, bodies.length);
   }
 
-  /** How many modules this card spans in packed mode.
+  /** How many modules this card spans.
    *
    * THE LOOP THIS IS SHAPED AROUND: a span that made the card taller would be
    * measured on the next pass as the new natural height, spanning further every
@@ -607,7 +607,6 @@
   bind:this={slotEl}
   data-slot={id}
   class="slot"
-  class:quantised={layout.bandMode === 'packed'}
   style:--card-rows={cardRows}
   class:grabbed
   style:transform={grabbed && (offsetX || offsetY)
@@ -705,11 +704,6 @@
        because its declared column widths sum highest — the bug was in every
        panel and visible in one. */
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  /* Packed mode only. Aligned mode's zone is a subgrid of the band's rows and
-     has its own answer to where a card sits; a span would fight it. */
-  .slot.quantised {
     grid-row: span var(--card-rows, 1);
     /* The line that keeps the measurement honest — see cardRows. */
     align-self: start;
