@@ -5182,6 +5182,56 @@ than a hedge.
   and 200, double-click back to the default with the entry removed — and the
   section order untouched through 340 arrow presses, which is the hazard.
 
+- [x] **AE7. The vertical rhythm, and packed becomes the default.** Packed mode
+  shipped, ran in production for a day, and the verdict was that it *relocates*
+  the whitespace rather than removing it. Measured on one band of seven cards:
+
+  | | left | right | |
+  |---|---|---|---|
+  | packed | 1276px | 1806px | **530px of dead column** |
+  | aligned | — | — | **1342px** hidden *inside* three cards |
+
+  Aligned stretched `RDMA ports` from 280 to 1040px, `System Activity` by 345,
+  `Model activity` by 237. **Decided:** every card resizes in increments of one
+  table row so the columns share a vertical grid; content that no longer fits
+  paginates; packed is the default.
+
+  It came out much smaller than planned. Dragging a table card already moved it
+  a whole row at a time, and pagination already followed — so what was actually
+  missing was the *grid* and the *snap*, not a new height-as-master store. Both
+  zones are now `grid-auto-rows: var(--row-unit)` with each card spanning a
+  whole number of them, and the pointer travel is quantised before it is scaled.
+
+  **The row had to be told its height first.** It was 25px by accident:
+  `py-[5px]` around a 12px font at `line-height: normal`, where "normal" is
+  whatever the font's own metrics say. Fine for a table, useless as a layout
+  unit — a fallback font would have shifted every card on the page. It now
+  states its arithmetic in `app.css`.
+
+  Three bugs, all found by measuring rather than looking:
+
+  - **`getComputedStyle().getPropertyValue('--row-unit')` returns the literal
+    `calc(...)`.** Custom properties are substituted, not computed, so
+    `parseFloat` gave NaN and the `|| 25` beside it hid that the token was never
+    read. A probe element resolves it the way CSS does.
+  - **The coalescer deadlocked in a background tab.** `requestAnimationFrame`
+    does not run in a hidden or occluded tab, so one notification arriving there
+    set the `queued` flag, the frame never came, and every later mutation
+    returned early *for the life of the component* — a card's span froze at 4
+    while the card grew to 668px and overlapped its neighbour. A dashboard on a
+    second monitor is exactly where that happens.
+  - **`align-self: start` is load-bearing.** Without it the card fills its span,
+    so the next measurement reads the span as the new natural height and grows
+    it again every frame. `effect_update_depth_exceeded` is compiled out of
+    production builds: it throws in dev and spins silently for a reader.
+
+  Aligned mode is unchanged and still available — verified still pairing by row
+  (668/668, 1108/1108, 317/317) — it is just no longer what you get by default.
+
+  Verified live: all seven cards report `onGrid` and `fits`, tops at
+  0/350/650/1000 and 0/700/1775; a chart card steps 13→14→15→16 rows for three
+  key presses (+25px each) and 13→18 for a five-module drag.
+
 - [ ] **AE4. Width, if it is still wanted.** Separate from the above and
   smaller. One constraint is not negotiable: **`minmax(0, 1fr)` must survive.**
   A bare `1fr` is `minmax(auto, 1fr)`, whose `auto` minimum lets content drag

@@ -16,6 +16,8 @@ COLUMN_GRIP = FRONTEND / "components" / "ColumnGrip.svelte"
 SECTION = FRONTEND / "components" / "Section.svelte"
 SETTINGS = FRONTEND / "components" / "Settings.svelte"
 LAYOUT = FRONTEND / "lib" / "layout.svelte.ts"
+APP_CSS = FRONTEND / "app.css"
+APP = FRONTEND / "App.svelte"
 CHART = FRONTEND / "components" / "MetricChart.svelte"
 TRENDS = FRONTEND / "components" / "Trends.svelte"
 NETWORK = FRONTEND / "components" / "NetworkTrends.svelte"
@@ -68,14 +70,36 @@ def test_the_grip_is_reachable_without_a_mouse():
     assert "ondblclick" in body, "cannot be reset by double-click"
 
 
-def test_the_plot_step_matches_the_column_grip():
-    """Two resize gestures on one page that stepped differently would be two
-    things to learn. 16px, and shift makes it coarse."""
-    col = without_comments(COLUMN_GRIP.read_text())
-    assert re.search(r"const STEP = 16", col), "ColumnGrip's step moved; this guard is stale"
+def test_every_card_resizes_in_whole_table_rows():
+    """THE UNIT IS THE POINT. Cards line up across the columns because each one
+    spans a whole number of table rows, and that only survives if the gesture
+    moves in whole rows too. A table already did, because a row count is an
+    integer; a chart card slid continuously and could stop at any pixel."""
+    move = section_fn("onResizeMove")
+    assert "rowUnit()" in move, "the drag is not quantised to the module"
+    assert re.search(r"Math\.round\(dy / unit\) \* unit", move), (
+        "pointer travel is not snapped to whole rows before it is scaled"
+    )
+
     step = section_fn("onResizeStep")
-    assert "coarse ? 64 : 16" in step, "plot step is not 16px with a x4 coarse"
+    assert "rowUnit() / pxPerUnit" in step, (
+        "the keyboard step is not one row of CARD height -- a flat pixel step "
+        "moves a different amount on every card and none of them a row"
+    )
+    assert "coarse" in step, "no coarse step"
     assert "coarse" in without_comments(GRIP.read_text()), "shift is not passed through"
+
+
+def test_the_grip_keeps_the_column_grip_s_shift_contract():
+    """Two resize gestures on one page that behaved differently would be two
+    things to learn. The units differ -- pixels of column, rows of card -- but
+    shift makes both coarse and both reset the same way."""
+    col = without_comments(COLUMN_GRIP.read_text())
+    assert "e.shiftKey" in col and "const STEP" in col, "ColumnGrip's contract moved"
+    grip = without_comments(GRIP.read_text())
+    assert "ondblclick" in grip and "Home" in grip and "Escape" in grip, (
+        "the corner and the column grip no longer share a reset"
+    )
 
 
 def test_a_gesture_can_never_reach_the_uncapped_sentinel():
@@ -177,7 +201,7 @@ def test_reset_puts_the_heights_the_caps_and_the_band_mode_back():
     assert "this.plotHeights = {}" in body, "reset leaves dragged plot heights in place"
     assert "this.rows = {}" in body, "reset leaves dragged row caps in place"
     assert "PLOT_HEIGHT_KEY" in body, "reset leaves the stored heights on disk"
-    assert "setBandMode('aligned')" in body, "reset leaves the page in packed mode"
+    assert "setBandMode('packed')" in body, "reset does not restore the default band mode"
 
 
 def test_every_card_has_exactly_one_resize_corner():
@@ -202,3 +226,85 @@ def test_a_collapsed_card_has_no_resize_corner():
     stub, rest = branch.split("{:else}", 1)
     assert "<CardGrip" not in stub, "the collapsed stub renders a resize corner"
     assert "<CardGrip" in rest, "the expanded card does not render one"
+
+
+def test_the_module_is_declared_rather_than_discovered():
+    """A card's height is counted in table rows, so the row has to be a unit
+    and not an outcome. It was 25px by accident -- padding around a
+    `line-height: normal` box, where "normal" is whatever the font's metrics
+    say -- and a fallback font would have shifted every card on the page."""
+    css = APP_CSS.read_text()
+    for token in ("--row-line", "--row-pad", "--row-rule", "--row-unit"):
+        assert token in css, f"{token} is not declared"
+    assert re.search(r"--row-unit:\s*calc\(", css), "the module does not state its arithmetic"
+
+    for name in ("ModelsTable", "ProcessTable", "NetworkTable", "NetworkPanel", "ThermalPanel"):
+        src = (FRONTEND / "components" / f"{name}.svelte").read_text()
+        assert "py-[5px]" not in src, f"{name} still hard-codes the row padding"
+        assert "var(--row-pad)" in src, f"{name} does not take its padding from the module"
+        assert "var(--row-line)" in src, f"{name} still lets its line box come from the font"
+
+
+def test_the_module_is_not_read_straight_off_the_custom_property():
+    """getComputedStyle().getPropertyValue('--row-unit') returns the literal
+    `calc(14px + 2 * 5px + 1px)` -- custom properties are substituted, not
+    computed -- so parseFloat gives NaN and any fallback beside it hides the
+    fact that the token was never read at all."""
+    body = section_fn("rowUnit")
+    assert "getPropertyValue" not in body, (
+        "rowUnit parses the custom property, which yields NaN for a calc()"
+    )
+    assert "var(--row-unit)" in body, "rowUnit does not resolve the declared module"
+
+
+def test_the_measure_coalescer_survives_a_background_tab():
+    """MEASURED BUG. requestAnimationFrame does not run in a hidden or occluded
+    tab. With a `queued` flag guarding it, one notification arriving in the
+    background set the flag, the frame never came, the flag never cleared, and
+    every later mutation returned early for the life of the component -- the
+    card's span froze at 4 while the card grew to 668px and overlapped its
+    neighbour. This dashboard's job is to sit on a second monitor."""
+    src = without_comments(SECTION.read_text())
+    effect = src[src.index("$effect(() => {") :]
+    effect = effect[: effect.index("});")]
+    assert "requestAnimationFrame" not in effect, "the coalescer stalls in a background tab"
+    assert "setTimeout" in effect, "nothing coalesces the measurements"
+
+
+def test_the_span_cannot_feed_its_own_measurement():
+    """A span that made the card taller would be read on the next pass as the
+    new natural height and grow again every frame. effect_update_depth_exceeded
+    is compiled out of production builds, so it throws in dev and spins
+    silently for a reader."""
+    src = SECTION.read_text()
+    block = src[src.index(".slot.quantised {") :]
+    block = block[: block.index("}")]
+    assert "align-self: start" in block, (
+        "the card fills its span, so measuring it feeds the span that set it"
+    )
+
+
+def test_the_gap_is_inside_the_span():
+    """A 16px row-gap between 25px tracks puts every card after the first at
+    25n + 16, which is never on the grid -- and being on the grid is the point."""
+    app = APP.read_text()
+    packed = app[app.index(".cols.packed > .zone {") :]
+    packed = packed[: packed.index("}")]
+    assert "grid-auto-rows: var(--row-unit)" in packed, "the zone is not a module grid"
+    assert "row-gap: 0" in packed, "a row gap would push every card off the grid"
+    section = SECTION.read_text()
+    block = section[section.index(".slot.quantised {") :]
+    assert "margin-bottom" in block[: block.index("}")], "nothing separates the cards"
+
+
+def test_packed_is_the_default():
+    """Measured on the same seven cards: aligned hid 1342px of stretch inside
+    three of them; packed left 530px in one visible block, and once both
+    columns sit on the module grid the cards line up anyway."""
+    src = without_comments(LAYOUT.read_text())
+    body = src[src.index("function readBandMode") :]
+    body = body[: body.index("\n}")]
+    assert "'aligned' ? 'aligned' : 'packed'" in body, "the stored value does not default to packed"
+    assert body.rstrip().endswith("return 'packed';\n  }"), (
+        "the unreadable-storage fallback is not packed"
+    )

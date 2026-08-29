@@ -30,8 +30,6 @@
     ZONE_LABEL,
     MIN_ROWS,
     MAX_ROWS,
-    MIN_PLOT_PX,
-    MAX_PLOT_PX,
   } from '../lib/layout.svelte';
   import CardGrip from './CardGrip.svelte';
 
@@ -437,17 +435,33 @@
   }
 
   function onResizeMove(dy: number) {
-    const delta = dy / pxPerUnit;
+    /* SNAPPED TO THE MODULE, in the card's own units.
+     *
+     * `pxPerUnit` already scales the pointer to what the card grows by, so the
+     * corner tracks the cursor in both modes. What it did not do was land on
+     * anything in particular: a table stepped a whole row because the row count
+     * is an integer, while a chart card slid continuously and could stop at any
+     * pixel. Quantising the pointer travel first means BOTH move a whole table
+     * row at a time, which is the whole reason the columns line up. */
+    const unit = rowUnit();
+    const delta = (Math.round(dy / unit) * unit) / pxPerUnit;
     if (mode === 'plot') layout.setPlotHeight(id, startValue + delta);
     else layout.setRows(id, dragRows(startValue + delta));
   }
 
-  /** Keyboard step, in the unit being dragged: 16px of plot, or one row.
-   *  Shift makes both coarse, the same as every other grip on the page. */
+  /** Keyboard step: one table row of CARD height, in either mode. Shift makes
+   *  it coarse, the same as every other grip on the page.
+   *
+   *  A chart card's step is therefore one module divided by the number of chart
+   *  ROWS — eight charts two-across grow the card by four times what the plot
+   *  gained — so the card moves exactly one row per press whatever the grid
+   *  happens to be. It used to be a flat 16px of plot, which moved the card by
+   *  a different amount on every card and none of them a row. */
   function onResizeStep(dir: -1 | 1, coarse: boolean) {
     measure();
     if (mode === 'plot') {
-      layout.setPlotHeight(id, layout.plotHeight(id) + dir * (coarse ? 64 : 16));
+      const step = (rowUnit() / pxPerUnit) * (coarse ? 4 : 1);
+      layout.setPlotHeight(id, layout.plotHeight(id) + dir * step);
       return;
     }
     /* An uncapped card steps from what it is SHOWING, not from the sentinel:
@@ -510,10 +524,15 @@
     };
   });
 
-  const resizeValue = $derived(mode === 'plot' ? layout.plotHeight(id) : layout.rowChoice(id));
+  /* A chart card reports the height it OCCUPIES, a table card the rows it
+     SHOWS. Both are counted in table rows, which is the unit the corner moves
+     in; they differ because those are the two different questions a reader has
+     about the two kinds of card. Pixels used to be reported here, and named a
+     quantity nothing else on the page is measured in. */
+  const resizeValue = $derived(mode === 'plot' ? cardRows : layout.rowChoice(id));
   const resizeText = $derived(
     mode === 'plot'
-      ? `${Math.round(resizeValue)} pixels tall`
+      ? `${cardRows} row${cardRows === 1 ? '' : 's'} tall`
       : resizeValue === 0
         ? 'all rows'
         : `${resizeValue} row${resizeValue === 1 ? '' : 's'}`,
@@ -609,8 +628,8 @@
       onreset={onResizeReset}
       label={label}
       valuenow={Math.round(resizeValue)}
-      valuemin={mode === 'plot' ? MIN_PLOT_PX : MIN_ROWS}
-      valuemax={mode === 'plot' ? MAX_PLOT_PX : MAX_ROWS}
+      valuemin={MIN_ROWS}
+      valuemax={MAX_ROWS}
       valuetext={resizeText}
     />
   {/if}

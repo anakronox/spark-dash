@@ -10,10 +10,10 @@ Supports single node and clusters.
 ![The spark-dash dashboard: a pooled two-node cluster and a standalone node, GPU/CPU/memory history, the GPU process table, and per-model throughput and state](Screenshot.jpg)
 
 Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Cards
-are draggable and can be paired side by side, paired cards either share a row
-height or pack independently, and every card resizes from its bottom-right
-corner; every threshold shown is measured for this hardware rather than
-guessed.
+are draggable and can be paired side by side, and every card resizes from its
+bottom-right corner in increments of one table row, so the two columns stay on
+a shared vertical grid; every threshold shown is measured for this hardware
+rather than guessed.
 
 ## What it monitors
 

@@ -223,9 +223,16 @@ function readPlacement(available: string[] = DEFAULT_ORDER): Record<string, Zone
 
 function readBandMode(): BandMode {
   try {
-    return localStorage.getItem(BAND_MODE_KEY) === 'packed' ? 'packed' : 'aligned';
+    /* PACKED IS THE DEFAULT since 2026-08-29, and the measurement is why.
+     * Same seven cards, one band: aligned stretched `RDMA ports` from 280px to
+     * 1040px, `System Activity` by 345 and `Model activity` by 237 — 1342px of
+     * empty space hidden INSIDE three cards. Packed left 530px, in one visible
+     * block, and once both columns sit on the module grid the cards line up
+     * anyway. Aligned buys equal heights per row; that is worth less than what
+     * it costs, so it is now the option rather than the default. */
+    return localStorage.getItem(BAND_MODE_KEY) === 'aligned' ? 'aligned' : 'packed';
   } catch {
-    return 'aligned';
+    return 'packed';
   }
 }
 
@@ -1020,7 +1027,7 @@ export class Layout {
        is stuck with a table they cannot explain. */
     columnStore.reset();
     this.setCompactCards(false);
-    this.setBandMode('aligned');
+    this.setBandMode('packed');
     this.#savePlacement();
     try {
       localStorage.removeItem(COLUMN_KEY);
