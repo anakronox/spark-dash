@@ -775,3 +775,28 @@ def test_a_labelled_menu_sizes_to_its_content():
     block = css_block(PICK, ".host.labelled .menu {")
     assert "max-content" in block, "the labelled menu's columns can collapse to nothing"
     assert "minmax(0, 1fr)" not in block, "fr tracks in a shrink-to-fit box collapse"
+
+
+def test_a_row_cap_yields_when_the_card_is_held_taller_than_its_content():
+    """REPORTED: the metric chips came off System Activity and freed 130px, and
+    the card sat held at its old height with one row of charts paged and an
+    empty band below them, because the cap and the held height are both user
+    state and nothing said "there is room now". If the card is held taller than
+    its content needs and rows are paged away, enough come back to use it.
+
+    This writes layout from a measurement, which Section otherwise avoids, so
+    the guard pins the three things that keep it from looping: it only raises
+    the cap, only while held exceeds natural, and never past rowsTotal."""
+    body = section_fn("measure")
+    plot = body[body.index("mode = 'plot'") : body.index("mode = 'rows'")]
+    assert "layout.cardSpan(id)" in plot, "measure never asks what the card is held at"
+    assert "held > naturalRows" in plot, "the cap is touched even when there is no room"
+    assert "tops.length < rowsTotal" in plot, "the cap is touched even when every row is shown"
+    assert "if (extra > 0)" in plot, "a cap can be written when nothing fits"
+    assert "resetPlotRows(id)" in plot, "restoring every row still leaves a cap behind"
+    # `naturalRows` and not a fresh measurement: the fill is back on by then,
+    # and a fresh read would return the held height and find no room.
+    after = plot[plot.index("layout.cardSpan(id)") :]
+    assert "getBoundingClientRect().height + GAP_PX" not in after, (
+        "the room is measured through the fill, so it is always zero"
+    )

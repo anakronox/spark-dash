@@ -417,6 +417,32 @@
           0,
         ),
       );
+
+      /* A ROW CAP YIELDS TO ROOM. The cap is user state, set by shrinking; the
+         held height is user state, set by dragging. They can disagree: the
+         metric chips came off this card and freed 130px, and the card sat held
+         at its old height with one row of charts paged and an empty band below
+         them, because nothing said "there is room now". If the card is held
+         taller than its content needs and rows are paged away, enough of them
+         come back to use the room.
+
+         THIS WRITES LAYOUT FROM A MEASUREMENT, which the rest of this
+         component is built to avoid, so the reasons it cannot loop are stated:
+         it only ever RAISES the cap, only while held exceeds natural, only by
+         rows that fit, and never past rowsTotal. Each pass either brings
+         natural up to held or finishes the rows; both end it. */
+      /* `naturalRows` was measured at the top of this function with the fill
+         lifted; the box is filled again by now, so reading it here would read
+         the held height back and never find any room. */
+      const held = layout.cardSpan(id);
+      if (held > naturalRows && tops.length < rowsTotal) {
+        const extra = Math.floor(((held - naturalRows) * unit) / (plotH + rowChrome));
+        if (extra > 0) {
+          const rows = tops.length + extra;
+          if (rows >= rowsTotal) layout.resetPlotRows(id);
+          else layout.setPlotRows(id, rows);
+        }
+      }
       return;
     }
 
