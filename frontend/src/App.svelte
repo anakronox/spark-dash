@@ -344,9 +344,11 @@
   const STALE = 'opacity-[0.55]';
 
   const TOP =
-    'flex flex-wrap items-baseline justify-between gap-x-4 gap-y-[10px] ' +
-    'pb-1 border-b border-rule';
-  const BRAND = 'flex items-baseline gap-[10px]';
+    'flex flex-wrap items-end justify-between gap-x-4 gap-y-[10px] ' +
+    'pb-[6px] border-b border-rule';
+  /* `items-end`, not baseline: the facts are two-line stacks (label over
+     value) and the title should sit on the values' line, not the labels'. */
+  const BRAND = 'flex flex-wrap items-end gap-x-7 gap-y-2';
   const H1 = 'text-title-sm font-bold tracking-[0.02em]';
   const RIGHT = 'flex items-center gap-[14px]';
 
@@ -399,18 +401,17 @@
     'text-ink-muted cursor-pointer hover:not-disabled:text-ink ' +
     'hover:not-disabled:border-ink-muted disabled:opacity-50 disabled:cursor-default';
 
-  const SUMMARY = 'flex flex-wrap items-baseline gap-x-9 gap-y-3 pt-[2px] pb-[6px]';
-  const FACTS = 'flex flex-wrap gap-x-7 gap-y-[10px] m-0 text-body';
+  const FACTS = 'flex flex-wrap items-end gap-x-6 gap-y-[10px] m-0 text-body leading-none';
   const FACT = 'flex flex-col gap-px';
   const DT = 'text-micro tracking-[0.12em] uppercase text-ink-muted';
   const DD = 'm-0 tabular-nums';
   const DD_ALERT = `${DD} text-critical`;
 
-  /* One figure carries the hierarchy: throughput is the only quantity here
-     that legitimately sums across the cluster. */
-  const FIGURE = 'flex flex-col gap-px';
-  const VALUE = 'text-hero font-bold tracking-[-0.03em] leading-[1.05] tabular-nums';
-  const CAPTION = 'text-micro tracking-[0.12em] uppercase text-ink-muted';
+  /* One figure still leads: throughput is the only quantity here that
+     legitimately sums across the cluster. It was the 30px hero on a band of
+     its own; on the title line it is the title's size, bold, which is enough
+     to lead a row of 12px facts without needing a band. */
+  const VALUE = 'text-title font-bold tracking-[-0.02em] leading-none';
 
   const CLUSTER_HEAD =
     'flex flex-wrap items-baseline justify-between gap-x-[14px] gap-y-1 text-label';
@@ -428,6 +429,57 @@
   <header class={TOP}>
     <div class={BRAND}>
       <h1 class={H1}>spark<span class={MUTED}>-dash</span></h1>
+
+      <!-- THE CLUSTER'S FOUR FACTS LIVE ON THE TITLE LINE. They had a band of
+           their own under the header, with the decode figure at 30px as the
+           page's headline -- and the band was mostly air: one number, three
+           small facts, and a strip of nothing to the right, above the fold on
+           every screen. The header is the most valuable strip on the page and
+           it had room; the facts sit beside the title at one step above the
+           body, the decode figure a step above them still so it leads without
+           needing the whole row to itself. Same order as before, prefill last,
+           for the reason given on it. -->
+      {#if feed.snapshot}
+        <dl class={FACTS}>
+          <div class={FACT}>
+            <dt class={DT}>decode tok/s</dt>
+            <dd class="{DD} {VALUE}">{num(cluster.tokensPerSec, 1)}</dd>
+          </div>
+          <div class={FACT}>
+            <dt class={DT}>largest free block</dt>
+            <dd class={DD}>
+              <span class={NUM}>{gib(cluster.largestFreeBytes)}</span> GiB
+              {#if cluster.largestFreeWhere}
+                <span class={MUTED}>on {cluster.largestFreeWhere}</span>
+              {/if}
+            </dd>
+          </div>
+          <div class={FACT}>
+            <dt class={DT}>nodes up</dt>
+            <dd class={cluster.up < cluster.total ? DD_ALERT : DD}>
+              {cluster.up}<span class={MUTED}>/{cluster.total}</span>
+            </dd>
+          </div>
+          <!-- PREFILL AS A STATE, not a rate, and LAST in the row.
+               A state because that is what it is: non-zero 1% of the time and
+               five to six digits when it fires, so a live number here would
+               read "0" nearly always and then briefly dwarf the decode figure
+               it sits beside -- which is the misreading Y1 removed,
+               reintroduced in a smaller font. Last in the row because
+               "ingesting 110k" is wider than "idle", and at the end of a flex
+               row a widening value has nothing after it to push. -->
+          <div class={FACT}>
+            <dt class={DT}>prefill</dt>
+            <dd class={DD}>
+              {#if cluster.prefillPerSec > 0}
+                ingesting <span class={NUM}>{compact(cluster.prefillPerSec)}</span>
+              {:else}
+                <span class={MUTED}>idle</span>
+              {/if}
+            </dd>
+          </div>
+        </dl>
+      {/if}
     </div>
 
     <div class={RIGHT}>
@@ -591,51 +643,6 @@
   {/if}
 
   {#if feed.snapshot}
-    <section class={SUMMARY}>
-      <!-- One figure carries the hierarchy. Throughput is the only quantity
-           here that legitimately sums across the cluster. -->
-      <div class={FIGURE}>
-        <span class={VALUE}>{num(cluster.tokensPerSec, 1)}</span>
-        <span class={CAPTION}>decode tok/s</span>
-      </div>
-
-      <dl class={FACTS}>
-        <div class={FACT}>
-          <dt class={DT}>largest free block</dt>
-          <dd class={DD}>
-            <span class={NUM}>{gib(cluster.largestFreeBytes)}</span> GiB
-            {#if cluster.largestFreeWhere}
-              <span class={MUTED}>on {cluster.largestFreeWhere}</span>
-            {/if}
-          </dd>
-        </div>
-        <div class={FACT}>
-          <dt class={DT}>nodes up</dt>
-          <dd class={cluster.up < cluster.total ? DD_ALERT : DD}>
-            {cluster.up}<span class={MUTED}>/{cluster.total}</span>
-          </dd>
-        </div>
-        <!-- PREFILL AS A STATE, not a rate, and LAST in the row.
-             A state because that is what it is: non-zero 1% of the time and
-             five to six digits when it fires, so a live number here would read
-             "0" nearly always and then briefly dwarf the decode figure it sits
-             beside — which is the misreading Y1 removed, reintroduced in a
-             smaller font. Last in the row because "ingesting 110k" is wider
-             than "idle", and at the end of a flex row a widening value has
-             nothing after it to push. -->
-        <div class={FACT}>
-          <dt class={DT}>prefill</dt>
-          <dd class={DD}>
-            {#if cluster.prefillPerSec > 0}
-              ingesting <span class={NUM}>{compact(cluster.prefillPerSec)}</span>
-            {:else}
-              <span class={MUTED}>idle</span>
-            {/if}
-          </dd>
-        </div>
-      </dl>
-    </section>
-
     <!-- One grid for every node card, so compact mode can flow them into
          columns. Each standalone node is its own "cluster of one" and so has
          its own .nodes wrapper — without promoting those wrappers out of the

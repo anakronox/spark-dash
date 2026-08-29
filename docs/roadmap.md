@@ -5513,6 +5513,14 @@ than a hedge.
   use. Ghost and armed corner both moved to it; the corner brightens rather
   than changing colour when armed.
 
+- [x] **AE24. The cluster facts moved onto the title line.** The band under
+  the header — decode tok/s at 30px, three small facts, and a strip of nothing
+  to the right — was mostly air, above the fold on every screen. The four
+  facts now sit beside the title, label over value, the decode figure at the
+  title's size (19px, bold) so it still leads. First card moved up 45px.
+  `--text-hero` stays declared for the next thing that needs to be the largest
+  on the page.
+
 - [x] **AE20. Column headers stick in scroll mode.** AE18 kept the card
   header in view and left `thead` to scroll away, so a table at its fortieth
   row no longer said what its columns were. The `th`s are sticky now, parked

@@ -68,7 +68,8 @@
    * folded into the interface scale, which would flatten exactly the hierarchy
    * they exist to create.
    *
-   *   hero      the tokens/sec headline, the largest thing on the page
+   *   hero      the tokens/sec headline when it had a band of its own; kept
+   *             for the next thing that needs to be the largest on the page
    *   headline  the free-memory figure on a node card
    *   title     a node's name
    *   title-sm  that name when the card is dense, and section headings
