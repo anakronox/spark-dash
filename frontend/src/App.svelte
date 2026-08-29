@@ -348,7 +348,7 @@
     'pb-[6px] border-b border-rule';
   /* `items-end`, not baseline: the facts are two-line stacks (label over
      value) and the title should sit on the values' line, not the labels'. */
-  const BRAND = 'flex flex-wrap items-end gap-x-7 gap-y-2';
+  const BRAND = 'flex flex-wrap items-end gap-x-14 gap-y-2';
   const H1 = 'text-title-sm font-bold tracking-[0.02em]';
   const RIGHT = 'flex items-center gap-[14px]';
 
