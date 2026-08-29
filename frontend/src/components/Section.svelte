@@ -395,7 +395,23 @@
        observers that catch every other change of shape, and handed to the CSS
        as a length. Written unconditionally; it is only consumed when the card
        scrolls. */
-    const header = slotEl.querySelector<HTMLElement>(':scope > section.panel > header');
+    const panel = slotEl.querySelector<HTMLElement>(':scope > section.panel');
+    const header = panel?.querySelector<HTMLElement>(':scope > header');
+    if (panel) {
+      /* The panel's own top padding, read with the scroll-mode class OFF for
+         the length of one style read, because scroll mode is what removes it.
+         A sticky box cannot leave its containing block's content box, so a
+         header stuck at top: 0 still sits below the padding and the rows
+         scroll by in that strip, above the card title. The padding therefore
+         moves onto the header while scrolling -- and the figure has to come
+         from the panel's resting style, which is this. Same one-read trick as
+         min-height above. */
+      const scrolling = slotEl.classList.contains('scrolling');
+      if (scrolling) slotEl.classList.remove('scrolling');
+      const pad = getComputedStyle(panel).paddingTop;
+      if (scrolling) slotEl.classList.add('scrolling');
+      slotEl.style.setProperty('--panel-pad-top', pad);
+    }
     slotEl.style.setProperty('--sticky-top', `${header?.offsetHeight ?? 0}px`);
 
     const plots = slotEl.querySelectorAll<HTMLElement>('.uplot');
@@ -1046,6 +1062,8 @@
   .slot.scrolling > :global(section.panel) {
     height: 100%;
     overflow-y: auto;
+    /* The header carries this while scrolling; see there. */
+    padding-top: 0;
   }
 
   /* The title, legend and controls stay put while the rows go by. A
@@ -1056,6 +1074,14 @@
     left: 0;
     z-index: 2;
     background: var(--panel);
+    /* THE HEADER OWNS THE PANEL'S TOP PADDING while it is stuck. Padding on
+       the panel is scrollable space above the header that a sticky box can
+       never cover (it is held inside its containing block's content box), so
+       the rows went by in that strip, visible above the card title. The panel
+       drops its padding in scroll mode and the header takes the same amount;
+       each panel pads itself differently, so the figure is read from the
+       panel's resting style in measure() rather than typed here. */
+    padding-top: var(--panel-pad-top, 0px);
   }
 
   /* THE COLUMN HEADERS STAY TOO, parked under the card header, so a table

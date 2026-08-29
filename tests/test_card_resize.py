@@ -913,6 +913,20 @@ def test_column_headers_stick_under_the_card_header_in_scroll_mode():
         "with the panel now scrolling sideways for a wide table, the card header would scroll off"
     )
 
+    # A sticky box cannot leave its containing block's content box, so the
+    # panel's own top padding is a strip the stuck header can never cover and
+    # the rows scroll by in it, above the card title. Seen in production. The
+    # padding moves onto the header, and its size is read from the panel's
+    # RESTING style -- with the scroll-mode class off -- because scroll mode is
+    # what zeroes it.
+    panel = css_block(SECTION, ".slot.scrolling > :global(section.panel) {")
+    assert "padding-top: 0" in panel, "rows scroll through the panel's top padding, above the header"
+    assert "padding-top: var(--panel-pad-top" in header, "the header does not take the padding over"
+    measure = section_fn("measure")
+    assert "classList.remove('scrolling')" in measure and "paddingTop" in measure, (
+        "the padding is read while scroll mode has already zeroed it"
+    )
+
     measure = section_fn("measure")
     assert "setProperty('--sticky-top'" in measure and "offsetHeight" in measure, (
         "the sticky offset is not measured from the card header"

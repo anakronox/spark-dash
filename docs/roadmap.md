@@ -5503,6 +5503,12 @@ than a hedge.
   underline travels as an inset shadow. Verified live: Temperatures held at 14
   rows and scrolled 300px, `th` top at exactly the header's bottom, panel
   background behind it, page never scrolls sideways.
+  **Production caught a third thing:** rows scrolling by *above* the card
+  title. A sticky box is held inside its containing block's content box, so a
+  header stuck at `top: 0` still sits below the panel's own top padding and
+  that strip scrolls. The panel drops its top padding in scroll mode and the
+  header takes the same amount — read from the panel's resting style with the
+  scroll class off for one read, since scroll mode is what zeroes it.
 
 - [x] **AE18. Paginate or scroll, chosen in Settings.** Asked for as a costing:
   what would it take to scroll inside a card instead of paging? About 150 lines,
