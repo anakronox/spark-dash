@@ -6,6 +6,7 @@
    * card is easy to overlook; an obviously-dead one isn't — and "node down" is
    * the alert this whole system exists to surface.
    */
+  import MaintenanceControl from './MaintenanceControl.svelte';
   import MemoryBand from './MemoryBand.svelte';
   import StatusPill from './StatusPill.svelte';
   import Vitals from './Vitals.svelte';
@@ -14,6 +15,7 @@
   import type { NodeSnapshot } from '../lib/types';
   import { engines } from '../lib/types';
   import { pageFocus } from '../lib/focus.svelte';
+  import type { AlertFeed } from '../lib/alerts.svelte';
 
   interface Props {
     node: NodeSnapshot;
@@ -39,8 +41,24 @@
      * fitting more healthy nodes on screen; shrinking the one that needs
      * attention would invert the point. */
     compact?: boolean;
+    /** For the maintenance control: it starts and ends windows through the
+     *  feed so the notice line and this card agree on the same click. */
+    alerts: AlertFeed;
   }
-  const { node, slot, compact = false, lagging = [] }: Props = $props();
+  const { node, slot, compact = false, lagging = [], alerts }: Props = $props();
+
+  /* UNDER MAINTENANCE (roadmap AH7). De-escalated, never hidden: the pill
+     keeps its words and drops its colour, the card's accent goes muted, and
+     the control beside the pill says how long is left and offers the way
+     out. Health itself is untouched — an unreachable node under maintenance
+     still reads "critical · unreachable", in muted ink, because that is the
+     truth and it was expected.
+
+     Read from the feed rather than only from the snapshot's own mark, so the
+     card changes on the click rather than on the next frame the backend
+     stamps — a frame is 2s; a click should be now. */
+  const window = $derived(alerts.windowsFor(node.node_id)[0] ?? null);
+  const maintained = $derived(window !== null || node.maintenance !== null);
 
   /* Down nodes are never compacted — see `compact` above. */
   const dense = $derived(compact && node.up);
@@ -97,6 +115,7 @@
   class="node panel"
   class:down={!node.up}
   class:dense
+  class:maintained
   class:focused={pageFocus.node === node.node_id}
   style:--accent={accent}
   role={dense ? 'group' : undefined}
@@ -127,7 +146,8 @@
       >{node.node_id}</button>
     </h2>
     <div class="meta">
-      <StatusPill health={node.health} reasons={node.health_reasons} />
+      <StatusPill health={node.health} reasons={node.health_reasons} muted={maintained} />
+      <MaintenanceControl scope="node" name={node.node_id} feed={alerts} {window} />
       <!-- OUT OF STEP WITH ITS PEERS, which is a different claim from
            unhealthy — this node may be perfectly fine on its own terms and
            still be the one setting the pace for a model that spans the
@@ -281,6 +301,13 @@
 
   .node.down {
     opacity: 0.62;
+  }
+
+  /* The identity rule goes muted for the duration: the one place the card
+     carries colour, saying "not in service right now" without borrowing a
+     status hue for a state that is not a problem. */
+  .node.maintained {
+    border-top-color: var(--ink-muted);
   }
 
   header {

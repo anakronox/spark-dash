@@ -22,6 +22,7 @@
     SILENCE_DURATIONS,
     alertKey,
     createSilence,
+    endMaintenance,
     episodeKey,
     expireSilence,
     fetchHistory,
@@ -94,6 +95,21 @@
     busy = true;
     try {
       await expireSilence(id);
+      await Promise.all([feed.load(), loadSilences()]);
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* A window's silences end TOGETHER. Expiring one of the pair by itself
+     would leave the node muted with its peers not, or the reverse, and the
+     list would show half a window. So a maintenance row's button ends the
+     window, whichever of its silences the row happens to be. */
+  async function endWindow(id: string) {
+    busy = true;
+    try {
+      await endMaintenance(id);
+      feed.maintenance = feed.maintenance.filter((w) => w.id !== id);
       await Promise.all([feed.load(), loadSilences()]);
     } finally {
       busy = false;
@@ -212,11 +228,24 @@
         <h3 class="eyebrow dim">Silenced</h3>
         {#each silences as s (s.id)}
           <div class="row silenced">
-            <span class="name">
-              {s.matchers.map((m) => `${m.name}=${m.value}`).join(' · ')}
-            </span>
-            <span class="dim">{endsIn(s.endsAt)}</span>
-            <button class="mini" disabled={busy} onclick={() => unsilence(s.id)}>unsilence</button>
+            {#if s.maintenance}
+              <!-- Named for what it is, not for its matchers: "maintenance ·
+                   gx10-2 · trying Qwen3" is what the person who declared it
+                   would recognise. The peers row is the second silence of a
+                   node-scope window, holding the cluster's comparison alerts. -->
+              <span class="name">
+                <span aria-hidden="true">◌</span>
+                maintenance · {s.maintenance.name}{s.maintenance.peers ? ' (peers)' : ''}{s.maintenance.reason ? ` · ${s.maintenance.reason}` : ''}
+              </span>
+              <span class="dim">{endsIn(s.endsAt)}</span>
+              <button class="mini" disabled={busy} onclick={() => endWindow(s.maintenance!.window)}>end</button>
+            {:else}
+              <span class="name">
+                {s.matchers.map((m) => `${m.name}=${m.value}`).join(' · ')}
+              </span>
+              <span class="dim">{endsIn(s.endsAt)}</span>
+              <button class="mini" disabled={busy} onclick={() => unsilence(s.id)}>unsilence</button>
+            {/if}
           </div>
         {/each}
       </section>
@@ -250,7 +279,10 @@
              rather than its condition being rare, and that state is invisible
              everywhere else, including in Alertmanager. -->
         <p class="summary">
-          <span class="num">{summary.fired}</span> fired ·
+          <span class="num">{summary.fired}</span> fired{#if summary.during_maintenance}
+            <!-- Context, not subtraction. "3 fired, 2 during maintenance" is a
+                 different week from "3 fired", and from "1 fired". -->
+            <span class="dim">({summary.during_maintenance} during maintenance)</span>{/if} ·
           <span class="num">{summary.pending_only}</span> pending only ·
           <span class="dim">{summary.episodes} total in {rangeLabel}</span>
         </p>
@@ -285,6 +317,11 @@
                         <!-- Not a lesser event: it means the condition was met
                              but never for long enough to page anyone. -->
                         <span class="tag" data-kind="pending">never fired</span>
+                      {/if}
+                      {#if e.maintenance}
+                        <!-- Beside the outcome, never instead of it: the
+                             episode happened; this says it was expected. -->
+                        <span class="tag" data-kind="maintenance">maintenance</span>
                       {/if}
                     </td>
                   </tr>
@@ -450,6 +487,7 @@
   }
   .tag[data-kind='fired'] { color: var(--series-2, var(--ink)); }
   .tag[data-kind='ongoing'] { color: var(--series-1, var(--ink)); }
+  .tag[data-kind='maintenance'] { color: var(--ink-muted); margin-left: 4px; }
 
   @media (max-width: 640px) {
     .flyout { width: 100%; border-left: none; }

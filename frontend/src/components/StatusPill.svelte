@@ -8,8 +8,13 @@
   interface Props {
     health: HealthState;
     reasons?: string[];
+    /** De-escalate the colour without changing the words. Used while the
+     *  node is under a maintenance window: "critical · unreachable" is still
+     *  the fact, in muted ink because it was expected. The glyph and label
+     *  stay, so meaning never rode on the hue in the first place. */
+    muted?: boolean;
   }
-  const { health, reasons = [] }: Props = $props();
+  const { health, reasons = [], muted = false }: Props = $props();
 
   /* SPIKE NOTE (roadmap AB). The old CSS expressed this as four
    * `[data-health='x']` rules, which read as one idea with four cases. As
@@ -30,8 +35,9 @@
 </script>
 
 <span
-  class="inline-flex items-baseline gap-[6px] text-label {TONE[health]}"
+  class="inline-flex items-baseline gap-[6px] text-label {muted ? 'text-ink-muted' : TONE[health]}"
   data-health={health}
+  data-muted={muted ? '' : undefined}
   title={reasons.join('; ')}
 >
   <span class="text-nano leading-none" aria-hidden="true">{HEALTH_GLYPH[health]}</span>

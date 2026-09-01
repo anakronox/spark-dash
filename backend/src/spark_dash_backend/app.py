@@ -17,9 +17,10 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
@@ -40,6 +41,15 @@ from spark_dash_backend.cluster import (
 )
 from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
+from spark_dash_backend.maintenance import (
+    DEFAULT_HOURS,
+    MaintenanceService,
+    ScopeError,
+    fetch_intervals,
+    parse_comment,
+    render_metrics,
+    tag_episodes,
+)
 from spark_dash_backend.poller import LivePoller
 from spark_dash_backend.prometheus import (
     ABSENT_AFTER_S,
@@ -112,6 +122,15 @@ class ClusterWrite(BaseModel):
 MAX_SILENCE_HOURS = 24.0
 
 
+class MaintenanceStart(BaseModel):
+    scope: Literal["node", "cluster"]
+    name: str = Field(min_length=1)
+    # Same cap as a silence, because it IS one. The failure mode of any mute
+    # is forgetting, and the cap is what makes forgetting survivable.
+    hours: float = Field(default=DEFAULT_HOURS, gt=0, le=MAX_SILENCE_HOURS)
+    reason: str = Field(default="", max_length=200)
+
+
 def _age_seconds(ts: datetime) -> float:
     return (datetime.now(UTC) - ts).total_seconds()
 
@@ -129,14 +148,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         node_exporter_port=settings.node_exporter_port,
         ttl_s=settings.inventory_ttl_s,
     )
+    prom = PrometheusClient(settings.prometheus_url, timeout_s=settings.prometheus_timeout_s)
+    alertmanager = AlertmanagerClient(
+        settings.alertmanager_url, timeout_s=settings.alertmanager_timeout_s
+    )
+    maintenance = MaintenanceService(alertmanager, inventory)
     poller = LivePoller(
         inventory,
         interval_s=settings.live_poll_interval_s,
         timeout_s=settings.agent_timeout_s,
-    )
-    prom = PrometheusClient(settings.prometheus_url, timeout_s=settings.prometheus_timeout_s)
-    alertmanager = AlertmanagerClient(
-        settings.alertmanager_url, timeout_s=settings.alertmanager_timeout_s
+        maintenance=maintenance,
     )
 
     @asynccontextmanager
@@ -156,6 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="spark-dash", summary="GB10 inference cluster dashboard", lifespan=lifespan)
     app.state.poller = poller
     app.state.inventory = inventory
+    app.state.maintenance = maintenance
 
     # ---------------------------------------------------------------- live
 
@@ -836,7 +858,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         hide problems from yourself, so anything currently silenced has to be
         visible in the same place the alerts are.
         """
-        return {"silences": await alertmanager.silences()}
+        silences = await alertmanager.silences()
+        for s in silences:
+            # A window's silences carry the window, so the list can say
+            # "maintenance · sparky · trying Qwen3" instead of raw matchers.
+            parsed = parse_comment(s.get("comment"))
+            s["maintenance"] = (
+                {"window": parsed.window, "scope": parsed.scope, "name": parsed.name,
+                 "reason": parsed.reason, "peers": parsed.peers}
+                if parsed and s.get("createdBy") == maintenance_author()
+                else None
+            )
+        return {"silences": silences}
 
     @app.post("/api/alerts/silence")
     async def api_create_silence(body: dict) -> dict:
@@ -910,6 +943,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except PrometheusError as exc:
             raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
 
+        # Context, not filtering: an episode inside a window is still shown,
+        # tagged. The record must not quietly shrink because a mute was on.
+        try:
+            tag_episodes(episodes, await fetch_intervals(prom, start=start, end=end, step=step))
+        except PrometheusError:
+            log.debug("maintenance record unavailable; episodes untagged", exc_info=True)
+
         return {
             "window_minutes": minutes,
             "summary": summarise(episodes),
@@ -926,6 +966,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """
         reachable = await alertmanager.reachable()
         alerts = await alertmanager.firing() if reachable else []
+        # Rides the same 30s poll the banner already makes, so the notice line
+        # and the alert list cannot disagree about whether a window is on.
+        windows = await maintenance.refresh() if reachable else maintenance.cached
 
         # Alertmanager being reachable says nothing about whether Prometheus is
         # still RECORDING. A clock step on 2026-08-16 left it answering queries
@@ -942,7 +985,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "warning": sum(1 for a in alerts if a.severity == "warning"),
             "data_stale": stale,
             "data_age_s": None if age is None or age == float("inf") else round(age, 1),
+            "maintenance": [w.as_dict() for w in windows],
         }
+
+    # --------------------------------------------------------- maintenance
+    #
+    # A window is a silence with a name, declared BEFORE the work — see
+    # maintenance.py. Same write budget as a silence: it cannot repoint an
+    # agent, load a model or touch a process, and it is bounded by the same
+    # cap. What it adds is scope (a whole node or cluster, every rule) and
+    # order (first the window, then the container stops).
+
+    @app.get("/api/maintenance")
+    async def api_maintenance() -> dict:
+        """Active windows, freshly read.
+
+        `available` is reported the same way `/api/alerts` reports it:
+        "no windows" and "cannot ask whether there are windows" must not look
+        alike, because a reader about to stop a container needs to know which.
+        """
+        reachable = await alertmanager.reachable()
+        windows = await maintenance.refresh() if reachable else []
+        return {"available": reachable, "windows": [w.as_dict() for w in windows]}
+
+    @app.post("/api/maintenance")
+    async def api_start_maintenance(body: MaintenanceStart) -> dict:
+        """Declare a window. Node or cluster; clusters mute together."""
+        try:
+            window = await maintenance.start(
+                body.scope, body.name, hours=body.hours, reason=body.reason
+            )
+        except ScopeError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 — surfaced to the caller
+            raise HTTPException(status_code=502, detail=f"alertmanager: {exc}") from exc
+        return {"window": window.as_dict()}
+
+    @app.delete("/api/maintenance/{window_id}")
+    async def api_end_maintenance(window_id: str) -> dict:
+        """End a window early — the way out Brian asked for (AH, decision 2).
+
+        Every silence in the window goes, peers included: half a window
+        ending would leave the cluster muted with nothing on the page saying
+        so.
+        """
+        try:
+            window = await maintenance.end(window_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"no active window {window_id!r}") from None
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"alertmanager: {exc}") from exc
+        return {"ended": window.as_dict()}
+
+    @app.get("/metrics")
+    async def metrics() -> PlainTextResponse:
+        """The backend's own series, for Prometheus.
+
+        One thing today: `sparkdash_maintenance`, 1 per node under a window.
+        Read from Alertmanager when the cache is stale — a scrape every 15s
+        and a 15s TTL mean this is roughly one Alertmanager read per scrape,
+        which is nothing — so the record in the TSDB tracks the real state
+        rather than whatever the poller last saw.
+        """
+        try:
+            windows = await maintenance.active()
+        except Exception:  # noqa: BLE001 — a scrape must answer; stale beats 500
+            log.debug("maintenance read failed during scrape", exc_info=True)
+            windows = maintenance.cached
+        return PlainTextResponse(render_metrics(windows), media_type="text/plain; version=0.0.4")
 
     # -------------------------------------------------------------- health
 
@@ -1039,6 +1149,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     _mount_frontend(app, settings)
     return app
+
+
+def maintenance_author() -> str:
+    from spark_dash_backend.maintenance import AUTHOR
+
+    return AUTHOR
 
 
 def _unreachable_endpoints(snapshot) -> list[str]:

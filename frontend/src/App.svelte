@@ -10,6 +10,7 @@
   import ModelsTable from './components/ModelsTable.svelte';
   import MemoryBand from './components/MemoryBand.svelte';
   import NodeCard from './components/NodeCard.svelte';
+  import MaintenanceControl from './components/MaintenanceControl.svelte';
   import ProcessTable from './components/ProcessTable.svelte';
   import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
@@ -21,7 +22,8 @@
   import { Theme } from './lib/theme.svelte';
   import { LiveFeed } from './lib/live.svelte';
   import { pageFocus } from './lib/focus.svelte';
-  import { AlertFeed } from './lib/alerts.svelte';
+  import { AlertFeed, endMaintenance, timeLeft } from './lib/alerts.svelte';
+  import type { MaintenanceWindow } from './lib/alerts.svelte';
   import { fetchWithTimeout } from './lib/request';
   import { compact, gib, num } from './lib/format';
   import type { NodeSnapshot, ProcessInfo } from './lib/types';
@@ -164,14 +166,25 @@
 
   const versionsDiverge = $derived(agentVersions.length > 1);
 
+  /* NODES UNDER MAINTENANCE, from the feed (roadmap AH8).
+   *
+   * Node-scoped notices for these fold into the window's own line rather
+   * than rendering as warnings: a new model on an unconfigured port is
+   * exactly what testing looks like, and "running but not collected" on a
+   * node someone just declared work on is the page shouting about the plan.
+   * FOLDED, NOT DROPPED — the window's line says how many it is holding, so
+   * nothing leaves the page without a trace of where it went. */
+  const maintainedNodes = $derived(new Set(alertFeed.maintenance.flatMap((w) => w.nodes)));
+
   /* Inference servers running with nothing configured to collect them.
      Grouped by node so three engine processes on one box read as one problem
      rather than three. */
-  const unmonitored = $derived.by<[string, string[]][]>(() =>
+  const unmonitoredAll = $derived.by<[string, string[]][]>(() =>
     nodes
       .filter((n) => n.up && n.unmonitored_runtimes?.length)
       .map((n) => [n.node_id, n.unmonitored_runtimes] as [string, string[]]),
   );
+  const unmonitored = $derived(unmonitoredAll.filter(([node]) => !maintainedNodes.has(node)));
 
   /* Configured endpoints that did not answer.
    *
@@ -186,7 +199,7 @@
    *
    * Only nodes that are UP: on a down node every endpoint is unreachable, and
    * listing each one buries the fact that matters under its consequences. */
-  const unreachable = $derived.by<{ node: string; runtime: string; endpoint: string }[]>(() =>
+  const unreachableAll = $derived.by<{ node: string; runtime: string; endpoint: string }[]>(() =>
     nodes
       .filter((n) => n.up)
       .flatMap((n) => [
@@ -201,6 +214,8 @@
       ]),
   );
 
+  const unreachable = $derived(unreachableAll.filter((u) => !maintainedNodes.has(u.node)));
+
   /* G3: configured but long gone.
    *
    * Takes over exactly where the alert gives up. InferenceTargetScrapeFailing
@@ -213,6 +228,30 @@
    * not on the scale of a scrape. */
   let absent = $state<{ job: string; instance: string; node: string | null; down_for_s: number | null }[]>([]);
   let retiring = $state<string | null>(null);
+  const absentShown = $derived(absent.filter((t) => !t.node || !maintainedNodes.has(t.node)));
+
+  /** Notices a window is holding off the page, for its own line to count. */
+  const heldNotices = (w: MaintenanceWindow): number =>
+    unmonitoredAll.filter(([node]) => w.nodes.includes(node)).length +
+    unreachableAll.filter((u) => w.nodes.includes(u.node)).length +
+    absent.filter((t) => t.node != null && w.nodes.includes(t.node)).length;
+
+  const clusterWindow = (name: string): MaintenanceWindow | null =>
+    alertFeed.maintenance.find((w) => w.scope === 'cluster' && w.name === name) ?? null;
+
+  let ending = $state<string | null>(null);
+  async function endWindow(id: string) {
+    ending = id;
+    try {
+      await endMaintenance(id);
+      alertFeed.maintenance = alertFeed.maintenance.filter((w) => w.id !== id);
+      void alertFeed.load();
+    } catch {
+      // The next poll shows whether it took; the button re-enables either way.
+    } finally {
+      ending = null;
+    }
+  }
 
   async function loadAbsent() {
     try {
@@ -498,10 +537,17 @@
           : ''}"
         aria-label={alertFeed.alerts.length
           ? `${alertFeed.alerts.length} alerts firing. Open alerts and history.`
-          : 'Open alerts and history'}
+          : alertFeed.maintenance.length
+            ? `${alertFeed.maintenance.length} maintenance window${alertFeed.maintenance.length === 1 ? '' : 's'} active. Open alerts and history.`
+            : 'Open alerts and history'}
         onclick={() => (historyOpen = true)}
       >
-        <span aria-hidden="true">{alertFeed.alerts.length ? '■' : '▲'}</span>
+        <!-- The maintenance glyph replaces the quiet one, never the loud one:
+             a window that is on is worth a mark in the header, but an alert
+             still firing on a node OUTSIDE the window outranks it. -->
+        <span aria-hidden="true">
+          {alertFeed.alerts.length ? '■' : alertFeed.maintenance.length ? '◌' : '▲'}
+        </span>
         <span class={ALERTS_LABEL}>alerts</span>
         {#if alertFeed.alerts.length}
           <span class={BADGE}>{alertFeed.alerts.length}</span>
@@ -555,6 +601,28 @@
   <!-- Above everything: an alert is what you want to see before you start
        reading numbers. Renders nothing when all is quiet. -->
   <Alerts feed={alertFeed} />
+
+  <!-- MAINTENANCE (roadmap AH8). One calm line per window, where the alert
+       banner sits: what is muted, why, what it is holding, how long is left,
+       and the way out. `info` tone on purpose — this is a state you chose.
+       The G2 guardrail in another form: a mute that is on must be visible on
+       the page it is muting, with the undo attached. -->
+  {#each alertFeed.maintenance as w (w.id)}
+    <p class={notice('info')}>
+      <span aria-hidden="true">◌</span>
+      <span class={NUM}>{w.name}</span> in maintenance{w.reason ? ` — ${w.reason}` : ''}
+      <span class={MUTED}>
+        · {w.held} alert{w.held === 1 ? '' : 's'} held
+        {#if heldNotices(w)}
+          · {heldNotices(w)} notice{heldNotices(w) === 1 ? '' : 's'} folded in
+        {/if}
+        · {timeLeft(w.ends_at)}
+      </span>
+      <button class={RETIRE} disabled={ending === w.id} onclick={() => endWindow(w.id)}>
+        {ending === w.id ? 'ending…' : 'end'}
+      </button>
+    </p>
+  {/each}
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
   <Settings {theme} {layout} open={settingsOpen} onclose={() => (settingsOpen = false)} />
 
@@ -596,13 +664,13 @@
     </p>
   {/if}
 
-  {#if absent.length}
+  {#if absentShown.length}
     <!-- Named as what it IS and what it is not: a target down this long is
          either broken or retired, and nothing observable tells them apart.
          Saying so is more useful than picking one and being wrong. -->
     <p class={notice('warning')}>
       Configured but absent:
-      {#each absent as t (t.instance)}
+      {#each absentShown as t (t.instance)}
         <span class={NUM}>{t.instance}</span>
         <span class={MUTED}>{t.job}{t.node ? ` on ${t.node}` : ''} · down {downFor(t.down_for_s)}</span>
         {#if isEngineJob(t.job)}
@@ -667,6 +735,14 @@
           <header class={CLUSTER_HEAD}>
             <h2 class={CLUSTER_H2}>{cluster.name}</h2>
             <span class={MUTED}>{cluster.nodes.length} nodes pooled</span>
+            <!-- Clusters go down together, so they mute together: one window
+                 for every member, from the frame that means "these pool". -->
+            <MaintenanceControl
+              scope="cluster"
+              name={cluster.name}
+              feed={alertFeed}
+              window={clusterWindow(cluster.name)}
+            />
           </header>
           <!-- The pooled band, drawn exactly like a node's own. Honest here
                precisely because these nodes are clustered: a model can span
@@ -688,6 +764,7 @@
                 slot={slotOf.get(node.node_id) ?? 0}
                 compact={layout.compactCards}
                 lagging={stragglers.get(node.node_id) ?? []}
+                alerts={alertFeed}
               />
             {/each}
           </div>
@@ -700,6 +777,7 @@
               slot={slotOf.get(node.node_id) ?? 0}
               compact={layout.compactCards}
               lagging={stragglers.get(node.node_id) ?? []}
+              alerts={alertFeed}
             />
           {/each}
         </div>

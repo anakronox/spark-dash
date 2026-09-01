@@ -651,6 +651,24 @@ class ConfigStatus(BaseModel):
     )
 
 
+class MaintenanceMark(BaseModel):
+    """This node is under a maintenance window someone declared on purpose.
+
+    Stamped by the backend, never by the agent: maintenance is an operator's
+    statement about intent, and the agent measures — it has no opinion on
+    whether an outage was planned. The mark rides the snapshot so the live
+    view can de-escalate a node without changing what `health` says. An
+    unreachable node under maintenance is still `critical` / "unreachable";
+    the mark is what tells the reader that is expected.
+    """
+
+    window: str = Field(description="Id shared by every silence in the window.")
+    scope: Literal["node", "cluster"]
+    name: str = Field(description="The node id or cluster name the window was declared on.")
+    reason: str = ""
+    ends_at: datetime
+
+
 class NodeSnapshot(BaseModel):
     """Everything the dashboard shows for one node at one instant."""
 
@@ -679,6 +697,9 @@ class NodeSnapshot(BaseModel):
     # span the members' pooled memory) and never across clusters (it can't
     # span machines that aren't clustered).
     cluster: str | None = None
+
+    # Set by the backend, like `cluster`. None is the normal state.
+    maintenance: MaintenanceMark | None = None
     health: HealthState = HealthState.GOOD
     health_reasons: list[str] = Field(
         default_factory=list,

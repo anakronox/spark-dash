@@ -249,6 +249,15 @@ export function isEngineJob(job: string): boolean {
   return (ENGINE_RUNTIMES as readonly string[]).includes(job);
 }
 
+export interface MaintenanceMark {
+  window: string;
+  scope: 'node' | 'cluster';
+  /** The node id or cluster name the window was declared on. */
+  name: string;
+  reason: string;
+  ends_at: string;
+}
+
 export interface NodeSnapshot {
   node_id: string;
   ts: string;
@@ -262,6 +271,11 @@ export interface NodeSnapshot {
    *  A NAME, never a count — "pair" stops being true at three nodes, and
    *  clusters in the wild run to 32. */
   cluster: string | null;
+  /** Set when an operator declared a maintenance window covering this node.
+   *  Stamped by the backend, like `cluster`. Health is NOT changed by it —
+   *  an unreachable node under maintenance is still critical/"unreachable";
+   *  this is what tells the reader that was expected. */
+  maintenance: MaintenanceMark | null;
   health: HealthState;
   health_reasons: string[];
   /** Runtimes running on this node with nothing configured to collect them.

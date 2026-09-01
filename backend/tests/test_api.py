@@ -696,3 +696,176 @@ class TestDataFreshness:
             "spark_dash_backend.prometheus.PrometheusClient.data_age_s", old
         )
         assert client.get("/api/alerts").json()["data_stale"] is True
+
+
+# ------------------------------------------------------------ maintenance
+#
+# The Alertmanager client is replaced with an in-memory one: what these
+# tests check is the HTTP contract and the wiring — scope resolution through
+# the inventory, the peers silence, the way out — not Alertmanager itself.
+
+
+class InMemoryAlertmanager:
+    def __init__(self):
+        self.store: dict[str, dict] = {}
+        self.n = 0
+        self.expired: list[str] = []
+
+    async def reachable(self):
+        return True
+
+    async def firing(self):
+        return []
+
+    async def silences(self):
+        return [s for s in self.store.values() if s["status"]["state"] == "active"]
+
+    async def silenced(self):
+        return []
+
+    async def create_silence(self, matchers, *, hours, comment, author="spark-dash"):
+        from datetime import timedelta
+
+        self.n += 1
+        sid = f"sil-{self.n}"
+        now = datetime.now(UTC)
+        self.store[sid] = {
+            "id": sid,
+            "createdBy": author,
+            "comment": comment,
+            "matchers": matchers,
+            "startsAt": now.isoformat(),
+            "endsAt": (now + timedelta(hours=hours)).isoformat(),
+            "status": {"state": "active"},
+        }
+        return sid
+
+    async def expire_silence(self, sid):
+        self.expired.append(sid)
+        self.store[sid]["status"]["state"] = "expired"
+
+
+@pytest.fixture
+def maint(tmp_path, monkeypatch):
+    am = InMemoryAlertmanager()
+    monkeypatch.setattr("spark_dash_backend.app.AlertmanagerClient", lambda *a, **k: am)
+
+    async def fake_poll_once(self):
+        snap = ClusterSnapshot(ts=datetime.now(UTC), nodes=[node("gx10-1"), node("gx10-2")])
+        self._stamp(snap)
+        self._latest = snap
+        return snap
+
+    async def fake_healthy(self):
+        return True
+
+    async def fake_age(self):
+        return 5.0
+
+    monkeypatch.setattr("spark_dash_backend.poller.LivePoller.poll_once", fake_poll_once)
+    monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.healthy", fake_healthy)
+    monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.data_age_s", fake_age)
+
+    app = create_app(
+        Settings(
+            # A pair, so node scope has peers to mute.
+            spark_nodes="danflashes/gx10-1=192.168.50.61,danflashes/gx10-2=192.168.50.62",
+            prometheus_targets_dir=tmp_path,
+            static_dir=tmp_path / "nostatic",
+        )
+    )
+    with TestClient(app) as c:
+        yield c, am
+
+
+def test_maintenance_starts_a_window_and_lists_it(maint):
+    client, am = maint
+    resp = client.post(
+        "/api/maintenance",
+        json={"scope": "node", "name": "gx10-1", "hours": 2, "reason": "trying Qwen3"},
+    )
+    assert resp.status_code == 200, resp.text
+    w = resp.json()["window"]
+    assert w["scope"] == "node"
+    assert w["name"] == "gx10-1"
+    assert w["nodes"] == ["gx10-1"]
+    assert w["reason"] == "trying Qwen3"
+    # Node in a cluster: the node silence AND the peers silence.
+    assert len(w["silence_ids"]) == 2
+    assert {s["createdBy"] for s in am.store.values()} == {"spark-dash/maintenance"}
+
+    listed = client.get("/api/maintenance").json()
+    assert listed["available"] is True
+    assert [x["id"] for x in listed["windows"]] == [w["id"]]
+
+
+def test_maintenance_rides_the_alerts_payload(maint):
+    client, _ = maint
+    client.post("/api/maintenance", json={"scope": "cluster", "name": "danflashes"})
+    body = client.get("/api/alerts").json()
+    assert len(body["maintenance"]) == 1
+    assert sorted(body["maintenance"][0]["nodes"]) == ["gx10-1", "gx10-2"]
+
+
+def test_maintenance_default_is_four_hours_and_capped_like_a_silence(maint):
+    client, am = maint
+    client.post("/api/maintenance", json={"scope": "node", "name": "gx10-1"})
+    from datetime import datetime as dt
+
+    s = next(iter(am.store.values()))
+    hours = (dt.fromisoformat(s["endsAt"]) - dt.fromisoformat(s["startsAt"])).total_seconds() / 3600
+    assert round(hours, 3) == 4.0
+
+    too_long = client.post(
+        "/api/maintenance", json={"scope": "node", "name": "gx10-1", "hours": 48}
+    )
+    assert too_long.status_code == 422
+
+
+def test_maintenance_unknown_scope_is_404_not_an_empty_mute(maint):
+    client, am = maint
+    resp = client.post("/api/maintenance", json={"scope": "node", "name": "nope"})
+    assert resp.status_code == 404
+    assert am.store == {}, "nothing must be created for a scope that matches nothing"
+
+
+def test_maintenance_ends_every_silence_in_the_window(maint):
+    client, am = maint
+    w = client.post("/api/maintenance", json={"scope": "node", "name": "gx10-1"}).json()["window"]
+    resp = client.delete(f"/api/maintenance/{w['id']}")
+    assert resp.status_code == 200
+    assert sorted(am.expired) == sorted(w["silence_ids"])
+    assert client.get("/api/maintenance").json()["windows"] == []
+    assert client.delete(f"/api/maintenance/{w['id']}").status_code == 404
+
+
+def test_maintenance_is_stamped_onto_the_live_snapshot(maint):
+    client, _ = maint
+    client.post("/api/maintenance", json={"scope": "node", "name": "gx10-2", "reason": "swap"})
+    # A REST call first, so the poller holds a (stubbed) snapshot; the socket
+    # then hands that frame over immediately rather than polling real hosts.
+    client.get("/api/nodes")
+    with client.websocket_connect("/ws/live") as ws:
+        frame = ws.receive_json()
+    by_id = {n["node_id"]: n for n in frame["nodes"]}
+    assert by_id["gx10-1"]["maintenance"] is None
+    assert by_id["gx10-2"]["maintenance"]["reason"] == "swap"
+    assert by_id["gx10-2"]["health"] == "good", "the mark never rewrites health"
+
+
+def test_metrics_expose_one_series_per_covered_node(maint):
+    client, _ = maint
+    client.post("/api/maintenance", json={"scope": "cluster", "name": "danflashes"})
+    text = client.get("/metrics").text
+    assert "# TYPE sparkdash_maintenance gauge" in text
+    assert 'sparkdash_maintenance{node="gx10-1",scope="cluster",name="danflashes"' in text
+    assert 'sparkdash_maintenance{node="gx10-2",scope="cluster",name="danflashes"' in text
+
+
+def test_silences_carry_their_window(maint):
+    client, _ = maint
+    client.post("/api/maintenance", json={"scope": "node", "name": "gx10-1", "reason": "r"})
+    silences = client.get("/api/alerts/silences").json()["silences"]
+    assert len(silences) == 2
+    assert {s["maintenance"]["peers"] for s in silences} == {False, True}
+    assert {s["maintenance"]["name"] for s in silences} == {"gx10-1"}

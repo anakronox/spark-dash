@@ -140,10 +140,15 @@ class LivePoller:
         *,
         interval_s: float = 2.0,
         timeout_s: float = 3.0,
+        maintenance=None,
     ) -> None:
         self._inventory = inventory
         self._interval_s = interval_s
         self._timeout_s = timeout_s
+        # Stamps `maintenance` onto each node the way `cluster` is stamped in
+        # fetch_node: a fact about operator intent that the agent cannot know.
+        # Optional so the poller stays usable without Alertmanager in tests.
+        self._maintenance = maintenance
 
         self._subscribers: set[asyncio.Queue[ClusterSnapshot]] = set()
         self._task: asyncio.Task | None = None
@@ -204,6 +209,7 @@ class LivePoller:
                 started = asyncio.get_running_loop().time()
                 try:
                     snapshot = await gather_cluster(client, self._inventory.nodes())
+                    self._stamp(snapshot)
                     self._latest = snapshot
                     self._publish(snapshot)
                 except asyncio.CancelledError:
@@ -230,5 +236,14 @@ class LivePoller:
         """One-shot poll for REST callers, independent of the loop."""
         async with httpx.AsyncClient(timeout=self._timeout_s) as client:
             snapshot = await gather_cluster(client, self._inventory.nodes())
+        self._stamp(snapshot)
         self._latest = snapshot
         return snapshot
+
+    def _stamp(self, snapshot: ClusterSnapshot) -> None:
+        if self._maintenance is None:
+            return
+        try:
+            self._maintenance.stamp(snapshot)
+        except Exception:  # noqa: BLE001 — a mark is decoration; the frame is not
+            log.debug("maintenance stamp failed", exc_info=True)

@@ -103,6 +103,16 @@ scrape_configs:
     static_configs:
       - targets: ['alertmanager:9093']
 
+  # The backend's own series. Today that is one thing: `sparkdash_maintenance`,
+  # 1 per node under a maintenance window declared from the dashboard. The
+  # window itself is an Alertmanager silence, which Alertmanager forgets five
+  # days after it ends — scraping it here is what lets the alert history say
+  # "fired, during maintenance" a month later, from the same TSDB everything
+  # else is reconstructed from.
+  - job_name: spark-dash-backend
+    static_configs:
+      - targets: ['backend:8080']
+
   # This host's own metrics. Separate job name from the per-node exporters so
   # rules can address the monitoring VM specifically — without it, a rule
   # joining on `node_filesystem_*` picks up whichever host happens to report,

@@ -28,6 +28,73 @@ export interface Silence {
   startsAt: string;
   endsAt: string;
   matchers: { name: string; value: string }[];
+  /** Set when this silence belongs to a maintenance window, so the list can
+   *  say "maintenance · sparky · trying Qwen3" instead of raw matchers. */
+  maintenance?: {
+    window: string;
+    scope: 'node' | 'cluster';
+    name: string;
+    reason: string;
+    /** The second silence of a node-scope window: the one holding the
+     *  cluster's peer-comparison alerts. */
+    peers: boolean;
+  } | null;
+}
+
+/* MAINTENANCE WINDOWS (roadmap AH).
+ *
+ * A window is a silence with a name, declared BEFORE the work rather than
+ * after the alert has fired and the phone has buzzed. Same write budget as a
+ * silence — it cannot repoint an agent, load a model or touch a process — and
+ * the same 24h cap, because the failure mode of any mute is forgetting. What
+ * it adds is scope (a whole node or cluster, every rule) and order.
+ */
+export interface MaintenanceWindow {
+  id: string;
+  scope: 'node' | 'cluster';
+  name: string;
+  nodes: string[];
+  reason: string;
+  starts_at: string;
+  ends_at: string;
+  silence_ids: string[];
+  /** Alerts the window is currently holding. */
+  held: number;
+}
+
+/** Brian, 2026-09-02: four hours by default. Same chips as a silence. */
+export const MAINTENANCE_DEFAULT_HOURS = 4;
+
+export async function startMaintenance(
+  scope: 'node' | 'cluster',
+  name: string,
+  hours: number,
+  reason: string,
+): Promise<MaintenanceWindow> {
+  const resp = await fetchWithTimeout('/api/maintenance', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ scope, name, hours, reason }),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  return (await resp.json()).window;
+}
+
+export async function endMaintenance(id: string): Promise<void> {
+  const resp = await fetchWithTimeout(`/api/maintenance/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+}
+
+/** "1h 40m left", "12m left", "ending" — for the card, the notice and the list. */
+export function timeLeft(endsAtIso: string): string {
+  const mins = Math.round((new Date(endsAtIso).getTime() - Date.now()) / 60000);
+  if (mins < 1) return 'ending';
+  if (mins < 60) return `${mins}m left`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h}h ${m}m left` : `${h}h left`;
 }
 
 /** How long a silence can run. Matches the backend's cap — the failure mode of
@@ -107,6 +174,9 @@ export interface AlertEpisode {
   fired: boolean;
   fired_at: number | null;
   labels: Record<string, string>;
+  /** Overlapped a maintenance window on its node. Context, never erasure:
+   *  the episode still fired; this says it was expected. */
+  maintenance: boolean;
 }
 
 export interface AlertSummary {
@@ -115,6 +185,8 @@ export interface AlertSummary {
   /** The number that says a rule is mistuned rather than its condition rare. */
   pending_only: number;
   ongoing: number;
+  /** Of the fired ones, how many fell inside a maintenance window. */
+  during_maintenance: number;
 }
 
 export const HISTORY_RANGES = [
@@ -134,6 +206,12 @@ export class AlertFeed {
   dataStale = $state(false);
   dataAgeS = $state<number | null>(null);
 
+  /** Active maintenance windows. Rides the same 30s poll as the alerts, so
+   *  the notice line and the alert list cannot disagree about whether one is
+   *  on. Set directly by the controls that start or end a window, so the page
+   *  reflects the click at once rather than up to 30s later. */
+  maintenance = $state<MaintenanceWindow[]>([]);
+
   #timer: ReturnType<typeof setInterval> | null = null;
 
   get critical(): number {
@@ -146,6 +224,13 @@ export class AlertFeed {
     return this.alerts.length ? this.alerts[0].severity : null;
   }
 
+  /** Windows covering a node, longest-remaining first. */
+  windowsFor(nodeId: string): MaintenanceWindow[] {
+    return this.maintenance
+      .filter((w) => w.nodes.includes(nodeId))
+      .sort((a, b) => b.ends_at.localeCompare(a.ends_at));
+  }
+
   async load() {
     try {
       const resp = await fetchWithTimeout('/api/alerts');
@@ -155,6 +240,7 @@ export class AlertFeed {
       this.alerts = dedupeByKey(body.alerts ?? [], alertKey);
       this.dataStale = Boolean(body.data_stale);
       this.dataAgeS = body.data_age_s ?? null;
+      this.maintenance = body.maintenance ?? [];
     } catch {
       // "Can't tell" is not "all clear" — the banner renders these
       // differently, and only one of them is reassuring.

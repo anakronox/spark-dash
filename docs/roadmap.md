@@ -5878,6 +5878,165 @@ card, so every reader gets a test with an instance id in it.
 **Explicitly NOT this:** instances of node cards (they are data-driven and
 already one per node), or per-instance column choices.
 
+### AH — Maintenance mode: saying "this is planned" before the alert fires — **built 2026-09-02**
+
+**The gap, 2026-09-02.** Trying another model, or changing a vLLM or
+llama.cpp run flag, means stopping a container and starting it again. Every
+time, the dashboard and ntfy report it as an outage: `RouterUnreachable`,
+`InferenceTargetScrapeFailing`, `UnmonitoredInferenceRuntime` when the new
+model comes up on a port nobody has configured yet, and on the pair the
+peer-comparison alerts on the node that *wasn't* touched. G2 gave a way to
+say "yes, that was me" — after the alert has already fired and the phone has
+already buzzed. Planned work needs the other order: declare the scope first,
+then work.
+
+**Decided: a maintenance window is a pre-emptive, node-scoped Alertmanager
+silence with a name, plus a Prometheus record of it.** Nothing new to store,
+and every rule that names a node is covered whether it exists yet or not.
+
+Two alternatives weighed and rejected:
+
+- **`unless sparkdash_maintenance == 1` on every rule.** Thirty-five edits,
+  and the thirty-sixth rule forgets. A silence matching on the `node` label
+  covers rules that have not been written.
+- **A synthetic `NodeInMaintenance` alert plus an inhibit rule**, the pattern
+  `NodeAgentDown` already uses. Elegant, but protection lags by a scrape plus
+  an evaluation, and the whole point is to be covered *before* the container
+  stops. A silence is effective the instant it is created. The inhibit form is
+  the fallback if silences ever turn out to be the wrong primitive; nothing
+  here precludes it.
+
+**Three decisions, all Brian's, 2026-09-02:**
+
+1. **Clusters go down together, so they mute together.** A node in a cluster
+   put into maintenance also mutes the peer-comparison alerts
+   (`ClusterNodeRunningHot`, `ClusterNodeClockLagging`) for its whole
+   cluster. Those rules compare a node to the coolest or fastest member, so
+   an idle node under maintenance makes the *working* peer read hot, and
+   that alert would be on a node nobody touched. A cluster-scope window
+   covers every member outright.
+2. **Default four hours, capped at 24 like any silence**, and there is
+   always a way out early: an "end" action on the node card, on the notice
+   line, and in the Silenced list. Forgetting is the failure mode of every
+   mute, and the cap is what makes forgetting survivable — a broken thing
+   comes back within a day on its own.
+3. **The record ships in the same pass as the mechanism.** Silences stop
+   notifications; Prometheus keeps evaluating, so `ALERTS` records the
+   episode and the history fly-out would show a planned reload as an
+   incident. Phase 2 below is not optional polish.
+
+**Backend.**
+
+- [x] **AH1. `maintenance.py`.** A window is a group of silences created with
+  `createdBy: spark-dash/maintenance` and a structured comment carrying scope,
+  name and reason. Reading active windows is filtering Alertmanager's silences
+  by that author — Alertmanager is the single source of truth, so a window
+  and its silence cannot disagree, and the state survives a backend restart
+  because Alertmanager persists it in `./alertmanager`.
+- [x] **AH2. Scope resolves through cluster.yml.** Node scope: one silence
+  with a regex matcher on `node` (Alertmanager anchors it). Cluster scope: the
+  name resolves to member ids, `node=~"a|b"`. Node scope on a cluster member
+  adds a second silence, `alertname=~"ClusterNode.*", cluster="<name>"`,
+  tracked under the same window (decision 1). Alerts with no `node` label —
+  Prometheus self-monitoring, `AgentBuildSkew` — are untouched on purpose:
+  maintenance on a GX10 says nothing about the monitoring VM.
+- [x] **AH3. Endpoints.** `GET /api/maintenance` returns active windows, each
+  with the count of alerts it is currently holding (Alertmanager with
+  `silenced=true`, joined on `status.silencedBy`). `POST /api/maintenance`
+  takes scope, name, hours (default 4, capped by `MAX_SILENCE_HOURS`) and an
+  optional reason. `DELETE /api/maintenance/{id}` expires every silence in
+  the window. `/api/alerts` gains a `maintenance` list so the feed's existing
+  30-second poll carries it and nothing polls twice.
+- [x] **AH4. Stamped onto the live snapshot** the way `cluster` already is:
+  the poller reads a cached view of active windows (refreshed ~15s, updated
+  immediately on create and end) and sets `maintenance` on each
+  `NodeSnapshot`. Health itself does not change — an unreachable node under
+  maintenance still reports `critical` / "unreachable". Only the presentation
+  de-escalates.
+- [x] **AH5. No agent change, no rule change.** Nothing on the nodes
+  redeploys. That is a property to keep, not an accident.
+
+**UI.**
+
+- [x] **AH6. The action lives on the thing itself.** "Maintenance" on the
+  node card, and on the cluster frame in `NodeGroup` for the whole cluster.
+  It opens the same duration chips the silence UI already uses (1h / 4h /
+  24h, 4h preselected) and an optional reason — "trying Qwen3-235B on vLLM"
+  — and starts immediately.
+- [x] **AH7. De-escalated, never hidden.** While a window is active the
+  status pill shows a distinct glyph and the word "maintenance" in muted ink,
+  *followed by the real reason* ("maintenance · unreachable"). The card
+  border goes muted. Time remaining and an "end" button sit on the card.
+  Colour never carries the meaning alone — the pill's standing rule.
+- [x] **AH8. One calm notice line** where the alert banner sits: "sparky in
+  maintenance — 2 alerts held, 1h 40m left · end". The header trigger shows
+  the maintenance glyph rather than a red count, and alerts held by a window
+  are not counted. Node-scoped notices for that node — unmonitored runtime,
+  configured-but-absent, cluster peer unreachable — fold into this line
+  instead of rendering as warnings: a new model on an unconfigured port is
+  exactly what testing looks like.
+- [x] **AH9. The Silenced list** in the history fly-out renders these as
+  "maintenance · sparky · reason" instead of raw matchers, with the same
+  "end" action as everywhere else.
+
+**Phase 2 — the record (same pass, decision 3).**
+
+- [x] **AH10. The backend exposes `/metrics`** with
+  `sparkdash_maintenance{node,scope,name} 1` for every node under an active
+  window, derived from the same Alertmanager read as AH1 — one source, not a
+  second store. `prometheus.yml` gains one static job for the backend. This
+  also gives the backend a place for its own health series later, which it
+  has never had.
+- [x] **AH11. Alert history tags episodes** that overlap a window as
+  "maintenance", shown muted, and the headline reads "3 fired, 2 during
+  maintenance" rather than pretending they did not fire. The `ALERTS` series
+  is what it is; the tag is the context.
+- [x] **AH12. Charts draw a window as a shaded band**, a new annotation
+  `kind`. Unlike the three existing kinds it has an extent rather than an
+  instant, so the band is the honest shape — a dip inside it arrives with its
+  explanation attached, which is what the annotation layer is for.
+
+**Built 2026-09-02, as designed, in one pass.** `maintenance.py` owns the
+window: scope resolves through the inventory (so `SPARK_NODES` deployments
+work the same as `cluster.yml` ones), a node in a cluster gets its peers
+silence, both silences carry `createdBy: spark-dash/maintenance` and a
+comment that reads as a sentence on `:9093` and parses back — `maintenance
+node gx10-2 (peers): trying Qwen3 [window 1a2b3c4d]`. A window whose second
+silence fails to create rolls the first back: half a window would mute the
+node and not its peers while the page showed one window. The service caches
+reads for 15s and refreshes in the background so the 2s poller never waits
+on Alertmanager; writes refresh synchronously so the card changes on the
+click.
+
+Verified against a stub Alertmanager with three synthetic alerts: a node
+window on `gx10-1` held `RouterUnreachable` on gx10-1 AND
+`ClusterNodeRunningHot` on gx10-2 — the peer alert on the node nobody touched,
+which is decision 1 doing its job — while `GpuTemperatureHigh` on standalone
+`sparky` kept firing. `/metrics` carried one series; ending the window expired
+both silences and the list went empty. The Chrome extension was not connected
+during the build, so the UI was type-checked and built but not screenshotted;
+the first real window will be its visual check.
+
+**Two things the build settled that the plan left open:**
+
+- **The record is per node, the band is per window.** `sparkdash_maintenance`
+  has one series per covered node, because that is what joins to an episode's
+  `node` label. The chart band collapses a cluster window's members back into
+  one band with no node, because the reader declared one window, not two.
+- **"Held" counts distinct alerts.** An alert matched by both a window's
+  silences is one alert, so the count joins on the alert's fingerprint rather
+  than summing per silence.
+
+**Not done, deliberately:** an ntfy notice when a window starts or ends. The
+dashboard says it; a notification that something is quiet on purpose is the
+notification most likely to be read as noise.
+
+**Rejected on the way:** reading expired silences back from Alertmanager for
+the history instead of AH10. It works for the 24h and 7d views and not for
+30d, because Alertmanager forgets silences after five days
+(`--data.retention`), and a record that quietly stops at day five is the kind
+of gap this project keeps finding the hard way.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

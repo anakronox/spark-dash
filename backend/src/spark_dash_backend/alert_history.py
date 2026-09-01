@@ -61,6 +61,10 @@ class AlertEpisode:
     #: When it first reached `firing`, if it ever did.
     fired_at: float | None
     labels: dict[str, str]
+    #: Overlapped a maintenance window on its node. Context, not erasure:
+    #: the episode still happened. Set after extraction by
+    #: `maintenance.tag_episodes`, which is why it is not frozen.
+    maintenance: bool = False
 
     @property
     def duration_s(self) -> float:
@@ -78,6 +82,7 @@ class AlertEpisode:
             "fired": self.fired,
             "fired_at": self.fired_at,
             "labels": self.labels,
+            "maintenance": self.maintenance,
         }
 
 
@@ -178,6 +183,9 @@ def summarise(episodes: list[AlertEpisode]) -> dict:
         "fired": len(fired),
         "pending_only": len(episodes) - len(fired),
         "ongoing": len([e for e in episodes if e.ongoing]),
+        # Of the fired ones, how many were expected. "3 fired, 2 during
+        # maintenance" is a different week from "3 fired".
+        "during_maintenance": len([e for e in fired if e.maintenance]),
     }
 
 

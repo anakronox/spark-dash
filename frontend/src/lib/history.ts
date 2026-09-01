@@ -296,10 +296,13 @@ export function snapGrid(
 /** One event to mark on the charts. */
 export interface Annotation {
   ts: number;
-  /** "alert" | "cold-start" | "deploy" — drives colour and wording. */
+  /** "alert" | "cold-start" | "deploy" | "maintenance" — drives colour and wording. */
   kind: string;
   label: string;
   node: string | null;
+  /** Only a maintenance window has one: it is a stretch, not an instant, and
+   *  is drawn as a band from `ts` to here rather than as a tick. */
+  end_ts?: number | null;
 }
 
 /** Events worth drawing on the history charts.

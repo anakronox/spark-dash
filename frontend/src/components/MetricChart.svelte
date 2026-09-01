@@ -41,7 +41,14 @@
     syncKey: string;
     /** Events to mark on the time axis. The same list for every chart — they
      *  share an x axis, so an instant lines up across the whole grid. */
-    annotations?: { ts: number; kind: string; label: string; node: string | null }[];
+    annotations?: {
+      ts: number;
+      kind: string;
+      label: string;
+      node: string | null;
+      /** A maintenance window: drawn as a band from ts to here. */
+      end_ts?: number | null;
+    }[];
     height?: number;
     /** Colour every line by THIS id rather than by its own name.
      *
@@ -124,7 +131,11 @@
   function nearbyAnnotations(ts: number) {
     if (!annotations.length || x.length < 2) return [];
     const tolerance = Math.abs(x[1] - x[0]) / 2;
-    return annotations.filter((a) => Math.abs(a.ts - ts) <= tolerance);
+    return annotations.filter((a) =>
+      a.end_ts != null
+        ? ts >= a.ts - tolerance && ts <= a.end_ts + tolerance
+        : Math.abs(a.ts - ts) <= tolerance,
+    );
   }
 
   const fmt = (v: number) =>
@@ -261,7 +272,12 @@
     alert: { token: '--critical', dash: [], alpha: 0.65 },
     'cold-start': { token: '--ink-2', dash: [4, 3], alpha: 0.5 },
     deploy: { token: '--ink-muted', dash: [1, 3], alpha: 0.5 },
+    /* A window is a STRETCH, so it is a band rather than a tick: filled at a
+       low alpha so the lines stay legible through it, edged so a short one
+       still registers. Muted ink, not a status colour — a state you chose. */
+    maintenance: { token: '--ink-muted', dash: [], alpha: 0.4 },
   };
+  const BAND_ALPHA = 0.1;
 
   function drawAnnotations(u: uPlot) {
     if (!annotations.length) return;
@@ -277,12 +293,34 @@
     ctx.clip();
 
     for (const a of annotations) {
-      if (a.ts < lo || a.ts > hi) continue;
+      const end = a.end_ts ?? a.ts;
+      if (end < lo || a.ts > hi) continue;
       const style = MARK[a.kind] ?? MARK.deploy;
-      ctx.strokeStyle = cssVar(style.token);
-      ctx.globalAlpha = style.alpha;
+      const colour = cssVar(style.token);
       ctx.lineWidth = 1;
       ctx.setLineDash(style.dash);
+
+      if (a.end_ts != null) {
+        const x0 = u.valToPos(Math.max(a.ts, lo), 'x', true);
+        const x1 = u.valToPos(Math.min(a.end_ts, hi), 'x', true);
+        ctx.fillStyle = colour;
+        ctx.globalAlpha = BAND_ALPHA;
+        ctx.fillRect(x0, u.bbox.top, Math.max(1, x1 - x0), u.bbox.height);
+        ctx.strokeStyle = colour;
+        ctx.globalAlpha = style.alpha;
+        for (const edge of [a.ts, a.end_ts]) {
+          if (edge < lo || edge > hi) continue;
+          const px = Math.round(u.valToPos(edge, 'x', true)) + 0.5;
+          ctx.beginPath();
+          ctx.moveTo(px, u.bbox.top);
+          ctx.lineTo(px, u.bbox.top + u.bbox.height);
+          ctx.stroke();
+        }
+        continue;
+      }
+
+      ctx.strokeStyle = colour;
+      ctx.globalAlpha = style.alpha;
       const px = Math.round(u.valToPos(a.ts, 'x', true)) + 0.5;
       ctx.beginPath();
       ctx.moveTo(px, u.bbox.top);
@@ -648,6 +686,10 @@
 
   .tip .note[data-kind='alert'] {
     color: var(--critical);
+  }
+
+  .tip .note[data-kind='maintenance'] {
+    color: var(--ink-muted);
   }
 
   .tip .val {

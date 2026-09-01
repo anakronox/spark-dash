@@ -101,6 +101,16 @@ scrape_configs:
     static_configs:
       - targets: ['alertmanager:9093']
 
+  # The backend's own series. Today that is one thing: `sparkdash_maintenance`,
+  # 1 per node under a maintenance window declared from the dashboard. The
+  # window itself is an Alertmanager silence, which Alertmanager forgets five
+  # days after it ends — scraping it here is what lets the alert history say
+  # "fired, during maintenance" a month later, from the same TSDB everything
+  # else is reconstructed from.
+  - job_name: spark-dash-backend
+    static_configs:
+      - targets: ['backend:8080']
+
   # NO `node-exporter-central` JOB HERE, and that is the point of this file.
   #
   # The multi-host layout scrapes an exporter of its own inside the compose

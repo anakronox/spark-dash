@@ -51,9 +51,13 @@ class Annotation:
     ts: float
     #: Drives the colour and the wording. Kept coarse deliberately — three
     #: kinds a reader can hold in their head, not a taxonomy.
-    kind: str  # "alert" | "cold-start" | "deploy"
+    kind: str  # "alert" | "cold-start" | "deploy" | "maintenance"
     label: str
     node: str | None = None
+    #: Only a maintenance window has one. The other kinds are instants; a
+    #: window is a stretch, and drawing it as a tick at its start would put a
+    #: mark where the reader wants a band.
+    end_ts: float | None = None
 
 
 async def fetch_annotations(
@@ -104,6 +108,11 @@ async def fetch_annotations(
     except Exception:  # noqa: BLE001
         log.warning("build info unavailable for annotations", exc_info=True)
 
+    try:
+        out.extend(await _maintenance(prom, start=start, end=end, step=step))
+    except Exception:  # noqa: BLE001
+        log.warning("maintenance record unavailable for annotations", exc_info=True)
+
     out.sort(key=lambda a: a.ts)
     return out
 
@@ -141,6 +150,44 @@ async def _deploys(
             )
         )
     return out
+
+
+async def _maintenance(
+    prom: PrometheusClient, *, start: float, end: float, step: str
+) -> list[Annotation]:
+    """Maintenance windows, one band each.
+
+    The record is per NODE (one series per member), but a reader declared one
+    window, so members of a cluster-scope window collapse to a single band
+    with no node — the band is about the cluster. A node-scope window keeps
+    its node so the chart can tint it.
+
+    Not filtered like alerts are: a dip that happened inside a window arrives
+    with its explanation attached, which is the whole point of this layer.
+    """
+    from spark_dash_backend.maintenance import fetch_intervals
+
+    seen: dict[tuple[str, float], Annotation] = {}
+    for iv in await fetch_intervals(prom, start=start, end=end, step=step):
+        key = (iv.window or f"{iv.scope}:{iv.name}", iv.started_at)
+        current = seen.get(key)
+        if current is None:
+            seen[key] = Annotation(
+                ts=iv.started_at,
+                kind="maintenance",
+                label=f"{iv.name} maintenance",
+                node=iv.node if iv.scope == "node" else None,
+                end_ts=iv.ended_at,
+            )
+        elif iv.ended_at > (current.end_ts or 0):
+            seen[key] = Annotation(
+                ts=current.ts,
+                kind=current.kind,
+                label=current.label,
+                node=current.node,
+                end_ts=iv.ended_at,
+            )
+    return list(seen.values())
 
 
 def as_dicts(annotations: list[Annotation]) -> list[dict]:

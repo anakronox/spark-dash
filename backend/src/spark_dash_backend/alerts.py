@@ -76,6 +76,35 @@ class AlertmanagerClient:
         alerts.sort(key=lambda a: (SEVERITY_ORDER.get(a.severity, 9), a.name))
         return alerts
 
+    async def silenced(self) -> list[dict]:
+        """Active alerts that a silence is currently holding, raw.
+
+        The complement of `firing()`, and the reason it exists is the
+        maintenance notice: "2 alerts held" is the number that tells a reader
+        the window is doing something, and it can only be counted from this
+        side. Each item carries `status.silencedBy`, the ids of the silences
+        responsible, which is how a count is attributed to one window.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+                resp = await client.get(
+                    f"{self._base_url}/api/v2/alerts",
+                    params={"active": "true", "silenced": "true", "inhibited": "false"},
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+        except Exception:  # noqa: BLE001 — a count, not a fact worth failing over
+            log.debug("silenced-alert query failed", exc_info=True)
+            return []
+        # Alertmanager answers `silenced=true` with every alert that is EITHER
+        # firing or silenced unless told otherwise; the ones a silence holds
+        # are those that name one.
+        return [
+            item
+            for item in payload
+            if isinstance(item, dict) and (item.get("status") or {}).get("silencedBy")
+        ]
+
     # --- silences ---------------------------------------------------------
     #
     # Silencing is a WRITE, and the dashboard is otherwise read-only. It is

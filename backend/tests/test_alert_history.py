@@ -150,6 +150,7 @@ class TestSummary:
             "fired": 0,
             "pending_only": 0,
             "ongoing": 0,
+            "during_maintenance": 0,
         }
 
 
