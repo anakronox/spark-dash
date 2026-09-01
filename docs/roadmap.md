@@ -6015,7 +6015,8 @@ which is decision 1 doing its job — while `GpuTemperatureHigh` on standalone
 `sparky` kept firing. `/metrics` carried one series; ending the window expired
 both silences and the list went empty. The Chrome extension was not connected
 during the build, so the UI was type-checked and built but not screenshotted;
-the first real window will be its visual check.
+the first real window was its visual check — Brian, 2026-09-02, on the live
+stack: "Works well!"
 
 **Two things the build settled that the plan left open:**
 
