@@ -6089,6 +6089,69 @@ had one day (2026-08-16) where a clock step made Prometheus quietly reject
 everything. A guard that can blank the whole dashboard on skew is worse than
 the burst it prevents. The animation-frame coalescing needs no clock.
 
+### AJ — Scrape interval as a dashboard setting — **deferred 2026-09-03**
+
+Came up while explaining AI: the live 2s poll was never part of the record,
+so the only knob that changes how finely history is kept is Prometheus's
+scrape interval. Brian: expose it in settings. Then, on seeing the design:
+**"For now it stays as-is. I've not seen any noticeable gaps or issues with
+the frequency of scrapes."** Recorded here so the next person to want it
+starts from the design rather than from the question.
+
+**Trigger:** a real case where something happened between two 15s samples
+and the record could not show it — a throughput spike, a thermal excursion,
+a swap event shorter than a scrape. Until one turns up, the current interval
+is doing its job and the knob would be a cost with no buyer.
+
+**The design, verified as far as it could be without building:**
+
+- **Mechanism.** Prometheus honours a per-target interval via the
+  `__scrape_interval__` / `__scrape_timeout__` labels (experimental since
+  v2.30, PR #8911). The live instance is 3.1.0 and every target already
+  carries both in its discovered labels at `15s` / `10s`. The backend
+  renders the target files from cluster.yml, so the interval becomes one
+  more label it writes; Prometheus re-reads file_sd within 30s. No restart,
+  no reload, and `prometheus.yml` — git-tracked, therefore never written by
+  the backend — stays untouched. Still to confirm on first build: that a
+  label supplied by file_sd (rather than by `relabel_configs`) is taken,
+  which is how `__metrics_path__` already works and should hold here. Watch
+  a target's `scrapeInterval` in `/api/v1/targets` change after the first
+  write.
+- **Where it lives.** A top-level `scrape_interval:` in cluster.yml — the
+  dashboard-managed, gitignored file — applied to every node-side target the
+  backend renders (agents, node exporters, vLLM, SGLang). Prometheus,
+  Alertmanager and the backend's own job stay at the static 15s. `SPARK_NODES`
+  deployments have no cluster.yml, so the row is read-only there.
+- **A picker, not free text: 5s / 10s / 15s / 30s, default 15s.** The floor
+  is the agent: it caches a collection for 0.75s and the live view polls at
+  2s, so under 5s samples the same reading twice. The ceiling is the charts:
+  `rate_window` floors at 60s and a 30s scrape already leaves two samples per
+  window; beyond that the trend lines gap.
+- **Disk is the cost, and the row should show it.** Measured: ~65 MB/day for
+  three nodes at 15s. At 5s that is ~200 MB/day — about 35 GB over the 180d
+  retention on a 50 GB disk, which is `PrometheusStorageFillingUp` territory.
+  Project the daily growth beside the picker, scaled from what Prometheus
+  reports, so the trade is visible at the moment of choosing.
+- **Alert rules need nothing.** Every `for:` is wall-clock; every rate window
+  is 5m or 15m; `AgentSnapshotStale` measures the agent's own collection, not
+  the scrape. `evaluation_interval` stays 15s — it is how often rules run,
+  not how finely data is kept.
+- **The charts have to use it or the knob is invisible.** The shortest range
+  steps at 60s today. The 1h view would step at the configured interval, and
+  the backend would report the interval so the frontend can follow it.
+
+- [ ] **AJ1.** Parse and write `scrape_interval` in `cluster.py`; expose it
+  on the cluster config endpoints; render it into every generated target
+  file as `__scrape_interval__` with `__scrape_timeout__` = min(10s,
+  interval − 1s).
+- [ ] **AJ2.** The Settings row, in the Cluster section, with the projected
+  growth figure.
+- [ ] **AJ3.** The 1h chart step follows the interval.
+
+**Recommended and not yet decided:** one interval for the whole cluster
+rather than a per-node override. Nothing observed so far wants them to
+differ.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
