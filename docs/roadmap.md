@@ -6038,6 +6038,57 @@ the history instead of AH10. It works for the 24h and 7d views and not for
 (`--data.retention`), and a record that quietly stops at day five is the kind
 of gap this project keeps finding the hard way.
 
+### AI — A background tab must not replay the time it was away — **shipped 2026-09-03**
+
+Brian, 2026-09-03, in Safari: leave the dashboard tab open but not active for
+a while, switch back, and everything is frozen at the moment you left — then
+fast-forwards to now.
+
+**Cause: the browser, and a frontend that never asked whether it was
+visible.** Safari (App Nap, Low Power Mode) and Chrome (after ~5 minutes,
+sooner with Memory Saver) throttle a background tab's timers to a crawl and
+then suspend its JavaScript. The WebSocket stays open and the backend goes on
+pushing a snapshot every 2s, so hundreds of frames queue in the browser and
+arrive in one burst on return, each rendered in turn — that is the replay. The
+history charts are the other half: their `setInterval` never fired while
+suspended, so each sat on whatever it last fetched until its throttled timer
+finally did. Nothing in the frontend listened for `visibilitychange`, and
+eight pollers each ran on their own clock regardless.
+
+**Fix, three parts, one store (`lib/visibility.svelte.ts`):**
+
+- **The live socket closes 20s after the tab goes hidden and reopens on
+  return.** The backend hands a new subscriber its latest frame at once, so
+  there is nothing to replay. The grace period is so that flicking to another
+  tab and back does not churn a connection. The side effect is the one
+  architecture.md promised and a buried tab was quietly breaking: with no
+  subscribers the backend's poller stops, so a dashboard left open overnight
+  no longer asks the Sparks for a snapshot every 2s.
+- **Every poller goes through `poll()`** — a visibility-aware interval that
+  skips ticks while hidden and, on return, refreshes at once if its last run
+  is older than its period or a minute, whichever is shorter. Alerts, System
+  Activity, Network Activity, the swap timeline, load times and absent
+  targets all catch up on the first glance rather than the next tick.
+- **One frame per paint.** The live feed parks each message and applies it in
+  the next animation frame, so however many arrive between two paints only
+  the newest is rendered. A tab suspended INSIDE the grace window still gets
+  its queued frames on return; they now land before the first paint and only
+  the last one is applied. It is also the honest cadence for a live view.
+
+**Both browsers, one code path.** `visibilitychange` is the load-bearing
+signal and both fire it. Chrome adds the Page Lifecycle `freeze`/`resume`
+events, which say "about to suspend" rather than "hidden"; they are wired
+behind the same store and cost nothing in Safari, which never fires them.
+`pagehide`/`pageshow` cover the back-forward cache, where a restored page
+still holds a dead socket object.
+
+**Rejected: dropping frames by timestamp.** The obvious backstop — ignore any
+frame whose `ts` is older than the 8s staleness threshold — depends on the
+backend's clock agreeing with the browser's, and this project has already
+had one day (2026-08-16) where a clock step made Prometheus quietly reject
+everything. A guard that can blank the whole dashboard on skew is worse than
+the burst it prevents. The animation-frame coalescing needs no clock.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

@@ -13,6 +13,7 @@
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
   import { nodeColor } from '../lib/theme';
+  import { poll } from '../lib/visibility.svelte';
 
   interface Props {
     /** Ordered node ids, so chart colours match the cards. */
@@ -407,8 +408,7 @@
 
   $effect(() => {
     const period = Math.min(MAX_REFRESH_MS, Math.max(30_000, (range.minutes * 60_000) / 120));
-    const timer = setInterval(load, period);
-    return () => clearInterval(timer);
+    return poll(load, period);
   });
 </script>
 

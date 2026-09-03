@@ -23,6 +23,7 @@
   import type { NodeSnapshot, ModelState } from '../lib/types';
   import { engines } from '../lib/types';
   import { pageFocus } from '../lib/focus.svelte';
+  import { poll } from '../lib/visibility.svelte';
 
   interface Props {
     nodes: NodeSnapshot[];
@@ -84,8 +85,7 @@
     fetchLoadTimes();
     // Loads are rare — a dozen a day on this cluster. Polling faster would ask
     // Prometheus for 24h of 15s samples to learn nothing.
-    const timer = setInterval(fetchLoadTimes, 300_000);
-    return () => clearInterval(timer);
+    return poll(fetchLoadTimes, 300_000);
   });
 
   /* Quantisation, parameters and context window are real but secondary, and

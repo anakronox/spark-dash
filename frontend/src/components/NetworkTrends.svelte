@@ -56,6 +56,7 @@
   import { linkKey } from '../lib/network-history';
   import { nodeColor } from '../lib/theme';
   import type { NodeSnapshot } from '../lib/types';
+  import { poll } from '../lib/visibility.svelte';
 
   interface Props {
     /** Ordered node ids, so chart colours and grid order match the cards. */
@@ -571,8 +572,7 @@
   const MAX_REFRESH_MS = 5 * 60_000;
   $effect(() => {
     const period = Math.min(MAX_REFRESH_MS, Math.max(30_000, (range.minutes * 60_000) / 120));
-    const timer = setInterval(load, period);
-    return () => clearInterval(timer);
+    return poll(load, period);
   });
 </script>
 

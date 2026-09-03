@@ -16,6 +16,7 @@
   import { fetchWithTimeout } from '../lib/request';
   import { TableView } from '../lib/table.svelte';
   import { compositeKey, dedupeByKey } from '../lib/keys';
+  import { poll } from '../lib/visibility.svelte';
 
   interface Props {
     /** Events before it pages. Infinity = uncapped. */
@@ -102,8 +103,7 @@
   onMount(() => {
     // Swaps happen on the scale of sleep timers (minutes), so polling faster
     // than the scrape interval would find nothing new.
-    const timer = setInterval(load, 60_000);
-    return () => clearInterval(timer);
+    return poll(load, 60_000);
   });
 
   function when(ts: number): string {

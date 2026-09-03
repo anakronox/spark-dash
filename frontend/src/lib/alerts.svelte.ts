@@ -8,6 +8,7 @@
 
 import { compositeKey, dedupeByKey } from './keys';
 import { fetchWithTimeout } from './request';
+import { poll } from './visibility.svelte';
 
 export interface AlertItem {
   name: string;
@@ -212,7 +213,7 @@ export class AlertFeed {
    *  reflects the click at once rather than up to 30s later. */
   maintenance = $state<MaintenanceWindow[]>([]);
 
-  #timer: ReturnType<typeof setInterval> | null = null;
+  #stop: (() => void) | null = null;
 
   get critical(): number {
     return this.alerts.filter((a) => a.severity === 'critical').length;
@@ -259,12 +260,12 @@ export class AlertFeed {
     this.load();
     // Alert state changes on Prometheus's evaluation interval, not the live
     // tick — polling faster would be load with no new information.
-    this.#timer = setInterval(() => this.load(), 30_000);
+    this.#stop = poll(() => this.load(), 30_000);
   }
 
   stop() {
-    if (this.#timer) clearInterval(this.#timer);
-    this.#timer = null;
+    this.#stop?.();
+    this.#stop = null;
   }
 }
 

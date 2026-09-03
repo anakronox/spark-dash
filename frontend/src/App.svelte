@@ -25,6 +25,7 @@
   import { AlertFeed, endMaintenance, timeLeft } from './lib/alerts.svelte';
   import type { MaintenanceWindow } from './lib/alerts.svelte';
   import { fetchWithTimeout } from './lib/request';
+  import { poll } from './lib/visibility.svelte';
   import { compact, gib, num } from './lib/format';
   import type { NodeSnapshot, ProcessInfo } from './lib/types';
   import { engines, isEngineJob } from './lib/types';
@@ -279,8 +280,7 @@
 
   onMount(() => {
     loadAbsent();
-    const timer = setInterval(loadAbsent, 5 * 60_000);
-    return () => clearInterval(timer);
+    return poll(loadAbsent, 5 * 60_000);
   });
 
   const downFor = (s: number | null) =>
