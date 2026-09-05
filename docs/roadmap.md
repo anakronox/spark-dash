@@ -6564,7 +6564,11 @@ header comment in `central/compose.yaml`.
   items in [V2b](#v--more-inference-runtimes-sglang-and-atlas--shipped-2026-08-21-v2b-deferred)
   and [X4](#x--grafana-as-a-first-class-consumer): this was set down
   deliberately, not parked pending an event. What follows is only so the
-  research does not have to be redone.
+  research does not have to be redone — and the full write-up, including
+  NVIDIA's fleet-level answer (agentless SSH, `spark_updatectl.py`,
+  Landscape) and every machine contract a separate front-end would need, is
+  [fleet-updates.md](fleet-updates.md). That is a different product from this
+  dashboard and is meant to be spun out.
 
   **How NVIDIA actually does it**, read off a running `sparky` — none of this
   is in the public docs, which say only "use the Dashboard":

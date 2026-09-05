@@ -279,6 +279,10 @@ images](docs/deployment.md#building-and-shipping-images). It needs
   and what was deliberately not built, with the reasoning kept.
 - [App design](docs/app-design.md) — backend/frontend stack (FastAPI + Svelte 5),
   API surface, live-update contract, and panel/visual design rules.
+- [Fleet updates](docs/fleet-updates.md) — how NVIDIA actually updates GB10
+  systems, from the OTA recipes and the DGX Dashboard's internals up to the
+  agentless-SSH Enterprise Manageability framework, read off live nodes; the
+  groundwork for a fleet-update front-end, kept separate from this dashboard.
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
   stays untouched) and the per-node/central Compose service breakdown.
 
