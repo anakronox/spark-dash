@@ -6556,6 +6556,60 @@ header comment in `central/compose.yaml`.
   result worth recording. Adding a daemon to chase a number nobody has needed
   is the wrong direction until something is actually unexplained.
 
+- [ ] **Report OS/firmware updates per node — AN IDEA, NOT A COMMITMENT.**
+  Explored 2026-09-04 because the DGX Dashboard on every GB10 is NVIDIA's
+  recommended way to update, and it binds `127.0.0.1` — so "are all three
+  nodes current?" costs three SSH sessions. Brian dropped the path the same
+  week. **No trigger is recorded for revisiting it**, unlike the deferred
+  items in [V2b](#v--more-inference-runtimes-sglang-and-atlas--shipped-2026-08-21-v2b-deferred)
+  and [X4](#x--grafana-as-a-first-class-consumer): this was set down
+  deliberately, not parked pending an event. What follows is only so the
+  research does not have to be redone.
+
+  **How NVIDIA actually does it**, read off a running `sparky` — none of this
+  is in the public docs, which say only "use the Dashboard":
+
+  - `dgx-dashboard.service` is a Go binary running unprivileged on
+    `127.0.0.1:11000` with JWT auth. For *detection* it shells out to
+    `/opt/nvidia/spark-ota-check/check_ota_status.py is-ota-available` and
+    parses the JSON — the binary carries the literal
+    `failed to parse %s is-ota-available output: %w`. That script needs root
+    and scores installed `dpkg` versions plus firmware GUIDs against OTA
+    recipes bundled in `/opt/nvidia/spark-ota-check/metadata/`.
+  - For *execution* it calls the root D-Bus service
+    `com.nvidia.dgx.dashboard.admin1`, method `UpdateAndReboot`.
+  - **Its verdict is release-level, not a package count.** It prompts on
+    "July 2026 is available", never on "210 packages" — so matching their
+    dashboard and answering "how many updates" are two different features.
+
+  **Reading it would have been free.** `node/compose.yaml` already mounts the
+  host root read-only at `/host/root`, and a `docker exec` confirmed the agent
+  reads `/host/root/var/lib/update-notifier/updates-available` as uid 10001
+  today — no new mount, capability or compose change. Two traps if anyone
+  picks this up: the file's format varies between nodes (`sparky` carries an
+  extra ESM line), so parse by regex and never by line index; and it is
+  refreshed by `apt-daily.timer`, so a count without its age is misleading.
+
+  **It should alert, not display.** Daily-moving data has no place on a card
+  refreshed every 2 seconds, and a `node`-labelled alert already reaches the
+  banner, ntfy, silences and [AH](#ah--maintenance-mode-saying-this-is-planned-before-the-alert-fires--built-2026-09-02)'s
+  maintenance windows with no frontend code at all. That also keeps it off the
+  live WebSocket frame entirely. **Not** an alert on the absolute count: 133
+  pending security updates is the steady state here, so a rule on "> 0" is
+  true forever — the mistake this file has already made and reversed twice.
+  The peer-comparison shape used by `ClusterNodeRunningHot` is the one that
+  would catch "you patched two of three".
+
+  **Triggering updates is out**, and would stay out. It reboots an inference
+  node, and it fails [G](#g--clearing-an-alarm)'s own test that a permitted
+  write "cannot repoint an agent, load a model or touch a process". Nor can
+  NVIDIA's dashboard be deep-linked as a substitute — the binary validates
+  `host must be localhost`.
+
+  **The drift is real**, which is why it was worth looking at. Measured
+  2026-09-04: `sparky` 210 pending, on OTA2.2 from March, July 2026 available;
+  `sparketa` 152 pending, current; `sparkjr` 149 pending, July 2026 available.
+
 ## Open decisions
 
 These are flagged inline in the other docs too — collected here so they don't
