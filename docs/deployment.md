@@ -267,7 +267,10 @@ same host" mode. Same network for free, no port to find.
 3. In `.env`: `COMPOSE_PROFILES=fleet`, `SPARK_FLEET_SSH_USER`,
    `FLEET_UPDATES_URL=http://spark-fleet-updates:8080`, and
    `FLEET_UPDATES_PUBLIC_URL` for where a browser reaches the fleet page on
-   `:8090`, which the panel links to for adding and removing Sparks.
+   `:8090`, which the dashboard links to. Which Sparks the fleet checks is
+   then a *fleet updates* checkbox under each node in the dashboard's
+   Settings — it hands over the node's id and host from `cluster.yml`, so
+   nothing is typed twice.
 4. `docker compose up -d`. If a deploy tool runs its own copy of
    `compose.yaml` from elsewhere, that copy needs BOTH halves: the service
    (with its two mounts made absolute) and the two `FLEET_UPDATES_*` lines

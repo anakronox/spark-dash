@@ -6190,12 +6190,12 @@ its own timer.
    are both true and must both show. When the fleet page's wording moves,
    that file moves with it.
 2. **Explicit routes, not a wildcard proxy.** `/api/fleet`, the log, check,
-   update, rehearse, stop, verify — each a line in `app.py` and a row in
-   `/docs`. Rename and remove are the fleet page's job and are not routed; a
-   `Literal` on the action makes them unreachable rather than merely
-   undocumented. `FLEET_UPDATES_URL` unset means `configured: false` and no
-   button at all — a control for a thing that is not there should not hold a
-   seat in the header.
+   update, rehearse, stop, verify, and — since the checkbox below — enrol
+   and remove: each a line in `app.py` and a row in `/docs`. Rename is not
+   routed; a `Literal` on the action makes anything else unreachable rather
+   than merely undocumented. `FLEET_UPDATES_URL` unset means
+   `configured: false` and no button at all — a control for a thing that is
+   not there should not hold a seat in the header.
 3. **The password rule is forwarded, not bypassed.** The fleet service
    refuses a sudo password unless the request arrived over TLS or a proxy
    says `X-Forwarded-Proto: https`. The backend forwards the *real* scheme:
@@ -6217,8 +6217,25 @@ its own timer.
    open, 3s while anything is checking or updating — the fleet page's own
    cadences.
 
-**Out, by design:** add / rename / remove a Spark, cluster names, units,
-theme. The panel links to the fleet page for those
+7. **Which Sparks the fleet checks is a checkbox under each node in
+   Settings** (Brian, same day: "configuring it should be exposed"). The
+   fleet service keeps a list of name and host; every node in `cluster.yml`
+   already has both, so a tick hands them over and an untick removes it —
+   applied at once, like a silence, since it is a write to the fleet service
+   and not to the file. Per node rather than one master switch, weighed and
+   chosen: a master switch would re-derive the fleet list on every cluster
+   save and enrol a host added for monitoring only, and it has no way to
+   keep one node out for hand updates; a tick is one honest write with its
+   result on the row ("host differs", "unreachable", "checking"). A node's
+   id here is its name there, so a rename is a remove and an add and not a
+   third route. The Settings section under Cluster shows the count, the
+   cadence and the login — read-only on purpose, since those are the fleet
+   container's environment and saying *where* beats a control that could
+   not change them — and lists anything on the fleet's list that the
+   cluster does not know, with its own remove.
+
+**Out, by design:** cluster names, units, theme, and the fleet's own SSH
+user and interval. The panel links to the fleet page for those
 (`FLEET_UPDATES_PUBLIC_URL`).
 
 **Deployment** — [deployment.md](deployment.md#fleet-updates--optional): the

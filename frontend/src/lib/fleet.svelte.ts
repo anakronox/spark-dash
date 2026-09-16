@@ -144,6 +144,25 @@ export class FleetFeed {
     return run;
   }
 
+  /** Is this dashboard node on the fleet service's list? By name: a node's
+   *  id here IS its name there, which is what Settings' checkbox relies on. */
+  has(name: string): boolean {
+    return (this.fleet?.nodes ?? []).some((n) => n.name === name);
+  }
+
+  /** Put a node on the list with the id and host the dashboard already has.
+   *  The fleet service checks it at once; the next load shows the result. */
+  async enrol(name: string, host: string) {
+    await this.#post('/api/fleet/nodes', { name, host });
+    await this.load();
+  }
+
+  /** Off the list. It stops being checked; its update history is kept. */
+  async remove(name: string) {
+    await this.#post(`/api/fleet/nodes/${encodeURIComponent(name)}/remove`);
+    await this.load();
+  }
+
   async stopRun(runId: string) {
     await this.#post(`/api/fleet/runs/${encodeURIComponent(runId)}/stop`);
   }

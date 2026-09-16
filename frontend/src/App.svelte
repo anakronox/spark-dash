@@ -656,7 +656,7 @@
     </p>
   {/each}
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
-  <Settings {theme} {layout} open={settingsOpen} onclose={() => (settingsOpen = false)} />
+  <Settings {theme} {layout} fleet={fleetFeed} open={settingsOpen} onclose={() => (settingsOpen = false)} />
   <FleetUpdates feed={fleetFeed} open={fleetOpen} slots={slotOf} onclose={() => (fleetOpen = false)} />
 
   <!-- SCOPED, AND SAYING SO. Without this a filtered page is indistinguishable

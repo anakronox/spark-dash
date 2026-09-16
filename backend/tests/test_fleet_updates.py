@@ -140,11 +140,24 @@ def test_the_password_travels_and_nothing_else_does(on, upstream):
     assert json.loads(upstream.last.content) == {}
 
 
-def test_rename_and_remove_are_not_reachable_from_here(on, upstream):
-    assert on.post("/api/fleet/nodes/sparky/remove").status_code == 422
+def test_enrol_hands_over_the_id_and_host_and_nothing_else(on, upstream):
+    upstream.body = {"name": "sparky", "host": "192.168.50.61"}
+    resp = on.post(
+        "/api/fleet/nodes", json={"name": "sparky", "host": "192.168.50.61", "user": "x"}
+    )
+    assert resp.status_code == 200
+    assert (upstream.last.method, upstream.last.url.path) == ("POST", "/api/nodes")
+    assert json.loads(upstream.last.content) == {"name": "sparky", "host": "192.168.50.61"}
+    assert on.post("/api/fleet/nodes", json={"name": "", "host": "h"}).status_code == 422
+
+
+def test_remove_is_routed_and_rename_is_not(on, upstream):
+    upstream.body = {"ok": True}
+    on.post("/api/fleet/nodes/sparky/remove")
+    assert upstream.last.url.path == "/api/nodes/sparky/remove"
     assert on.post("/api/fleet/nodes/sparky/rename", json={"name": "x"}).status_code == 422
     assert on.post("/api/fleet/runs/r1/delete").status_code == 422
-    assert upstream.requests == []
+    assert len(upstream.requests) == 1
 
 
 def test_the_real_scheme_is_forwarded_never_assumed(on, upstream):

@@ -9,9 +9,10 @@
    * and without the fleet service's port having to be reachable from
    * wherever you are reading.
    *
-   * WHAT IT IS NOT. Not the fleet service's administration. Adding, renaming
-   * and removing a Spark stay on the fleet page, which the header links to;
-   * the backend does not even route those calls. Not a second opinion,
+   * WHAT IT IS NOT. Not the fleet service's administration. Which nodes are
+   * on its list is decided in Settings, a checkbox under each node of the
+   * cluster, since the dashboard already knows every id and host; the fleet
+   * page, which the header links to, has the rest. Not a second opinion,
    * either: every word of status here is `lib/fleet.ts`, ported from the
    * fleet page's own functions, so the two never disagree about a Spark.
    *
@@ -372,14 +373,7 @@
       </p>
     {:else if !nodes.length}
       <p class={NOTE}>
-        No Sparks yet.
-        {#if feed.publicUrl}
-          <a class="text-series-1" href={feed.publicUrl} target="_blank" rel="noopener">
-            Add one on the fleet page.
-          </a>
-        {:else}
-          Add one on the fleet page.
-        {/if}
+        No Sparks on the fleet list yet. Tick <em>fleet updates</em> under a node in Settings.
       </p>
     {:else}
       <div>

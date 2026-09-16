@@ -138,6 +138,13 @@ class FleetUpdateBody(BaseModel):
     password: str | None = None
 
 
+class FleetEnrol(BaseModel):
+    """A node handed to the fleet service from cluster.yml (AK, Settings)."""
+
+    name: str = Field(min_length=1, max_length=64)
+    host: str = Field(min_length=1, max_length=253)
+
+
 class MaintenanceStart(BaseModel):
     scope: Literal["node", "cluster"]
     name: str = Field(min_length=1)
@@ -1070,10 +1077,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # a dropped session, the HOLD on any failed step.
     #
     # EXPLICIT ROUTES, NOT A WILDCARD PROXY. Every action the dashboard can
-    # take on a Spark is a line in this table and a row in /docs. The fleet
-    # service also renames and removes Sparks; those are its own page's job,
-    # and a `Literal` on the action means they cannot be reached from here by
-    # accident or by URL.
+    # take on a Spark is a line in this table and a row in /docs. Membership
+    # -- add and remove -- is routed because Settings enrols a node from the
+    # cluster's own id and host (AK, the checkbox), so the fleet never needs
+    # a second inventory typed in. Rename is not: a dashboard node's id IS
+    # the fleet name, and a rename there is a remove and an add here. A
+    # `Literal` on the action keeps anything else unreachable by URL.
 
     def _proto(request: Request) -> str:
         # The scheme the request REALLY arrived on: cloudflared's header
@@ -1134,17 +1143,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Check every Spark now; the hourly sweep, on demand."""
         return await _fleet_call(request, "POST", "/api/check", {})
 
+    @app.post("/api/fleet/nodes")
+    async def api_fleet_enrol(request: Request, body: FleetEnrol) -> dict:
+        """Put a node on the fleet service's list, by the id and host the
+        dashboard already has for it. The fleet service checks it at once."""
+        return await _fleet_call(
+            request, "POST", "/api/nodes", {"name": body.name, "host": body.host}
+        )
+
     @app.post("/api/fleet/nodes/{name}/{action}")
     async def api_fleet_node_action(
         request: Request,
         name: str,
-        action: Literal["check", "update", "rehearse"],
+        action: Literal["check", "update", "rehearse", "remove"],
         body: FleetUpdateBody | None = None,
     ) -> dict:
         """check: collect and score now. update: the whole state machine,
         every member of the Spark's cluster in turn. rehearse: the same
         machine with nothing inside it, one node -- the way to prove this
-        path end to end without touching a package."""
+        path end to end without touching a package. remove: off the fleet
+        service's list; it stops being checked, its history is kept."""
         payload = {"password": body.password} if body and body.password else {}
         return await _fleet_call(request, "POST", f"/api/nodes/{name}/{action}", payload)
 

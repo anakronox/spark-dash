@@ -91,7 +91,8 @@ a column naming which of those put it there. Click a row for its full chart.
 separate project that checks every Spark against NVIDIA's release recipes and
 installs updates on request — the dashboard can show it: an *updates* button in
 the header with how many Sparks have one, and a panel that shows what each
-update is and starts, watches and verifies it. **You do not have to use this.**
+update is and starts, watches and verifies it; which nodes it covers is a
+checkbox under each node in Settings. **You do not have to use this.**
 The dashboard is complete without it; the button only exists when the fleet
 service is configured, and nothing else changes either way.
 

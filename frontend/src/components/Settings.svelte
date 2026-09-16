@@ -31,6 +31,7 @@
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
+  import type { FleetFeed } from '../lib/fleet.svelte';
 
 
   interface Props {
@@ -38,8 +39,50 @@
     layout: Layout;
     open: boolean;
     onclose: () => void;
+    /** The fleet updater, when the backend has one (roadmap AK). Absent or
+     *  unconfigured, nothing about it renders. */
+    fleet?: FleetFeed;
   }
-  const { theme, layout, open, onclose }: Props = $props();
+  const { theme, layout, open, onclose, fleet }: Props = $props();
+
+  /* FLEET UPDATES — a checkbox per node, not a second inventory.
+   *
+   * The fleet service keeps its own list of Sparks: name and host. Every
+   * node in cluster.yml already has both, so enrolling one is a tick that
+   * hands them over, and unticking removes it. Applied at once, like a
+   * silence, not on "Save cluster": it is a write to the fleet service, not
+   * to the file, and a tick that waited on an unrelated save would look
+   * broken. A node's id here is its name there, which is also why a rename
+   * is a remove and an add and not a third route.
+   *
+   * Per node rather than one master switch, on purpose: a master switch
+   * would have to re-derive the fleet list on every save and would enrol a
+   * host added for monitoring only; a tick is one honest write with its
+   * result visible on the row.
+   */
+  let fleetBusy = $state<string | null>(null);
+  let fleetError = $state<string | null>(null);
+
+  async function setEnrolled(name: string, host: string, on: boolean) {
+    if (!fleet || fleetBusy) return;
+    fleetBusy = name;
+    fleetError = null;
+    try {
+      if (on) await fleet.enrol(name, host);
+      else await fleet.remove(name);
+    } catch (err) {
+      fleetError = `${name}: ${(err as Error).message}`;
+    } finally {
+      fleetBusy = null;
+    }
+  }
+
+  /** On the fleet list but not in cluster.yml — a renamed or retired node,
+   *  or one added on the fleet page. Shown so it can be taken off here. */
+  const fleetOrphans = $derived(
+    (fleet?.fleet?.nodes ?? []).filter((f) => !(draft ?? []).some((n) => n.node_id === f.name)),
+  );
+  const fleetState = (name: string) => fleet?.fleet?.nodes.find((f) => f.name === name);
 
 
   let dialog = $state<HTMLDialogElement | null>(null);
@@ -370,6 +413,9 @@
       // not on a timer, so polling it would be pure waste.
       loadConfig();
       loadFootprint();
+      // The fleet feed idles at a minute between loads; the checkboxes
+      // should reflect the list as it is now, not as it was.
+      fleet?.load();
     } else if (!open && dialog.open) dialog.close();
   });
 </script>
@@ -547,6 +593,34 @@
               </label>
             </div>
 
+            {#if fleet?.configured}
+              {@const f = fleetState(n.node_id)}
+              <div class="rt">
+                <label class="check fleet">
+                  <input
+                    type="checkbox"
+                    checked={fleet.has(n.node_id)}
+                    disabled={fleetBusy !== null || !n.node_id || !n.host || !fleet.available}
+                    onchange={(e) =>
+                      setEnrolled(n.node_id, n.host, (e.currentTarget as HTMLInputElement).checked)}
+                  />
+                  <span>fleet updates</span>
+                  {#if fleetBusy === n.node_id}
+                    <span class="tag">…</span>
+                  {:else if f && f.host !== n.host}
+                    <!-- The fleet checks a different address than the
+                         dashboard polls. Untick and tick to hand over the
+                         new one. -->
+                    <span class="tag warn" title="fleet checks {f.host}">host differs</span>
+                  {:else if f?.reachable === false}
+                    <span class="tag warn">unreachable</span>
+                  {:else if f && f.reachable == null}
+                    <span class="tag">checking</span>
+                  {/if}
+                </label>
+              </div>
+            {/if}
+
             <div class="rt">
               <span class="eyebrow dim">llama.cpp routers</span>
               {#each n.runtimes.llama_routers as r, ri (ri)}
@@ -652,6 +726,57 @@
         <p class="note dim">Saving rewrites the file; comments are not preserved.</p>
       {/if}
     </section>
+
+    <!-- Fleet updates (roadmap AK). Only when the backend has a fleet
+         service; a section about a thing that is not there would be noise.
+         Nothing here is editable on purpose: the login and the cadence are
+         the fleet container's own environment, and saying WHERE beats a
+         control that could not actually change them. -->
+    {#if fleet?.configured}
+      <section class="stack">
+        <h3 class="eyebrow dim">Fleet updates</h3>
+        {#if !fleet.available}
+          <p class="note" data-tone="warning">spark-fleet-updates is not answering. The checkboxes above wait for it.</p>
+        {:else if fleet.fleet}
+          <p class="note">
+            <span class="num">{fleet.fleet.nodes.length}</span>
+            <span class="dim">
+              Spark{fleet.fleet.nodes.length === 1 ? '' : 's'} on the fleet list — tick
+              <em>fleet updates</em> under a node above to add it. Checked every
+              <span class="num">{fleet.fleet.interval_min}</span> min
+              {#if fleet.fleet.ssh_user}as <code>{fleet.fleet.ssh_user}</code>{/if}.
+            </span>
+          </p>
+          {#if fleetOrphans.length}
+            <div class="rt">
+              <span class="eyebrow dim">On the fleet list but not in this cluster</span>
+              {#each fleetOrphans as f (f.name)}
+                <div class="rt-row">
+                  <span>{f.name}</span>
+                  <span class="dim">{f.host}</span>
+                  <button
+                    class="mini"
+                    disabled={fleetBusy !== null}
+                    onclick={() => setEnrolled(f.name, f.host, false)}
+                  >remove</button>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if fleetError}
+            <p class="note" data-tone="warning">{fleetError}</p>
+          {/if}
+          <p class="note dim">
+            The login and the cadence are <code>SPARK_FLEET_SSH_USER</code> and
+            <code>SPARK_FLEET_INTERVAL_MIN</code> on the fleet container; the SSH key
+            it uses is mounted there.
+            {#if fleet.publicUrl}
+              <a href={fleet.publicUrl} target="_blank" rel="noopener">Open the fleet page ↗</a>
+            {/if}
+          </p>
+        {/if}
+      </section>
+    {/if}
 
     <!-- Where this lives -->
     <section class="stack">
@@ -835,6 +960,12 @@
   }
 
   .add { margin-left: 0; align-self: flex-start; }
+
+  /* The fleet tick sits with the node's fields, one size up from the router
+     scrape checkbox: it is a decision about the node, not a detail of one
+     endpoint. */
+  .check.fleet { font-size: var(--text-label); color: var(--ink-2); gap: 6px; }
+  .check.fleet input:disabled + span { color: var(--ink-muted); }
 
   .actions { display: flex; gap: 6px; margin-top: 4px; }
   .actions .mini { margin-left: 0; }
