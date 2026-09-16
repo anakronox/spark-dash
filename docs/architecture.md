@@ -143,7 +143,8 @@ requires a host kernel module.
   charts via uPlot (settled). Built to static assets and served by the backend
   container — one less service, no CORS, same-origin WebSocket. See
   [app-design.md](app-design.md).
-- **spark-fleet-updates** (optional, [roadmap AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16))
+- **spark-fleet-updates** (optional — off by default, and the dashboard is
+  complete without it; [roadmap AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16))
   — a separate project and container that checks every Spark for NVIDIA
   releases and installs them on request. The backend is a typed proxy in
   front of its JSON API (`/api/fleet/*`, `fleet_updates.py`) and the

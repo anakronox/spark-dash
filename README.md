@@ -86,6 +86,15 @@ Past a dozen links the card switches to a table — one row per link with a
 sparkline, sorted so anything down, faulted or unusually busy is at the top, and
 a column naming which of those put it there. Click a row for its full chart.
 
+**Optionally, NVIDIA release updates for the whole fleet.** If you also run
+[spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates) — a
+separate project that checks every Spark against NVIDIA's release recipes and
+installs updates on request — the dashboard can show it: an *updates* button in
+the header with how many Sparks have one, and a panel that shows what each
+update is and starts, watches and verifies it. **You do not have to use this.**
+The dashboard is complete without it; the button only exists when the fleet
+service is configured, and nothing else changes either way.
+
 ## The page is yours
 
 The layout is not fixed. Each card is a thing you can move, size, copy and put
@@ -281,8 +290,10 @@ images](docs/deployment.md#building-and-shipping-images). It needs
   API surface, live-update contract, and panel/visual design rules.
 - [Fleet updates](docs/fleet-updates.md) — how NVIDIA actually updates GB10
   systems, from the OTA recipes and the DGX Dashboard's internals up to the
-  agentless-SSH Enterprise Manageability framework, read off live nodes; the
-  groundwork for a fleet-update front-end, kept separate from this dashboard.
+  agentless-SSH Enterprise Manageability framework, read off live nodes. That
+  research became [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
+  a separate project the dashboard can optionally show — see
+  [Deployment](docs/deployment.md#fleet-updates--optional).
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
   stays untouched) and the per-node/central Compose service breakdown.
 

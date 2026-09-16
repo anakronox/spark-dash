@@ -245,7 +245,11 @@ Two new containers, plus a route on infrastructure that already exists.
 
 ### Fleet updates — optional
 
-If you run [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
+**This is optional, and off by default.** The dashboard is complete without
+it: skip this section and there is no extra container, no extra port and no
+button, and nothing else in the stack behaves differently.
+
+If you also run [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
 the dashboard can show it
 ([roadmap AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16)).
 It runs as a service of the central stack behind the `fleet` compose
@@ -264,9 +268,12 @@ same host" mode. Same network for free, no port to find.
    `FLEET_UPDATES_URL=http://spark-fleet-updates:8080`, and
    `FLEET_UPDATES_PUBLIC_URL` for where a browser reaches the fleet page on
    `:8090`, which the panel links to for adding and removing Sparks.
-4. `docker compose up -d`. A Dockhand copy of `compose.yaml` needs the
-   service and the two backend `FLEET_UPDATES_*` lines re-applied by hand,
-   with the two mounts made absolute, like every other addition.
+4. `docker compose up -d`. If a deploy tool runs its own copy of
+   `compose.yaml` from elsewhere, that copy needs BOTH halves: the service
+   (with its two mounts made absolute) and the two `FLEET_UPDATES_*` lines
+   under the backend's `environment:`. Missing the second half is silent —
+   the fleet container comes up healthy and `/health` says
+   `not configured`.
 
 The password rule is the fleet service's and is forwarded, not bypassed:
 through the tunnel (`https://`, where cloudflared sets `X-Forwarded-Proto`)

@@ -186,7 +186,8 @@ services:
       - sparkdash
 
   # spark-fleet-updates — OPTIONAL, behind the `fleet` profile (roadmap AK).
-  # Off unless .env sets COMPOSE_PROFILES=fleet, so a stack without a fleet
+  # You do not have to use this; the dashboard is complete without it. Off
+  # unless .env sets COMPOSE_PROFILES=fleet, so a stack without a fleet
   # updater gets no container and no port. The backend is the TLS-terminating
   # proxy in front of it, which is why TLS is off here and the backend reaches
   # it as http://spark-fleet-updates:8080 over this network — FLEET_UPDATES_URL
