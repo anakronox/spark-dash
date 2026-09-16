@@ -143,6 +143,14 @@ requires a host kernel module.
   charts via uPlot (settled). Built to static assets and served by the backend
   container — one less service, no CORS, same-origin WebSocket. See
   [app-design.md](app-design.md).
+- **spark-fleet-updates** (optional, [roadmap AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16))
+  — a separate project and container that checks every Spark for NVIDIA
+  releases and installs them on request. The backend is a typed proxy in
+  front of its JSON API (`/api/fleet/*`, `fleet_updates.py`) and the
+  frontend renders the fleet in its own idiom. The dashboard holds no SSH
+  key, no password and no node access; the fleet service keeps all of its
+  own guards, including refusing a password that did not travel over HTTPS —
+  the backend forwards the real `X-Forwarded-Proto` rather than vouching.
 
 ### Live-view fast path
 
@@ -216,9 +224,12 @@ nothing else. What follows is why, and it applies equally to a fourth:
   required for the MVP.
 - The dashboard should be written assuming it **could** be reached without the
   tunnel (e.g. someone on the LAN, or a misconfiguration) — so no secrets should
-  ever be gated on "well, OAuth already checked this upstream." Confirmed
-  strictly read-only (no process/model control actions), which keeps the blast
-  radius low regardless of the auth path.
+  ever be gated on "well, OAuth already checked this upstream." Read-only as
+  to processes and models (no control actions), which keeps the blast radius
+  low regardless of the auth path. The exceptions, each recorded where it
+  was decided: alert silences (G), maintenance windows (AH), and — when
+  spark-fleet-updates is configured — starting an update on a Spark (AK),
+  which the fleet service gates on its own password rule.
 
 ## Storage / retention
 

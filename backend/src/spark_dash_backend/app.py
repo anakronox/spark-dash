@@ -19,7 +19,14 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -40,6 +47,7 @@ from spark_dash_backend.cluster import (
     write_cluster,
 )
 from spark_dash_backend.config import Settings
+from spark_dash_backend.fleet_updates import FleetUpdatesClient, FleetUpdatesError
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
@@ -122,6 +130,14 @@ class ClusterWrite(BaseModel):
 MAX_SILENCE_HOURS = 24.0
 
 
+class FleetUpdateBody(BaseModel):
+    """What the panel sends with an update or a rehearsal (roadmap AK)."""
+
+    # The sudo password for that Spark, when it needs one. Forwarded, never
+    # logged, never stored -- by this process or the next.
+    password: str | None = None
+
+
 class MaintenanceStart(BaseModel):
     scope: Literal["node", "cluster"]
     name: str = Field(min_length=1)
@@ -153,6 +169,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.alertmanager_url, timeout_s=settings.alertmanager_timeout_s
     )
     maintenance = MaintenanceService(alertmanager, inventory)
+    fleet_updates = FleetUpdatesClient(
+        settings.fleet_updates_url, timeout_s=settings.fleet_updates_timeout_s
+    )
     poller = LivePoller(
         inventory,
         interval_s=settings.live_poll_interval_s,
@@ -178,6 +197,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.poller = poller
     app.state.inventory = inventory
     app.state.maintenance = maintenance
+    app.state.fleet_updates = fleet_updates
 
     # ---------------------------------------------------------------- live
 
@@ -1037,6 +1057,105 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=502, detail=f"alertmanager: {exc}") from exc
         return {"ended": window.as_dict()}
 
+    # ------------------------------------------------------- fleet updates
+    #
+    # THE THIRD WRITE, and a different kind from the two before it (roadmap
+    # AK). Silencing and maintenance passed G's test -- a permitted write
+    # cannot repoint an agent, load a model or touch a process. Updating a
+    # Spark reboots it. Brian chose it anyway, 2026-09-16, with the line
+    # drawn here rather than at "no writes": the dashboard holds no SSH key,
+    # no password and no node access. Everything below is a forwarded POST
+    # to spark-fleet-updates, which keeps every guard it already has -- the
+    # confirmation, the HTTPS-only password, the transient unit that survives
+    # a dropped session, the HOLD on any failed step.
+    #
+    # EXPLICIT ROUTES, NOT A WILDCARD PROXY. Every action the dashboard can
+    # take on a Spark is a line in this table and a row in /docs. The fleet
+    # service also renames and removes Sparks; those are its own page's job,
+    # and a `Literal` on the action means they cannot be reached from here by
+    # accident or by URL.
+
+    def _proto(request: Request) -> str:
+        # The scheme the request REALLY arrived on: cloudflared's header
+        # through the tunnel, else what this server saw. Never "https" on
+        # trust -- see fleet_updates.py.
+        return request.headers.get("x-forwarded-proto") or request.url.scheme
+
+    async def _fleet_call(
+        request: Request, method: str, path: str, body: dict | None = None
+    ) -> dict:
+        if not fleet_updates.configured:
+            raise HTTPException(status_code=404, detail="fleet updates are not configured")
+        try:
+            status, payload = await fleet_updates.forward(
+                method, path, json=body, proto=_proto(request)
+            )
+        except FleetUpdatesError as exc:
+            raise HTTPException(status_code=502, detail=f"spark-fleet-updates: {exc}") from exc
+        if status >= 400:
+            # The fleet service's own wording -- "already being updated", the
+            # HTTPS refusal -- is what the panel should show, unchanged.
+            detail = payload.get("error") if isinstance(payload, dict) else None
+            raise HTTPException(
+                status_code=status, detail=detail or f"spark-fleet-updates answered {status}"
+            )
+        return payload
+
+    @app.get("/api/fleet")
+    async def api_fleet(request: Request) -> dict:
+        """The fleet as the fleet service sees it, wrapped in whether it could
+        be asked. `configured` false means the feature is off and the header
+        shows no button; `available` false means it is on and the service did
+        not answer -- which must not look like an empty fleet."""
+        base = {
+            "configured": fleet_updates.configured,
+            "available": False,
+            "public_url": settings.fleet_updates_public_url or None,
+            "fleet": None,
+        }
+        if not fleet_updates.configured:
+            return base
+        try:
+            status, payload = await fleet_updates.forward(
+                "GET", "/api/fleet", proto=_proto(request)
+            )
+        except FleetUpdatesError:
+            return base
+        if status != 200:
+            return base
+        return {**base, "available": True, "fleet": payload}
+
+    @app.get("/api/fleet/runs/{run_id}/{node}/log")
+    async def api_fleet_log(request: Request, run_id: str, node: str) -> dict:
+        return await _fleet_call(request, "GET", f"/api/runs/{run_id}/{node}/log")
+
+    @app.post("/api/fleet/check")
+    async def api_fleet_check_all(request: Request) -> dict:
+        """Check every Spark now; the hourly sweep, on demand."""
+        return await _fleet_call(request, "POST", "/api/check", {})
+
+    @app.post("/api/fleet/nodes/{name}/{action}")
+    async def api_fleet_node_action(
+        request: Request,
+        name: str,
+        action: Literal["check", "update", "rehearse"],
+        body: FleetUpdateBody | None = None,
+    ) -> dict:
+        """check: collect and score now. update: the whole state machine,
+        every member of the Spark's cluster in turn. rehearse: the same
+        machine with nothing inside it, one node -- the way to prove this
+        path end to end without touching a package."""
+        payload = {"password": body.password} if body and body.password else {}
+        return await _fleet_call(request, "POST", f"/api/nodes/{name}/{action}", payload)
+
+    @app.post("/api/fleet/runs/{run_id}/{action}")
+    async def api_fleet_run_action(
+        request: Request, run_id: str, action: Literal["stop", "verify"]
+    ) -> dict:
+        """stop: after the current step. verify: finish a run that was held
+        at the restart, now that the Spark is back."""
+        return await _fleet_call(request, "POST", f"/api/runs/{run_id}/{action}", {})
+
     @app.get("/metrics")
     async def metrics() -> PlainTextResponse:
         """The backend's own series, for Prometheus.
@@ -1069,6 +1188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # differently within a single response.
         prom_ok = await prom.healthy()
         alerts_ok = await alertmanager.reachable()
+        fleet_ok = await fleet_updates.reachable()
 
         # Poll if we have no reasonably fresh view of the cluster. The live
         # poller only runs while a dashboard is open, so without this the
@@ -1130,6 +1250,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "problems": problems,
             "prometheus": "ok" if prom_ok else "unreachable",
             "alertmanager": "ok" if alerts_ok else "unreachable",
+            # Not a `problems` entry: the dashboard is not blind without it.
+            # Reported so an operator can see which of the two it is.
+            "fleet_updates": (
+                "not configured"
+                if not fleet_updates.configured
+                else "ok"
+                if fleet_ok
+                else "unreachable"
+            ),
             "nodes_configured": len(nodes),
             "nodes_up": nodes_up,
             # Its own build, beside the agents'. AgentBuildSkew compares nodes

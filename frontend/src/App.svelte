@@ -11,6 +11,7 @@
   import MemoryBand from './components/MemoryBand.svelte';
   import NodeCard from './components/NodeCard.svelte';
   import MaintenanceControl from './components/MaintenanceControl.svelte';
+  import FleetUpdates from './components/FleetUpdates.svelte';
   import ProcessTable from './components/ProcessTable.svelte';
   import SwapTimeline from './components/SwapTimeline.svelte';
   import Trends from './components/Trends.svelte';
@@ -23,6 +24,7 @@
   import { LiveFeed } from './lib/live.svelte';
   import { pageFocus } from './lib/focus.svelte';
   import { AlertFeed, endMaintenance, timeLeft } from './lib/alerts.svelte';
+  import { FleetFeed } from './lib/fleet.svelte';
   import type { MaintenanceWindow } from './lib/alerts.svelte';
   import { fetchWithTimeout } from './lib/request';
   import { poll } from './lib/visibility.svelte';
@@ -32,8 +34,13 @@
 
   const feed = new LiveFeed();
   const alertFeed = new AlertFeed();
+  /* The fleet updater (roadmap AK). Polled from the start, not from the
+     panel opening: the header button carries how many Sparks have updates,
+     which is the number that decides whether to open it at all. */
+  const fleetFeed = new FleetFeed();
   let historyOpen = $state(false);
   let settingsOpen = $state(false);
+  let fleetOpen = $state(false);
   const layout = new Layout();
 
   /** Add a card, then take the reader to it. `tick()` so the new slot exists
@@ -63,9 +70,11 @@
   onMount(() => {
     feed.connect();
     alertFeed.start();
+    fleetFeed.start();
     return () => {
       feed.close();
       alertFeed.stop();
+      fleetFeed.stop();
     };
   });
 
@@ -554,6 +563,29 @@
         {/if}
       </button>
 
+      <!-- FLEET UPDATES (roadmap AK). Same control as alerts, same rule:
+           quiet when every Spark is current, a counted badge when some are
+           not, and a mark while an update is running. Rendered only when the
+           backend has a fleet service to ask -- a control for a thing that
+           is not there should not hold a seat in this strip. -->
+      {#if fleetFeed.configured}
+        <button
+          class="{ALERTS_TRIGGER} {fleetFeed.withUpdates || fleetFeed.updating ? ALERTS_LOUD : ''}"
+          aria-label={fleetFeed.updating
+            ? `${fleetFeed.updating} Spark${fleetFeed.updating === 1 ? '' : 's'} updating. Open fleet updates.`
+            : fleetFeed.withUpdates
+              ? `${fleetFeed.withUpdates} Spark${fleetFeed.withUpdates === 1 ? '' : 's'} with updates. Open fleet updates.`
+              : 'Open fleet updates'}
+          onclick={() => (fleetOpen = true)}
+        >
+          <span aria-hidden="true">{fleetFeed.updating ? '●' : '⇡'}</span>
+          <span class={ALERTS_LABEL}>updates</span>
+          {#if fleetFeed.withUpdates}
+            <span class={BADGE}>{fleetFeed.withUpdates}</span>
+          {/if}
+        </button>
+      {/if}
+
       <!-- The theme picker used to be a <select> here. It moved into settings:
            the header is the most valuable strip on the page, and a control you
            touch twice a year should not hold a permanent seat in it. -->
@@ -625,6 +657,7 @@
   {/each}
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
   <Settings {theme} {layout} open={settingsOpen} onclose={() => (settingsOpen = false)} />
+  <FleetUpdates feed={fleetFeed} open={fleetOpen} slots={slotOf} onclose={() => (fleetOpen = false)} />
 
   <!-- SCOPED, AND SAYING SO. Without this a filtered page is indistinguishable
        from a cluster that lost two nodes — every table short, every count low,

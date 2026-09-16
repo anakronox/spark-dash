@@ -781,9 +781,14 @@ def test_the_menu_closes_from_outside_and_from_escape():
 def test_a_labelled_menu_sizes_to_its_content():
     """MEASURED: fr tracks inside an absolutely positioned, shrink-to-fit box
     resolved to nothing -- the metric menu was 90px wide with every label
-    clipped. max-content tracks, and a width to match."""
-    block = css_block(PICK, ".host.labelled .menu {")
-    assert "max-content" in block, "the labelled menu's columns can collapse to nothing"
+    clipped. max-content tracks, and a width to match.
+
+    `.two-col`, not `.labelled`: the two-column layout is opted into with
+    `columns` since AK, where a three-action menu wanted a list. A labelled
+    trigger still gets it by default; the guard follows the class."""
+    block = css_block(PICK, ".host.two-col .menu {")
+    assert "max-content" in block, "the two-column menu's columns can collapse to nothing"
+    assert "columns = 2" in PICK.read_text(), "two columns must stay the default for a labelled trigger"
     assert "minmax(0, 1fr)" not in block, "fr tracks in a shrink-to-fit box collapse"
 
 

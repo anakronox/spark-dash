@@ -23,6 +23,18 @@ class Settings(BaseSettings):
     alertmanager_url: str = "http://alertmanager:9093"
     alertmanager_timeout_s: float = 5.0
 
+    # spark-fleet-updates, the controller that checks and updates every Spark,
+    # reached over the compose network (roadmap AK). Empty means the feature
+    # is off: /api/fleet reports configured=false and the header shows no
+    # button. The backend is the TLS-terminating proxy in front of it, so the
+    # controller runs with SPARK_FLEET_TLS=off and reads X-Forwarded-Proto.
+    fleet_updates_url: str = ""
+    fleet_updates_timeout_s: float = 10.0
+    # Where a person goes for what the panel does not do (add, rename or
+    # remove a Spark). Separate from the URL above because the backend reaches
+    # the container by service name and a browser cannot.
+    fleet_updates_public_url: str = ""
+
     # THE place the cluster is defined. Comma-separated, e.g.
     #   SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62
     # The backend renders Prometheus's target files from this, so a node is

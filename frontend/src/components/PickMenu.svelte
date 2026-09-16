@@ -71,6 +71,10 @@
     /** The control does not apply right now. It stays where it is, dimmed,
      *  rather than disappearing and shifting its neighbours. */
     disabled?: boolean;
+    /** A labelled trigger's menu lays out in two columns by default, which
+     *  is for the twenty-metric picker. A menu of three actions reads as a
+     *  list, not a grid; it says so with 1. */
+    columns?: 1 | 2;
   }
   const {
     groups,
@@ -85,6 +89,7 @@
     tone = 'plain',
     align,
     disabled = false,
+    columns = 2,
   }: Props = $props();
 
   const hangsEnd = $derived(align ? align === 'end' : !text);
@@ -129,6 +134,7 @@
   class="host"
   class:active={count > 0}
   class:labelled={!!text}
+  class:two-col={!!text && columns === 2}
   class:accent={tone === 'accent'}
   class:end={hangsEnd}
   bind:this={host}
@@ -351,7 +357,7 @@
     left: 0;
   }
 
-  .host.labelled .menu {
+  .host.two-col .menu {
     /* Twenty metrics is a long single column; two columns keep the menu
        inside the viewport on a laptop.
        `max-content` tracks, NOT minmax(0, 1fr): an absolutely positioned box

@@ -6152,6 +6152,82 @@ is doing its job and the knob would be a cost with no buyer.
 rather than a per-node override. Nothing observed so far wants them to
 differ.
 
+### AK — Fleet updates from the dashboard — **built 2026-09-16**
+
+[spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates) is
+its own project: one container on the monitoring VM that logs in to every
+Spark hourly, scores it against NVIDIA's release recipes, and runs
+apt + fwupd + reboot when a person presses Update. It has its own page. Brian,
+2026-09-16: put it in the dashboard — a dedicated button in the top bar that
+opens a panel with the fleet updater in it.
+
+**This reverses two things this file and that project's docs had recorded**,
+and says so rather than leaving them to contradict each other. The Phase 4
+entry below ("Report OS/firmware updates per node") concluded *triggering
+updates is out, and would stay out*, on G's test that a permitted write
+cannot repoint an agent, load a model or touch a process. The fleet
+project's `architecture.md` §4.6 said *spark-dash stays read-only … it
+never gets a button*. Both were right about the dashboard as it was. The
+line is now drawn one step further out, and here is where it sits: **the
+dashboard holds no SSH key, no password and no node access.** Every
+control in the panel is a POST the backend forwards to the fleet service,
+which keeps every guard it already had — confirmation first, a password
+only over HTTPS, the install as a transient systemd unit that survives a
+dropped session, HOLD with evidence on any failed step, never anything on
+its own timer.
+
+**Decisions, and why:**
+
+1. **Native, not an iframe.** The fleet page could have been framed through a
+   same-origin proxy in a tenth of the code. Rebuilt instead in Svelte
+   against the fleet service's JSON, because a frame cannot take the
+   dashboard's node colours, its type scale or its dialog shell, and a page
+   inside a page reads as exactly that. The cost is a second rendering of the
+   same facts. It is bounded by keeping the *wording* in one place:
+   `lib/fleet.ts` is the fleet page's `statusOf`/`lineOf` ported branch for
+   branch, executed under node by `tests/js/fleet.test.mjs` — including the
+   partner-board cases, where "nothing to install" and "not on the latest"
+   are both true and must both show. When the fleet page's wording moves,
+   that file moves with it.
+2. **Explicit routes, not a wildcard proxy.** `/api/fleet`, the log, check,
+   update, rehearse, stop, verify — each a line in `app.py` and a row in
+   `/docs`. Rename and remove are the fleet page's job and are not routed; a
+   `Literal` on the action makes them unreachable rather than merely
+   undocumented. `FLEET_UPDATES_URL` unset means `configured: false` and no
+   button at all — a control for a thing that is not there should not hold a
+   seat in the header.
+3. **The password rule is forwarded, not bypassed.** The fleet service
+   refuses a sudo password unless the request arrived over TLS or a proxy
+   says `X-Forwarded-Proto: https`. The backend forwards the *real* scheme:
+   cloudflared's header through the tunnel, else what it received. So Update
+   works through the tunnel and is refused on the plain-HTTP LAN, with the
+   fleet service's own sentence shown verbatim. That is its guard, unchanged;
+   `SPARK_FLEET_ALLOW_PLAIN_PASSWORD=1` on the fleet container is the opt-out,
+   and this project does not set it. Sparks that grant passwordless sudo never
+   ask.
+4. **A wide fly-out, the Alerts/Settings shell at 1100px.** A row is name,
+   host, status, a sentence and two buttons. The third copy of that shell;
+   Settings' comment said extract at three, and that is now due.
+5. **Confirmation inline, the MaintenanceControl pattern.** Update turns the
+   row's footer into the confirmation with the password field; a dialog over
+   a dialog would hide the row you are deciding about.
+6. **The button is the alerts button's twin**: quiet when every Spark is
+   current, a counted badge when some are not, a mark while a run is on. It
+   needs a number without the panel open, so the feed polls at 60s idle, 10s
+   open, 3s while anything is checking or updating — the fleet page's own
+   cadences.
+
+**Out, by design:** add / rename / remove a Spark, cluster names, units,
+theme. The panel links to the fleet page for those
+(`FLEET_UPDATES_PUBLIC_URL`).
+
+**Deployment** — [deployment.md](deployment.md#fleet-updates--optional): the
+fleet container is a service of the central stack behind the `fleet`
+compose profile, running with `SPARK_FLEET_TLS=off`, its documented "behind
+a proxy on the same host" mode; its image is built from its own checkout. `/health` reports `fleet_updates` as ok /
+unreachable / not configured, and unreachable is not a problem — the
+dashboard is not blind without it.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
@@ -6556,19 +6632,19 @@ header comment in `central/compose.yaml`.
   result worth recording. Adding a daemon to chase a number nobody has needed
   is the wrong direction until something is actually unexplained.
 
-- [ ] **Report OS/firmware updates per node — AN IDEA, NOT A COMMITMENT.**
+- [x] **Report OS/firmware updates per node** — **superseded by
+  [AK](#ak--fleet-updates-from-the-dashboard--built-2026-09-16), 2026-09-16.**
   Explored 2026-09-04 because the DGX Dashboard on every GB10 is NVIDIA's
   recommended way to update, and it binds `127.0.0.1` — so "are all three
   nodes current?" costs three SSH sessions. Brian dropped the path the same
-  week. **No trigger is recorded for revisiting it**, unlike the deferred
-  items in [V2b](#v--more-inference-runtimes-sglang-and-atlas--shipped-2026-08-21-v2b-deferred)
-  and [X4](#x--grafana-as-a-first-class-consumer): this was set down
-  deliberately, not parked pending an event. What follows is only so the
-  research does not have to be redone — and the full write-up, including
-  NVIDIA's fleet-level answer (agentless SSH, `spark_updatectl.py`,
-  Landscape) and every machine contract a separate front-end would need, is
-  [fleet-updates.md](fleet-updates.md). That is a different product from this
-  dashboard and is meant to be spun out.
+  week and no trigger was recorded for revisiting it. The trigger turned out
+  to be the spin-out this entry anticipated: the write-up in
+  [fleet-updates.md](fleet-updates.md) became
+  [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
+  and AK puts that project's fleet view in this header. The conclusion
+  further down that *triggering updates is out, and would stay out* no
+  longer holds; AK says where the line moved to and why. The rest is kept
+  as written, because it is still how NVIDIA does it.
 
   **How NVIDIA actually does it**, read off a running `sparky` — none of this
   is in the public docs, which say only "use the Dashboard":
