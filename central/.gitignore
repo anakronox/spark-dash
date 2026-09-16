@@ -40,3 +40,8 @@ targets/
 # rather than edited in place.
 cluster/
 cluster.yml
+
+# The fleet updater's own checkout, when the `fleet` profile is on — its
+# source, its state and its SSH key, which is root-equivalent on every Spark
+# that trusts it.
+fleet/

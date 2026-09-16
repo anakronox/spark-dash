@@ -243,6 +243,42 @@ the node stack's `.env`.
 
 Two new containers, plus a route on infrastructure that already exists.
 
+### Fleet updates — optional
+
+If you run [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
+the dashboard can show it
+([roadmap AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16)).
+It runs as a service of the central stack behind the `fleet` compose
+profile, with its own TLS off, because the backend is the proxy in front of
+it — the fleet service's documented "behind a TLS-terminating proxy on the
+same host" mode. Same network for free, no port to find.
+
+1. Clone it as `central/fleet` and build the image there — it is not
+   published: `git clone https://github.com/anakronox/spark-fleet-updates.git fleet`
+   then `docker build -t spark-fleet-updates:latest fleet`.
+2. Its state and key are `central/fleet/data` and `central/fleet/ssh` — a
+   standalone deployment's own `./data` and `./ssh`, in place — both
+   `chown 1000:1000`, the image's user. That repo ignores both; this one
+   ignores `fleet/`.
+3. In `.env`: `COMPOSE_PROFILES=fleet`, `SPARK_FLEET_SSH_USER`,
+   `FLEET_UPDATES_URL=http://spark-fleet-updates:8080`, and
+   `FLEET_UPDATES_PUBLIC_URL` for where a browser reaches the fleet page on
+   `:8090`, which the panel links to for adding and removing Sparks.
+4. `docker compose up -d`. A Dockhand copy of `compose.yaml` needs the
+   service and the two backend `FLEET_UPDATES_*` lines re-applied by hand,
+   with the two mounts made absolute, like every other addition.
+
+The password rule is the fleet service's and is forwarded, not bypassed:
+through the tunnel (`https://`, where cloudflared sets `X-Forwarded-Proto`)
+an update accepts the sudo password; on the plain-HTTP LAN — including the
+fleet page itself on `:8090` — the fleet service refuses it and the panel
+shows its sentence. `SPARK_FLEET_ALLOW_PLAIN_PASSWORD=1` is the opt-out, and
+it is yours to set. Sparks that grant passwordless sudo never ask.
+
+`/health` reports `fleet_updates: ok | unreachable | not configured`.
+Unreachable is not counted as a problem — the dashboard is not blind without
+it.
+
 ### Sizing
 
 2 vCPU / 4GB RAM / ~50GB disk is comfortable for a handful of nodes. Prometheus

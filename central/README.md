@@ -88,6 +88,15 @@ If you'd rather run both as some other uid, set `PUID`/`PGID` in `.env`
 instead of chowning. Leaving them unset keeps each container on its own
 non-root user, which is the better default.
 
+[spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates) can
+run as part of this stack, behind the `fleet` compose profile, and put an
+"updates" button in the dashboard's header. Clone it as `./fleet` (gitignored)
+and build its image there; its state and key live inside that checkout,
+chowned to `1000`.
+The `.env` lines are in `.env.example` and the steps in
+[deployment.md](../docs/deployment.md#fleet-updates--optional). Leave the
+profile off and there is no container and no button.
+
 ## Updating
 
 **Check for new settings after every pull.** `.env` is untracked, so a pull
