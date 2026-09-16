@@ -429,6 +429,14 @@
      The glyph and the count carry the button; the word is the first to go. */
   const ALERTS_LABEL = 'text-micro tracking-[0.12em] uppercase max-[640px]:hidden';
   const BADGE = 'px-[5px] rounded-full bg-rule text-ink tabular-nums';
+  /* The fleet count is FILLED IN THE ACCENT, unlike the alerts count. An alert
+     count is bad news already shouted by the banner beneath it, so its badge
+     can be quiet. An available update has no banner and nothing else on the
+     page says it; the badge IS the notice, and Brian wanted it unmissable.
+     The same green the add-element button uses -- the theme's accent, not
+     the warning colour, because a release you can install is an action, not
+     a fault -- so it holds up in every theme. */
+  const BADGE_ACCENT = 'px-[6px] rounded-full bg-good text-page font-bold tabular-nums';
 
   const NOTICE = 'text-body px-3 py-[9px] rounded-sm bg-panel border border-rule text-ink-2';
   /* `info` is neutral ink deliberately: being scoped is a state you chose, not
@@ -581,7 +589,7 @@
           <span aria-hidden="true">{fleetFeed.updating ? '●' : '⇡'}</span>
           <span class={ALERTS_LABEL}>updates</span>
           {#if fleetFeed.withUpdates}
-            <span class={BADGE}>{fleetFeed.withUpdates}</span>
+            <span class={BADGE_ACCENT}>{fleetFeed.withUpdates}</span>
           {/if}
         </button>
       {/if}
