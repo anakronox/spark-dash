@@ -6245,6 +6245,230 @@ a proxy on the same host" mode; its image is built from its own checkout. `/heal
 unreachable / not configured, and unreachable is not a problem — the
 dashboard is not blind without it.
 
+**Superseded in part by AL (2026-09-22)**, which folds the fleet service into
+this repo and this container. Decisions 1, 5, 6 and 7 stand as written; 2 and
+3 survive with the proxy removed from underneath them (the routes stay
+explicit, the password rule stays forwarded, both now in-process); 4 is
+unaffected. The reversal AK recorded is itself revised there — see AL0.
+
+### AL — The fleet updater folded in — **branch `fleet-embedded`, started 2026-09-22**
+
+AK put the fleet updater's *face* in the dashboard and left its *engine* in
+[spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates): a
+second container, a second repo, a second image built by hand, reached over
+the compose network through a typed proxy. AL moves the engine in too. Brian,
+2026-09-22: "that was my original intent behind this — to add the updates
+feature to this repo and integrate directly with the monitor node's
+container."
+
+**What forced the question.** On 2026-09-05 a fleet run set
+`{"update": {"enabled": false}}` in every Spark's
+`/opt/nvidia/dgx-dashboard/settings.json` and left it there. That flag is not
+"don't auto-install" — it is "updates off": `dashboard-admin` stops checking,
+the endpoint answers 403 hourly, and the Dashboard reads "disabled by your
+administrator". Three Sparks went quiet for seventeen days and nobody noticed
+until a release was expected and didn't arrive. The flag is now a *pause*: the
+previous bytes (or the file's absence) are kept in the run state and put back
+on every exit path of the run — fixed in that repo first, and it comes across
+with the code. Two lessons are baked into this section: **a change made to a
+node during a run must be undone by that same run**, and **the thing that
+restores it must live in the process that has the longest, best-watched life**
+— which is the backend, not a container nobody looks at.
+
+#### AL0 — This reverses AK's own line, and says so
+
+AK drew the line at "the dashboard holds no SSH key, no password and no node
+access", and that was the right line for a dashboard whose only reach was HTTP
+to an agent. It moves one step further out here, and the new line is:
+
+- the backend **does** hold the key and open SSH sessions to each Spark;
+- it does so **only** for the fleet feature, which is **off unless configured**
+  at two independent levels (AL5);
+- every guard the fleet service had comes with the code, unchanged: a
+  confirmation first, a sudo password accepted **only over TLS** (or a proxy
+  that says so), the install as a transient systemd unit that outlives the
+  session, HOLD-with-evidence on any failed step, nothing on its own timer
+  except the read-only hourly check;
+- the **node agent gains nothing**. It stays HTTP-only, unprivileged, with no
+  apt, no D-Bus to fwupd and no root. G's permitted-write test and the minimal
+  node footprint (J) are untouched. Updates reach a Spark over SSH, which is
+  NVIDIA's own fleet model — see [fleet-updates.md](fleet-updates.md) §7.
+
+#### AL1 — What is duplicated today, and what one copy looks like
+
+The two-service split costs a second copy of almost everything, and the
+Settings checkbox (AK7) exists mostly to paper over the first row:
+
+| | today, two services | folded in |
+|---|---|---|
+| node list | `cluster.yml` (name, host, cluster) **and** `fleet.json` (name, host, user), hand-synced by the checkbox, with a "host differs" state for when they drift | `cluster.yml` is the source of name and host; the fleet keeps only *which* nodes are enrolled. "Host differs" becomes impossible |
+| update-together grouping | `cluster.yml` `cluster:` **and** the fleet's `units` + LLDP-detected `clusters` + `cluster_names` + a rename route | `cluster:` in `cluster.yml`. LLDP detection survives only as a "your config disagrees with the fabric" warning |
+| HTTP server + TLS | FastAPI behind the tunnel **and** a stdlib server with a self-signed cert, `SPARK_FLEET_TLS`, port 8090, and an `X-Forwarded-Proto` handshake between the two | one server, one TLS story. The proxy, `FleetUpdatesClient` and the cert generation all go |
+| web UI | the fleet's `web/index.html` **and** `FleetUpdates.svelte` — with `lib/fleet.ts` a branch-for-branch port of that page's wording, plus a test to keep the two aligned | one UI. `fleet.ts` stops being a port and becomes the only copy |
+| config | 11 knobs across two services and a compose profile | one mount and one login (AL5) |
+| image, build, release | two images; the fleet one built by hand from a gitignored checkout, no registry, no publish script, no `BUILD_VERSION` | one image, one `publish-images.sh`, one version in `/health` |
+| docs | four files there, four here | one set; that repo is archived with a pointer |
+
+**Not duplicated, and staying separate on purpose:** fact collection over SSH
+(dpkg, `apt-get -s`, fwupd, `dmidecode -t 45`, reboot inhibitors) versus the
+agent's HTTP collection. They overlap on three fields and merging them would
+mean privileging the agent, which AL0 refuses. "Posture over the agent" is a
+later idea, not this branch.
+
+#### AL2 — The password rule is forwarded, not weakened
+
+Checked before starting, because the whole feature rests on it. TLS
+enforcement protects the wire: a password is refused unless the request
+arrived over HTTPS or a proxy says it did, and the refusal shows the fleet
+service's own sentence. `_secure()` ports onto `_proto(request)` with the same
+rule, and `test_fleet_updates.py`'s two tests for it come with it.
+
+What changes is only *which process* holds the password for the length of one
+run — the fleet's, or the backend's. Neither writes it anywhere: not to
+`state.json`, not to a log, not into a run envelope. The rules that made that
+true are comments in `fleet_updates.py` today and must move with the code, so
+AL adds the test that was missing: **after a run, nothing under the run
+directory contains the password.**
+
+One FastAPI-specific detail: a malformed body (`{"password": 123}`) gets a 422
+that echoes the value to the browser that sent it, over that browser's own TLS
+channel. That is not an onward leak — cloudflared logs request metadata, not
+response bodies, and uvicorn's access log is the request line only — but the
+update routes read their body by hand rather than through a model, so the echo
+cannot happen at all.
+
+#### AL3 — Phases. Each one leaves the branch deployable
+
+Proxy mode stays alive through the cut-over and is deleted last, so a backend
+built from this branch and deployed with today's `.env` behaves exactly like
+today. That is the rollback, and it needs no image swap.
+
+- [ ] **AL3a. Move the package, unchanged.** `spark_fleet/` →
+  `backend/src/spark_dash_backend/fleet/`, with the pause/restore fix.
+  `test_posture.py` → `backend/tests/test_fleet_posture.py`;
+  `validate_against_nodes.py` → `scripts/`. Hatchling ships every file under
+  the package directory, so `node_collect.py` (read as text, piped over SSH)
+  and `recipes/*.json` ride along — **verify in the built wheel**, since
+  `uv sync --no-editable` in the Dockerfile is where a missing data file
+  surfaces.
+- [ ] **AL3b. Split service from transport.** Keep `Service` (collect, sweep,
+  runs, `fleet()`); make its paths and interval constructor arguments; delete
+  `Handler`, `_tls_context`, `main`, `web/index.html`. `ssh.py`'s env-derived
+  user and key become settings.
+- [ ] **AL3c. Wire the routes in-process.** The same `/api/fleet*` routes gain
+  an embedded branch. Every blocking call goes through `asyncio.to_thread`;
+  the hourly scheduler starts in `lifespan` and stops on shutdown.
+- [ ] **AL3d. Settings, and the two knobs** (AL5), including the inventory and
+  pair consolidation from AL1 — done here, not later, because they are what
+  make the fleet's own page and its remaining routes deletable.
+- [ ] **AL3e. Container and stack.** `openssh-client` in the backend image, a
+  writable known-hosts path for uid 10002, and `central/compose.fleet.yaml`.
+- [ ] **AL3f. Tests.** The route tests re-pointed at the embedded service with
+  `ssh.run` faked — check, update, rehearse, stop, verify, all with no Spark
+  in the room. Plus AL2's password-residue test and AL4's restart-reconcile
+  test.
+- [ ] **AL3g. Remove the proxy**, after one real (non-rehearsal) update has run
+  embedded. `fleet_updates.py`, `FLEET_UPDATES_URL`, `FLEET_UPDATES_PUBLIC_URL`
+  and the `spark-fleet-updates` service go; the other repo is archived with a
+  pointer here.
+
+#### AL4 — The traps, written down before they are hit
+
+1. **The backend restarts far more often than the fleet container did** — every
+   deploy. A `Run` thread dies with the process; the transient unit on the
+   Spark keeps installing; `_load_runs` marks the run "the controller restarted
+   during this run" — and the `finally` that resumes the Dashboard's updater
+   never runs. That is the 2026-09-05 bug, reintroduced by the move. **Two
+   mitigations, both required**: a startup reconcile that scans
+   `runs/*/state.json` for a `dashboard_settings_before` still set and restores
+   it, and a loud "updating" in `/health` and the panel so a redeploy mid-run is
+   an obvious mistake rather than a quiet one.
+2. **`:latest` is live.** Both stacks track it with `PULL_POLICY=always`, so a
+   normal build from this branch would go live at the next deploy. Every build
+   here is `--tag fleet-<sha> --no-latest`. First real exercise is
+   `uv run python -m spark_dash_backend` on the laptop with the key, against
+   `sparky`, in **rehearsal** — every step but the install and the reboot.
+3. **uid 10002 has no home.** `StrictHostKeyChecking=accept-new` needs a
+   writable `known_hosts`; SSH refuses a key it cannot read. The existing key is
+   owned by uid 1000 (the fleet image's user) and is already in every Spark's
+   `authorized_keys` — reuse it, `chown 10002`, mode 0600, same for the migrated
+   state. Both new mounts are subject to Docker's "auto-create a missing bind
+   source as an empty root-owned directory", which is the failure that cost most
+   of 2026-08-28 on Prometheus.
+4. **One process, one worker.** `self.runs`, the node locks and `checking` are
+   in-process. `__main__.py` runs uvicorn with no `workers`, and a comment must
+   say why: two workers would mean two schedulers sweeping and two run tables.
+5. **Blocking the event loop.** `collect_node` is 30–60s of SSH and `sweep`
+   joins threads; either one called from an `async def` without `to_thread`
+   freezes the live WebSocket for every viewer. A test asserts the route returns
+   in under a second against a slow fake.
+6. **Dockhand's copy drifts by design** — the hand-maintained `spark-dash-vm`
+   repo needs the overlay file and the `COMPOSE_FILE` line, and the authoritative
+   `.env` is `/docker/hawser/spark-dash-vm/.env` and nothing else. AL5's overlay
+   is what keeps this small: the base compose file does not change at all.
+7. **Single-host (J): the controller must not reboot itself.** With the backend
+   on a GB10, enrolling its own host means exactly that. Refuse a host whose
+   `/etc/hostname` matches the backend's own. The standalone container had the
+   same hole and only avoided it by never running on a Spark.
+8. **The kernel regression is still live.** `7.0.0-1019-nvidia` breaks
+   multi-node NCCL (RoCE `ibv_reg_mr_iova2` ENOMEM); the Sep 5 run landed the
+   known-good `6.17.0-1032`. Hold `linux-nvidia-hwe-24.04` on all three until
+   NVIDIA's mitigation is confirmed for cluster use — **before** the first
+   embedded Update press, not after.
+
+#### AL5 — Off by default, in two independent places
+
+Brian, 2026-09-22: a user who does not want this should be able to leave the
+env vars and the compose lines out entirely, and be told what to do if they
+later turn it on in the app.
+
+**Capability is a compose overlay, not a profile.** `central/compose.yaml`
+gains *nothing* fleet-related — no mounts, no env, no commented-out block to
+strip. `central/compose.fleet.yaml` holds the state mount, the read-only key
+mount and `FLEET_SSH_USER`, and opting in is one line in `.env`:
+`COMPOSE_FILE=compose.yaml:compose.fleet.yaml`. This is J1's mechanism and
+J1's reasoning: an overlay leaves the base file untouched, so no existing
+deployment can regress the first time it deploys without the flag — which is
+exactly what a `profiles:` key would have risked.
+
+**Use is a toggle in Settings**, persisted in the state directory. The
+**Updates** section is always present, unlike today's "no button unless
+`FLEET_UPDATES_URL` is set":
+
+- *capability absent* — the toggle is shown and cannot complete. Flipping it
+  explains that fleet updates need an SSH key the backend can use and a login
+  on each Spark that can run apt; that this is a change to the compose file and
+  a one-time step per Spark, not something the dashboard can do for itself; and
+  it names **which** pieces are missing, since `/health` already reports them
+  one by one — no key mounted, no `FLEET_SSH_USER`, state directory not
+  writable. Then a link to the setup guide.
+- *capability present, toggle off* — no header button, no hourly sweep, nothing
+  opens an SSH session. This is the honest state for "configured, but quiet for
+  now" — the kernel hold in AL4.8 is exactly that situation.
+- *toggle on* — AK7's per-node enrolment checkboxes appear beneath it,
+  unchanged.
+
+**No third switch.** A `FLEET_UPDATES=1` env var was considered and dropped:
+the overlay *is* the deployment-level knob and the toggle is the app-level one,
+and a third would only be another thing to explain.
+
+**The header button still appears only when the feature is on** — AK's rule
+that a control for a thing that is not there should not hold a seat. Settings
+is the exception, because Settings is where a person goes to find out how to
+turn a thing on.
+
+- [ ] **AL5a. `docs/fleet-updates-setup.md`** — the quick guide the warning
+  links to, by its GitHub URL so it resolves from wherever the dashboard is
+  reached. Plain language, in this order: what it does and what it will never
+  do on its own; requirements in a box **up front**; four steps (make the key,
+  put it on each Spark, add the overlay line, redeploy); how to check it worked;
+  how to turn it off and how to undo everything on a Spark. It links *down* into
+  [fleet-updates.md](fleet-updates.md), which stays the deep reference, rather
+  than repeating it. Written before the frontend warning, so the warning can
+  quote it.
+- [ ] **AL5b.** `central/README.md` and [deployment.md](deployment.md) replace
+  today's clone-and-build instructions with a pointer to the guide.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
