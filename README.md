@@ -13,6 +13,18 @@ Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Every
 threshold shown is measured for this hardware rather than guessed, and the page
 itself is yours to arrange — see [the page is yours](#the-page-is-yours) below.
 
+![DGX OS updates open over the dashboard: three Sparks listed with their release and update counts, sparkjr expanded to show what the July 2026 release changes, the firmware each device would move to, and the package list with security updates marked](Screenshot-dgx-os-updates.jpg)
+
+Optional, and off until you set it up:
+[DGX OS updates](#5-optional-dgx-os-updates) on the same three machines.
+`sparkjr` is expanded — what the release changes, the firmware each device
+would move to, and every package with its version pair. The button reads
+*update sparkjr and sparketa* because those two pool memory: a release that
+lands on one and not the other is a broken pair, so they are never updated
+apart. *6 packages pinned here, 18 kept back* is an `apt-mark hold` somebody
+placed on that node, reported rather than quietly skipped — a count of zero
+with a pin in place would be the lie this panel exists to avoid.
+
 ## What it monitors
 
 **77 metric families per node**, live at 1–2s over a WebSocket and kept for 180
