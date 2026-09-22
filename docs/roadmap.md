@@ -6639,7 +6639,8 @@ today. That is the rollback, and it needs no image swap.
 #### AL4 — The traps, written down before they are hit
 
 1. **The backend restarts far more often than the fleet container did** — every
-   deploy. A `Run` thread dies with the process; the transient unit on the
+   deploy. **Proven on real hardware 2026-09-22**, see the note after this
+   list. A `Run` thread dies with the process; the transient unit on the
    Spark keeps installing; `_load_runs` marks the run "the controller restarted
    during this run" — and the `finally` that resumes the Dashboard's updater
    never runs. That is the 2026-09-05 bug, reintroduced by the move. **Two
@@ -6792,6 +6793,39 @@ against holding at all.
   The confirmation names it too, in the warning colour, per node in a
   cluster, with `apt-mark unhold` as the way out. Verified end to end against
   the live `sparketa`: six held, eighteen kept back, 143 still installable.
+
+**AL4.1's recovery, proven against a real Spark (2026-09-22).** The
+rehearsals cover every step except the three a rehearsal omits, and the
+Dashboard pause-and-restore is the one of those that caused the original
+outage — so it was worth proving without waiting for a real update.
+
+The test had to avoid two things: disabling a Spark's updater even briefly,
+and hand-running a root script, which is exactly the sort of ad-hoc remote
+write that should be hard. Both fell out of one idea: **prove the byte-for-byte
+property with whitespace.** A run record was planted in the test stack's state
+exactly as a killed process leaves one — `status: failed`,
+`dashboard_settings_before` carrying a re-indented but semantically identical
+`settings.json` — and the container was restarted, which is what a deploy does.
+
+The reconcile fired on startup, logged *"resumed the DGX Dashboard's updater on
+sparky, left paused by run …"*, connected as root and wrote the file. What the
+Spark then held was byte-for-byte the recorded text **and** different from what
+had been there, so a real write happened rather than a no-op; the record's
+`dashboard_settings_before` was `null`, so it will not retry forever;
+`dashboards_stranded` was empty and `/health` carried no `dashboards_paused`.
+A second record put the original bytes back, proving it again in the other
+direction, and `update.enabled` was `true` at every moment — the Dashboard was
+never disabled.
+
+**One thing this could not settle.** Whether `dgx-dashboard-admin` notices a
+restored file without being restarted. It re-reads `settings.json` every cycle
+— the disabled window logged a per-cycle *"updates disabled in settings,
+skipping"* rather than deciding once at startup — so it almost certainly does,
+and the 18:51 cycle after these writes completed normally with the service up
+since 14:51. But a disabled→enabled transition without a restart has not been
+observed. It only matters where no reboot follows: a run stopped before the
+restart, or this reconcile. Worst case the Spark's Updates page stays blank
+until its next hourly cycle.
 
 #### AL5 — Off by default, in two independent places
 
