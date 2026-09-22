@@ -6410,11 +6410,25 @@ today. That is the rollback, and it needs no image swap.
    on a GB10, enrolling its own host means exactly that. Refuse a host whose
    `/etc/hostname` matches the backend's own. The standalone container had the
    same hole and only avoided it by never running on a Spark.
-8. **The kernel regression is still live.** `7.0.0-1019-nvidia` breaks
-   multi-node NCCL (RoCE `ibv_reg_mr_iova2` ENOMEM); the Sep 5 run landed the
-   known-good `6.17.0-1032`. Hold `linux-nvidia-hwe-24.04` on all three until
-   NVIDIA's mitigation is confirmed for cluster use — **before** the first
-   embedded Update press, not after.
+8. **The kernel regression, noted and deliberately not pinned.**
+   `7.0.0-1019-nvidia` breaks multi-node NCCL (RoCE `ibv_reg_mr_iova2`
+   ENOMEM); NVIDIA's advisory said to hold off updating "including via DGX
+   Dashboard", then reported mitigations rolling out from 2026-09-17. The
+   Sep 5 run landed the known-good `6.17.0-1032`, which is what the pair runs
+   now, and `linux-nvidia-hwe-24.04`'s candidate is still that — `7.0.0-1019`
+   is not being offered here.
+
+   An `apt-mark hold` on all three was weighed and **declined** (Brian,
+   2026-09-22): no kernels are pinned across this deployment. A hold is a
+   second piece of per-node state that this tool does not manage, does not
+   report, and would not remove — the same shape of mistake as the Dashboard
+   flag it was proposed to guard against, and a forgotten hold is worse than
+   an unheld kernel because it silently withholds every later fix. The guard
+   that already exists is the right one: an update is human-triggered, the
+   confirmation names the release, and `apt-get -s full-upgrade` is parsed
+   off-box so the reveal shows the real kernel version before anyone presses
+   anything. Watch the version in that reveal rather than pinning against
+   it.
 
 #### AL5 — Off by default, in two independent places
 
