@@ -278,7 +278,14 @@ Logs: `/var/log/dgx-dashboard-service.log`, `.err.log`,
 `/var/log/dgx-dashboard-admin.log`, `.err.log`, and
 `/var/log/dgx-dashboard-reboot.log`. Settings: `/opt/nvidia/dgx-dashboard/settings.json`
 (absent on `sparky`, meaning defaults; `update.enabled` is the one key the
-checker reads). `/usr/bin/dgx-dashboard` is a shell wrapper that opens the
+checker reads). **`update.enabled: false` is not "don't auto-install"; it is
+"updates off".** With it set, `dashboard-admin` logs `refreshUpdatesCache:
+updates disabled in settings, skipping` every hour, the updates endpoint
+answers 403, and the Dashboard's Updates page reads "disabled by your
+administrator" — no notification of a new release ever appears. Observed
+2026-09-22 on all three nodes, two weeks after a fleet run had set it and
+left it. A fleet tool that sets it to keep the checker's self-install off the
+dpkg lock (§3.3) must put the file back when its install ends. `/usr/bin/dgx-dashboard` is a shell wrapper that opens the
 browser on the port.
 
 ### 4.1 HTTP routes (from the binary's strings)
@@ -287,7 +294,7 @@ browser on the port.
 GET  /ota/availability
 GET  /updates/available
 GET  /updates/list
-POST /updates/available        (toggles automatic updates; matches settings.json update.enabled)
+POST /updates/available        (toggles settings.json update.enabled — see below: this is not an auto-update switch)
 GET  /update_reboot/status
 POST /update_reboot
 GET  /hostname          POST /hostname
