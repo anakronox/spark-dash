@@ -1,147 +1,116 @@
 # spark-dash
 
-A scalable web dashboard for a home cluster of NVIDIA GB10-based inferencing
-servers (ASUS GX10 / "DGX Spark" class hardware), showing GPU/system health and
-live metrics for the LLM inferencing jobs (llama.cpp router + vLLM) running on
-them.
+A web dashboard for a home cluster of NVIDIA GB10 machines — ASUS GX10 / "DGX
+Spark" class. It shows GPU and system health, and live metrics for the LLM jobs
+running on them (llama.cpp router, vLLM, SGLang).
 
-Supports single node and clusters.
+Works with one node or many.
 
 ![The spark-dash dashboard: a pooled two-node cluster and a standalone node under memory pressure, twelve system metrics charted per node, RoCE and management interfaces charted separately, the GPU process table, and per-model state](Screenshot.jpg)
 
-Three GB10s — two pooled into a tensor-parallel cluster, one standalone. Every
-threshold shown is measured for this hardware rather than guessed, and the page
-itself is yours to arrange — see [the page is yours](#the-page-is-yours) below.
+Three GB10s: two pooled into a tensor-parallel cluster, one standalone. Every
+threshold is measured for this hardware, not guessed, and the layout is
+[yours to arrange](#the-page-is-yours).
 
 ![DGX OS updates open over the dashboard: three Sparks listed with their release and update counts, sparkjr expanded to show what the July 2026 release changes, the firmware each device would move to, and the package list with security updates marked](Screenshot-dgx-os-updates.jpg)
 
-Optional, and off until you set it up:
-[DGX OS updates](#5-optional-dgx-os-updates) on the same three machines.
-`sparkjr` is expanded — what the release changes, the firmware each device
-would move to, and every package with its version pair. The button reads
-*update sparkjr and sparketa* because those two pool memory: a release that
-lands on one and not the other is a broken pair, so they are never updated
-apart. *6 packages pinned here, 18 kept back* is an `apt-mark hold` somebody
-placed on that node, reported rather than quietly skipped — a count of zero
-with a pin in place would be the lie this panel exists to avoid.
+[DGX OS updates](#5-optional-dgx-os-updates) on the same three machines, with
+`sparkjr` expanded to show what the release would change.
+
+Two details worth pointing at. The button says *update sparkjr and sparketa*
+because those two pool memory — updating one without the other breaks the pair.
+And *6 packages pinned here* means someone ran `apt-mark hold` on that node, so
+the count isn't a misleading zero.
 
 ## What it monitors
 
 **77 metric families per node**, live at 1–2s over a WebSocket and kept for 180
-days in Prometheus. Read-only by design: it can't load, unload or kill anything.
+days in Prometheus. Read-only: it can't load, unload or kill anything.
 
 **The GPU, as GB10 actually reports it.**
 
 - Utilization, temperature, power, clocks.
-- **Unified memory read correctly.** On GB10 `nvmlDeviceGetMemoryInfo` reports
-  `total ≈ MemTotal` whatever is actually resident, so generic exporters show a
-  figure that never moves. The agent reads `/proc/meminfo` instead.
-- **Throttle state** — `IDLE` / `PASS` / `LOCKED` / `THROTTLED`, evaluated only
-  while the GPU is under load. On GB10 a throttle usually points at power
-  delivery rather than heat.
-- **Memory pressure (PSI)**, which shows contention building before swap or a
-  freeze.
+- **Unified memory, read correctly.** NVML reports a total that never moves on
+  GB10, so generic exporters show a flat line. The agent reads `/proc/meminfo`.
+- **Throttle state** — `IDLE` / `PASS` / `LOCKED` / `THROTTLED`, judged only
+  under load. On GB10 a throttle usually means power, not heat.
+- **Memory pressure (PSI).** Contention shows up here before swap does.
 
-**Which process is holding the memory.** Per-process GPU attribution, each one
-labelled with the runtime that owns it — llama.cpp, vLLM, SGLang, ComfyUI — so
-"97 GiB used" becomes "97 GiB held by these two vLLM shards".
+**Which process is holding the memory.** Per-process GPU attribution, labelled
+with the runtime that owns it — llama.cpp, vLLM, SGLang, ComfyUI. "97 GiB used"
+becomes "97 GiB held by these two vLLM shards".
 
 **Per-model inference state.**
 
-- llama.cpp router mode: which models are loaded, sleeping or unloaded, slots in
-  use, KV-cache occupancy, and a timeline of every load and unload.
-- vLLM and SGLang scraped *directly* by Prometheus, so the full upstream surface
-  — latency histograms, per-request counters — is stored whether or not this UI
-  draws it.
-- **Decode and prefill reported separately.** Combined, they once read 47,672
-  tok/s while the model was generating 48 — a large prompt arriving inside one
-  poll window is a real ingest rate, but it isn't throughput.
+- llama.cpp router: which models are loaded, sleeping or unloaded, slots in use,
+  KV-cache occupancy, and a timeline of every load and unload.
+- vLLM and SGLang are scraped directly by Prometheus, so their full metric
+  surface is stored whether or not this UI draws it.
+- **Decode and prefill counted separately.** Combined, they once read 47,672
+  tok/s while the model was generating 48.
 
 **The cluster as one machine.** Nodes sharing a `cluster:` name pool their
-memory, so free space is summed within a cluster and never across it — a
+memory, so free space is summed within a cluster and never across one — a
 fleet-wide total would describe space no single model could use.
-Tensor-parallel workers show as shards of one job rather than separate models,
-and `ClusterNodeClockLagging` / `ClusterNodeRunningHot` compare members against
-each other to find the straggler setting the pace.
+Tensor-parallel workers show as shards of one job, and two alerts compare
+cluster members against each other to catch the straggler.
 
 **The fabric.** Every interface and RoCE port: link state, negotiated rate,
-throughput, errors and drops. You can exclude a port you've unplugged from
-alerting by name, and the RoCE device behind it is excluded with it, since one
-cable carries both. Network Activity has three views — charts, a table, and the
-RDMA ports themselves, each device and port with the rate it actually negotiated
-— a ConnectX-7 that comes up at 10 Gb/sec instead of 200 is otherwise invisible.
+throughput, errors and drops. Unplug a port and you can exclude it from
+alerting by name; the RoCE device behind it goes with it, since one cable
+carries both. A ConnectX-7 that negotiates 10 Gb/sec instead of 200 is
+otherwise invisible.
 
-**Every sensor, not just the GPU.** A GB10 exposes 18-23 temperature sensors —
-seven SoC zones, the NVMe, one per ConnectX port, the radio — and they're ranked
-by how close each is to *its own* limit, which differ by twenty degrees across
-one machine. Worth having: on this cluster an SoC zone peaked at 95.4°C while
-the GPU read 72°C at the same moment.
+**Every sensor, not just the GPU.** A GB10 exposes 18–23 temperature sensors —
+seven SoC zones, the NVMe, one per ConnectX port, the radio — ranked by how
+close each is to *its own* limit, which differ by twenty degrees across one
+machine. On this cluster an SoC zone hit 95.4°C while the GPU read 72°C.
 
-**Alerting with calibrated thresholds.** 34 rules, with push notifications via
-[ntfy](https://ntfy.sh) — no account or API key needed. Thermal bands come from
-each node's own hardware limits, and you get an alert if a node has to fall back
-to a guessed one. A GX10 sits at ~84°C during routine work, so a generic 80°C
-threshold would page you constantly.
+**Alerting you can trust.** 34 rules, with push notifications via
+[ntfy](https://ntfy.sh) — no account, no API key. Thermal bands come from each
+node's own hardware limits, and you're told if a node falls back to a guess. A
+GX10 sits at ~84°C doing routine work, so a generic 80°C threshold would page
+you all day.
 
-**History worth keeping.** 15 chartable metrics — GPU and CPU utilization,
-clocks, temperature, power, memory, all four PSI signals, swap and disk I/O,
-throughput and prefill — over 1h to 7d, per node or aggregated.
+**History.** 15 metrics charted over 1h to 7d, per node or aggregated — GPU and
+CPU utilization, clocks, temperature, power, memory, all four PSI signals, swap
+and disk I/O, throughput and prefill.
 
-**And the fabric over time.** Every interface gets its own chart on its own
-axis, receive and transmit, over the same 1h to 7d. One axis for all of them
-would not work here: the links on this cluster span six orders of magnitude, so
-a busy management port flattens a 200Gb RoCE link onto zero and the chart ends
-up claiming the interconnect is idle. Errors and drops only appear once there
-are some.
+**Each interface gets its own chart**, receive and transmit, over the same 1h to
+7d. Sharing one axis doesn't work here: these links span six orders of
+magnitude, so a busy management port would flatten a 200Gb RoCE link to zero.
+Past a dozen links the card becomes a table, worst first, with a column saying
+what put each row there.
 
-Past a dozen links the card switches to a table — one row per link with a
-sparkline, sorted so anything down, faulted or unusually busy is at the top, and
-a column naming which of those put it there. Click a row for its full chart.
+**Optionally, NVIDIA release updates.** The dashboard can check every Spark
+against NVIDIA's release recipes and install what's available: an *updates*
+button in the header, and a panel showing what each update would change before
+you start it. It runs NVIDIA's own sequence — `apt full-upgrade`,
+`fwupdmgr upgrade`, restart — one Spark at a time over SSH.
 
-**Optionally, NVIDIA release updates for the whole fleet.** The dashboard can
-check every Spark against NVIDIA's release recipes and install what is
-available: an *updates* button in the header with how many Sparks have one, and
-a panel that shows what each update would change, then starts it, watches it
-and verifies it afterwards. It is NVIDIA's own sequence — `apt full-upgrade`,
-`fwupdmgr upgrade`, restart — one Spark at a time, over SSH, which is the
-mechanism NVIDIA publishes for a fleet. Which nodes it covers is a checkbox
-under each node in Settings.
-
-**You do not have to use this, and it is off until you set it up.** It needs an
-SSH key mounted into the backend and a login on each Spark, so leaving the
-setup undone means no button and no SSH: see
-[DGX OS updates: the quick setup](docs/fleet-updates-setup.md). Nothing else in
-the dashboard behaves differently either way. Nothing is ever installed on a
+**It's off until you set it up**, and that takes an SSH key and a login on each
+Spark: [the quick setup](docs/fleet-updates-setup.md). Nothing installs on a
 timer — the hourly part is a read-only check, and every update is a button
-somebody pressed, after a confirmation naming the release and the packages.
+somebody pressed.
 
 ## The page is yours
 
-The layout is not fixed. Each card is a thing you can move, size, copy and put
-away, and everything you do is remembered in the browser — nothing is
-configured on the server.
+Move, size, copy and put away any card. It's all remembered in the browser —
+nothing is configured on the server.
 
-- **Move it.** Drag a card by the grip in its left gutter to reorder, drop it
-  beside another to pair the two side by side, or use the arrow keys.
-- **Size it.** Every card resizes from its bottom-right corner. Down changes
-  height in increments of one table row, so cards stay on one vertical grid,
-  and a card can be dragged *past* its content to make two columns end level.
-  Sideways flips it between half and full width.
-- **Too short for its content?** It pages — tables by row, chart cards by row
-  of charts once the plots hit their floor. Or choose **Scroll** in Settings
-  and every card keeps all its rows and scrolls inside its box, with the card
-  header and the column headers staying put.
-- **More than one.** `+ element` adds another copy of any card. Two Network
-  Activity cards can show the RDMA ports and the charts at once; two System
-  Activity cards can watch different metrics. A copy wears its number on its
-  top edge, and closing it from the gutter removes it.
-- **Each card has its own menus.** System Activity picks its metrics from a
-  fly-out; Network Activity picks which interface groups to show (RoCE,
-  Management, WiFi, Other) and switches between charts, a table and the RDMA
-  ports; every table chooses its columns, and column edges drag.
-- **Seven themes**, from a dark instrument panel to paper and high contrast,
-  and a compact form for the node cards when you have many. **Reset layout**
-  at the foot of the page puts everything back.
+- **Move it.** Drag by the grip in the left gutter, or use the arrow keys. Drop
+  a card beside another to pair them side by side.
+- **Size it.** Drag the bottom-right corner. Height moves one table row at a
+  time so cards stay on a grid, and you can drag *past* the content to make two
+  columns end level. Sideways flips between half and full width.
+- **Too short for its content?** It pages. Or pick **Scroll** in Settings and
+  cards scroll inside their box instead, headers staying put.
+- **More than one.** `+ element` adds another copy of any card — one Network
+  Activity showing RDMA ports, another showing charts.
+- **Each card has its own menus.** Which metrics, which interface groups,
+  charts or table or RDMA ports, which columns. Column edges drag.
+- **Seven themes**, dark instrument panel through to paper and high contrast,
+  plus a compact form for the node cards. **Reset layout** puts it all back.
 
 ## Quickstart
 
@@ -299,25 +268,22 @@ images](docs/deployment.md#building-and-shipping-images). It needs
 
 ### 5. Optional: DGX OS updates
 
-Skip this and nothing is missing: the dashboard is complete without it, and
-leaving it undone means no button, no key, and nothing that reaches a Spark by
-anything other than HTTP to its agent.
+Skip this and nothing is missing. Without it there's no button, no SSH key, and
+nothing that reaches a Spark except HTTP to its agent.
 
-Set it up and the dashboard checks every Spark hourly against NVIDIA's release
-recipes, shows you exactly what an update would change, and — when you press
-the button and type your sudo password — runs NVIDIA's own sequence:
-`apt full-upgrade`, `fwupdmgr upgrade`, restart, one Spark at a time.
+With it, the dashboard checks each Spark hourly against NVIDIA's release
+recipes, shows you what an update would change, and — once you press the button
+and type your sudo password — runs `apt full-upgrade`, `fwupdmgr upgrade` and
+the restart, one Spark at a time.
 
-It needs two things the other steps don't, which is why it is separate:
+It's separate because it needs two things no other step does:
 
-- **an SSH key the dashboard can use**, mounted into the backend and owned by
-  the container's user;
-- **a login on each Spark that can run `apt`** — yours is fine.
+- an SSH key the dashboard can use, mounted into the backend;
+- a login on each Spark that can run `apt` — yours is fine.
 
-Nothing is ever installed on a timer. The hourly part is a read-only check;
-every update is a button somebody pressed, after a confirmation naming the
-release and the packages. A Spark is never updated apart from the others it
-pools memory with.
+Nothing installs on a timer. The hourly part is a read-only check, and every
+update is a button somebody pressed. Sparks that pool memory are always updated
+together.
 
 A few minutes, once: **[DGX OS updates: the quick
 setup](docs/fleet-updates-setup.md)**.
