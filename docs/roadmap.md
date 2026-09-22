@@ -6496,12 +6496,38 @@ that, so the reveal will keep listing packages apt will silently decline to
 install, and a hold nobody remembers is exactly the failure that argued
 against holding at all.
 
-- [ ] **AL6.3.** Collect `apt-mark showhold` and surface it: on the row when
-  a Spark holds anything, and in the update confirmation when a held package
-  is in the plan. Read-only, one more line in `node_collect.py`. The same
-  applies to any other per-node divergence the tool induces or finds — the
-  principle is that **this tool reports the state it depends on, rather than
-  assuming it.**
+- [x] **AL6.3. Shipped 2026-09-22**, and one assumption in the item itself was
+  wrong. It said to surface a hold "in the update confirmation when a held
+  package is in the plan" — a held package is **never** in the plan. Apt
+  leaves it out of the `Inst` lines entirely and names it under *the following
+  packages have been kept back*, which is precisely why a pinned Spark reads
+  as having nothing to install. So two fields, not one:
+
+  - `held` — what a person pinned, from `apt-mark showhold` (unprivileged);
+  - `kept_back` — what apt declined this run, parsed out of the simulation
+    it already collects.
+
+  They are not the same list and the second is the longer one: holding six
+  kernel metapackages on `sparketa` keeps **eighteen** back, because the
+  NVIDIA 580 driver stack depends on the kernel modules. That number is the
+  one worth showing, and the row says it — `6 packages pinned here, 18 kept
+  back` — only when it exceeds the pin count, since otherwise it is noise.
+
+  **The wording is "pinned", not "held".** `lineOf` already says *held back*
+  for a release the scorer finds incomplete, and the two have nothing to do
+  with each other: a pin is somebody's decision, *held back* is NVIDIA's
+  release not fitting. Both can be true on one row, so they cannot share a
+  word. `tests/js/fleet.test.mjs` asserts they stay apart.
+
+  And the sentence this item exists to prevent is gone: a Spark with a pin and
+  nothing installable now reads **"no updates it may install"**, never "no
+  updates". `pinnedOf` is the one function in `lib/fleet.ts` ported the other
+  way — written here, carried into the fleet page — so the pair stays in step
+  until AL3g deletes that page.
+
+  The confirmation names it too, in the warning colour, per node in a
+  cluster, with `apt-mark unhold` as the way out. Verified end to end against
+  the live `sparketa`: six held, eighteen kept back, 143 still installable.
 
 #### AL5 — Off by default, in two independent places
 

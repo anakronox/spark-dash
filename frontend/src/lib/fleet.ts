@@ -9,7 +9,8 @@
  *
  * THE WORDING IS PORTED, NOT INVENTED. `statusOf` and `lineOf` are the fleet
  * page's own functions (`spark_fleet/web/index.html`), rewritten in TypeScript
- * with the same branches in the same order. The hard-won part is the partner
+ * with the same branches in the same order. `pinnedOf` is the exception and
+ * is new here (AL6.3); it is ported the other way, into that page. The hard-won part is the partner
  * board case: a Spark with nothing to install that is still not on NVIDIA's
  * latest, because its vendor has not published the firmware, must read as
  * "waiting on ASUS" and never as neglected -- and one whose vendor HAS
@@ -139,6 +140,13 @@ export interface FleetNode {
     as_of?: string | null;
     counts?: { upgraded: number; new: number; removed: number };
     packages?: FleetPackage[];
+    /* AL6.3. `held` is what a person pinned with `apt-mark hold`; `kept_back`
+     * is what apt declined to install because of it, which is the held set
+     * plus everything depending on it. A held package NEVER appears in
+     * `packages` -- apt leaves it out of the plan entirely -- so without
+     * these two a pinned Spark reads as "no updates". */
+    held?: string[];
+    kept_back?: string[];
   };
   firmware_updates?: FirmwareUpdate[];
   cx7?: { state: 'ok' | 'behind' | 'not-verifiable'; version?: string; reason?: string };
@@ -260,6 +268,23 @@ export function runLabel(n: FleetNode): string {
   return (me?.step && labels[me.step]) || (me?.status === 'queued' ? 'waiting its turn' : '…');
 }
 
+/** AL6.3: what a person pinned on this Spark by hand, if anything.
+ *
+ * Deliberately NOT called "held": `lineOf` already says "held back" for a
+ * release the scorer finds incomplete, and the two are unrelated. A pin is
+ * someone's decision; "held back" is NVIDIA's release not fitting. Saying
+ * "pinned" keeps them apart on a row where both can appear at once.
+ */
+export function pinnedOf(n: FleetNode): { count: number; kept: number; text: string } | null {
+  const held = n.updates?.held ?? [];
+  if (!held.length) return null;
+  const kept = (n.updates?.kept_back ?? []).length;
+  const pkgs = `${held.length} package${held.length === 1 ? '' : 's'} pinned here`;
+  // The second number is the one that surprises: pinning a kernel pins the
+  // driver stack that depends on it. Only worth saying when it is bigger.
+  return { count: held.length, kept, text: kept > held.length ? `${pkgs}, ${kept} kept back` : pkgs };
+}
+
 export function lineOf(n: FleetNode): string {
   if (n.run) return runLabel(n);
   if (n.reachable === false) {
@@ -298,8 +323,13 @@ export function lineOf(n: FleetNode): string {
     const held = (sw.behind ?? []).map((f) => f.name).join(', ') || 'checks failing';
     return `${swTxt} · held back: ${held} · nothing to install`;
   }
-  if (n.release.available) return `NVIDIA ${n.release.latest_name} release · ${cnt}`;
-  return u.total ? `${u.total} routine Ubuntu updates, ${u.security} security` : 'no updates';
+  const pin = pinnedOf(n);
+  const pinned = pin ? ` · ${pin.text}` : '';
+  if (n.release.available) return `NVIDIA ${n.release.latest_name} release · ${cnt}${pinned}`;
+  if (u.total) return `${u.total} routine Ubuntu updates, ${u.security} security${pinned}`;
+  // "no updates" on a pinned Spark is the sentence this item exists to stop:
+  // there may be plenty, and none of them allowed.
+  return pin ? `no updates it may install · ${pin.text}` : 'no updates';
 }
 
 export const RUN_STEPS: RunStep[] = ['check', 'install', 'restart', 'verify'];

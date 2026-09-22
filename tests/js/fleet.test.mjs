@@ -19,6 +19,7 @@ import {
   lineOf,
   needsPassword,
   nextCheckText,
+  pinnedOf,
   runProgress,
   shortFirmware,
   statusOf,
@@ -147,6 +148,33 @@ test('the vendor sentence changes with what the vendor has published', () => {
   assert.equal(lineOf(newer), 'software current for July 2026 · ASUS firmware 1.05, vendor has 1.07 — apply it their way · NVIDIA July 2026 firmware pending from ASUS');
   const noTable = behind({ ...base, software: { state: 'installable' } });
   assert.equal(lineOf(noTable), 'on March 2026 · NVIDIA July 2026 firmware pending from ASUS · nothing to install');
+});
+
+test('a pin is not "no updates", and is not the scorer\'s "held back"', () => {
+  // AL6.3. The whole point: apt leaves a held package out of the plan, so the
+  // count is honestly zero and the sentence would still be a lie.
+  const pinned = spark({
+    updates: { total: 0, security: 0, packages: [], held: ['linux-nvidia-hwe-24.04'], kept_back: ['linux-nvidia-hwe-24.04'] },
+  });
+  assert.equal(lineOf(pinned), 'no updates it may install · 1 package pinned here');
+  // Pinning a kernel pins the driver stack behind it; that second number is
+  // the surprise, so it is said only when it is bigger.
+  const withDeps = spark({
+    updates: {
+      total: 0, security: 0, packages: [],
+      held: ['linux-nvidia-hwe-24.04', 'linux-image-nvidia-hwe-24.04'],
+      kept_back: ['linux-nvidia-hwe-24.04', 'linux-image-nvidia-hwe-24.04', 'libnvidia-compute-580'],
+    },
+  });
+  assert.equal(lineOf(withDeps), 'no updates it may install · 2 packages pinned here, 3 kept back');
+  // A pin rides along with a real count rather than replacing it.
+  assert.equal(
+    lineOf(spark({ updates: { total: 12, security: 3, held: ['curl'], kept_back: ['curl'] } })),
+    '12 routine Ubuntu updates, 3 security · 1 package pinned here',
+  );
+  // And it must not be confused with the scorer's unrelated "held back".
+  assert.equal(pinnedOf(spark()), null);
+  assert.equal(pinnedOf(behind({ software: { state: 'held', behind: [{ name: 'nvidia-driver' }] } })), null);
 });
 
 test('held back names the packages, or admits it cannot', () => {

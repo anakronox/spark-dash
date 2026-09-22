@@ -47,6 +47,7 @@
     linkText,
     needsPassword,
     nextCheckText,
+    pinnedOf,
     runProgress,
     shortFirmware,
     statusOf,
@@ -753,9 +754,21 @@
       {/if}
       {#if n.dashboard_auto_update}
         <p class="{NOTE} text-ink-muted">
-          NVIDIA's own auto-updates will be turned off on {all.join(' and ')} first, so two installers never run at once.
+          The DGX Dashboard's own updater is paused on {all.join(' and ')} while this installs, so two
+          installers never run at once, and resumed the moment the install ends.
         </p>
       {/if}
+      {#each all as m (m)}
+        {@const pin = pinnedOf(byName.get(m) ?? n)}
+        {#if pin}
+          <p class="{NOTE} text-warning">
+            {pin.count} package{pin.count === 1 ? ' is' : 's are'} pinned on {m} and will not be installed{pin.kept >
+            pin.count
+              ? `, holding back ${pin.kept} in total`
+              : ''}. Unpin with <code>apt-mark unhold</code> on the Spark if that is not what you want.
+          </p>
+        {/if}
+      {/each}
       <p class="{NOTE} text-ink-muted">
         Takes {fw ? 'about 35' : 'about 15'} minutes per Spark. If anything fails it stops and tells you.
       </p>
