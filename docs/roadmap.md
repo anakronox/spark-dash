@@ -6579,8 +6579,21 @@ today. That is the rollback, and it needs no image swap.
   to configured. That is exactly the symptom the guide's troubleshooting table
   names, arrived at from the other direction.
 
-  What the containerised updater then did, with the real fleet: pinned three
-  host keys into `known_hosts` **inside the state mount** — AL4.3's fix proven
+  **Then Brian rehearsed all three** through that container on 2026-09-22 —
+  `sparky`, `sparkjr`, `sparketa`, every one `ok` on check, install, restart
+  and verify. The run records carry the evidence rather than the claim: each
+  node's `boot_id` is **identical before and after**, so nothing restarted;
+  each node's update count is identical, so nothing installed; and
+  `dashboard_settings_before` is `null` on every one, so the DGX Dashboard was
+  never paused — the rehearsal path logs "would pause … (not touched)" and
+  means it. Each record holds **one** node, including `sparketa`'s, which
+  confirms a rehearsal does not drag its pair in the way a real update does.
+  Afterwards all three carry no leftover unit, no `/tmp/spark-fleet-apply.sh`,
+  `settings.json` still enabled, `dgx-dashboard-admin` active and the
+  known-good `6.17.0-1032` kernel.
+
+  What the containerised updater had already done, with the real fleet: pinned
+  three host keys into `known_hosts` **inside the state mount** — AL4.3's fix proven
   against a homeless uid 10002 in the real image, not reasoned about — read
   158/68 on `sparky` and 143/60 on the pair, read the six pins and eighteen
   kept-back packages off `sparketa`, derived the pair from `cluster.yml` and
