@@ -189,6 +189,13 @@ export interface Fleet {
 
 /** The backend's envelope around the fleet service's answer. */
 export interface FleetEnvelope {
+  /** AL5. `configured` is capability AND use; these two say which is which,
+   *  and `requirements` says WHICH piece is missing when capability is
+   *  false -- Settings promises to name it rather than say "not
+   *  configured", which is a dead end for whoever reads it. */
+  capability?: boolean;
+  enabled?: boolean;
+  requirements?: Record<string, boolean>;
   configured: boolean;
   available: boolean;
   public_url: string | null;

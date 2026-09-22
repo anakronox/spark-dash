@@ -23,10 +23,25 @@ from spark_dash_backend.fleet import ssh
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 
+#: The dashboard's own inventory, as AL3d makes the fleet see it: ids in,
+#: address and cluster out. `sparketa` and `sparkjr` share a cluster, so they
+#: are one update unit without anything being declared.
+CLUSTER_YML = {
+    "sparky": {"name": "sparky", "host": "192.168.50.61", "cluster": None},
+    "sparketa": {"name": "sparketa", "host": "192.168.50.62", "cluster": "danflashes"},
+    "sparkjr": {"name": "sparkjr", "host": "192.168.50.63", "cluster": "danflashes"},
+}
+
+
+def resolver(known=None):
+    known = CLUSTER_YML if known is None else known
+    return lambda name: known.get(name)
+
 
 def make(tmp_path, **kw) -> EmbeddedFleet:
     key = tmp_path / "id_ed25519"
     key.write_text("not a real key")
+    kw.setdefault("resolve", resolver())
     fleet = EmbeddedFleet(
         state_dir=tmp_path / "state",
         ssh_user="brian",
@@ -126,7 +141,7 @@ def test_a_dashboard_left_paused_by_a_dead_run_is_resumed_on_start(tmp_path, mon
     every deploy, the Run thread dies with it, and the `finally` that resumes
     the Spark's Dashboard never runs."""
     fleet = make(tmp_path)
-    fleet.svc.inv.add("sparkjr", "192.168.50.63")
+    fleet.svc.inv.add("sparkjr")
     paused_run(fleet, "sparkjr", {"absent": True})
 
     sent = []
@@ -149,7 +164,7 @@ def test_the_previous_settings_are_restored_byte_for_byte_not_just_enabled(tmp_p
     """A Spark where someone CHOSE to disable updates must stay disabled. The
     pause records the bytes; the resume puts those bytes back."""
     fleet = make(tmp_path)
-    fleet.svc.inv.add("sparkjr", "192.168.50.63")
+    fleet.svc.inv.add("sparkjr")
     paused_run(fleet, "sparkjr", {"absent": False, "text": '{"update": {"enabled": false}}'})
 
     sent = []
@@ -165,7 +180,7 @@ async def test_what_cannot_be_resumed_is_reported_and_not_swallowed(tmp_path):
     asks for a password will refuse it. Seventeen days of silence happened
     because nothing said so; this makes it say so."""
     fleet = make(tmp_path)
-    fleet.svc.inv.add("sparkjr", "192.168.50.63")
+    fleet.svc.inv.add("sparkjr")
     paused_run(fleet, "sparkjr", {"absent": True})
 
     stranded = fleet.svc.resume_paused_dashboards()
@@ -180,8 +195,8 @@ def test_the_reconcile_runs_on_startup_and_is_not_merely_available(tmp_path, mon
     would find one, then starts the thing the lifespan starts."""
     from spark_dash_backend.fleet.service import Service
 
-    seed = Service(tmp_path / "state", interval_min=60)
-    seed.inv.add("sparky", "192.168.50.61")
+    seed = Service(tmp_path / "state", interval_min=60, resolve=resolver())
+    seed.inv.add("sparky")
     d = seed.data / "runs" / "20260905T180000Z-sparky"
     d.mkdir(parents=True, exist_ok=True)
     (d / "state.json").write_text(
@@ -213,7 +228,6 @@ async def test_health_says_a_spark_is_muted_rather_than_leaving_it_muted(tmp_pat
     """Seventeen days of silence happened because every surface said "fine".
     An uptime check has to be able to see this one."""
     from fastapi.testclient import TestClient
-
     from spark_dash_backend.app import create_app
     from spark_dash_backend.config import Settings
 
@@ -221,6 +235,7 @@ async def test_health_says_a_spark_is_muted_rather_than_leaving_it_muted(tmp_pat
     key.write_text("not a real key")
     settings = Settings(
         fleet_updates_url="",
+        spark_nodes="sparkjr=192.168.50.63",
         fleet_ssh_user="brian",
         fleet_ssh_key=key,
         fleet_state_dir=tmp_path / "state",
@@ -232,7 +247,7 @@ async def test_health_says_a_spark_is_muted_rather_than_leaving_it_muted(tmp_pat
     assert fleet.embedded, "a backend with no FLEET_UPDATES_URL should run it in-process"
 
     fleet.start()
-    fleet.svc.inv.add("sparkjr", "192.168.50.63")
+    fleet.svc.inv.add("sparkjr")
     paused_run(fleet, "sparkjr", {"absent": True})
     fleet.svc.resume_paused_dashboards()  # the fake ssh refuses: it stays paused
     fleet.stop()
@@ -249,7 +264,7 @@ async def test_a_password_is_refused_off_tls_with_the_sentence(tmp_path):
     """The rule does not soften when the network hop disappears. Upstream the
     fleet service refused; embedded there is nothing behind us to refuse."""
     fleet = make(tmp_path)
-    fleet.svc.inv.add("sparky", "192.168.50.61")
+    fleet.svc.inv.add("sparky")
     with pytest.raises(FleetError) as exc:
         await fleet.node_action("sparky", "update", password="hunter2", secure=False)
     assert exc.value.status == 400
@@ -261,7 +276,7 @@ async def test_the_plain_password_opt_out_is_the_operators_to_make(tmp_path):
     """SPARK_FLEET_ALLOW_PLAIN_PASSWORD, ported. Off here by default and this
     project does not set it, but a LAN-only install may."""
     fleet = make(tmp_path, allow_plain_password=True)
-    fleet.svc.inv.add("sparky", "192.168.50.61")
+    fleet.svc.inv.add("sparky")
     state = await fleet.node_action("sparky", "update", password="hunter2", secure=False)
     assert state["status"] == "running"
     fleet.svc.runs[state["id"]].stop_requested = True
@@ -271,7 +286,7 @@ async def test_no_password_reaches_any_file_a_run_writes(tmp_path):
     """AL2's missing test. The password is held for one run and written
     nowhere -- not state.json, not a log line, not a step envelope."""
     fleet = make(tmp_path)
-    fleet.svc.inv.add("sparky", "192.168.50.61")
+    fleet.svc.inv.add("sparky")
     state = await fleet.node_action("sparky", "update", password="hunter2", secure=True)
     run = fleet.svc.runs[state["id"]]
     run.thread.join(timeout=15)  # holds at `check`: the fake ssh refuses
@@ -290,10 +305,123 @@ async def test_an_unknown_node_is_a_404_and_a_busy_one_a_409(tmp_path):
         await fleet.node_action("nobody", "check", password=None, secure=True)
     assert exc.value.status == 404
 
-    fleet.svc.inv.add("sparky", "192.168.50.61")
+    fleet.svc.inv.add("sparky")
     first = await fleet.node_action("sparky", "update", password=None, secure=True)
     with pytest.raises(FleetError) as exc:
         await fleet.node_action("sparky", "update", password=None, secure=True)
     assert exc.value.status == 409
     assert "already being updated" in exc.value.detail
     fleet.svc.runs[first["id"]].stop_requested = True
+
+
+# --------------------------------------------------------- AL5: the switch
+
+
+async def test_capability_and_use_are_different_questions(tmp_path):
+    """The compose overlay grants the capability; the Settings toggle decides
+    whether to use it. "Configured but deliberately quiet" is a state the
+    feature has to have -- a fleet held back while a bad kernel sits in the
+    repos is exactly that, and it is not the same as not being set up."""
+    fleet = make(tmp_path)
+    assert fleet.capability is True
+    assert fleet.enabled is True
+    assert fleet.configured is True
+
+    await fleet.set_enabled(False, secure=True)
+    assert fleet.capability is True, "switching it off did not un-mount the key"
+    assert fleet.enabled is False
+    assert fleet.configured is False, "no header button while it is off"
+    assert fleet.svc._stop.is_set(), "it kept checking after being switched off"
+
+
+async def test_the_switch_survives_a_restart(tmp_path):
+    """It is a decision, not a session. Persisted beside the fleet list."""
+    fleet = make(tmp_path)
+    await fleet.set_enabled(False, secure=True)
+    fleet.stop()
+
+    again = make(tmp_path)
+    assert again.enabled is False
+    assert again.svc is not None, "the service must still exist: AL4.1 has work to do"
+    assert again.svc._scheduler is None, "switched off, but it started checking anyway"
+
+
+async def test_a_dashboard_left_paused_is_resumed_even_when_switched_off(tmp_path, monkeypatch):
+    """The one thing that must happen regardless. Somebody who switches the
+    feature off has not agreed to leave a Spark's own Dashboard muted."""
+    fleet = make(tmp_path)
+    fleet.svc.inv.add("sparkjr")
+    await fleet.set_enabled(False, secure=True)
+    paused_run(fleet, "sparkjr", {"absent": True})
+    fleet.stop()
+
+    sent = []
+    monkeypatch.setattr(
+        ssh, "run", lambda host, cmd, **k: (sent.append(cmd), ssh.Result(0, "", ""))[1]
+    )
+    again = make(tmp_path)
+    assert again.enabled is False
+    assert sent and "settings.json" in sent[0], "a switched-off fleet left a Spark muted"
+
+
+async def test_switching_on_without_the_compose_change_says_what_to_do(tmp_path):
+    """AL5: the dashboard cannot grant itself a mounted key, so the refusal has
+    to name the pieces rather than just decline."""
+    fleet = EmbeddedFleet(state_dir=tmp_path / "s", ssh_user="", ssh_key=None, resolve=resolver())
+    with pytest.raises(FleetError) as exc:
+        await fleet.set_enabled(True, secure=True)
+    assert exc.value.status == 409
+    assert "compose file" in exc.value.detail
+    assert "ssh_key_mounted" in exc.value.detail
+
+
+async def test_the_status_is_the_same_shape_whichever_backend_answers(tmp_path):
+    """Settings renders from this, and must not need to know which one it got."""
+    from spark_dash_backend.fleet_updates import FleetUpdatesClient
+
+    embedded = make(tmp_path).status()
+    proxied = FleetUpdatesClient("http://fleet:8080").status()
+    assert embedded.keys() == proxied.keys()
+    assert embedded["embedded"] is True and proxied["embedded"] is False
+
+
+async def test_the_switch_can_be_switched_back_on(tmp_path):
+    """FOUND BY PRESSING IT, not by reading the code.
+
+    Every other fleet route refuses when the feature is off, which is right.
+    The switch cannot, because the state it refuses in is the state it exists
+    to leave: gated the same way, off became a trap door with no way back but
+    a redeploy. The route passes needs_on=False; this is what says so.
+    """
+    from fastapi.testclient import TestClient
+    from spark_dash_backend.app import create_app
+    from spark_dash_backend.config import Settings
+
+    key = tmp_path / "id_ed25519"
+    key.write_text("not a real key")
+    app = create_app(
+        Settings(
+            fleet_updates_url="",
+            spark_nodes="sparky=192.168.50.61",
+            fleet_ssh_user="brian",
+            fleet_ssh_key=key,
+            fleet_state_dir=tmp_path / "state",
+            prometheus_url="http://nowhere:9090",
+            alertmanager_url="http://nowhere:9093",
+        )
+    )
+    with TestClient(app) as client:
+        assert client.get("/api/fleet").json()["configured"] is True
+
+        off = client.post("/api/fleet/enabled", json={"enabled": False})
+        assert off.status_code == 200
+        body = client.get("/api/fleet").json()
+        assert body["configured"] is False and body["capability"] is True
+
+        # the actions are refused, as they should be
+        assert client.post("/api/fleet/check").status_code == 404
+
+        # ...but the switch is not
+        on = client.post("/api/fleet/enabled", json={"enabled": True})
+        assert on.status_code == 200, "switched off, and no way back on but a redeploy"
+        assert client.get("/api/fleet").json()["configured"] is True

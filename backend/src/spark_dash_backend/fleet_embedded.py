@@ -53,12 +53,16 @@ class EmbeddedFleet:
         ssh_key: Path | None,
         interval_min: float = 60.0,
         allow_plain_password: bool = False,
+        resolve=None,
     ) -> None:
         self._state_dir = Path(state_dir)
         self._ssh_user = ssh_user
         self._ssh_key = Path(ssh_key) if ssh_key else None
         self._interval_min = interval_min
         self._allow_plain_password = allow_plain_password
+        # AL3d: node id -> {name, host, cluster}, the dashboard's own
+        # inventory. One list of Sparks, so a host cannot differ from itself.
+        self._resolve = resolve
         self.svc: Service | None = None
 
     # ------------------------------------------------------------ readiness
@@ -97,8 +101,50 @@ class EmbeddedFleet:
             return False
 
     @property
-    def configured(self) -> bool:
+    def capability(self) -> bool:
+        """Can it work? The compose overlay's question (AL5)."""
         return all(self.requirements().values())
+
+    @property
+    def enabled(self) -> bool:
+        """Should it? The Settings toggle's question.
+
+        Defaults to on: somebody who mounted a key and named a login has said
+        what they want. The switch exists to turn it OFF -- quiet while a bad
+        kernel sits in the repos, say -- not to make them ask twice.
+        """
+        return self.svc.inv.enabled if self.svc else True
+
+    @property
+    def configured(self) -> bool:
+        return self.capability and self.enabled
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "capability": self.capability,
+            "enabled": self.enabled,
+            "requirements": self.requirements(),
+            "embedded": True,
+        }
+
+    async def set_enabled(self, on: bool, *, secure: bool) -> dict[str, Any]:
+        if not self.capability:
+            missing = [k for k, ok in self.requirements().items() if not ok]
+            raise FleetError(
+                409,
+                "fleet updates need a change to your compose file first: " + ", ".join(missing),
+            )
+        if on and not self.svc:
+            self.start()
+        svc = self._require()
+        await asyncio.to_thread(svc.inv.set_enabled, on)
+        if not on:
+            # Stop checking at once rather than at the next hour. A run already
+            # under way is left alone -- it is a unit on the Spark (AL3b).
+            await asyncio.to_thread(svc.stop)
+        else:
+            await asyncio.to_thread(svc.start)
+        return {"ok": True, "enabled": on}
 
     @property
     def embedded(self) -> bool:
@@ -109,7 +155,7 @@ class EmbeddedFleet:
         """Build the service and begin checking. Called from the app's
         lifespan; a no-op when the requirements are not met, so a dashboard
         with no key mounted starts normally and simply offers nothing."""
-        if self.svc or not self.configured:
+        if self.svc or not self.capability:
             return
         known_hosts = self._state_dir / "known_hosts"
         ssh.configure(
@@ -117,8 +163,16 @@ class EmbeddedFleet:
             key=str(self._ssh_key) if self._ssh_key else "",
             known_hosts=str(known_hosts),
         )
-        self.svc = Service(self._state_dir, interval_min=self._interval_min)
-        self.svc.start()
+        self.svc = Service(
+            self._state_dir, interval_min=self._interval_min, resolve=self._resolve
+        )
+        # The reconcile runs either way: a Spark this tool left paused must be
+        # unpaused even if someone has since switched the feature off (AL4.1).
+        if self.svc.inv.enabled:
+            self.svc.start()
+        else:
+            self.svc.resume_paused_dashboards()
+            log.info("fleet updates are configured but switched off in Settings")
 
     def stop(self) -> None:
         if self.svc:

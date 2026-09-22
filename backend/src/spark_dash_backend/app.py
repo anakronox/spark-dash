@@ -133,6 +133,12 @@ class ClusterWrite(BaseModel):
 MAX_SILENCE_HOURS = 24.0
 
 
+class FleetEnabled(BaseModel):
+    """The Settings toggle. A bool and nothing else -- no secret to echo."""
+
+    enabled: bool
+
+
 class FleetEnrol(BaseModel):
     """A node handed to the fleet service from cluster.yml (AK, Settings)."""
 
@@ -182,12 +188,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.fleet_updates_url, timeout_s=settings.fleet_updates_timeout_s
         )
     else:
+        def _resolve_node(name: str) -> dict | None:
+            """AL3d: the fleet's node list is ids only, and this is where an id
+            becomes an address and a cluster. `cluster.yml` is the one place a
+            Spark is described, so the fleet cannot hold a stale host."""
+            for node in inventory.nodes():
+                if node.node_id == name:
+                    return {"name": node.node_id, "host": node.host, "cluster": node.cluster}
+            return None
+
         fleet_updates = EmbeddedFleet(
             state_dir=settings.fleet_state_dir,
             ssh_user=settings.fleet_ssh_user,
             ssh_key=settings.fleet_ssh_key,
             interval_min=settings.fleet_interval_min,
             allow_plain_password=settings.fleet_allow_plain_password,
+            resolve=_resolve_node,
         )
     poller = LivePoller(
         inventory,
@@ -1121,15 +1137,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         proto = request.headers.get("x-forwarded-proto") or request.url.scheme
         return proto.lower() == "https"
 
-    async def _fleet(request: Request, call) -> dict:
+    async def _fleet(request: Request, call, *, needs_on: bool = True) -> dict:
         """Run one fleet intent, turning its refusal into an HTTP one.
 
         Both implementations raise FleetError with the wording the panel
         should show -- the fleet service's own sentence when there is one.
         Nothing here inspects the request body, so a password cannot reach a
         log line or an exception detail by way of this function.
+
+        `needs_on=False` is for the switch itself, and it is not a detail: the
+        switch turning the feature OFF makes `configured` false, so gating it
+        the same way as everything else builds a trap door -- off, and no way
+        back on but a redeploy. Found by pressing it.
         """
-        if not fleet_updates.configured:
+        if needs_on and not fleet_updates.configured:
             raise HTTPException(status_code=404, detail="fleet updates are not configured")
         try:
             return await call(secure=_secure(request))
@@ -1147,6 +1168,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "available": False,
             "public_url": settings.fleet_updates_public_url or None,
             "fleet": None,
+            # AL5: capability and use are different questions with different
+            # answers, and Settings shows the section either way -- so the
+            # panel needs both, plus WHICH requirement is unmet when one is.
+            **fleet_updates.status(),
         }
         if not fleet_updates.configured:
             return base
@@ -1216,6 +1241,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             lambda *, secure: fleet_updates.node_action(
                 name, action, password=password, secure=secure
             ),
+        )
+
+    @app.post("/api/fleet/enabled")
+    async def api_fleet_set_enabled(request: Request, body: FleetEnabled) -> dict:
+        """The Settings toggle (AL5). Capability is the compose file's to
+        grant; this is only whether to use what is already there."""
+        return await _fleet(
+            request,
+            lambda *, secure: fleet_updates.set_enabled(body.enabled, secure=secure),
+            needs_on=False,
         )
 
     @app.post("/api/fleet/runs/{run_id}/{action}")

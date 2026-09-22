@@ -85,7 +85,23 @@ def on(tmp_path, monkeypatch, upstream):
 
 def test_not_configured_is_said_not_implied(off):
     body = off.get("/api/fleet").json()
-    assert body == {"configured": False, "available": False, "public_url": None, "fleet": None}
+    assert body["configured"] is False
+    assert body["available"] is False
+    assert body["fleet"] is None, "an unavailable fleet must not look like an empty one"
+    assert body["public_url"] is None
+
+
+def test_not_configured_names_what_is_missing(off):
+    """AL5. "Not configured" is a dead end; a person reading it cannot act on
+    it. The Settings section is shown whatever the state, so the envelope
+    carries the requirements one at a time and the warning can list them."""
+    body = off.get("/api/fleet").json()
+    assert body["capability"] is False
+    assert body["requirements"]["ssh_key_mounted"] is False
+    assert body["requirements"]["ssh_user_set"] is False
+    # capability and use are different questions: nothing has been switched
+    # off here, there is simply nothing to switch on yet
+    assert body["enabled"] is True
 
 
 def test_not_configured_refuses_every_action(off):

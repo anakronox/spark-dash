@@ -48,7 +48,9 @@ def _now() -> str:
 
 
 class Service:
-    def __init__(self, data_dir: Path, interval_min: float = 60.0):
+    def __init__(self, data_dir: Path, interval_min: float = 60.0, resolve=None):
+        """`resolve` maps a node id to {name, host, cluster} -- the dashboard's
+        own inventory, so there is one list of Sparks and not two (AL3d)."""
         self.data = Path(data_dir).resolve()
         self.interval_min = interval_min
         for d in ("posture", "facts", "runs", "recipes"):
@@ -56,7 +58,7 @@ class Service:
         if not any((self.data / "recipes").glob("spark-ota-*.json")):
             for p in (HERE / "recipes").glob("spark-ota-*.json"):
                 shutil.copy(p, self.data / "recipes" / p.name)
-        self.inv = Inventory(self.data / "fleet.json")
+        self.inv = Inventory(self.data / "fleet.json", resolve=resolve)
         self.runs: dict[str, Run] = {}
         self._node_locks: dict[str, threading.Lock] = {}
         self.checking: set[str] = set()
@@ -379,6 +381,28 @@ class Service:
         threading.Thread(target=go, daemon=True).start()
         return st
 
+    def fabric_disagreements(self) -> list[dict]:
+        """Sparks the cabling says pool memory that `cluster.yml` does not group.
+
+        Before AL3d the detected fabric WAS what got updated together, so a
+        disagreement could not exist -- the fabric silently won. Now
+        `cluster.yml` decides and the fabric is evidence, which means the two
+        can differ, which means someone has to be told: a pair updated apart
+        because the config forgot them is a broken model, not a slow rollout.
+        """
+        configured: dict[str, set[str]] = {}
+        for n in self.inv.nodes:
+            if n.get("cluster"):
+                configured.setdefault(n["cluster"], set()).add(n["name"])
+        groups = set(map(frozenset, configured.values()))
+        out = []
+        for c in self.inv.data.get("clusters", []):
+            cabled = frozenset(m for m in c["members"] if self.inv.get(m))
+            if len(cabled) > 1 and cabled not in groups:
+                out.append({"cabled": sorted(cabled),
+                            "configured": sorted({self.inv.get(m).get("cluster") or "(none)" for m in cabled})})
+        return out
+
     # ── the fleet view ───────────────────────────────────────────────────
     def fleet(self) -> dict:
         nodes = []
@@ -393,6 +417,8 @@ class Service:
             p["last_run"] = last
             nodes.append(p)
         return {"nodes": nodes, "clusters": self.inv.data.get("clusters", []),
+                "orphans": self.inv.orphans,
+                "fabric_disagreements": self.fabric_disagreements(),
                 "latest": {"name": latest.name, "external_name": latest.external_name,
                            "date": latest.release_date_str[:10]},
                 "dashboards_stranded": self.dashboards_stranded,

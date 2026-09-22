@@ -6481,9 +6481,58 @@ today. That is the rollback, and it needs no image swap.
 
   That is AL4.2's "first real exercise is a rehearsal" done, at the point in
   the work where a failure would still have been cheap.
-- [ ] **AL3d. Settings, and the two knobs** (AL5), including the inventory and
-  pair consolidation from AL1 — done here, not later, because they are what
-  make the fleet's own page and its remaining routes deletable.
+- [x] **AL3d. Shipped 2026-09-22.** Four things, and one bug found by pressing
+  the thing rather than by reading it.
+
+  **One list of Sparks.** `fleet.json` held a name, a host and a login per
+  Spark beside the name, host and cluster `cluster.yml` already held, and AK7's
+  checkbox existed to copy one into the other. It now holds **enrolment only**
+  — a list of ids — and everything else is resolved through a callback the
+  backend wires to its own inventory. The "host differs" tag is deleted
+  because the state it warned about is unreachable: there is one host and it
+  is read at the moment of use, so editing `cluster.yml` moves the fleet with
+  it. Enrolling something the dashboard has never heard of is refused, and a
+  node dropped from `cluster.yml` becomes a reported **orphan** rather than a
+  silent disappearance — its posture and run records are still on disk and
+  somebody has to decide whether that was a rename or a removal.
+
+  **Pairing comes from `cluster:`.** It already means "these pool memory", and
+  that is exactly the property that says they must end an update on the same
+  release. `units`, `cluster_names` and the rename route are gone. The LLDP
+  detection survives as a **report**: before this the fabric silently decided
+  what was updated together, so a disagreement could not exist; now
+  `cluster.yml` decides and the cabling is evidence, so the two can differ —
+  and a cabled pair the config does not group would be updated apart, which
+  breaks the model spanning them. `fabric_disagreements` says so. An old
+  `fleet.json` is migrated rather than retyped.
+
+  **The two knobs (AL5).** `capability` is the compose overlay's to grant — a
+  key mounted, a login named — and the dashboard can only report it,
+  requirement by requirement. `enabled` is the Settings switch, persisted
+  beside the fleet list, defaulting to on because somebody who mounted a key
+  has said what they want. `configured` is both, and only `configured` shows
+  the header button. Switched off: nothing is checked, no Spark is contacted,
+  the key stays mounted — **but the AL4.1 reconcile still runs**, because
+  turning the feature off is not agreeing to leave a Spark's own Dashboard
+  muted.
+
+  **The Settings section is always present**, which is the AL5 promise: when
+  capability is absent it says what is missing by name and links the setup
+  guide, rather than saying "not configured", which is a dead end for whoever
+  is reading it.
+
+  **The bug.** Every fleet route refuses when the feature is off, which is
+  right — except the switch, whose whole purpose is to leave that state.
+  Gated the same way, *off became a trap door with no way back but a
+  redeploy*. It survived unit tests, a type check and a reading of the diff,
+  and lasted about ninety seconds against a real browser. `needs_on=False`,
+  and a test that drives the round trip through `TestClient`.
+
+  **Exercised in the browser** against the live fleet: the switch off (header
+  button gone, section explaining itself), the switch back on, a node enrolled
+  by its checkbox and checked — 158 updates on `sparky` — and `fleet.json`
+  afterwards reading `{"enrolled": ["sparky"], "enabled": true}` and nothing
+  else.
 - [ ] **AL3e. Container and stack.** `openssh-client` in the backend image, a
   writable known-hosts path for uid 10002, and `central/compose.fleet.yaml`.
 - [ ] **AL3f. Tests.** The route tests re-pointed at the embedded service with
@@ -6693,15 +6742,15 @@ that a control for a thing that is not there should not hold a seat. Settings
 is the exception, because Settings is where a person goes to find out how to
 turn a thing on.
 
-- [ ] **AL5a. `docs/fleet-updates-setup.md`** — the quick guide the warning
-  links to, by its GitHub URL so it resolves from wherever the dashboard is
-  reached. Plain language, in this order: what it does and what it will never
-  do on its own; requirements in a box **up front**; four steps (make the key,
-  put it on each Spark, add the overlay line, redeploy); how to check it worked;
-  how to turn it off and how to undo everything on a Spark. It links *down* into
-  [fleet-updates.md](fleet-updates.md), which stays the deep reference, rather
-  than repeating it. Written before the frontend warning, so the warning can
-  quote it.
+- [x] **AL5a. Shipped 2026-09-22** as
+  [fleet-updates-setup.md](fleet-updates-setup.md), written before the warning
+  that links to it, and linked by GitHub URL rather than relative path because
+  the people who need it are reading a dashboard behind a tunnel where a docs
+  link goes nowhere. Requirements in a box up front, four steps, how to check
+  it worked, how to turn it off at each level, and a troubleshooting table
+  whose rows are the failures this work actually produced. It carries AL6.1's
+  warning about the DGX Dashboard being the refresher, and links *down* into
+  [fleet-updates.md](fleet-updates.md) rather than repeating it.
 - [ ] **AL5b.** `central/README.md` and [deployment.md](deployment.md) replace
   today's clone-and-build instructions with a pointer to the guide.
 

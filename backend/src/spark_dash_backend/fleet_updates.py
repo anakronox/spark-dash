@@ -145,3 +145,20 @@ class FleetUpdatesClient:
 
     async def run_action(self, run_id: str, action: str, *, secure: bool) -> dict[str, Any]:
         return await self._call("POST", f"/api/runs/{run_id}/{action}", secure=secure, body={})
+
+    async def set_enabled(self, on: bool, *, secure: bool) -> dict[str, Any]:
+        # There is no switch to flip from here: the fleet container is either
+        # in the compose file or it is not. Said plainly rather than pretended.
+        raise FleetError(
+            409,
+            "this dashboard proxies a separate spark-fleet-updates container, so the switch "
+            "is that container's presence in your compose file, not a setting here",
+        )
+
+    def status(self) -> dict[str, Any]:
+        return {
+            "capability": bool(self._base_url),
+            "enabled": bool(self._base_url),
+            "requirements": {"fleet_updates_url_set": bool(self._base_url)},
+            "embedded": False,
+        }

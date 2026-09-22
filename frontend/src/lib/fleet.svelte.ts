@@ -20,10 +20,20 @@ export const OPEN_MS = 10_000;
 export const BUSY_MS = 3_000;
 
 export class FleetFeed {
-  /** The backend has a fleet service to talk to. False hides the button. */
+  /** The feature is on: it CAN work and it has not been switched off. False
+   *  hides the header button -- a control for a thing that is not there does
+   *  not hold a seat (AK). Settings is the exception; it shows either way. */
   configured = $state(false);
   /** It answered. False with `configured` is "unreachable", not "empty". */
   available = $state(false);
+  /** AL5's first knob: a key is mounted and a login is named. The compose
+   *  file's to grant, which is why the dashboard can only report it. */
+  capability = $state(false);
+  /** AL5's second knob: the Settings switch. On by default once capability
+   *  exists -- it is there to turn the feature OFF for a while. */
+  enabled = $state(true);
+  /** Which requirement is unmet, one at a time, so the warning can say. */
+  requirements = $state<Record<string, boolean>>({});
   publicUrl = $state<string | null>(null);
   fleet = $state<Fleet | null>(null);
   loaded = $state(false);
@@ -52,6 +62,9 @@ export class FleetFeed {
       const body: FleetEnvelope = await resp.json();
       this.configured = body.configured;
       this.available = body.available;
+      this.capability = body.capability ?? body.configured;
+      this.enabled = body.enabled ?? true;
+      this.requirements = body.requirements ?? {};
       this.publicUrl = body.public_url;
       this.fleet = body.fleet;
     } catch {
@@ -152,6 +165,13 @@ export class FleetFeed {
 
   /** Put a node on the list with the id and host the dashboard already has.
    *  The fleet service checks it at once; the next load shows the result. */
+  /** AL5: switch the feature on or off. Capability is not ours to change --
+   *  a refusal here names the compose pieces that are missing. */
+  async setEnabled(on: boolean) {
+    await this.#post('/api/fleet/enabled', { enabled: on });
+    await this.load();
+  }
+
   async enrol(name: string, host: string) {
     await this.#post('/api/fleet/nodes', { name, host });
     await this.load();

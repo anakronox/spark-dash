@@ -80,3 +80,21 @@ class FleetBackend(Protocol):
 
     async def run_action(self, run_id: str, action: str, *, secure: bool) -> dict[str, Any]:
         """stop, or verify a run that was held at the restart."""
+
+    async def set_enabled(self, on: bool, *, secure: bool) -> dict[str, Any]:
+        """AL5's second knob: use, as opposed to capability.
+
+        Capability is the compose overlay -- a key mounted and a login named,
+        which the dashboard cannot grant itself. This is the switch a person
+        flips in Settings once that is true, and "configured but deliberately
+        quiet" is a state the feature has to have: a fleet held back while a
+        bad kernel is in the repos is exactly that.
+        """
+
+    def status(self) -> dict[str, Any]:
+        """Why the feature is or is not available, item by item.
+
+        AL5 promised the Settings warning would name what is missing rather
+        than say "not configured", so this returns the requirements one at a
+        time and not a boolean.
+        """

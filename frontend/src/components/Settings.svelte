@@ -63,6 +63,30 @@
   let fleetBusy = $state<string | null>(null);
   let fleetError = $state<string | null>(null);
 
+  /** Linked by URL rather than by path: this warning is read by people whose
+   *  dashboard is behind a tunnel, where a relative docs link goes nowhere. */
+  const SETUP_GUIDE =
+    'https://github.com/anakronox/spark-dash/blob/main/docs/fleet-updates-setup.md';
+
+  const missingRequirements = $derived(
+    Object.entries(fleet?.requirements ?? {})
+      .filter(([, ok]) => !ok)
+      .map(([name]) => name),
+  );
+
+  async function setFleetEnabled(on: boolean) {
+    if (!fleet || fleetBusy) return;
+    fleetBusy = '*';
+    fleetError = null;
+    try {
+      await fleet.setEnabled(on);
+    } catch (err) {
+      fleetError = (err as Error).message;
+    } finally {
+      fleetBusy = null;
+    }
+  }
+
   async function setEnrolled(name: string, host: string, on: boolean) {
     if (!fleet || fleetBusy) return;
     fleetBusy = name;
@@ -607,11 +631,6 @@
                   <span>fleet updates</span>
                   {#if fleetBusy === n.node_id}
                     <span class="tag">…</span>
-                  {:else if f && f.host !== n.host}
-                    <!-- The fleet checks a different address than the
-                         dashboard polls. Untick and tick to hand over the
-                         new one. -->
-                    <span class="tag warn" title="fleet checks {f.host}">host differs</span>
                   {:else if f?.reachable === false}
                     <span class="tag warn">unreachable</span>
                   {:else if f && f.reachable == null}
@@ -732,11 +751,45 @@
          Nothing here is editable on purpose: the login and the cadence are
          the fleet container's own environment, and saying WHERE beats a
          control that could not actually change them. -->
-    {#if fleet?.configured}
+    {#if fleet}
       <section class="stack">
         <h3 class="eyebrow dim">Fleet updates</h3>
-        {#if !fleet.available}
-          <p class="note" data-tone="warning">spark-fleet-updates is not answering. The checkboxes above wait for it.</p>
+
+        <!-- AL5: the switch is shown whatever the state, because Settings is
+             where a person goes to find out how to turn a thing ON. When the
+             compose file has not granted the capability it cannot complete,
+             and says which piece is missing rather than "not configured",
+             which is a dead end for whoever is reading it. -->
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={fleet.enabled && fleet.capability}
+            disabled={fleetBusy !== null}
+            onchange={(e) => setFleetEnabled((e.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>check my Sparks for updates</span>
+        </label>
+
+        {#if !fleet.capability}
+          <p class="note" data-tone="warning">
+            This needs an SSH key the dashboard can use and a login on each Spark that can run
+            <code>apt</code> — a change to your compose file and a one-time step per Spark, not
+            something the dashboard can do for itself.
+            {#if missingRequirements.length}
+              <br />Missing: {#each missingRequirements as m, i (m)}<code>{m}</code>{i <
+                missingRequirements.length - 1
+                  ? ', '
+                  : ''}{/each}.
+            {/if}
+            <br /><a href={SETUP_GUIDE} target="_blank" rel="noopener">Quick setup guide ↗</a>
+          </p>
+        {:else if !fleet.enabled}
+          <p class="note dim">
+            Set up and switched off. Nothing is being checked and no Spark is contacted; the key
+            stays mounted. Turn it back on above.
+          </p>
+        {:else if !fleet.available}
+          <p class="note" data-tone="warning">The fleet updater is not answering. The checkboxes above wait for it.</p>
         {:else if fleet.fleet}
           <p class="note">
             <span class="num">{fleet.fleet.nodes.length}</span>
@@ -763,17 +816,22 @@
               {/each}
             </div>
           {/if}
-          {#if fleetError}
-            <p class="note" data-tone="warning">{fleetError}</p>
-          {/if}
           <p class="note dim">
-            The login and the cadence are <code>SPARK_FLEET_SSH_USER</code> and
-            <code>SPARK_FLEET_INTERVAL_MIN</code> on the fleet container; the SSH key
-            it uses is mounted there.
+            Addresses and which Sparks update together come from <code>cluster.yml</code>, so
+            there is one list and not two. The login and the cadence are
+            <code>FLEET_SSH_USER</code> and <code>FLEET_INTERVAL_MIN</code>; the key is
+            mounted into this backend. <a href={SETUP_GUIDE} target="_blank" rel="noopener">Setup guide ↗</a>
             {#if fleet.publicUrl}
-              <a href={fleet.publicUrl} target="_blank" rel="noopener">Open the fleet page ↗</a>
+              <a href={fleet.publicUrl} target="_blank" rel="noopener">Fleet page ↗</a>
             {/if}
           </p>
+        {/if}
+
+        <!-- Outside the branches above on purpose: the commonest failure is
+             switching the feature on before the compose change has arrived,
+             and that refusal happens in the state where none of them render. -->
+        {#if fleetError}
+          <p class="note" data-tone="warning">{fleetError}</p>
         {/if}
       </section>
     {/if}
