@@ -63,6 +63,30 @@ echo "::done"
 """
 
 
+DASHBOARD_SETTINGS = "/opt/nvidia/dgx-dashboard/settings.json"
+
+
+def dashboard_restore_command(before: dict) -> str:
+    """The command that undoes a pause, from what the pause recorded.
+
+    A module function rather than a method because AL4.1 calls it from the
+    other direction: after a backend restart there is no Run object left, only
+    a state.json on disk saying a Spark was left paused. One copy of the
+    command, two callers, so the recovery path cannot drift from the one it is
+    recovering.
+    """
+    f = DASHBOARD_SETTINGS
+    if before.get("unknown"):
+        # The file was there but unparsable when we paused it, so there is no
+        # "before" to put back: flip the one flag and leave the rest alone.
+        return "bash -c " + shlex.quote(
+            f"python3 - {f} <<'PY'\nimport json,sys\np=sys.argv[1]\nd=json.load(open(p))\n"
+            "d.setdefault('update',{})['enabled']=True\njson.dump(d,open(p,'w'),indent=2)\nPY")
+    if before.get("absent"):
+        return f"rm -f {f}"
+    return "bash -c " + shlex.quote(f"printf %s {shlex.quote(before.get('text') or '')} > {f}")
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -235,15 +259,8 @@ class Run:
         before = n.get("dashboard_settings_before")
         if not before:
             return
-        f = "/opt/nvidia/dgx-dashboard/settings.json"
-        if before.get("unknown"):
-            cmd = "bash -c " + shlex.quote(
-                f"python3 - {f} <<'PY'\nimport json,sys\np=sys.argv[1]\nd=json.load(open(p))\n"
-                "d.setdefault('update',{})['enabled']=True\njson.dump(d,open(p,'w'),indent=2)\nPY")
-        elif before.get("absent"):
-            cmd = f"rm -f {f}"
-        else:
-            cmd = "bash -c " + shlex.quote(f"printf %s {shlex.quote(before.get('text') or '')} > {f}")
+        f = DASHBOARD_SETTINGS
+        cmd = dashboard_restore_command(before)
         r = self._run_root(host, user, cmd, timeout=30)
         if r.ok:
             self._log(name, "resumed the DGX Dashboard's updater")

@@ -12,6 +12,7 @@ mixing them would make the live view as laggy as the scrape interval.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -47,7 +48,9 @@ from spark_dash_backend.cluster import (
     write_cluster,
 )
 from spark_dash_backend.config import Settings
-from spark_dash_backend.fleet_updates import FleetUpdatesClient, FleetUpdatesError
+from spark_dash_backend.fleet_api import FleetBackend, FleetError
+from spark_dash_backend.fleet_embedded import EmbeddedFleet
+from spark_dash_backend.fleet_updates import FleetUpdatesClient
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
@@ -130,14 +133,6 @@ class ClusterWrite(BaseModel):
 MAX_SILENCE_HOURS = 24.0
 
 
-class FleetUpdateBody(BaseModel):
-    """What the panel sends with an update or a rehearsal (roadmap AK)."""
-
-    # The sudo password for that Spark, when it needs one. Forwarded, never
-    # logged, never stored -- by this process or the next.
-    password: str | None = None
-
-
 class FleetEnrol(BaseModel):
     """A node handed to the fleet service from cluster.yml (AK, Settings)."""
 
@@ -176,9 +171,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.alertmanager_url, timeout_s=settings.alertmanager_timeout_s
     )
     maintenance = MaintenanceService(alertmanager, inventory)
-    fleet_updates = FleetUpdatesClient(
-        settings.fleet_updates_url, timeout_s=settings.fleet_updates_timeout_s
-    )
+    # One of two implementations of fleet_api.FleetBackend, chosen here and
+    # nowhere else (AL3c). The proxy wins when FLEET_UPDATES_URL is set, so a
+    # backend built from this branch and deployed with today's .env behaves
+    # exactly as it did -- the rollback, with no image swap. AL3g deletes the
+    # proxy and this choice with it.
+    fleet_updates: FleetBackend
+    if settings.fleet_updates_url:
+        fleet_updates = FleetUpdatesClient(
+            settings.fleet_updates_url, timeout_s=settings.fleet_updates_timeout_s
+        )
+    else:
+        fleet_updates = EmbeddedFleet(
+            state_dir=settings.fleet_state_dir,
+            ssh_user=settings.fleet_ssh_user,
+            ssh_key=settings.fleet_ssh_key,
+            interval_min=settings.fleet_interval_min,
+            allow_plain_password=settings.fleet_allow_plain_password,
+        )
     poller = LivePoller(
         inventory,
         interval_s=settings.live_poll_interval_s,
@@ -198,7 +208,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Render Prometheus's targets from the same list we poll, so the two
         # views of the cluster cannot disagree.
         inventory.sync_prometheus_targets()
-        yield
+        # The embedded fleet updater's hourly check, and -- before it -- the
+        # AL4.1 reconcile that undoes any Dashboard pause a previous process
+        # died holding. A no-op when the feature is off or proxied.
+        if isinstance(fleet_updates, EmbeddedFleet):
+            await asyncio.to_thread(fleet_updates.start)
+        try:
+            yield
+        finally:
+            if isinstance(fleet_updates, EmbeddedFleet):
+                await asyncio.to_thread(fleet_updates.stop)
 
     app = FastAPI(title="spark-dash", summary="GB10 inference cluster dashboard", lifespan=lifespan)
     app.state.poller = poller
@@ -1084,31 +1103,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # the fleet name, and a rename there is a remove and an add here. A
     # `Literal` on the action keeps anything else unreachable by URL.
 
-    def _proto(request: Request) -> str:
-        # The scheme the request REALLY arrived on: cloudflared's header
-        # through the tunnel, else what this server saw. Never "https" on
-        # trust -- see fleet_updates.py.
-        return request.headers.get("x-forwarded-proto") or request.url.scheme
+    def _stranded_dashboards(backend: FleetBackend) -> list[str]:
+        """Sparks left with their Dashboard updater paused, if this process is
+        the one that would know. Cheap and synchronous: it reads a list the
+        reconcile filled at startup, never a node."""
+        svc = getattr(backend, "svc", None)
+        return [x["node"] for x in getattr(svc, "dashboards_stranded", [])]
 
-    async def _fleet_call(
-        request: Request, method: str, path: str, body: dict | None = None
-    ) -> dict:
+    def _secure(request: Request) -> bool:
+        """Did this request REALLY arrive over TLS?
+
+        cloudflared's header through the tunnel, else the scheme this server
+        saw. Never true on trust. Whether a sudo password may be accepted
+        hangs off this one line, so it defaults to no: an absent header is
+        plain HTTP, not "probably fine".
+        """
+        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+        return proto.lower() == "https"
+
+    async def _fleet(request: Request, call) -> dict:
+        """Run one fleet intent, turning its refusal into an HTTP one.
+
+        Both implementations raise FleetError with the wording the panel
+        should show -- the fleet service's own sentence when there is one.
+        Nothing here inspects the request body, so a password cannot reach a
+        log line or an exception detail by way of this function.
+        """
         if not fleet_updates.configured:
             raise HTTPException(status_code=404, detail="fleet updates are not configured")
         try:
-            status, payload = await fleet_updates.forward(
-                method, path, json=body, proto=_proto(request)
-            )
-        except FleetUpdatesError as exc:
-            raise HTTPException(status_code=502, detail=f"spark-fleet-updates: {exc}") from exc
-        if status >= 400:
-            # The fleet service's own wording -- "already being updated", the
-            # HTTPS refusal -- is what the panel should show, unchanged.
-            detail = payload.get("error") if isinstance(payload, dict) else None
-            raise HTTPException(
-                status_code=status, detail=detail or f"spark-fleet-updates answered {status}"
-            )
-        return payload
+            return await call(secure=_secure(request))
+        except FleetError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
 
     @app.get("/api/fleet")
     async def api_fleet(request: Request) -> dict:
@@ -1125,46 +1151,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not fleet_updates.configured:
             return base
         try:
-            status, payload = await fleet_updates.forward(
-                "GET", "/api/fleet", proto=_proto(request)
-            )
-        except FleetUpdatesError:
-            return base
-        if status != 200:
+            payload = await fleet_updates.envelope(secure=_secure(request))
+        except FleetError:
             return base
         return {**base, "available": True, "fleet": payload}
 
     @app.get("/api/fleet/runs/{run_id}/{node}/log")
     async def api_fleet_log(request: Request, run_id: str, node: str) -> dict:
-        return await _fleet_call(request, "GET", f"/api/runs/{run_id}/{node}/log")
+        return await _fleet(
+            request, lambda *, secure: fleet_updates.log(run_id, node, secure=secure)
+        )
 
     @app.post("/api/fleet/check")
     async def api_fleet_check_all(request: Request) -> dict:
         """Check every Spark now; the hourly sweep, on demand."""
-        return await _fleet_call(request, "POST", "/api/check", {})
+        return await _fleet(request, lambda *, secure: fleet_updates.check_all(secure=secure))
 
     @app.post("/api/fleet/nodes")
     async def api_fleet_enrol(request: Request, body: FleetEnrol) -> dict:
-        """Put a node on the fleet service's list, by the id and host the
-        dashboard already has for it. The fleet service checks it at once."""
-        return await _fleet_call(
-            request, "POST", "/api/nodes", {"name": body.name, "host": body.host}
+        """Put a node on the fleet's list, by the id and host the dashboard
+        already has for it. It is checked at once."""
+        return await _fleet(
+            request, lambda *, secure: fleet_updates.enrol(body.name, body.host, secure=secure)
         )
+
+    async def _password_of(request: Request) -> str | None:
+        """Read the sudo password out of the body BY HAND (AL2).
+
+        Deliberately not a pydantic model. A model that fails validation
+        renders the offending value back to the caller in its 422, and the
+        offending value here is the password -- `{"password": 123}` would
+        come back with the 123 in it. The blast radius is small (it returns
+        over the same TLS channel it arrived on, and cloudflared logs request
+        metadata rather than bodies) but the rule this feature is built on is
+        that a password is never rendered anywhere it was not typed, and the
+        cheapest way to keep a rule is to leave nothing that could break it.
+
+        Anything that is not a non-empty string is no password at all, which
+        is the sudo -n path.
+        """
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 -- no body, or not JSON: no password
+            return None
+        if not isinstance(body, dict):
+            return None
+        password = body.get("password")
+        return password if isinstance(password, str) and password else None
 
     @app.post("/api/fleet/nodes/{name}/{action}")
     async def api_fleet_node_action(
         request: Request,
         name: str,
         action: Literal["check", "update", "rehearse", "remove"],
-        body: FleetUpdateBody | None = None,
     ) -> dict:
         """check: collect and score now. update: the whole state machine,
         every member of the Spark's cluster in turn. rehearse: the same
         machine with nothing inside it, one node -- the way to prove this
-        path end to end without touching a package. remove: off the fleet
-        service's list; it stops being checked, its history is kept."""
-        payload = {"password": body.password} if body and body.password else {}
-        return await _fleet_call(request, "POST", f"/api/nodes/{name}/{action}", payload)
+        path end to end without touching a package. remove: off the fleet's
+        list; it stops being checked, its history is kept."""
+        password = await _password_of(request)
+        return await _fleet(
+            request,
+            lambda *, secure: fleet_updates.node_action(
+                name, action, password=password, secure=secure
+            ),
+        )
 
     @app.post("/api/fleet/runs/{run_id}/{action}")
     async def api_fleet_run_action(
@@ -1172,7 +1224,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict:
         """stop: after the current step. verify: finish a run that was held
         at the restart, now that the Spark is back."""
-        return await _fleet_call(request, "POST", f"/api/runs/{run_id}/{action}", {})
+        return await _fleet(
+            request, lambda *, secure: fleet_updates.run_action(run_id, action, secure=secure)
+        )
 
     @app.get("/metrics")
     async def metrics() -> PlainTextResponse:
@@ -1276,6 +1330,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else "ok"
                 if fleet_ok
                 else "unreachable"
+            ),
+            # AL4.1. A Spark whose own DGX Dashboard this tool paused and could
+            # not resume is muted: its Updates page reads "disabled by your
+            # administrator" and no release notification ever appears there.
+            # That went unnoticed for seventeen days once (AL6) because nothing
+            # said it out loud. /health says it, so an uptime check can.
+            **(
+                {"dashboards_paused": stranded}
+                if (stranded := _stranded_dashboards(fleet_updates))
+                else {}
             ),
             "nodes_configured": len(nodes),
             "nodes_up": nodes_up,

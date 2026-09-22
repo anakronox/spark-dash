@@ -30,6 +30,8 @@ from typing import Any
 
 import httpx
 
+from spark_dash_backend.fleet_api import FleetError
+
 log = logging.getLogger(__name__)
 
 
@@ -90,3 +92,56 @@ class FleetUpdatesClient:
         except FleetUpdatesError:
             return False
         return status == 200
+
+    # ---------------------------------------------------------- FleetBackend
+    #
+    # The intents from fleet_api, each one request on the wire. Thin on
+    # purpose: this half of the seam is scheduled for deletion at AL3g, and
+    # anything clever written here is work that gets thrown away.
+
+    @property
+    def embedded(self) -> bool:
+        return False
+
+    async def _call(
+        self, method: str, path: str, *, secure: bool, body: Any = None
+    ) -> dict[str, Any]:
+        try:
+            status, payload = await self.forward(
+                method, path, json=body, proto="https" if secure else "http"
+            )
+        except FleetUpdatesError as exc:
+            raise FleetError(502, f"spark-fleet-updates: {exc}") from exc
+        if status >= 400:
+            # Its wording, not ours -- "already being updated", the HTTPS
+            # refusal. The panel shows what the thing that refused said.
+            detail = payload.get("error") if isinstance(payload, dict) else None
+            raise FleetError(status, detail or f"spark-fleet-updates answered {status}")
+        return payload
+
+    async def envelope(self, *, secure: bool) -> dict[str, Any]:
+        return await self._call("GET", "/api/fleet", secure=secure)
+
+    async def log(self, run_id: str, node: str, *, secure: bool) -> dict[str, Any]:
+        return await self._call("GET", f"/api/runs/{run_id}/{node}/log", secure=secure)
+
+    async def check_all(self, *, secure: bool) -> dict[str, Any]:
+        return await self._call("POST", "/api/check", secure=secure, body={})
+
+    async def enrol(self, name: str, host: str, *, secure: bool) -> dict[str, Any]:
+        return await self._call(
+            "POST", "/api/nodes", secure=secure, body={"name": name, "host": host}
+        )
+
+    async def node_action(
+        self, name: str, action: str, *, password: str | None, secure: bool
+    ) -> dict[str, Any]:
+        return await self._call(
+            "POST",
+            f"/api/nodes/{name}/{action}",
+            secure=secure,
+            body={"password": password} if password else {},
+        )
+
+    async def run_action(self, run_id: str, action: str, *, secure: bool) -> dict[str, Any]:
+        return await self._call("POST", f"/api/runs/{run_id}/{action}", secure=secure, body={})

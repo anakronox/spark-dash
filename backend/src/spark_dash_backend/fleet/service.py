@@ -31,7 +31,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import ssh, posture as posture_mod
+from . import executor, posture as posture_mod, ssh
 from .executor import Run
 from .inventory import Inventory
 
@@ -66,6 +66,9 @@ class Service:
         # immediate instead of up to an hour late.
         self._stop = threading.Event()
         self._scheduler: threading.Thread | None = None
+        # Filled by resume_paused_dashboards(); surfaced in fleet() so a Spark
+        # this tool muted and could not unmute is never silently muted.
+        self.dashboards_stranded: list[dict] = []
         self._load_runs()
 
     # ── recipes ──────────────────────────────────────────────────────────
@@ -216,10 +219,82 @@ class Service:
         for t in threads: t.join()
         self.last_sweep = _now()
 
+    def sweep_in_background(self, reason: str = "manual") -> None:
+        """The check button: return now, sweep behind it. The panel switches to
+        its 3s cadence and watches `checking` go by."""
+        threading.Thread(target=self.sweep, args=(reason,), daemon=True,
+                         name=f"fleet-sweep-{reason}").start()
+
+    def collect_in_background(self, node: dict, reason: str = "manual") -> None:
+        threading.Thread(target=self.collect_node, args=(node, reason), daemon=True,
+                         name=f"fleet-collect-{node['name']}").start()
+
+    # ── AL4.1: a restart must not leave a Spark's Dashboard paused ───────
+    def resume_paused_dashboards(self) -> list[dict]:
+        """Undo any pause this tool left behind when it stopped mid-run.
+
+        THE TRAP THIS EXISTS FOR. An update pauses the Spark's own DGX
+        Dashboard updater so two installers never race for the dpkg lock, and
+        restores it when the install ends. Embedded, "this process" is the
+        dashboard's backend, which restarts on every deploy -- far more often
+        than the container it replaced. A `Run` thread dies with the process,
+        the transient unit on the Spark keeps installing, and the `finally`
+        that would have resumed the Dashboard never runs. That is exactly the
+        2026-09-05 bug (AL6), reintroduced by moving the code.
+
+        So on every start: read the run records, find any node left paused, and
+        put it back. Best effort by design -- it can only use passwordless
+        sudo, because the password that run was given was held in memory for
+        that run and is rightly gone. What it cannot fix it RETURNS, so the
+        panel and /health can say so out loud rather than leaving a Spark
+        quietly muted for seventeen days again.
+        """
+        stranded: list[dict] = []
+        for d in sorted((self.data / "runs").iterdir()):
+            f = d / "state.json"
+            if not f.exists():
+                continue
+            try:
+                st = json.loads(f.read_text())
+            except ValueError:
+                continue
+            changed = False
+            for entry in st.get("nodes", []):
+                before = entry.get("dashboard_settings_before")
+                if not before:
+                    continue
+                name = entry["name"]
+                node = self.inv.get(name)
+                if not node:
+                    stranded.append({"node": name, "run": st.get("id"), "why": "no longer on the fleet's list"})
+                    continue
+                cmd = executor.dashboard_restore_command(before)
+                r = ssh.run(node["host"], f"sudo -n {cmd}", user=node.get("user"), timeout=30)
+                if r.ok:
+                    entry["dashboard_settings_before"] = None
+                    changed = True
+                    log.warning("resumed the DGX Dashboard's updater on %s, left paused by run %s",
+                                name, st.get("id"))
+                else:
+                    stranded.append({"node": name, "run": st.get("id"),
+                                     "why": (r.err or r.out).strip()[:200] or f"exit {r.rc}"})
+            if changed:
+                f.write_text(json.dumps(st, indent=1))
+        self.dashboards_stranded = stranded
+        if stranded:
+            log.error("the DGX Dashboard's updater is still paused on %s — its Updates page will say "
+                      "\"disabled by your administrator\" until it is resumed",
+                      ", ".join(x["node"] for x in stranded))
+        return stranded
+
     def start(self) -> None:
         """Begin the hourly check. Called from the app's lifespan; idempotent."""
         if self._scheduler and self._scheduler.is_alive():
             return
+        try:
+            self.resume_paused_dashboards()
+        except Exception:      # a bad run record must not stop the updater
+            log.exception("could not check for paused DGX Dashboards")
         self._stop.clear()
         self._scheduler = threading.Thread(target=self.scheduler, daemon=True, name="fleet-scheduler")
         self._scheduler.start()
@@ -320,5 +395,6 @@ class Service:
         return {"nodes": nodes, "clusters": self.inv.data.get("clusters", []),
                 "latest": {"name": latest.name, "external_name": latest.external_name,
                            "date": latest.release_date_str[:10]},
+                "dashboards_stranded": self.dashboards_stranded,
                 "last_sweep": self.last_sweep, "next_sweep": self.next_sweep, "interval_min": self.interval_min,
                 "ssh_user": ssh.SSH_USER or None, "now": _now()}

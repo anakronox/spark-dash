@@ -6403,9 +6403,61 @@ today. That is the rollback, and it needs no image swap.
   the envelope rendering before any check has ever succeeded, the per-node
   lock, and `configure` putting the key and known-hosts on the command line.
   Seven tests, no Spark touched — `ssh.run` is faked throughout.
-- [ ] **AL3c. Wire the routes in-process.** The same `/api/fleet*` routes gain
-  an embedded branch. Every blocking call goes through `asyncio.to_thread`;
-  the hourly scheduler starts in `lifespan` and stops on shutdown.
+- [x] **AL3c. Shipped 2026-09-22**, and the routes gained *no* branch, which
+  is the part worth writing down. A per-route `if embedded:` would have put
+  the choice in eight places and left eight of them to unpick at AL3g.
+  Instead `fleet_api.FleetBackend` names what the dashboard can ask —
+  `envelope`, `check_all`, `node_action`, `run_action`, `log`, `enrol` — and
+  there are two implementations: `ProxyFleet` (a request on the wire) and
+  `EmbeddedFleet` (a call on the local `Service`). `app.py` picks one, at
+  construction, once. **The proxy wins when `FLEET_UPDATES_URL` is set**, so
+  a backend built from this branch and deployed with today's `.env` behaves
+  exactly as it does today — that is the rollback, and it needs no image
+  swap. AL3g deletes an implementation and a line, not a pattern.
+
+  **The intents are intents, not HTTP.** Not `forward("POST",
+  "/api/nodes/…")`. What survives AL3g should read as the backend calling its
+  own service, rather than as the shape left behind by a network hop that no
+  longer happens.
+
+  The three AL4 traps are closed, each with a test that was **checked by
+  breaking the thing it guards**:
+
+  - **AL4.5, the event loop.** Every call that can reach a Spark goes through
+    `asyncio.to_thread`. The test runs a 10 ms heartbeat beside a 300 ms
+    call and fails below ten ticks; removing one `to_thread` takes it to one.
+    Worth the precision — this process serves the live WebSocket, so blocking
+    here freezes *the whole dashboard* for every viewer, not the fleet panel.
+  - **AL4.1, the restart.** `Service.resume_paused_dashboards()` runs from
+    `start()`, reads the run records, and puts back any `settings.json` a
+    dead run left paused — the previous bytes, or the file's absence, so a
+    Spark somebody chose to disable stays disabled. `executor.py` grew
+    `dashboard_restore_command()` as a module function for this: one copy of
+    the command, two callers, so the recovery cannot drift from what it is
+    recovering. **It can only use passwordless sudo** — the password that run
+    was given was held in memory for that run and is rightly gone — and what
+    it cannot fix it *returns*, into the fleet envelope and into `/health` as
+    `dashboards_paused`. Five tests, including one that fails if the reconcile
+    is merely callable rather than actually on the startup path, and one that
+    a half-written run record cannot stop the updater booting.
+  - **AL2, the password.** `FleetUpdateBody` is gone: the update routes read
+    the body by hand. A pydantic model that fails validation renders the
+    offending value into its 422, and the offending value here is the
+    password. The blast radius was small — same TLS channel, and cloudflared
+    logs metadata rather than bodies — but the rule is that a password is
+    never rendered anywhere it was not typed, and the cheapest way to keep a
+    rule is to leave nothing that could break it. The embedded side applies
+    the HTTPS check itself with the fleet service's own sentence, since there
+    is no longer anything behind it to refuse on its behalf. A test now walks
+    every file a run writes and fails if the password appears in any of them.
+
+  `_secure(request)` replaces `_proto(request)`: the question was always
+  boolean and defaulting it to `False` means an absent header is plain HTTP
+  rather than "probably fine".
+
+  **Divergence from upstream now covers three files** — `service.py`,
+  `ssh.py`, `executor.py`. That list is the shrinking set of things still
+  worth diffing against the origin repo, and AL3g ends it.
 - [ ] **AL3d. Settings, and the two knobs** (AL5), including the inventory and
   pair consolidation from AL1 — done here, not later, because they are what
   make the fleet's own page and its remaining routes deletable.

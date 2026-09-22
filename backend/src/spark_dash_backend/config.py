@@ -35,6 +35,29 @@ class Settings(BaseSettings):
     # the container by service name and a browser cannot.
     fleet_updates_public_url: str = ""
 
+    # ---- fleet updates, embedded (roadmap AL) ----
+    #
+    # The same feature with no second container: this process holds the key and
+    # opens the SSH sessions. It is OFF unless a key is mounted and a login is
+    # named, which is what makes the compose overlay the deployment-level knob
+    # (AL5) -- leave the overlay out and these stay empty and nothing changes.
+    #
+    # FLEET_UPDATES_URL wins if both are set, so a backend built from this
+    # branch and deployed with today's .env behaves exactly as it did. That is
+    # the rollback, and it needs no image swap. AL3g removes the proxy and this
+    # sentence with it.
+    fleet_ssh_key: Path | None = None
+    fleet_ssh_user: str = ""
+    # Its own directory, not the stack root: mounting it must not also expose
+    # .env to the container. Holds the fleet list, posture, run records and the
+    # known_hosts file that uid 10002 has nowhere else to put (AL4.3).
+    fleet_state_dir: Path = Path("/data/fleet")
+    fleet_interval_min: float = 60.0
+    # The LAN-only opt-out, and the operator's to make: accept a sudo password
+    # over plain HTTP. Unset, Update works through the tunnel and is refused on
+    # the LAN, which is the fleet service's own rule and not ours to relax.
+    fleet_allow_plain_password: bool = False
+
     # THE place the cluster is defined. Comma-separated, e.g.
     #   SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62
     # The backend renders Prometheus's target files from this, so a node is
