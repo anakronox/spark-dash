@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -57,6 +58,22 @@ class Settings(BaseSettings):
     # over plain HTTP. Unset, Update works through the tunnel and is refused on
     # the LAN, which is the fleet service's own rule and not ours to relax.
     fleet_allow_plain_password: bool = False
+
+    @field_validator("fleet_allow_plain_password", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: object) -> object:
+        """An empty string is "not set", not a parse error.
+
+        `${VAR:-}` in a compose file is the ordinary way to say "pass this
+        through if the operator set it", and it hands the container an EMPTY
+        STRING rather than nothing at all. Pydantic cannot read "" as a bool,
+        so the backend died at import -- restart loop, whole dashboard down,
+        for an optional feature's opt-out that nobody had set.
+
+        Found in production on 2026-09-22 during the AL cutover. Any bool
+        settings added later want this too.
+        """
+        return False if isinstance(v, str) and not v.strip() else v
 
     # THE place the cluster is defined. Comma-separated, e.g.
     #   SPARK_NODES=gx10-1=192.168.50.61,gx10-2=192.168.50.62

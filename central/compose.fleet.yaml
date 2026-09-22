@@ -32,7 +32,7 @@ services:
       # "1" accepts a sudo password over plain HTTP as well. The LAN-only
       # opt-out and yours to make; unset, Update works through the tunnel and
       # is refused on the LAN. This project does not set it.
-      - FLEET_ALLOW_PLAIN_PASSWORD=${SPARK_FLEET_ALLOW_PLAIN_PASSWORD:-}
+      - FLEET_ALLOW_PLAIN_PASSWORD=${SPARK_FLEET_ALLOW_PLAIN_PASSWORD:-false}
     volumes:
       # The enrolment list, each Spark's posture, every run's record, and the
       # known_hosts file. WRITABLE, and it must be owned by uid 10002 — the

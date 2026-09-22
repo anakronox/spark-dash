@@ -6827,6 +6827,29 @@ observed. It only matters where no reboot follows: a run stopped before the
 restart, or this reconcile. Worst case the Spark's Updates page stays blank
 until its next hourly cycle.
 
+**An empty environment variable is not a boolean (2026-09-22, in production).**
+The cutover put the backend into a restart loop and took the whole dashboard
+down — Prometheus and Alertmanager kept running, but nothing could be seen.
+
+`FLEET_ALLOW_PLAIN_PASSWORD=${SPARK_FLEET_ALLOW_PLAIN_PASSWORD:-}` is the
+ordinary compose idiom for "pass this through if the operator set one", and
+what it hands the container when nobody did is an **empty string**, not
+nothing. Pydantic cannot read `""` as a bool, so `Settings()` raised at import
+and the process died before logging anything of its own.
+
+What makes it worth writing down is that **an optional feature's opt-out,
+which nobody had set, took down the dashboard**. The blast radius had nothing
+to do with the size of the mistake.
+
+`tests/test_fleet_overlay.py` checked that the overlay carried the right
+*keys*. It now resolves the overlay's **values** the way compose does — `:-`
+substituting on unset *or empty* — and builds a real `Settings` from the
+result, for an operator who set only what the guide tells them to and for one
+who set nothing at all. Both fail against the old code. The setting also
+treats a blank string as unset now, so the next bool added cannot repeat it,
+and the overlay says `:-false` as well: belt and braces, because the idiom is
+common enough that someone will reach for `:-` again.
+
 #### AL5 — Off by default, in two independent places
 
 Brian, 2026-09-22: a user who does not want this should be able to leave the

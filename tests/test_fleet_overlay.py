@@ -158,3 +158,65 @@ def test_the_state_path_is_the_same_in_the_image_the_overlay_and_the_default():
     assert env["FLEET_STATE_DIR"] == "/data/fleet"
     assert "mkdir -p /data/fleet" in DOCKERFILE.read_text()
     assert str(Settings(fleet_updates_url="").fleet_state_dir) == "/data/fleet"
+
+
+# ----------------------------------------- the values, not only the keys
+
+
+def compose_expand(value: str, env: dict[str, str]) -> str:
+    """`${VAR}`, `${VAR:-default}` and `${VAR:?msg}`, as compose resolves them.
+
+    `:-` substitutes when the variable is unset OR EMPTY, which is the part
+    that matters here: it is how a compose file passes an optional setting
+    through, and what it hands the container when nobody set one.
+    """
+    import re
+
+    def sub(m: re.Match) -> str:
+        name, op, arg = m.group(1), m.group(2), m.group(3)
+        got = env.get(name, "")
+        if op == ":-":
+            return got or arg
+        if op == ":?":
+            return got
+        return got
+
+    return re.sub(r"\$\{([A-Z_][A-Z0-9_]*)(:-|:\?)?([^}]*)\}", sub, value)
+
+
+def test_the_overlay_with_nothing_set_produces_settings_that_load():
+    """THE BUG THIS EXISTS FOR, found in production on 2026-09-22.
+
+    `FLEET_ALLOW_PLAIN_PASSWORD=${SPARK_FLEET_ALLOW_PLAIN_PASSWORD:-}` hands
+    the container an EMPTY STRING, pydantic could not read "" as a bool, and
+    the backend died at import — restart loop, the whole dashboard down, for
+    an optional feature's opt-out that nobody had set.
+
+    Checking that the keys are present was not enough. This resolves the
+    overlay the way compose does, with the operator setting only what the
+    setup guide tells them to, and builds the real Settings from the result.
+    """
+    from spark_dash_backend.config import Settings
+
+    raw = env_of(load(OVERLAY)["services"]["backend"])
+    # what someone who followed the guide has in .env, and nothing more
+    operator = {"SPARK_FLEET_SSH_USER": "brian"}
+    resolved = {k: compose_expand(v, operator) for k, v in raw.items()}
+
+    settings = Settings(fleet_updates_url="", **{k.lower(): v for k, v in resolved.items()})
+    assert settings.fleet_ssh_user == "brian"
+    assert str(settings.fleet_state_dir) == "/data/fleet"
+    assert settings.fleet_allow_plain_password is False
+    assert settings.fleet_interval_min == 60.0
+
+
+def test_every_overlay_value_survives_an_operator_who_set_nothing_at_all():
+    """Harsher: not even the login. Compose would refuse a `:?` at deploy
+    time, which is the point of one, but nothing else may explode."""
+    from spark_dash_backend.config import Settings
+
+    raw = env_of(load(OVERLAY)["services"]["backend"])
+    resolved = {k: compose_expand(v, {}) for k, v in raw.items()}
+    settings = Settings(fleet_updates_url="", **{k.lower(): v for k, v in resolved.items()})
+    assert settings.fleet_allow_plain_password is False
+    assert settings.fleet_ssh_user == "", "no login named: the feature reports itself unconfigured"
