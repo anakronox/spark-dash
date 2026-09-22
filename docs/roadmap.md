@@ -6458,6 +6458,29 @@ today. That is the rollback, and it needs no image swap.
   **Divergence from upstream now covers three files** — `service.py`,
   `ssh.py`, `executor.py`. That list is the shrinking set of things still
   worth diffing against the origin repo, and AL3g ends it.
+
+  **Exercised against the real fleet**, not only against fakes, because a
+  state machine that has never met a Spark has not been tested. Run from a
+  laptop with `uv run`, no container, against all three nodes:
+
+  - all three collected — `sparky` on April 2026 with 158/68, the pair on
+    143/60, matching what their own Dashboards say since AL6 unmuted them;
+  - the pins from AL6.3 read back off the live nodes: 6 held on each pair
+    member, 18 and 17 kept back;
+  - `sparketa + sparkjr` detected as a cluster from the ConnectX-7 fabric,
+    with nothing configured;
+  - `dashboards_stranded` empty, which is the reconcile agreeing with
+    reality rather than a fake;
+  - and **a full rehearsal on `sparky` passed**: check → install → restart →
+    verify, the transient `systemd-run` unit created and its journal
+    followed, unpack/setup lines counted for progress, restart correctly
+    skipped with `boot_id` proven readable, and a re-check confirming
+    nothing changed. Afterwards the node carries no leftover unit, no
+    `/tmp/spark-fleet-apply.sh`, `settings.json` still
+    `{"update":{"enabled":true}}` and `dgx-dashboard-admin` still active.
+
+  That is AL4.2's "first real exercise is a rehearsal" done, at the point in
+  the work where a failure would still have been cheap.
 - [ ] **AL3d. Settings, and the two knobs** (AL5), including the inventory and
   pair consolidation from AL1 — done here, not later, because they are what
   make the fleet's own page and its remaining routes deletable.
