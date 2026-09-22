@@ -223,9 +223,7 @@ curl -s <monitoring-host>:8080/health | jq '{status, problems}'
 scraped. If a node is listed there but its agent isn't running yet, it shows up
 in `problems` with the reason.
 
-That is the whole install. If you also want the dashboard to update your
-Sparks, that is one more optional step and a separate page:
-[DGX OS updates: the quick setup](docs/fleet-updates-setup.md).
+**That is the whole install.** Steps 4 and 5 are things you may never need.
 
 ### 4. Adding a node, or an engine on one
 
@@ -286,6 +284,31 @@ Deploying from a registry instead of building on each host is the maintainer
 path — see [building and shipping
 images](docs/deployment.md#building-and-shipping-images). It needs
 `PULL_POLICY=always` in each `.env`, for reasons the compose files spell out.
+
+### 5. Optional: DGX OS updates
+
+Skip this and nothing is missing: the dashboard is complete without it, and
+leaving it undone means no button, no key, and nothing that reaches a Spark by
+anything other than HTTP to its agent.
+
+Set it up and the dashboard checks every Spark hourly against NVIDIA's release
+recipes, shows you exactly what an update would change, and — when you press
+the button and type your sudo password — runs NVIDIA's own sequence:
+`apt full-upgrade`, `fwupdmgr upgrade`, restart, one Spark at a time.
+
+It needs two things the other steps don't, which is why it is separate:
+
+- **an SSH key the dashboard can use**, mounted into the backend and owned by
+  the container's user;
+- **a login on each Spark that can run `apt`** — yours is fine.
+
+Nothing is ever installed on a timer. The hourly part is a read-only check;
+every update is a button somebody pressed, after a confirmation naming the
+release and the packages. A Spark is never updated apart from the others it
+pools memory with.
+
+A few minutes, once: **[DGX OS updates: the quick
+setup](docs/fleet-updates-setup.md)**.
 
 ## Docs
 
