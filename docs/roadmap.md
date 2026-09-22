@@ -6565,10 +6565,34 @@ today. That is the rollback, and it needs no image swap.
   Docker, so the image has not been built and the uid-10002 SSH path has only
   been reasoned about. A build plus one `/health` read is the check — and the
   ownership rule above is the thing most likely to be wrong.
-- [ ] **AL3f. Tests.** The route tests re-pointed at the embedded service with
-  `ssh.run` faked — check, update, rehearse, stop, verify, all with no Spark
-  in the room. Plus AL2's password-residue test and AL4's restart-reconcile
-  test.
+- [x] **AL3f. Shipped 2026-09-22**, as a twin rather than a re-point. The
+  plan said to move the route tests onto the embedded service; both
+  implementations exist until AL3g, and the contract has to hold for both —
+  so `test_fleet_updates.py` keeps asserting the request that goes out and
+  `test_fleet_routes_embedded.py` asserts, for the same routes, what the
+  caller sees and what happened to the state on disk. A break in the seam
+  then shows up as a route that works over the wire and not in-process, or
+  the reverse. When AL3g deletes the proxy, the twin is what is left.
+
+  Fifteen tests: the envelope's shape, enrolment refusing a name the
+  dashboard does not know, check reaching the node, sweep returning before
+  it finishes, a run starting and stopping, 404 and 409 with the fleet
+  service's own wording, the `Literal` guard proving a rejected action
+  touched nothing, the TLS password rule with and without the header, three
+  malformed password bodies, a body that is not JSON at all, no password in
+  anything a run wrote, `/health`, the switch round trip, and `fleet.json`
+  holding enrolment and a switch and nothing else.
+
+  **It found a 500.** Enrolling a node `cluster.yml` does not describe raised
+  `ValueError` out of the inventory and straight through the route — a
+  traceback where AL3d had made "the dashboard has never heard of it" an
+  ordinary, expected refusal. Now a 400 with the sentence. Nothing else
+  reached it: the object-level tests never called the route, and the proxy
+  suite could not, because upstream did the refusing.
+
+  Both guards were checked by breaking what they guard: reading the password
+  through a model again fails four of these, and removing the TLS check fails
+  exactly the two that assert it.
 - [ ] **AL3g. Remove the proxy**, after one real (non-rehearsal) update has run
   embedded. `fleet_updates.py`, `FLEET_UPDATES_URL`, `FLEET_UPDATES_PUBLIC_URL`
   and the `spark-fleet-updates` service go; the other repo is archived with a

@@ -230,7 +230,14 @@ class EmbeddedFleet:
             svc.collect_in_background(node, "added")
             return node
 
-        return await asyncio.to_thread(add)
+        try:
+            return await asyncio.to_thread(add)
+        except ValueError as exc:
+            # Since AL3d the only enrollable Sparks are ones cluster.yml
+            # describes, so "this dashboard has never heard of it" is an
+            # ordinary refusal with something to read -- not a traceback,
+            # which is what it was until a route test asked.
+            raise FleetError(400, str(exc)) from exc
 
     async def node_action(
         self, name: str, action: str, *, password: str | None, secure: bool
