@@ -6410,25 +6410,98 @@ today. That is the rollback, and it needs no image swap.
    on a GB10, enrolling its own host means exactly that. Refuse a host whose
    `/etc/hostname` matches the backend's own. The standalone container had the
    same hole and only avoided it by never running on a Spark.
-8. **The kernel regression, noted and deliberately not pinned.**
+8. **The kernel regression: held on the pair, and not on `sparky`.**
    `7.0.0-1019-nvidia` breaks multi-node NCCL (RoCE `ibv_reg_mr_iova2`
    ENOMEM); NVIDIA's advisory said to hold off updating "including via DGX
-   Dashboard", then reported mitigations rolling out from 2026-09-17. The
-   Sep 5 run landed the known-good `6.17.0-1032`, which is what the pair runs
-   now, and `linux-nvidia-hwe-24.04`'s candidate is still that — `7.0.0-1019`
-   is not being offered here.
+   Dashboard", then reported mitigations rolling out from 2026-09-17.
 
-   An `apt-mark hold` on all three was weighed and **declined** (Brian,
-   2026-09-22): no kernels are pinned across this deployment. A hold is a
-   second piece of per-node state that this tool does not manage, does not
-   report, and would not remove — the same shape of mistake as the Dashboard
-   flag it was proposed to guard against, and a forgotten hold is worse than
-   an unheld kernel because it silently withholds every later fix. The guard
-   that already exists is the right one: an update is human-triggered, the
-   confirmation names the release, and `apt-get -s full-upgrade` is parsed
-   off-box so the reveal shows the real kernel version before anyone presses
-   anything. Watch the version in that reveal rather than pinning against
-   it.
+   **This item said the opposite of what it says now, and the reason is worth
+   keeping.** Written earlier the same day, it recorded a decision to pin
+   nothing, on the evidence that `linux-nvidia-hwe-24.04`'s candidate was
+   still the known-good `6.17.0-1032`. That evidence came from a package list
+   seventeen days stale (AL6). With the lists refreshed at 14:51 the same
+   afternoon, the candidate on all three is **`7.0.0-1019.19~24.04.2`**,
+   flagged security, arriving as new `linux-image-`, `linux-headers-` and
+   `linux-modules-7.0.0-1019-nvidia`. Nothing installs it on its own — a
+   release still needs a person — but the button was live and loaded on three
+   boxes.
+
+   **Held on `sparketa` and `sparkjr` only** (Brian, 2026-09-22), the six
+   `*-nvidia-hwe-24.04` metapackages on each. Asymmetric on purpose: the
+   NCCL breakage is a *multi-node* fault, so it bites exactly the pooled pair
+   and cannot bite the standalone box. `sparky` keeps taking kernels normally
+   and doubles as the canary. Verified after applying: the pair's
+   `apt-get -s full-upgrade` plan contains no `7.0.0-1019` and still installs
+   149 packages, so security updates keep flowing; `sparky`'s plan still
+   carries it. `sudo apt-mark unhold <the six>` undoes it.
+
+   The argument against holding still stands and is now a work item rather
+   than a reason not to: **a hold is per-node state this tool does not
+   manage, does not report and would not remove**, and a forgotten hold
+   withholds every later fix in silence. So the tool learns to see it —
+   AL6.3. Until then the holds live here, in this paragraph, which is the
+   only place they are written down.
+
+#### AL6 — What seventeen silent days actually taught
+
+Found on 2026-09-22 while answering a question that sounded like a
+preference — *should the Dashboard's updater be enabled alongside the fleet
+updater?* — and turned out to be load-bearing. Three findings, each a work
+item.
+
+**1. The Dashboard's updater is not a second checker. It is the refresher.**
+NVIDIA's `nvidia-update-manager` ships
+`/etc/apt/apt.conf.d/99update-notifier-nvidia`, which sets
+`APT::Periodic::Update-Package-Lists "0"` and
+`APT::Periodic::Unattended-Upgrade "0"` and nulls the post-invoke hooks — on
+all three nodes. Apt's own periodic refresh is switched **off by the vendor,
+deliberately**, and `apt-daily.service` consequently does nothing (the
+`wait-online` timeout in its journal is a red herring: the unit's
+`ExecStartPre=-…` ignores it). The DGX Dashboard's hourly
+`refreshUpdatesCache` is the only thing on a Spark that runs `apt-get
+update`. Proven rather than argued: re-enabling it moved every node's
+`/var/lib/apt/lists/` from 2026-09-05 to 14:51 within seconds of the admin
+service restarting, and the counts went from `0` to 158 (68 security) on
+`sparky` and 143 (60) on the pair.
+
+The fleet updater's collector is read-only by design — `apt-get -s -o
+Debug::NoLocking=1 full-upgrade`, no lock, no root. It **reads** a cache it
+never refreshes. So the two are a refresher and a reader, not rivals, and
+switching the refresher off blinds them both. That is the whole of the
+2026-09-05 → 09-22 silence.
+
+- [ ] **AL6.1.** The DGX Dashboard's updater staying enabled is a
+  **requirement** of this feature, not a nicety. `dashboard_auto_update` is
+  already collected per node; the panel must show a Spark whose Dashboard
+  updater is off as a state on the row, `/health` must carry it, and
+  `docs/fleet-updates-setup.md` (AL5a) must say it in the requirements box. The pause during an install (AL0) is the one legitimate
+  window, and the restore is what closes it.
+
+**2. A stale count is not a zero, and the panel said zero.** For seventeen
+days the row read *current* while the payload beside it carried
+`"as_of": "2026-09-05"`. The age is collected, carried through posture, and
+rendered — inside the expanded "show updates" detail, as "counted 17 days
+ago", where nobody looks when the headline says there is nothing to see.
+
+- [ ] **AL6.2.** Age belongs on the row, not in the detail. A count older
+  than a day or two is its own state — *last counted 17 days ago*, not
+  *current* — and it is the check that would have caught both faults on day
+  two without anyone hunting for them. Applies to the release scoring too:
+  "on July 2026, nothing available" from a stale cache is the same lie in a
+  different sentence.
+
+**3. The tool should see what has been done to a node by hand.** AL4.8 holds
+six kernel metapackages on the pair. Nothing in the posture record knows
+that, so the reveal will keep listing packages apt will silently decline to
+install, and a hold nobody remembers is exactly the failure that argued
+against holding at all.
+
+- [ ] **AL6.3.** Collect `apt-mark showhold` and surface it: on the row when
+  a Spark holds anything, and in the update confirmation when a held package
+  is in the plan. Read-only, one more line in `node_collect.py`. The same
+  applies to any other per-node divergence the tool induces or finds — the
+  principle is that **this tool reports the state it depends on, rather than
+  assuming it.**
 
 #### AL5 — Off by default, in two independent places
 

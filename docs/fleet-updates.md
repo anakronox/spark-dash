@@ -240,8 +240,39 @@ out after 25 minutes`, which is the budget it allows that phase.
   (world-readable text) and `/usr/lib/update-notifier/apt-check` prints
   `total;security` (`210;133` on `sparky`). The file's wording varies between
   nodes — `sparky` has an extra "ESM Apps" line — so parse by regex, not by
-  line number. It is refreshed by `apt-daily.timer`, roughly daily, so its
-  mtime is the honest "as of" for any count read from it.
+  line number. Its mtime is the honest "as of" for any count read from it —
+  and on a DGX Spark that mtime can be **weeks** old, for the reason in the
+  next bullet. Read the count and the mtime together or not at all.
+- **Apt's periodic refresh is off, shipped that way by NVIDIA.**
+  `nvidia-update-manager` installs
+  `/etc/apt/apt.conf.d/99update-notifier-nvidia`:
+
+  ```
+  DPkg::Post-Invoke {"true";};
+  APT::Update::Post-Invoke-Success {"true";};
+  APT::Periodic::Update-Package-Lists "0";
+  APT::Periodic::Unattended-Upgrade "0";
+  ```
+
+  It sorts after `10periodic`, so it wins: `apt-daily.service` runs on its
+  timer and does nothing. (Its journal shows
+  `systemd-networkd-wait-online … Timeout` and an `apt-helper` error, which
+  is a red herring — the unit's `ExecStartPre=-…` ignores that failure.
+  `networkd` is active but renders nothing; NetworkManager owns every link.)
+
+  **So the DGX Dashboard's hourly `refreshUpdatesCache` is the only thing on
+  a stock Spark that runs `apt-get update`.** Verified 2026-09-22: with the
+  Dashboard's updater disabled, all three nodes' `/var/lib/apt/lists/` sat at
+  the timestamp of the last manual upgrade, seventeen days earlier, and every
+  count derived from that cache read zero. Re-enabling it moved the lists
+  within seconds of `dgx-dashboard-admin` restarting, and the counts went to
+  158 and 143.
+
+  **A fleet tool must not take this for granted.** One that collects without
+  refreshing — the unprivileged `apt-get -s full-upgrade` path in §7 — is a
+  *reader* of a cache the Dashboard refreshes. Disabling the Dashboard's
+  updates, as §3.3 suggests for the dpkg lock, therefore blinds the fleet
+  tool as well as the Dashboard, and must last no longer than the install.
 - `/run/reboot-required` and `/run/reboot-required.pkgs` are the reboot flag
   and its reasons. `/var/run` is a compatibility symlink to `/run`.
 - Ubuntu Pro is attached on all three nodes with `esm-apps` and `esm-infra`
@@ -369,6 +400,10 @@ Assembled from the admin binary's strings and the reboot helper:
    is-ota-available` and caches the result (`refreshUpdatesCache: completed`).
    It also **auto-upgrades the OTA metapackage** (`Auto-upgrading OTA
    metapackage`), which is why the checker's `self_update` defers to it.
+   **And it refreshes apt's package lists** — see §3.5, where that turns out
+   to be the only thing on the box that does. Observed cadence is hourly,
+   about two minutes a cycle, logging `Network connectivity confirmed`, the
+   fwupd device sweep and `OTA packages loaded count=147`.
 2. On `UpdateAndReboot` the admin drives apt through the system
    `org.debian.apt` D-Bus transaction API (aptdaemon; string
    `org.debian.apt.transaction.Run`), then runs `fwupdmgr upgrade` (`Failed to
