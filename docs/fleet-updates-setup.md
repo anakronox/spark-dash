@@ -20,6 +20,7 @@ Spark at a time.
 | **A login on each Spark that can run `apt`** | The same login you use yourself is fine. It needs `sudo`; whether it needs a *password* is your choice, covered below. |
 | **The ability to edit your compose file and redeploy** | The key has to be mounted into the backend container. The dashboard cannot do this for itself, which is why this page exists. |
 | **A few minutes per Spark, once** | After that it is a checkbox. |
+| **Each Spark's own DGX Dashboard updater left enabled** | It is the only thing on a stock Spark that refreshes the package lists. Switch it off and that Spark stops seeing new packages — and so does this. See [below](#one-thing-to-know-about-the-dgx-dashboard). |
 
 **What it will never do on its own.** It checks hourly; it does not install.
 Every update is something a person pressed, after a confirmation naming the
@@ -112,6 +113,11 @@ Each Spark's own DGX Dashboard is what refreshes its package lists, hourly. If
 you have turned its updater off — or something turned it off for you — that
 Spark stops seeing new packages entirely, and this tool, which reads the same
 lists, goes blind with it. **Leave the DGX Dashboard's updates enabled.**
+
+You will be told if one isn't. A Spark in that state reads *not checking for
+updates* on its row rather than a reassuring count, `/health` lists it under
+`updates_not_refreshing`, and any count more than six hours old says *last
+counted N ago* instead of claiming to be current.
 
 While an update installs, this tool pauses that updater so two installers never
 fight over the package manager, and puts it back exactly as it found it the

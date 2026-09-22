@@ -228,7 +228,15 @@ def test_nothing_a_run_wrote_contains_the_password(client, tmp_path):
         headers={"X-Forwarded-Proto": "https"},
     )
     assert resp.status_code == 200
-    client.post(f"/api/fleet/runs/{resp.json()['id']}/stop")
+    run_id = resp.json()["id"]
+    client.post(f"/api/fleet/runs/{run_id}/stop")
+
+    # Wait for the run thread to finish before reading what it left. Without
+    # this the test is a race it usually wins: `_save` writes state.tmp and
+    # renames it, so a glob can list a file that is gone a moment later. A
+    # flaky guard on the password is worse than no guard -- it teaches you to
+    # re-run the suite instead of reading the failure.
+    client.app.state.fleet_updates.svc.runs[run_id].thread.join(timeout=15)
 
     written = [f for f in (tmp_path / "state" / "runs").rglob("*") if f.is_file()]
     assert written, "the run wrote nothing; this would pass vacuously"

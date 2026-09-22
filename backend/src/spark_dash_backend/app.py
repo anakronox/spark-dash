@@ -1126,6 +1126,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         svc = getattr(backend, "svc", None)
         return [x["node"] for x in getattr(svc, "dashboards_stranded", [])]
 
+    def _not_refreshing(backend: FleetBackend) -> list[str]:
+        """Sparks whose own DGX Dashboard updater is switched off (AL6.1).
+
+        Worth a line in /health rather than only in the panel, because the
+        consequence is silence: that updater is the only thing on a stock
+        Spark that runs `apt-get update`, so a node in this list stops
+        learning about new packages and the counts reported for it keep
+        saying whatever they last said. That went unnoticed for seventeen
+        days once, on every node at the same time.
+        """
+        svc = getattr(backend, "svc", None)
+        return list(getattr(svc, "updates_not_refreshing", []))
+
     def _secure(request: Request) -> bool:
         """Did this request REALLY arrive over TLS?
 
@@ -1374,6 +1387,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             **(
                 {"dashboards_paused": stranded}
                 if (stranded := _stranded_dashboards(fleet_updates))
+                else {}
+            ),
+            **(
+                {"updates_not_refreshing": quiet}
+                if (quiet := _not_refreshing(fleet_updates))
                 else {}
             ),
             "nodes_configured": len(nodes),

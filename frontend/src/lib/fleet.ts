@@ -212,6 +212,47 @@ export interface FleetStatus {
   text: string;
 }
 
+/** How old a package count may be before it is a claim about the past.
+ *
+ * Six hours. A Spark's own DGX Dashboard refreshes its package lists hourly
+ * and is the ONLY thing on a stock Spark that does (fleet-updates.md §3.5 --
+ * NVIDIA ships apt's periodic refresh switched off), so a healthy node's
+ * count is an hour or two old at most; measured across this cluster it sits
+ * at 1.5h. Six is three times the worst legitimate case, and still catches a
+ * stalled refresher the same day rather than seventeen days later.
+ */
+export const COUNT_STALE_AFTER_H = 6;
+
+/** The count is old enough that "no updates" means "none as of then".
+ *
+ * AL6.2. The panel said `0 updates · current` for seventeen days while the
+ * payload beside it carried an as_of from a fortnight earlier. The age was
+ * collected, carried and rendered -- inside an expanded detail, where nobody
+ * looks when the headline says there is nothing to see.
+ */
+export function staleOf(
+  n: FleetNode,
+  now: number = Date.now(),
+): { hours: number; text: string } | null {
+  const as_of = n.updates?.as_of;
+  if (!as_of) return null;
+  const hours = (now - Date.parse(as_of)) / 3600e3;
+  if (!(hours >= COUNT_STALE_AFTER_H)) return null;
+  return { hours, text: agoOf(as_of, now) };
+}
+
+/** This Spark has stopped refreshing its package lists.
+ *
+ * AL6.1, and the cause of which staleOf is the symptom: its own DGX Dashboard
+ * updater is switched off, which on a stock Spark means nothing runs
+ * `apt-get update` any more. Strictly `false` -- `null` is "we could not
+ * read its settings", which is not the same as knowing, and guessing would
+ * put a warning on a row that is fine.
+ */
+export function refreshStopped(n: FleetNode): boolean {
+  return n.dashboard_auto_update === false;
+}
+
 /** Something apt or fwupd could install right now. */
 export function installable(n: FleetNode): boolean {
   return Boolean(n.reachable && (n.updates?.total || (n.firmware_updates ?? []).length));
@@ -231,7 +272,7 @@ export function recent(r: FleetRun, now: number = Date.now()): boolean {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-export function statusOf(n: FleetNode): FleetStatus {
+export function statusOf(n: FleetNode, now: number = Date.now()): FleetStatus {
   if (n.run) return { tone: 'info', text: n.run.rehearsal ? 'rehearsing' : 'updating' };
   if (n.checking && n.reachable == null) return { tone: '', text: 'checking…' };
   if (n.reachable === false) return { tone: 'critical', text: 'unreachable' };
@@ -259,6 +300,13 @@ export function statusOf(n: FleetNode): FleetStatus {
       text: held ? `${plural(held, 'package')} held back` : 'not on the latest',
     };
   }
+  // The ONE verdict that must not be given on old evidence. "Update
+  // available" from a stale count is still probably true -- updates do not
+  // un-appear -- but "up to date" is precisely the claim the count no longer
+  // supports, and it is the one somebody reads and stops looking at.
+  if (refreshStopped(n)) return { tone: 'warning', text: 'not checking for updates' };
+  const stale = staleOf(n, now);
+  if (stale) return { tone: 'warning', text: `last counted ${stale.text}` };
   return { tone: 'good', text: 'up to date with NVIDIA' };
 }
 
@@ -292,16 +340,25 @@ export function pinnedOf(n: FleetNode): { count: number; kept: number; text: str
   return { count: held.length, kept, text: kept > held.length ? `${pkgs}, ${kept} kept back` : pkgs };
 }
 
-export function lineOf(n: FleetNode): string {
+export function lineOf(n: FleetNode, now: number = Date.now()): string {
   if (n.run) return runLabel(n);
   if (n.reachable === false) {
     return 'could not connect' + (n.error ? ' · ' + n.error.slice(0, 80) : '');
   }
   if (!n.release) return '';
   const u = n.updates ?? { total: null, security: null };
+  // Appended to whatever the row ends up saying, not only to the reassuring
+  // case: a count of 158 taken a fortnight ago is also worth knowing about.
+  // Defined before the branches below, because every one of them returns.
+  const stale = staleOf(n, now);
+  const age = refreshStopped(n)
+    ? ' · not refreshing: its DGX Dashboard updater is off'
+    : stale
+      ? ` · last counted ${stale.text}`
+      : '';
   if (n.firmware_readable === false) {
     const tail = u.total != null ? `${u.total} package updates, ${u.security} security` : '';
-    return `firmware needs the two read-only sudo rules (see the guide) · ${tail}`;
+    return `firmware needs the two read-only sudo rules (see the guide) · ${tail}${age}`;
   }
   const cnt = u.total != null ? `${u.total} updates, ${u.security} security` : 'counting…';
   if (n.release.available && !u.total && !(n.firmware_updates ?? []).length) {
@@ -319,24 +376,24 @@ export function lineOf(n: FleetNode): string {
           : pf.state === 'behind'
             ? `${pf.vendor} firmware ${pf.installed}, vendor has ${pf.newest.bundle} — apply it their way`
             : `${pf.vendor} firmware ${pf.installed || 'unknown'}`;
-      return `${swTxt} · ${vend} · NVIDIA ${n.release.latest_name} firmware pending from ${pf.vendor}`;
+      return `${swTxt} · ${vend} · NVIDIA ${n.release.latest_name} firmware pending from ${pf.vendor}${age}`;
     }
     if (fg.state === 'pending-vendor') {
-      return `${swTxt} · NVIDIA ${n.release.latest_name} firmware pending from ${fg.vendor || 'the board vendor'} · nothing to install`;
+      return `${swTxt} · NVIDIA ${n.release.latest_name} firmware pending from ${fg.vendor || 'the board vendor'} · nothing to install${age}`;
     }
     if (fg.state === 'pending-nvidia') {
-      return `${swTxt} · NVIDIA ${n.release.latest_name} firmware not offered to this board yet · nothing to install`;
+      return `${swTxt} · NVIDIA ${n.release.latest_name} firmware not offered to this board yet · nothing to install${age}`;
     }
     const held = (sw.behind ?? []).map((f) => f.name).join(', ') || 'checks failing';
-    return `${swTxt} · held back: ${held} · nothing to install`;
+    return `${swTxt} · held back: ${held} · nothing to install${age}`;
   }
   const pin = pinnedOf(n);
-  const pinned = pin ? ` · ${pin.text}` : '';
+  const pinned = (pin ? ` · ${pin.text}` : '') + age;
   if (n.release.available) return `NVIDIA ${n.release.latest_name} release · ${cnt}${pinned}`;
   if (u.total) return `${u.total} routine Ubuntu updates, ${u.security} security${pinned}`;
   // "no updates" on a pinned Spark is the sentence this item exists to stop:
   // there may be plenty, and none of them allowed.
-  return pin ? `no updates it may install · ${pin.text}` : 'no updates';
+  return (pin ? `no updates it may install · ${pin.text}` : 'no updates') + age;
 }
 
 export const RUN_STEPS: RunStep[] = ['check', 'install', 'restart', 'verify'];

@@ -425,3 +425,61 @@ async def test_the_switch_can_be_switched_back_on(tmp_path):
         on = client.post("/api/fleet/enabled", json={"enabled": True})
         assert on.status_code == 200, "switched off, and no way back on but a redeploy"
         assert client.get("/api/fleet").json()["configured"] is True
+
+
+# ------------------------------------------------- AL6.1: saying it out loud
+
+
+async def test_a_spark_that_stopped_refreshing_is_named_in_the_envelope(tmp_path, monkeypatch):
+    """Its own DGX Dashboard updater being off means nothing runs `apt-get
+    update` there any more, so every count reported for it is frozen. The
+    panel needs to know which Spark, not just that something is wrong."""
+    fleet = make(tmp_path)
+    fleet.svc.inv.add("sparky")
+    fleet.svc.inv.add("sparketa")
+    fleet.svc._note_refresh_state("sparky", False)
+    fleet.svc._note_refresh_state("sparketa", True)
+    assert (await fleet.envelope(secure=True))["updates_not_refreshing"] == ["sparky"]
+
+    # and it clears when the Spark starts refreshing again, rather than
+    # accumulating names forever
+    fleet.svc._note_refresh_state("sparky", True)
+    assert (await fleet.envelope(secure=True))["updates_not_refreshing"] == []
+
+
+def test_unknown_is_not_off(tmp_path):
+    """`None` means the settings could not be read. Treating that as "off"
+    would put a warning on a Spark that is fine."""
+    fleet = make(tmp_path)
+    fleet.svc._note_refresh_state("sparky", None)
+    assert fleet.svc.updates_not_refreshing == []
+
+
+async def test_health_names_the_sparks_that_stopped_refreshing(tmp_path):
+    """The consequence of this one is silence, so an uptime check has to be
+    able to see it — the same reasoning as dashboards_paused."""
+    from fastapi.testclient import TestClient
+    from spark_dash_backend.app import create_app
+    from spark_dash_backend.config import Settings
+
+    key = tmp_path / "id_ed25519"
+    key.write_text("not a real key")
+    app = create_app(
+        Settings(
+            fleet_updates_url="",
+            spark_nodes="sparky=192.168.50.61",
+            fleet_ssh_user="brian",
+            fleet_ssh_key=key,
+            fleet_state_dir=tmp_path / "state",
+            prometheus_url="http://nowhere:9090",
+            alertmanager_url="http://nowhere:9093",
+        )
+    )
+    fleet = app.state.fleet_updates
+    fleet.start()
+
+    with TestClient(app) as client:
+        assert "updates_not_refreshing" not in client.get("/health").json(), "claimed with none"
+        fleet.svc._note_refresh_state("sparky", False)
+        assert client.get("/health").json()["updates_not_refreshing"] == ["sparky"]
+    fleet.stop()

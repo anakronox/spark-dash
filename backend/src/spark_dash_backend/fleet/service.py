@@ -71,6 +71,14 @@ class Service:
         # Filled by resume_paused_dashboards(); surfaced in fleet() so a Spark
         # this tool muted and could not unmute is never silently muted.
         self.dashboards_stranded: list[dict] = []
+        # AL6.1. Sparks whose own DGX Dashboard updater is switched off. That
+        # updater is the only thing on a stock Spark that runs `apt-get
+        # update` (fleet-updates.md §3.5), so a node in this list has stopped
+        # learning about new packages and every count we report for it is
+        # going stale. Kept as a list rather than derived on demand so
+        # /health can read it without touching a file or a node.
+        self.updates_not_refreshing: list[str] = []
+        self._seed_refresh_state()
         self._load_runs()
 
     # ── recipes ──────────────────────────────────────────────────────────
@@ -124,11 +132,44 @@ class Service:
         rec["recipes_match"] = match
         rec["collect_reason"] = reason
         self._write_posture(name, rec)
+        self._note_refresh_state(name, rec.get("dashboard_auto_update"))
         try:
             self.detect_clusters()
         except Exception:  # never let topology break a collect
             log.exception("cluster detection failed")
         return rec
+
+    def _seed_refresh_state(self) -> None:
+        """Fill it from the posture already on disk, at startup.
+
+        Without this the list is only right after the first sweep, so for up
+        to an hour after every deploy /health would report nothing wrong about
+        a Spark that had stopped refreshing -- which is the exact window this
+        is meant to close. The records are already written; read them.
+        """
+        for f in (self.data / "posture").glob("*.json"):
+            try:
+                rec = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            self._note_refresh_state(rec.get("name", f.stem), rec.get("dashboard_auto_update"),
+                                     announce=False)
+
+    def _note_refresh_state(self, name: str, auto_update, announce: bool = True) -> None:
+        """Remember whether this Spark is still refreshing its package lists.
+
+        `False` only -- `None` means we could not read its settings, which is
+        not the same as knowing it is off, and guessing here would put a
+        warning on a row for a Spark that is fine.
+        """
+        off = set(self.updates_not_refreshing)
+        off.discard(name)
+        if auto_update is False:
+            off.add(name)
+            if announce:
+                log.warning("%s: its DGX Dashboard updater is off, so its package lists will go "
+                            "stale and every count reported for it with them", name)
+        self.updates_not_refreshing = sorted(off)
 
     # ── who is cabled to whom ────────────────────────────────────────────
     def detect_clusters(self) -> list[dict]:
@@ -422,5 +463,6 @@ class Service:
                 "latest": {"name": latest.name, "external_name": latest.external_name,
                            "date": latest.release_date_str[:10]},
                 "dashboards_stranded": self.dashboards_stranded,
+                "updates_not_refreshing": self.updates_not_refreshing,
                 "last_sweep": self.last_sweep, "next_sweep": self.next_sweep, "interval_min": self.interval_min,
                 "ssh_user": ssh.SSH_USER or None, "now": _now()}

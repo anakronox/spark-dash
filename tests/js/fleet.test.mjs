@@ -20,7 +20,9 @@ import {
   needsPassword,
   nextCheckText,
   pinnedOf,
+  refreshStopped,
   runProgress,
+  staleOf,
   shortFirmware,
   statusOf,
   summaryOf,
@@ -148,6 +150,67 @@ test('the vendor sentence changes with what the vendor has published', () => {
   assert.equal(lineOf(newer), 'software current for July 2026 · ASUS firmware 1.05, vendor has 1.07 — apply it their way · NVIDIA July 2026 firmware pending from ASUS');
   const noTable = behind({ ...base, software: { state: 'installable' } });
   assert.equal(lineOf(noTable), 'on March 2026 · NVIDIA July 2026 firmware pending from ASUS · nothing to install');
+});
+
+// ---- AL6.1 / AL6.2: saying so when we do not actually know -------------------
+
+const HOUR = 3600e3;
+const NOW = Date.parse('2026-09-22T12:00:00Z');
+const counted = (hoursAgo, rest = {}) => ({
+  total: 0, security: 0, packages: [],
+  as_of: new Date(NOW - hoursAgo * HOUR).toISOString(),
+  ...rest,
+});
+
+test('a fresh count is trusted and an old one is not', () => {
+  assert.equal(staleOf(spark({ updates: counted(1.5) }), NOW), null, '1.5h is a healthy node');
+  assert.equal(staleOf(spark({ updates: counted(5.9) }), NOW), null);
+  assert.ok(staleOf(spark({ updates: counted(6.1) }), NOW));
+  // no as_of at all is not the same as old: say nothing rather than guess
+  assert.equal(staleOf(spark({ updates: { total: 0, security: 0 } }), NOW), null);
+});
+
+test('THE SEPTEMBER BUG: "up to date" is never said on a seventeen-day-old count', () => {
+  // The exact shape of it. Every field says the Spark is fine; the only thing
+  // that knows better is the timestamp beside them, which used to render
+  // inside an expanded detail nobody opens when the headline is reassuring.
+  const muted = spark({ updates: counted(17 * 24) });
+  const status = statusOf(muted, NOW);
+  assert.notEqual(status.text, 'up to date with NVIDIA', 'it claimed to know');
+  assert.equal(status.tone, 'warning');
+  assert.match(status.text, /^last counted /);
+  assert.match(lineOf(muted, NOW), / · last counted /);
+
+  // and the healthy version of the very same node still reads as good
+  const fine = spark({ updates: counted(1.5) });
+  assert.deepEqual(statusOf(fine, NOW), { tone: 'good', text: 'up to date with NVIDIA' });
+});
+
+test('the CAUSE outranks the symptom, and shows before the count has aged', () => {
+  // AL6.1. A Spark whose own DGX Dashboard updater is off has stopped running
+  // `apt-get update` at all, so its count is frozen from that moment. Worth
+  // saying immediately rather than in six hours' time.
+  const off = spark({ updates: counted(0.5), dashboard_auto_update: false });
+  assert.equal(staleOf(off, NOW), null, 'the count is still young');
+  assert.ok(refreshStopped(off));
+  assert.equal(statusOf(off, NOW).text, 'not checking for updates');
+  assert.match(lineOf(off, NOW), /not refreshing: its DGX Dashboard updater is off/);
+});
+
+test('unknown is not off: a Spark we could not read is left alone', () => {
+  assert.equal(refreshStopped(spark({ dashboard_auto_update: null })), false);
+  assert.equal(refreshStopped(spark({ dashboard_auto_update: undefined })), false);
+  assert.deepEqual(statusOf(spark({ updates: counted(1) }), NOW),
+    { tone: 'good', text: 'up to date with NVIDIA' });
+});
+
+test('a stale count does not overwrite what it still knows', () => {
+  // "update available" from an old count is still probably true — updates do
+  // not un-appear. Only the reassuring verdict is withheld; the age rides
+  // along on the sentence either way.
+  const busy = behind({ updates: counted(48, { total: 158, security: 68 }) });
+  assert.equal(statusOf(busy, NOW).text, 'update available');
+  assert.match(lineOf(busy, NOW), /158 updates, 68 security · last counted /);
 });
 
 test('a pin is not "no updates", and is not the scorer\'s "held back"', () => {

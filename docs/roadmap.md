@@ -6735,12 +6735,21 @@ never refreshes. So the two are a refresher and a reader, not rivals, and
 switching the refresher off blinds them both. That is the whole of the
 2026-09-05 → 09-22 silence.
 
-- [ ] **AL6.1.** The DGX Dashboard's updater staying enabled is a
-  **requirement** of this feature, not a nicety. `dashboard_auto_update` is
-  already collected per node; the panel must show a Spark whose Dashboard
-  updater is off as a state on the row, `/health` must carry it, and
-  `docs/fleet-updates-setup.md` (AL5a) must say it in the requirements box. The pause during an install (AL0) is the one legitimate
-  window, and the restore is what closes it.
+- [x] **AL6.1. Shipped 2026-09-22.** A Spark whose own DGX Dashboard updater
+  is off now reads **not checking for updates** on its row, with the cause on
+  the sentence beside it, and `/health` lists it under
+  `updates_not_refreshing`. The setup guide carries it as a requirement rather
+  than a footnote.
+
+  **`False` only.** `None` means the settings could not be read, which is not
+  the same as knowing it is off, and guessing would put a warning on a row
+  that is fine.
+
+  One thing found by trying to demonstrate it: the list was filled only during
+  a collect, so for up to an hour after every deploy `/health` would have
+  reported nothing wrong about a Spark that had stopped refreshing — the exact
+  window this exists to close. It is seeded from the posture already on disk
+  at startup now.
 
 **2. A stale count is not a zero, and the panel said zero.** For seventeen
 days the row read *current* while the payload beside it carried
@@ -6748,12 +6757,28 @@ days the row read *current* while the payload beside it carried
 rendered — inside the expanded "show updates" detail, as "counted 17 days
 ago", where nobody looks when the headline says there is nothing to see.
 
-- [ ] **AL6.2.** Age belongs on the row, not in the detail. A count older
-  than a day or two is its own state — *last counted 17 days ago*, not
-  *current* — and it is the check that would have caught both faults on day
-  two without anyone hunting for them. Applies to the release scoring too:
-  "on July 2026, nothing available" from a stale cache is the same lie in a
-  different sentence.
+- [x] **AL6.2. Shipped 2026-09-22.** A count older than **six hours** puts
+  *last counted N ago* on the row, and — the part that matters — withholds the
+  one verdict it can no longer support.
+
+  **Six hours, measured rather than picked.** A Spark's own DGX Dashboard
+  refreshes its package lists hourly and is the only thing that does; across
+  this cluster a healthy node's count sits at **1.5h**. Six is three times the
+  worst legitimate case and still catches a stall the same day rather than
+  seventeen days later.
+
+  **Only the reassuring verdict is gated.** "Update available" from an old
+  count is still probably true — updates do not un-appear. "Up to date with
+  NVIDIA" is precisely the claim the count stops supporting, and it is the one
+  somebody reads and stops looking. So that branch, and only that branch,
+  becomes *last counted …*; the age is appended to every other sentence
+  regardless.
+
+  Checked against the real thing: a posture doctored into the exact September
+  shape — 0 updates, nothing available, every field agreeing the Spark is fine
+  — now reads **"not checking for updates · no updates · not refreshing: its
+  DGX Dashboard updater is off"** where the old code said "up to date with
+  NVIDIA".
 
 **3. The tool should see what has been done to a node by hand.** AL4.8 holds
 six kernel metapackages on the pair. Nothing in the posture record knows
