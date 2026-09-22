@@ -1,0 +1,205 @@
+{
+  "detected_ota": "OTA2.2",
+  "releaseDate": "2026-03-31T00:00:00.000Z",
+  "torn": 3.3,
+  "scores": [
+    {
+      "ota": "OTA2.2",
+      "releaseDate": "2026-03-31T00:00:00.000Z",
+      "detection_rank": 72.57,
+      "match": 66.7,
+      "torn": 3.3,
+      "total_checks": 150,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-firmware-580-580.126.09",
+        "nvidia-system-station-apps",
+        "nvidia-system-station-games",
+        "SOCFW",
+        "TPM"
+      ],
+      "required_match": [
+        "EC",
+        "EC Unfused"
+      ],
+      "required_satisfied": true
+    },
+    {
+      "ota": "OTA2",
+      "releaseDate": "2026-02-12T00:00:00.000Z",
+      "detection_rank": 65.67,
+      "match": 66.2,
+      "torn": 4.0,
+      "total_checks": 151,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-firmware-580-580.126.09",
+        "nvidia-system-station-apps",
+        "nvidia-system-station-games",
+        "EC",
+        "EC Unfused",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA2607",
+      "releaseDate": "2026-07-15T00:00:00.000Z",
+      "detection_rank": 64.46,
+      "match": 95.5,
+      "torn": 4.5,
+      "total_checks": 154,
+      "passed_checks": 147,
+      "failed": [
+        "nvidia-system-station-apps",
+        "nvidia-system-station-games",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA2604.Computex",
+      "releaseDate": "2026-06-01T00:00:00.000Z",
+      "detection_rank": 61.19,
+      "match": 87.7,
+      "torn": 4.5,
+      "total_checks": 154,
+      "passed_checks": 147,
+      "failed": [
+        "nvidia-system-station-apps",
+        "nvidia-system-station-games",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ],
+      "required_match": [
+        "dgx-dashboard",
+        "dgx-oobe"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2604-ebeta",
+      "releaseDate": "2026-03-31T01:00:00.000Z",
+      "detection_rank": 61.0,
+      "match": 53.3,
+      "torn": 13.3,
+      "total_checks": 15,
+      "passed_checks": 13,
+      "failed": [
+        "SOCFW",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA2.1",
+      "releaseDate": "2026-03-12T00:00:00.000Z",
+      "detection_rank": 58.57,
+      "match": 65.3,
+      "torn": 4.7,
+      "total_checks": 150,
+      "passed_checks": 143,
+      "failed": [
+        "nvidia-firmware-580-580.126.09",
+        "nvidia-system-station-apps",
+        "nvidia-system-station-games",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "TPM"
+      ],
+      "required_match": [
+        "SOCFW"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2604",
+      "releaseDate": "2026-04-21T00:00:00.000Z",
+      "detection_rank": 54.66,
+      "match": 72.1,
+      "torn": 4.5,
+      "total_checks": 154,
+      "passed_checks": 147,
+      "failed": [
+        "nvidia-system-station-apps",
+        "nvidia-system-station-games",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA1.1",
+      "releaseDate": "2025-12-01T00:00:00.000Z",
+      "detection_rank": 51.49,
+      "match": 64.5,
+      "torn": 3.2,
+      "total_checks": 155,
+      "passed_checks": 150,
+      "failed": [
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA1",
+      "releaseDate": "2025-11-12T00:00:00.000Z",
+      "detection_rank": 50.95,
+      "match": 63.2,
+      "torn": 3.2,
+      "total_checks": 155,
+      "passed_checks": 150,
+      "failed": [
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA0",
+      "releaseDate": "2025-10-04T00:00:00.000Z",
+      "detection_rank": 49.35,
+      "match": 59.5,
+      "torn": 3.6,
+      "total_checks": 168,
+      "passed_checks": 162,
+      "failed": [
+        "nvidia-firmware-580",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA0.1",
+      "releaseDate": "2025-10-10T00:00:00.000Z",
+      "detection_rank": 48.31,
+      "match": 57.0,
+      "torn": 3.8,
+      "total_checks": 158,
+      "passed_checks": 152,
+      "failed": [
+        "nvidia-firmware-580",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    }
+  ]
+}

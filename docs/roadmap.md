@@ -6343,14 +6343,36 @@ Proxy mode stays alive through the cut-over and is deleted last, so a backend
 built from this branch and deployed with today's `.env` behaves exactly like
 today. That is the rollback, and it needs no image swap.
 
-- [ ] **AL3a. Move the package, unchanged.** `spark_fleet/` →
-  `backend/src/spark_dash_backend/fleet/`, with the pause/restore fix.
-  `test_posture.py` → `backend/tests/test_fleet_posture.py`;
-  `validate_against_nodes.py` → `scripts/`. Hatchling ships every file under
-  the package directory, so `node_collect.py` (read as text, piped over SSH)
-  and `recipes/*.json` ride along — **verify in the built wheel**, since
-  `uv sync --no-editable` in the Dockerfile is where a missing data file
-  surfaces.
+- [x] **AL3a. Shipped 2026-09-22.** Nine modules and eleven recipes to
+  `backend/src/spark_dash_backend/fleet/`, `test_posture.py` to
+  `backend/tests/test_fleet_posture.py` with its 40 collector fixtures, and
+  `validate_against_nodes.py` to `scripts/validate_fleet_scorer.py`. The
+  relative imports needed no change: the package was already a package.
+
+  **Every `.py` and every recipe is byte-identical to its origin**, checked
+  with `diff` rather than asserted, and that is the property the phase is
+  for — until AL3g archives the other repo, a reviewer has to be able to
+  prove nothing was smuggled in during the move. The one exception is an
+  unused `import re` in `executor.py`, which was removed **in both copies**
+  so they stay identical.
+
+  Not carried: that service's `__main__.py`, its `Handler`, its TLS context
+  and `web/index.html`. The dashboard is the server; the panel is the page.
+
+  The packaging risk was real and is now checked rather than hoped: the built
+  wheel carries 9 modules, 11 recipes and `node_collect.py` — the last of
+  which is never imported, only read as text and piped to a node's
+  interpreter, so nothing would have failed until a real check ran against a
+  real Spark from a real image.
+
+  **Lint: an exemption with a sunset, not a reformat.** The moved code is in
+  the other project's denser style and trips ~190 `E501`/`E70x`/`E741` under
+  this repo's ruff. Reformatting would have meant ~190 edits across nine
+  files — precisely the diff that would stop anyone checking the move was
+  faithful. `pyproject.toml` carries a `per-file-ignores` block naming each
+  code and why, and it goes when AL3g does. Anything genuinely wrong rather
+  than merely unlike us is fixed in both copies while both exist, which is
+  why `F401` is not on that list.
 - [ ] **AL3b. Split service from transport.** Keep `Service` (collect, sweep,
   runs, `fleet()`); make its paths and interval constructor arguments; delete
   `Handler`, `_tls_context`, `main`, `web/index.html`. `ssh.py`'s env-derived

@@ -1,0 +1,965 @@
+# dmidecode 3.5
+Getting SMBIOS data from sysfs.
+SMBIOS 3.3.0 present.
+
+Handle 0x0009, DMI type 45, 26 bytes
+Firmware Inventory Information
+	Firmware Component Name: BIOS Firmware
+	Firmware Version: 5.36_GX10DGX
+	Firmware ID: 011FDCCC-5E61-5186-99AD-2772D5F330A2
+	Release Date: 05/05/2026
+	Manufacturer: Default string
+	Lowest Supported Firmware Version: 5.36_GX10DGX
+	Image Size: 32 MB
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 1
+		0x0000
+
+Handle 0x0013, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SROOT-FMC
+	Firmware Version: SROOT_FMC_BPT-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0014, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SROOT-FMC
+	Firmware Version: SROOT_FMC-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0015, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SROOT-FMC
+	Firmware Version: SROOT_FMC-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0016, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SROOT-FW
+	Firmware Version: SROOT_FW_BPT-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0017, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SROOT-FW
+	Firmware Version: SROOT_FW-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0018, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SROOT-FW
+	Firmware Version: SROOT_FW-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0019, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: AP-PL1
+	Firmware Version: APPL-NOGFH-EN
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x001A, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SoCFSVN
+	Firmware Version: SoC_Flash_SVN-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x001B, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-ADSP-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x001C, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-APPL-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x001D, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-C2C-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x001E, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-DISP_SMMU-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x001F, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-DISP-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0020, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-HFRP-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0021, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-HSIO_SMMU-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0022, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-ISP-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0023, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-OSROOT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0024, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-SCP-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0025, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-SVPP-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0026, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ACC
+	Firmware Version: ACC-VAD-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0027, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: PLL
+	Firmware Version: PLL_CLK-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0028, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: DCC
+	Firmware Version: DCC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0029, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SSPM
+	Firmware Version: SSPM_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x002A, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SSPM
+	Firmware Version: SSPM_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x002B, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: HFRP
+	Firmware Version: HFRP_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x002C, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: HFRP
+	Firmware Version: HFRP_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x002D, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: CPUEB
+	Firmware Version: CPUEB_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x002E, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: CPUEB
+	Firmware Version: CPUEB_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x002F, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: CPUEB
+	Firmware Version: CPUEB_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0030, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: CPUEB
+	Firmware Version: CPUEB_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0031, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: DPM
+	Firmware Version: DPM_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0032, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: DPM
+	Firmware Version: DPM_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0033, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: DPM
+	Firmware Version: DPM_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0034, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SPM
+	Firmware Version: SPM_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0035, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SPM
+	Firmware Version: SPM_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0036, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SPM
+	Firmware Version: SPM_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0037, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SPBM
+	Firmware Version: SPBM_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0038, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SPBM
+	Firmware Version: SPBM_FMC-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0039, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: USB4
+	Firmware Version: USB4_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x003A, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: USB4
+	Firmware Version: USB4-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x003B, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: BL31
+	Firmware Version: BL31
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x003C, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: BL32
+	Firmware Version: BL32
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x003D, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: TPM
+	Firmware Version: SOCTS
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x003E, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SoCDSVN
+	Firmware Version: SoC_Driver_SVN-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x003F, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: GPU
+	Firmware Version: GFW
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0040, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OSR_FMC
+	Firmware Version: OSROOT_FMC_BPT-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0041, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OSR_FMC
+	Firmware Version: OSROOT_FMC-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0042, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OSR_FMC
+	Firmware Version: OSROOT_FMC-0.1.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0043, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OSR_DCT
+	Firmware Version: OS_DCT
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0044, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OSR_FW
+	Firmware Version: FW-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0045, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OSR_FW
+	Firmware Version: FW-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0046, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OEMFSVN
+	Firmware Version: OEM_Flash_SVN-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0047, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: FLASH
+	Firmware Version: SBP:R:2.152.15
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0048, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: ESPI
+	Firmware Version: OEMTS_ESPI
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0049, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: STMM
+	Firmware Version: ASUS_STMM_0105
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x004A, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SCP
+	Firmware Version: SCP_BPT-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x004B, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: SCP
+	Firmware Version: SCP
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x004C, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: OEMDSVN
+	Firmware Version: OEM_Driver_SVN-1.0.0
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x004D, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: UEFI
+	Firmware Version: ASUS_UEFI_0105
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x004E, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: EC Firmware
+	Firmware Version: 3.3.2
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x004F, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: PD Firmware
+	Firmware Version: PD0 FW1: 5.22, FW2: 4.10
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0050, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: PD Firmware
+	Firmware Version: PD1 FW1: 5.22, FW2: 4.10
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+
+Handle 0x0051, DMI type 45, 24 bytes
+Firmware Inventory Information
+	Firmware Component Name: GOP Driver
+	Firmware Version: 9000C60
+	Firmware ID: Not Specified
+	Release Date: Not Specified
+	Manufacturer: Not Specified
+	Lowest Supported Firmware Version: Not Specified
+	Image Size: Unknown
+	Characteristics:
+		Updatable: Yes
+		Write-Protect: No
+	State: Enabled
+	Associated Components: 0
+

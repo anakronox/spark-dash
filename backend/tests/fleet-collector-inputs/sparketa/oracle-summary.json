@@ -1,0 +1,190 @@
+{
+  "detected_ota": "OTA2607",
+  "releaseDate": "2026-07-15T00:00:00.000Z",
+  "torn": 1.3,
+  "scores": [
+    {
+      "ota": "OTA2607",
+      "releaseDate": "2026-07-15T00:00:00.000Z",
+      "detection_rank": 90.98,
+      "match": 98.7,
+      "torn": 1.3,
+      "total_checks": 153,
+      "passed_checks": 151,
+      "failed": [
+        "nvidia-firmware-580-580.159.03",
+        "USBPD"
+      ]
+    },
+    {
+      "ota": "OTA2604.Computex",
+      "releaseDate": "2026-06-01T00:00:00.000Z",
+      "detection_rank": 70.21,
+      "match": 89.5,
+      "torn": 2.6,
+      "total_checks": 153,
+      "passed_checks": 149,
+      "failed": [
+        "nvidia-firmware-580-580.159.03",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ],
+      "required_match": [
+        "dgx-dashboard",
+        "dgx-oobe"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2604",
+      "releaseDate": "2026-04-21T00:00:00.000Z",
+      "detection_rank": 63.68,
+      "match": 73.9,
+      "torn": 2.6,
+      "total_checks": 153,
+      "passed_checks": 149,
+      "failed": [
+        "nvidia-firmware-580-580.142",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ]
+    },
+    {
+      "ota": "OTA2.2",
+      "releaseDate": "2026-03-31T00:00:00.000Z",
+      "detection_rank": 60.88,
+      "match": 67.1,
+      "torn": 2.7,
+      "total_checks": 149,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-firmware-580-580.126.09",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ],
+      "required_match": [
+        "EC",
+        "EC Unfused"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2.1",
+      "releaseDate": "2026-03-12T00:00:00.000Z",
+      "detection_rank": 60.88,
+      "match": 67.1,
+      "torn": 2.7,
+      "total_checks": 149,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-firmware-580-580.126.09",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ],
+      "required_match": [
+        "SOCFW"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2",
+      "releaseDate": "2026-02-12T00:00:00.000Z",
+      "detection_rank": 60.69,
+      "match": 66.7,
+      "torn": 3.3,
+      "total_checks": 150,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580-580.126.09",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ]
+    },
+    {
+      "ota": "OTA1.1",
+      "releaseDate": "2025-12-01T00:00:00.000Z",
+      "detection_rank": 59.7,
+      "match": 64.3,
+      "torn": 3.2,
+      "total_checks": 154,
+      "passed_checks": 149,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580-580.95.05",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ]
+    },
+    {
+      "ota": "OTA1",
+      "releaseDate": "2025-11-12T00:00:00.000Z",
+      "detection_rank": 59.43,
+      "match": 63.6,
+      "torn": 3.2,
+      "total_checks": 154,
+      "passed_checks": 149,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580-580.95.05",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ]
+    },
+    {
+      "ota": "OTA0",
+      "releaseDate": "2025-10-04T00:00:00.000Z",
+      "detection_rank": 57.85,
+      "match": 59.9,
+      "torn": 3.6,
+      "total_checks": 167,
+      "passed_checks": 161,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580",
+        "nvidia-firmware-580-580.95.05",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ]
+    },
+    {
+      "ota": "OTA0.1",
+      "releaseDate": "2025-10-10T00:00:00.000Z",
+      "detection_rank": 56.8,
+      "match": 57.3,
+      "torn": 3.8,
+      "total_checks": 157,
+      "passed_checks": 151,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580",
+        "nvidia-firmware-580-580.95.05",
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ]
+    },
+    {
+      "ota": "OTA2604-ebeta",
+      "releaseDate": "2026-03-31T01:00:00.000Z",
+      "detection_rank": 48.75,
+      "match": 42.9,
+      "torn": 21.4,
+      "total_checks": 14,
+      "passed_checks": 11,
+      "failed": [
+        "SOCFW",
+        "EC",
+        "USBPD"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,836 @@
+{
+  "Devices" : [
+    {
+      "Name" : "ASUS KEK Certificate",
+      "DeviceId" : "bac04f15d3047b9babea615ab154ebb8d3d249a8",
+      "ParentDeviceId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "CompositeId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "InstanceIds" : [
+        "UEFI\\CRT_B2255EAF243663D5AE776B2118F8391C5AB4B1B1"
+      ],
+      "Guid" : [
+        "9d428a4e-9621-583b-b40b-8291e0f33558"
+      ],
+      "Plugin" : "uefi_kek",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "needs-reboot",
+        "usable-during-update",
+        "updatable-hidden",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Version" : "2020",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2020,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214,
+      "UpdateError" : "No vendor ID set"
+    },
+    {
+      "Name" : "ASUS UEFI SW Key Certificate",
+      "DeviceId" : "3c1d21be37596f3d97873b623a93e4d5ad192636",
+      "ParentDeviceId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "CompositeId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "InstanceIds" : [
+        "UEFI\\CRT_B60E729D6598E6BDB225FC76BA1481FD9191BC4C"
+      ],
+      "Guid" : [
+        "920beb22-25c1-5742-9349-f6c2ea9df03a"
+      ],
+      "Plugin" : "uefi_db",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "needs-reboot",
+        "updatable-hidden",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Version" : "2020",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2020,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214,
+      "UpdateError" : "No vendor ID set"
+    },
+    {
+      "Name" : "Embedded Controller",
+      "DeviceId" : "798397787f4afcf1e2bb8575cb19630f12180584",
+      "Guid" : [
+        "c3cccaf0-9a3e-4ee2-992e-9f0cf9b55fa0"
+      ],
+      "Summary" : "UEFI System Resource Table device (Updated via capsule-on-disk)",
+      "Plugin" : "uefi_capsule",
+      "Protocols" : [
+        "org.uefi.capsule"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "supported",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "RequestFlags" : [
+        "allow-generic-message"
+      ],
+      "Vendor" : "Asus",
+      "VendorIds" : [
+        "DMI:American Megatrends International, LLC."
+      ],
+      "Version" : "0x02000006",
+      "VersionLowest" : "0x01000000",
+      "VersionFormat" : "hex",
+      "VersionRaw" : 33554438,
+      "VersionLowestRaw" : 16777216,
+      "Created" : 1787175214,
+      "UpdateState" : 2,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.asus.gx10dgx.ec.firmware",
+          "ReleaseId" : "146564",
+          "RemoteId" : "lvfs",
+          "Name" : "GX10",
+          "Summary" : "GX10 Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Device.</p><ul><li>Please refer to NV GB10 OTA2604 release note for the detail.</li><li>Fixed power LED turn on after 5 sec when press power button.</li></ul>",
+          "Version" : "0x02000006",
+          "Filename" : "ec_3.3.2.4_signed.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "5e6ad3ff2d1fd4f816853b270af887b4b573326b",
+            "d079e8411120334621172cc585836084278556fdddf976be56a56d45030fa9b0"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 518937,
+          "Created" : 1785369600,
+          "Locations" : [
+            "https://fwupd.org/downloads/d079e8411120334621172cc585836084278556fdddf976be56a56d45030fa9b0-ec_3.3.2.4_signed.cab"
+          ],
+          "Homepage" : "https://www.asus.com",
+          "Vendor" : "Asus",
+          "Flags" : [
+            "trusted-metadata",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "ASUSTeK COMPUTER INC. GX10",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x02000005",
+              "Vendor" : "Asus",
+              "RemoteId" : "lvfs",
+              "VendorId" : 65,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.34"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.asus.gx10dgx.ec.firmware",
+          "ReleaseId" : "139357",
+          "RemoteId" : "lvfs",
+          "Name" : "GX10",
+          "Summary" : "GX10 Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Device.</p><ul><li>OTA2.2 EC hotfix release.</li></ul>",
+          "Version" : "0x02000005",
+          "Filename" : "ec_2.78.24.3_signed.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "b09b00c32f26f9113bc3405e0591f59d783994cd",
+            "56023de68779af3b1696dc6c216af99dfd771abb99d1ad4abd2bb494c1098c0e"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 518937,
+          "Created" : 1775606400,
+          "Locations" : [
+            "https://fwupd.org/downloads/56023de68779af3b1696dc6c216af99dfd771abb99d1ad4abd2bb494c1098c0e-ec_2.78.24.3_signed.cab"
+          ],
+          "Homepage" : "https://www.asus.com",
+          "Vendor" : "Asus",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 30
+        }
+      ]
+    },
+    {
+      "Name" : "KEK CA",
+      "DeviceId" : "b7a1d3d90faa1f6275d9a98da4fb3be7118e61c7",
+      "ParentDeviceId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "CompositeId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_Microsoft&NAME_Microsoft-KEK-CA",
+        "UEFI\\CRT_DEC64D7746D983DB3774829A00BF829D9F19E9CF"
+      ],
+      "Guid" : [
+        "814e950f-1449-566a-a190-42c9d3a3a2df",
+        "cd94ec34-7163-5f27-8549-1bd4b7872ae8"
+      ],
+      "Plugin" : "uefi_kek",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "2023",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2023,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "MT2910 Family (ConnectX-7)",
+      "DeviceId" : "a4579f023cd804241fb4384222fc6018c364d7a7",
+      "Serial" : "REDACTED",
+      "Summary" : "Devlink device (pci/0000:01:00.0)",
+      "Plugin" : "devlink",
+      "Protocols" : [
+        "org.kernel.devlink"
+      ],
+      "Flags" : [
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Mellanox",
+      "VendorIds" : [
+        "PCI:0x15B3"
+      ],
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "MT2910 Family (ConnectX-7) (Composite)",
+      "DeviceId" : "44d1e3e0fa17c4160b87f506353365d4dccad387",
+      "ParentDeviceId" : "a4579f023cd804241fb4384222fc6018c364d7a7",
+      "CompositeId" : "a4579f023cd804241fb4384222fc6018c364d7a7",
+      "InstanceIds" : [
+        "PCI\\VEN_15B3&DEV_1021&COMPONENT_fw",
+        "PCI\\VEN_15B3&DEV_1021&COMPONENT_fw&FW.PSID_NVD0000000087"
+      ],
+      "Guid" : [
+        "04089056-a45b-544f-98d9-1085877daba5",
+        "479999c8-4487-580a-aaae-2b8cb961952a"
+      ],
+      "Plugin" : "devlink",
+      "Protocols" : [
+        "org.kernel.devlink"
+      ],
+      "Flags" : [
+        "updatable",
+        "dual-image",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "Vendor" : "Mellanox",
+      "VendorIds" : [
+        "PCI:0x15B3"
+      ],
+      "Version" : "28.45.4028",
+      "VersionFormat" : "triplet",
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "MZALC4T0HBL1-00B07",
+      "DeviceId" : "7de5ffdca08fa52d95fd4bb42aa5d07a4b35d2dd",
+      "InstanceIds" : [
+        "NVME\\VEN_144D&DEV_A810",
+        "NVME\\VEN_144D&DEV_A810&SUBSYS_144DA801",
+        "SAMSUNG MZALC4T0HBL1-00B07"
+      ],
+      "Guid" : [
+        "35abf34a-7ed8-51b2-ba1b-edef527d47e6",
+        "095ba8dd-3778-52b4-9f32-02a67c210ce5",
+        "93768061-87bf-5c78-b9ea-5b7a6301012b"
+      ],
+      "Serial" : "REDACTED",
+      "Summary" : "NVM Express solid state drive",
+      "Plugin" : "nvme",
+      "Protocols" : [
+        "org.nvmexpress"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Samsung",
+      "VendorIds" : [
+        "PCI:0x144D"
+      ],
+      "Version" : "NXHB202Q",
+      "VersionFormat" : "plain",
+      "Icons" : [
+        "drive-harddisk"
+      ],
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "SBAT",
+      "DeviceId" : "6469856584e2f5873b2f148302e46c9313c7d054",
+      "InstanceIds" : [
+        "UEFI\\OS_ubuntu&VAR_SbatLevelRT"
+      ],
+      "Guid" : [
+        "9947c120-b97b-52d6-9d83-738a1c342e23"
+      ],
+      "Summary" : "Generation number based revocation mechanism",
+      "Plugin" : "uefi_sbat",
+      "Protocols" : [
+        "com.uefi.sbat"
+      ],
+      "Flags" : [
+        "updatable",
+        "needs-reboot",
+        "signed-payload"
+      ],
+      "VendorIds" : [
+        "OS:ubuntu"
+      ],
+      "Version" : "1.5.4",
+      "VersionFormat" : "triplet",
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "SBoot1",
+      "DeviceId" : "6924110cde4fa051bfdc600a60620dc7aa9d3c6a",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_Intel-Corporation&NAME_SBoot1",
+        "UEFI\\CRT_8C8766CA9765689C61BFC3844E0D34DAB0054109"
+      ],
+      "Guid" : [
+        "00eef9b6-3470-5017-bdd0-20b3086c4f04",
+        "3de468af-5721-51d4-ac87-99e8e4f8da94"
+      ],
+      "Summary" : "UEFI Platform Key",
+      "Plugin" : "uefi_pk",
+      "Flags" : [
+        "internal"
+      ],
+      "Vendor" : "Intel Corporation",
+      "Version" : "2019",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2019,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "UEFI CA",
+      "DeviceId" : "5bc922b7bd1adb5b6f99592611404036bd9f42d0",
+      "ParentDeviceId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "CompositeId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_Microsoft&NAME_Microsoft-UEFI-CA",
+        "UEFI\\CRT_7CD7437C555F89E7C2B50E21937E420C4E583E80"
+      ],
+      "Guid" : [
+        "26f42cba-9bf6-5365-802b-e250eb757e96",
+        "308281c7-d0c5-52e0-8c1a-810540de03df"
+      ],
+      "Plugin" : "uefi_db",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "supported",
+        "needs-reboot",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "2023",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2023,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.microsoft.db-uefi-3p.firmware",
+          "ReleaseId" : "116503",
+          "RemoteId" : "lvfs",
+          "Name" : "Secure Boot Signature Database",
+          "Summary" : "UEFI Secure Boot Signature Database",
+          "Description" : "<p>This updates the 3rd Party UEFI Signature Database (the &quot;db&quot;) to the latest release from Microsoft.It also adds the latest OptionROM UEFI Signature Database update.</p>",
+          "Version" : "2023",
+          "Filename" : "DBUpdate-3P2023_OROM2023.cab",
+          "Protocol" : "org.uefi.dbx2",
+          "Categories" : [
+            "X-Configuration",
+            "X-System"
+          ],
+          "Checksum" : [
+            "b53eb93620abf86bdf56d97811b7a9ab102ed4be",
+            "4bdf420ad7e5ddde89d7a66ffe1b4328927059d56551f03afac855c4ed80f6c3"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 10023,
+          "Created" : 1745884800,
+          "Locations" : [
+            "https://fwupd.org/downloads/4bdf420ad7e5ddde89d7a66ffe1b4328927059d56551f03afac855c4ed80f6c3-DBUpdate-3P2023_OROM2023.cab"
+          ],
+          "Homepage" : "https://fwupd.github.io/libfwupdplugin/uefi-db.html",
+          "Vendor" : "Microsoft",
+          "Flags" : [
+            "trusted-metadata"
+          ],
+          "Reports" : [
+            {
+              "DeviceName" : "LENOVO ThinkPad P15v Gen 1",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "25.10",
+              "VersionOld" : "2011",
+              "Vendor" : "Lenovo",
+              "RemoteId" : "lvfs",
+              "VendorId" : 84,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.16"
+            },
+            {
+              "DeviceName" : "Framework Laptop 16 (AMD Ryzen 7040 Series)",
+              "DistroId" : "fedora",
+              "DistroVariant" : "workstation",
+              "DistroVersion" : "42",
+              "VersionOld" : "2011",
+              "Vendor" : "Framework",
+              "RemoteId" : "lvfs",
+              "VendorId" : 438,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.16"
+            },
+            {
+              "DeviceName" : "Framework Laptop (12th Gen Intel Core)",
+              "DistroId" : "fedora",
+              "DistroVariant" : "workstation",
+              "DistroVersion" : "42",
+              "VersionOld" : "2011",
+              "Vendor" : "Framework",
+              "RemoteId" : "lvfs",
+              "VendorId" : 438,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.16"
+            },
+            {
+              "DeviceName" : "Framework Laptop 13 (Intel Core Ultra Series 1)",
+              "DistroId" : "nixos",
+              "DistroVersion" : "25.11",
+              "VersionOld" : "2011",
+              "Vendor" : "Framework",
+              "RemoteId" : "lvfs",
+              "VendorId" : 438,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.12"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name" : "UEFI Device Firmware",
+      "DeviceId" : "1df564c6ffffdc355893f9d0ec29813e0a1141b5",
+      "Guid" : [
+        "f1392323-3920-4598-a932-ef06360cf403"
+      ],
+      "Summary" : "UEFI System Resource Table device (Updated via capsule-on-disk)",
+      "Plugin" : "uefi_capsule",
+      "Protocols" : [
+        "org.uefi.capsule"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "supported",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "RequestFlags" : [
+        "allow-generic-message"
+      ],
+      "Vendor" : "Asus",
+      "VendorIds" : [
+        "DMI:American Megatrends International, LLC."
+      ],
+      "Version" : "0x03000007",
+      "VersionLowest" : "0x02000000",
+      "VersionFormat" : "hex",
+      "VersionRaw" : 50331655,
+      "VersionLowestRaw" : 33554432,
+      "Created" : 1787175214,
+      "UpdateState" : 2,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.asus.gx10dgx.socfw.firmware",
+          "ReleaseId" : "146563",
+          "RemoteId" : "lvfs",
+          "Name" : "GX10 SoC FW",
+          "Summary" : "GX10 SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Device.</p><ul><li>OOBE, Coreboot robustness, NCCL performance Improvements.</li><li>SBP updates.</li><li>System compatibility improvement, including USB, display, networking, etc.</li><li>SUT no display after CB when connect on Type-C port3 via Type-C to HDMI dongle(7NNN5) with P2426HE, P2726HE, U2724D, P2725DE.</li><li>power LED turn on after 5 sec when press power button.</li><li>&quot;MAG321CURV&quot; monitor, HDMI cannot be displayed in Nvidia logo and BIOS.</li><li>Please refer to NV GB10 OTA2604 release note for the detail.</li></ul>",
+          "Version" : "0x03000007",
+          "Filename" : "bsp_ota2604_socfw307_bios_0105_ec_3.3.2.4_signed.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "9387e775c86fc6eec42479bd3395d286c049d4a2",
+            "8157fbdb8a0ae0686062b9d3a8a82a1eb0daa5729a2e77d3e459d0676fd736c6"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411545,
+          "Created" : 1785369600,
+          "Locations" : [
+            "https://fwupd.org/downloads/8157fbdb8a0ae0686062b9d3a8a82a1eb0daa5729a2e77d3e459d0676fd736c6-bsp_ota2604_socfw307_bios_0105_ec_3.3.2.4_signed.cab"
+          ],
+          "Homepage" : "https://www.asus.com",
+          "Vendor" : "Asus",
+          "Flags" : [
+            "trusted-metadata",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "ASUSTeK COMPUTER INC. GX10",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x00000001",
+              "Vendor" : "Asus",
+              "RemoteId" : "lvfs",
+              "VendorId" : 65,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.34"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.asus.gx10dgx.socfw.firmware",
+          "ReleaseId" : "139087",
+          "RemoteId" : "lvfs",
+          "Name" : "GX10 SoC FW",
+          "Summary" : "GX10 SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Device.</p><ul><li>Apply UEFI hotfix for GA2.0 OTA2.1.</li></ul>",
+          "Version" : "0x03000006",
+          "Filename" : "bsp_ota2.1_socfw_306_bios_0104_ec_2.78.18.3_signed.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "c4187fe6cb41583d5e54c18d03da47a3a1dc4faf",
+            "7bd831305ca6f0404561d4c5a13d18585b757ab30f1d72ec3c13827de255c1ca"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411545,
+          "Created" : 1775088000,
+          "Locations" : [
+            "https://fwupd.org/downloads/7bd831305ca6f0404561d4c5a13d18585b757ab30f1d72ec3c13827de255c1ca-bsp_ota2.1_socfw_306_bios_0104_ec_2.78.18.3_signed.cab"
+          ],
+          "Homepage" : "https://www.asus.com",
+          "Vendor" : "Asus",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 30
+        }
+      ]
+    },
+    {
+      "Name" : "UEFI Device Firmware",
+      "DeviceId" : "7fd0410f4194ca73faaa60d3392bcd91ef4ee070",
+      "Guid" : [
+        "fe75bb1c-5ccc-4936-b603-cc7cf945dc30"
+      ],
+      "Summary" : "UEFI System Resource Table device (Updated via capsule-on-disk)",
+      "Plugin" : "uefi_capsule",
+      "Protocols" : [
+        "org.uefi.capsule"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "supported",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "RequestFlags" : [
+        "allow-generic-message"
+      ],
+      "Vendor" : "Asus",
+      "VendorIds" : [
+        "DMI:American Megatrends International, LLC."
+      ],
+      "Version" : "0x00000516",
+      "VersionLowest" : "0x00000309",
+      "VersionFormat" : "hex",
+      "VersionRaw" : 1302,
+      "VersionLowestRaw" : 777,
+      "Created" : 1787175214,
+      "UpdateState" : 2,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.asus.gx10dgx.usbpd.firmware",
+          "ReleaseId" : "141354",
+          "RemoteId" : "lvfs",
+          "Name" : "GX10 USB-C PD FW",
+          "Summary" : "GX10 USB-C PD FW Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Device.</p><ul><li>Integrated in OTA2604.</li></ul>",
+          "Version" : "0x00000516",
+          "Filename" : "usbpd_5.22.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-Controller"
+          ],
+          "Checksum" : [
+            "9b4173ac2aac27eda0ab1589299d99a3875ab6bb",
+            "9e5bf0347c3065bd050feda602b4ec58c54253ae6e031aaf64db85b51314993a"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 1051417,
+          "Created" : 1777852800,
+          "Locations" : [
+            "https://fwupd.org/downloads/9e5bf0347c3065bd050feda602b4ec58c54253ae6e031aaf64db85b51314993a-usbpd_5.22.cab"
+          ],
+          "Homepage" : "https://www.asus.com",
+          "Vendor" : "Asus",
+          "Flags" : [
+            "trusted-metadata",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "ASUSTeK COMPUTER INC. GX10",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x00000001",
+              "Vendor" : "Asus",
+              "RemoteId" : "lvfs",
+              "VendorId" : 65,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.33"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.asus.gx10dgx.usbpd.firmware",
+          "ReleaseId" : "133405",
+          "RemoteId" : "lvfs",
+          "Name" : "GX10 USB-C PD FW",
+          "Summary" : "GX10 USB-C PD FW Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Device.</p><ul><li>Isolated the SBU mux when the U4_RDY signal is low.</li><li>Added a workaround to the MSI Dongle EXIT_DP_MODE issue.</li></ul>",
+          "Version" : "0x00000507",
+          "Filename" : "usbpd_5.7.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-Controller"
+          ],
+          "Checksum" : [
+            "ebf60439cbecfdb22c74ae346b0e2f6cabf1b3e4",
+            "c0044b32557fd69a19cc05838a7d62629df3edf003f787b4dacd990dd35c295f"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 1051417,
+          "Created" : 1765238400,
+          "Locations" : [
+            "https://fwupd.org/downloads/c0044b32557fd69a19cc05838a7d62629df3edf003f787b4dacd990dd35c295f-usbpd_5.7.cab"
+          ],
+          "Homepage" : "https://www.asus.com",
+          "Vendor" : "Asus",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "ASUSTeK COMPUTER INC. GX10",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x00000500",
+              "Vendor" : "Asus",
+              "RemoteId" : "lvfs",
+              "VendorId" : 65,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.30"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name" : "UEFI Key Exchange Key",
+      "DeviceId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "Plugin" : "uefi_kek",
+      "Flags" : [
+        "internal"
+      ],
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "UEFI Signature Database",
+      "DeviceId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "Plugin" : "uefi_db",
+      "Flags" : [
+        "internal"
+      ],
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "UEFI dbx",
+      "DeviceId" : "362301da643102b9f38477387e2193e57abaa590",
+      "InstanceIds" : [
+        "UEFI\\CRT_103560ADA2E78C48DDA52A2D71A00FC1D30F469E1E20332FDA01CDE9B796B049&ARCH_AA64",
+        "UEFI\\CRT_A1117F516A32CEFCBA3F2D1ACE10A87972FD6BBE8FE0D0B996E09E65D802A503&ARCH_AA64",
+        "UEFI\\CRT_3CD3F0309EDAE228767A976DD40D9F4AFFC4FBD5218F2E8CC3C9DD97E8AC6F9D&ARCH_AA64"
+      ],
+      "Guid" : [
+        "026c46fa-db36-5397-883d-047809df980a",
+        "67d35028-ca5b-5834-834a-f97380381082",
+        "10ec82f4-ff64-5362-9e5d-688febf5dbb0"
+      ],
+      "Summary" : "UEFI revocation database",
+      "Plugin" : "uefi_dbx",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "needs-reboot",
+        "usable-during-update",
+        "only-version-upgrade",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Checksums" : [
+        "ab311e737112e4d34abf545836bc671637663e93738cefa37405214ce8c92a58"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "20230501",
+      "VersionLowest" : "20230501",
+      "VersionFormat" : "number",
+      "Icons" : [
+        "application-certificate"
+      ],
+      "InstallDuration" : 1,
+      "Created" : 1787175214
+    },
+    {
+      "Name" : "Windows UEFI CA",
+      "DeviceId" : "d31da5f926c6d962ed810b284fab5a2ef623007b",
+      "ParentDeviceId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "CompositeId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_Microsoft&NAME_Windows-UEFI-CA",
+        "UEFI\\CRT_A794240D25F0CCB2EC8142DC2F7411890717DEAD"
+      ],
+      "Guid" : [
+        "914015a8-9d92-5462-9a9b-f2b361e4faae",
+        "89a825bf-78b5-5f1c-905b-e982b2f02584"
+      ],
+      "Plugin" : "uefi_db",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "needs-reboot",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "2023",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2023,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175214
+    }
+  ]
+}

@@ -1,0 +1,212 @@
+{
+  "detected_ota": "OTA2604",
+  "releaseDate": "2026-04-21T00:00:00.000Z",
+  "torn": 0.6,
+  "scores": [
+    {
+      "ota": "OTA2604.Computex",
+      "releaseDate": "2026-06-01T00:00:00.000Z",
+      "detection_rank": 90.9,
+      "match": 91.6,
+      "torn": 0.6,
+      "total_checks": 155,
+      "passed_checks": 154,
+      "failed": [
+        "TPM"
+      ],
+      "required_match": [
+        "dgx-dashboard",
+        "dgx-oobe"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2604",
+      "releaseDate": "2026-04-21T00:00:00.000Z",
+      "detection_rank": 84.37,
+      "match": 76.1,
+      "torn": 0.6,
+      "total_checks": 155,
+      "passed_checks": 154,
+      "failed": [
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA2607",
+      "releaseDate": "2026-07-15T00:00:00.000Z",
+      "detection_rank": 76.67,
+      "match": 97.4,
+      "torn": 2.6,
+      "total_checks": 155,
+      "passed_checks": 151,
+      "failed": [
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA2.2",
+      "releaseDate": "2026-03-31T00:00:00.000Z",
+      "detection_rank": 57.97,
+      "match": 66.2,
+      "torn": 4.0,
+      "total_checks": 151,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-firmware-580-580.126.09",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ],
+      "required_match": [
+        "EC",
+        "EC Unfused"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2.1",
+      "releaseDate": "2026-03-12T00:00:00.000Z",
+      "detection_rank": 57.97,
+      "match": 66.2,
+      "torn": 4.0,
+      "total_checks": 151,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-firmware-580-580.126.09",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ],
+      "required_match": [
+        "SOCFW"
+      ],
+      "required_satisfied": false
+    },
+    {
+      "ota": "OTA2",
+      "releaseDate": "2026-02-12T00:00:00.000Z",
+      "detection_rank": 57.78,
+      "match": 65.8,
+      "torn": 4.6,
+      "total_checks": 152,
+      "passed_checks": 145,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580-580.126.09",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA1.1",
+      "releaseDate": "2025-12-01T00:00:00.000Z",
+      "detection_rank": 56.78,
+      "match": 63.5,
+      "torn": 4.5,
+      "total_checks": 156,
+      "passed_checks": 149,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580-580.95.05",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA1",
+      "releaseDate": "2025-11-12T00:00:00.000Z",
+      "detection_rank": 56.51,
+      "match": 62.8,
+      "torn": 4.5,
+      "total_checks": 156,
+      "passed_checks": 149,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580-580.95.05",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA0",
+      "releaseDate": "2025-10-04T00:00:00.000Z",
+      "detection_rank": 53.69,
+      "match": 56.2,
+      "torn": 7.7,
+      "total_checks": 169,
+      "passed_checks": 156,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580",
+        "nvidia-firmware-580-580.95.05",
+        "nvidia-oem-config-bmc",
+        "nvidia-oem-config-crypt-passwd",
+        "nvidia-oem-config-eula",
+        "nvidia-oem-config-grub-passwd",
+        "nvidia-oem-config-postact",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA0.1",
+      "releaseDate": "2025-10-10T00:00:00.000Z",
+      "detection_rank": 52.56,
+      "match": 53.5,
+      "torn": 8.2,
+      "total_checks": 159,
+      "passed_checks": 146,
+      "failed": [
+        "nvidia-disable-bt-profiles",
+        "nvidia-firmware-580",
+        "nvidia-firmware-580-580.95.05",
+        "nvidia-oem-config-bmc",
+        "nvidia-oem-config-crypt-passwd",
+        "nvidia-oem-config-eula",
+        "nvidia-oem-config-grub-passwd",
+        "nvidia-oem-config-postact",
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    },
+    {
+      "ota": "OTA2604-ebeta",
+      "releaseDate": "2026-03-31T01:00:00.000Z",
+      "detection_rank": 45.83,
+      "match": 37.5,
+      "torn": 31.2,
+      "total_checks": 16,
+      "passed_checks": 11,
+      "failed": [
+        "SOCFW",
+        "EC",
+        "EC Unfused",
+        "USBPD",
+        "TPM"
+      ]
+    }
+  ]
+}

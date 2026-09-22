@@ -1,0 +1,699 @@
+{
+  "metadata": {
+    "name": "OTA0",
+    "external_name": "",
+    "description": "",
+    "priority": "important",
+    "releaseNotesUrl": "https://docs.nvidia.com/dgx/dgx-spark/release-notes.html",
+    "releaseDate": "2025-10-04T00:00:00.000Z"
+  },
+  "package": [
+    {
+      "name": "cuda-cccl-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-command-line-tools-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-compiler-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-compute-repo-lowpri",
+      "version": "25.09-2"
+    },
+    {
+      "name": "cuda-crt-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "cuda-cudart-13-0",
+      "version": "13.0.96-1"
+    },
+    {
+      "name": "cuda-cudart-dev-13-0",
+      "version": "13.0.96-1"
+    },
+    {
+      "name": "cuda-culibos-dev-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-cuobjdump-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-cupti-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-cupti-dev-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-cuxxfilt-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-documentation-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-driver-dev-13-0",
+      "version": "13.0.96-1"
+    },
+    {
+      "name": "cuda-gdb-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-libraries-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-libraries-dev-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-nsight-compute-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-nsight-systems-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-nvcc-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "cuda-nvdisasm-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-nvml-dev-13-0",
+      "version": "13.0.87-1"
+    },
+    {
+      "name": "cuda-nvprune-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-nvrtc-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "cuda-nvrtc-dev-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "cuda-nvtx-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-profiler-api-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-sanitizer-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "cuda-toolkit-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-toolkit-13-0-config-common",
+      "version": "13.0.96-1"
+    },
+    {
+      "name": "cuda-toolkit-13-config-common",
+      "version": "13.0.96-1"
+    },
+    {
+      "name": "cuda-toolkit-config-common",
+      "version": "13.0.96-1"
+    },
+    {
+      "name": "cuda-tools-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "cuda-visual-tools-13-0",
+      "version": "13.0.2-1"
+    },
+    {
+      "name": "dgx-dashboard",
+      "version": "0.19.1"
+    },
+    {
+      "name": "dgx-oobe",
+      "version": "0.17.9"
+    },
+    {
+      "name": "dgx-oobe-desktop",
+      "version": "0.4.0-0.4.0"
+    },
+    {
+      "name": "dgx-release",
+      "version": "7.2.3"
+    },
+    {
+      "name": "dgx-repo",
+      "version": "25.09-2"
+    },
+    {
+      "name": "dgx-spark-ota-update-meta",
+      "version": "25.10.2"
+    },
+    {
+      "name": "dgxstation-desktop",
+      "version": "25.09-4"
+    },
+    {
+      "name": "dgxstation-grub",
+      "version": "25.02-1"
+    },
+    {
+      "name": "libblockdev-nvme3",
+      "version": "3.1.1-1ubuntu0.1"
+    },
+    {
+      "name": "libcublas-13-0",
+      "version": "13.1.0.3-1"
+    },
+    {
+      "name": "libcublas-dev-13-0",
+      "version": "13.1.0.3-1"
+    },
+    {
+      "name": "libcue2",
+      "version": "2.2.1-4.1build1"
+    },
+    {
+      "name": "libcufft-13-0",
+      "version": "12.0.0.61-1"
+    },
+    {
+      "name": "libcufft-dev-13-0",
+      "version": "12.0.0.61-1"
+    },
+    {
+      "name": "libcufile-13-0",
+      "version": "1.15.1.6-1"
+    },
+    {
+      "name": "libcufile-dev-13-0",
+      "version": "1.15.1.6-1"
+    },
+    {
+      "name": "libcurand-13-0",
+      "version": "10.4.0.35-1"
+    },
+    {
+      "name": "libcurand-dev-13-0",
+      "version": "10.4.0.35-1"
+    },
+    {
+      "name": "libcusolver-13-0",
+      "version": "12.0.4.66-1"
+    },
+    {
+      "name": "libcusolver-dev-13-0",
+      "version": "12.0.4.66-1"
+    },
+    {
+      "name": "libcusparse-13-0",
+      "version": "12.6.3.3-1"
+    },
+    {
+      "name": "libcusparse-dev-13-0",
+      "version": "12.6.3.3-1"
+    },
+    {
+      "name": "libnvfatbin-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "libnvfatbin-dev-13-0",
+      "version": "13.0.85-1"
+    },
+    {
+      "name": "libnvidia-cfg1-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvidia-common-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvidia-compute-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvidia-container-tools",
+      "version": "1.18.0-1"
+    },
+    {
+      "name": "libnvidia-container1",
+      "version": "1.18.0-1"
+    },
+    {
+      "name": "libnvidia-decode-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvidia-egl-wayland1",
+      "version": "1:1.1.20-1ubuntu1"
+    },
+    {
+      "name": "libnvidia-encode-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvidia-extra-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvidia-fbc1-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvidia-gl-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "libnvjitlink-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "libnvjitlink-dev-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "libnvjpeg-13-0",
+      "version": "13.0.1.86-1"
+    },
+    {
+      "name": "libnvjpeg-dev-13-0",
+      "version": "13.0.1.86-1"
+    },
+    {
+      "name": "libnvptxcompiler-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "libnvvm-13-0",
+      "version": "13.0.88-1"
+    },
+    {
+      "name": "libuno-purpenvhelpergcc3-3t64",
+      "version": "4:24.2.7-0ubuntu0.24.04.4"
+    },
+    {
+      "name": "libv4lconvert0t64",
+      "version": "1.26.1-4build3"
+    },
+    {
+      "name": "linux-firmware",
+      "version": "20240318.git3b128b60-0ubuntu2.19"
+    },
+    {
+      "name": "linux-sound-base",
+      "version": "1.0.25+dfsg-0ubuntu7"
+    },
+    {
+      "name": "network-manager-openvpn",
+      "version": "1.10.2-4build2"
+    },
+    {
+      "name": "network-manager-openvpn-gnome",
+      "version": "1.10.2-4build2"
+    },
+    {
+      "name": "nsight-compute-2025.3.1",
+      "version": "2025.3.1.4-1"
+    },
+    {
+      "name": "nsight-systems-2025.3.2",
+      "version": "2025.3.2.474-253236389321v0"
+    },
+    {
+      "name": "nv-common-apis",
+      "version": "25.09-1"
+    },
+    {
+      "name": "nv-cpu-governor",
+      "version": "22.05-1"
+    },
+    {
+      "name": "nv-docker-gpus",
+      "version": "25.08-1"
+    },
+    {
+      "name": "nv-docker-options",
+      "version": "25.05-1"
+    },
+    {
+      "name": "nv-env-paths",
+      "version": "20.01-1"
+    },
+    {
+      "name": "nv-grubserial",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nv-iommu",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nv-ipmi-devintf",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nv-limits",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nv-no-grubmenu",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nv-persistence-mode",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nv-update-disable",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nv-vulkan-desktop-ppa",
+      "version": "25.07-1"
+    },
+    {
+      "name": "nv-xorg-simpledrm",
+      "version": "25.08-1"
+    },
+    {
+      "name": "nv-yaru-theme-all",
+      "version": "22.10-1"
+    },
+    {
+      "name": "nvgpu-services-list",
+      "version": "22.05-1"
+    },
+    {
+      "name": "nvidia-compute-utils-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "nvidia-conf-xconfig",
+      "version": "25.08-1"
+    },
+    {
+      "name": "nvidia-console-settings",
+      "version": "25.07-1"
+    },
+    {
+      "name": "nvidia-container-toolkit",
+      "version": "1.18.0-1"
+    },
+    {
+      "name": "nvidia-container-toolkit-base",
+      "version": "1.18.0-1"
+    },
+    {
+      "name": "nvidia-cppc-cpufreq-options",
+      "version": "25.06-1"
+    },
+    {
+      "name": "nvidia-crashdump",
+      "version": "25.08-1"
+    },
+    {
+      "name": "nvidia-dgx-telemetry",
+      "version": "3.0"
+    },
+    {
+      "name": "nvidia-disable-aqc-nic",
+      "version": "25.06-1"
+    },
+    {
+      "name": "nvidia-disable-bt-profiles",
+      "version": "25.09-1"
+    },
+    {
+      "name": "nvidia-disable-init-on-alloc",
+      "version": "24.10-1"
+    },
+    {
+      "name": "nvidia-disable-numa-balancing",
+      "version": "24.10-2"
+    },
+    {
+      "name": "nvidia-driver-580-open",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "nvidia-drm-options-modeset0",
+      "version": "25.07-1"
+    },
+    {
+      "name": "nvidia-earlycon",
+      "version": "25.06-1"
+    },
+    {
+      "name": "nvidia-enable-power-meter-cap",
+      "version": "24.10-3"
+    },
+    {
+      "name": "nvidia-esm-hook-epilogue",
+      "version": "23.03-2"
+    },
+    {
+      "name": "nvidia-firmware-580",
+      "version": "580.82.09-0ubuntu1"
+    },
+    {
+      "name": "nvidia-firmware-580-580.95.05",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "nvidia-grub-params",
+      "version": "24.11-1"
+    },
+    {
+      "name": "nvidia-kernel-common-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "nvidia-kernel-defaults",
+      "version": "21.05-1"
+    },
+    {
+      "name": "nvidia-kernel-source-580-open",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "nvidia-logrotate",
+      "version": "21.11-1"
+    },
+    {
+      "name": "nvidia-lvfs-config",
+      "version": "25.09-1"
+    },
+    {
+      "name": "nvidia-mlnx-tools",
+      "version": "23.04"
+    },
+    {
+      "name": "nvidia-motd",
+      "version": "24.01-1"
+    },
+    {
+      "name": "nvidia-mstflint-loader",
+      "version": "23.03-1"
+    },
+    {
+      "name": "nvidia-no-systemd-suspend",
+      "version": "25.06-1"
+    },
+    {
+      "name": "nvidia-nvme-options",
+      "version": "25.03-1"
+    },
+    {
+      "name": "nvidia-oem-config-bmc",
+      "version": "25.04-1"
+    },
+    {
+      "name": "nvidia-oem-config-crypt-passwd",
+      "version": "25.04-1"
+    },
+    {
+      "name": "nvidia-oem-config-eula",
+      "version": "25.04-1"
+    },
+    {
+      "name": "nvidia-oem-config-grub-passwd",
+      "version": "25.04-1"
+    },
+    {
+      "name": "nvidia-oem-config-postact",
+      "version": "25.04-1"
+    },
+    {
+      "name": "nvidia-pci-realloc",
+      "version": "25.02-1"
+    },
+    {
+      "name": "nvidia-plymouth",
+      "version": "20.06-2"
+    },
+    {
+      "name": "nvidia-raid-config",
+      "version": "25.01-1"
+    },
+    {
+      "name": "nvidia-redfish-config",
+      "version": "25.03-1"
+    },
+    {
+      "name": "nvidia-relaxed-ordering-gpu",
+      "version": "25.07-2"
+    },
+    {
+      "name": "nvidia-relaxed-ordering-nvme",
+      "version": "25.07-2"
+    },
+    {
+      "name": "nvidia-repo-keys",
+      "version": "25.06-1"
+    },
+    {
+      "name": "nvidia-sbsa-gwdt-options",
+      "version": "25.06-1"
+    },
+    {
+      "name": "nvidia-settings",
+      "version": "580.95.05-0ubuntu1"
+    },
+    {
+      "name": "nvidia-spark-baud-rate",
+      "version": "25.09-1"
+    },
+    {
+      "name": "nvidia-spark-default-remove-nvidia-fs-pkg",
+      "version": "25.09-2"
+    },
+    {
+      "name": "nvidia-spark-desktop-edge-ppa",
+      "version": "1.0-1"
+    },
+    {
+      "name": "nvidia-spark-fstab-config",
+      "version": "1.0.0-1"
+    },
+    {
+      "name": "nvidia-spark-mlnx-firmware-manager",
+      "version": "1.0.4-1"
+    },
+    {
+      "name": "nvidia-spark-run-apt-upgrade",
+      "version": "25.10-2"
+    },
+    {
+      "name": "nvidia-spark-wifi-fw-ppa",
+      "version": "1.0-1"
+    },
+    {
+      "name": "nvidia-system-core",
+      "version": "2404.25.09-2"
+    },
+    {
+      "name": "nvidia-system-extra",
+      "version": "2404.25.09-2"
+    },
+    {
+      "name": "nvidia-system-station",
+      "version": "2404.25.09-2"
+    },
+    {
+      "name": "nvidia-system-utils",
+      "version": "2404.25.09-2"
+    },
+    {
+      "name": "nvidia-update-manager",
+      "version": "20.06-1"
+    },
+    {
+      "name": "nvidia-utils-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "nvme-cli",
+      "version": "2.8-1ubuntu0.1"
+    },
+    {
+      "name": "openvpn",
+      "version": "2.6.14-0ubuntu0.24.04.2"
+    },
+    {
+      "name": "python3-venv",
+      "version": "3.12.3-0ubuntu2"
+    },
+    {
+      "name": "python3.12-venv",
+      "version": "3.12.3-1ubuntu0.8"
+    },
+    {
+      "name": "xserver-xorg-video-nvidia-580",
+      "version": "580.95.05-0ubuntu0.24.04.2"
+    }
+  ],
+  "firmware": [
+    {
+      "name": "SOCFW",
+      "version": "2.132.11",
+      "guid": "b488217b-3895-4fc0-b1bf-ab7005a2d45a"
+    },
+    {
+      "name": "EC",
+      "version": "2.66.3",
+      "guid": "3d13c989-e6a8-4ead-95ee-921f09868f65"
+    },
+    {
+      "name": "EC Unfused",
+      "version": "2.66.3",
+      "guid": "1a2b3c4d-5e6f-7a8b-9cad-becfd1e2f304"
+    },
+    {
+      "name": "USBPD",
+      "version": "0.5.0",
+      "guid": "dd1a238a-5f8e-46bd-9401-a88da99c5a96"
+    },
+    {
+      "name": "TPM",
+      "version": "7.516.1",
+      "guid": "0eb9bda9-3010-493a-a6a8-b5e80eddf870"
+    }
+  ],
+  "connectx": [
+    {
+      "name": "CX7",
+      "version": "28.45.4028"
+    }
+  ],
+  "software": [
+    {
+      "name": "kernel",
+      "version": "6.11.0-1016-nvidia"
+    },
+    {
+      "name": "driver",
+      "version": "580.95.05"
+    }
+  ]
+}

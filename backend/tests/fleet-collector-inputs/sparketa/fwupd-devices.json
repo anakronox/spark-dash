@@ -1,0 +1,1201 @@
+{
+  "Devices" : [
+    {
+      "Name" : "DGX Spark Platform Key",
+      "DeviceId" : "6924110cde4fa051bfdc600a60620dc7aa9d3c6a",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_NVIDIA-Corporation&NAME_DGX-Spark-Platform-Key",
+        "UEFI\\CRT_82EDCBA9AC296E6E1E3BD640470AFE2D746B519E"
+      ],
+      "Guid" : [
+        "69b0cdfe-5a6d-5dcd-bba9-49491bd13979",
+        "783e96bd-59a1-5c07-b09b-2efa9ee7611d"
+      ],
+      "Summary" : "UEFI Platform Key",
+      "Plugin" : "uefi_pk",
+      "Flags" : [
+        "internal"
+      ],
+      "Vendor" : "NVIDIA Corporation",
+      "Version" : "2025",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2025,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "Embedded Controller",
+      "DeviceId" : "8c948e1db381648c8893897e4d09b7b153309991",
+      "Guid" : [
+        "3d13c989-e6a8-4ead-95ee-921f09868f65"
+      ],
+      "Summary" : "UEFI System Resource Table device (Updated via capsule-on-disk)",
+      "Plugin" : "uefi_capsule",
+      "Protocols" : [
+        "org.uefi.capsule"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "supported",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "RequestFlags" : [
+        "allow-generic-message"
+      ],
+      "Vendor" : "NVIDIA",
+      "VendorIds" : [
+        "DMI:American Megatrends International, LLC."
+      ],
+      "Version" : "0x03000508",
+      "VersionLowest" : "0x02003400",
+      "VersionFormat" : "hex",
+      "VersionRaw" : 50332936,
+      "VersionLowestRaw" : 33567744,
+      "Created" : 1787175169,
+      "UpdateState" : 2,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.ec.firmware",
+          "ReleaseId" : "143461",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark EC FW",
+          "Summary" : "DGX Spark Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Embedded Controller in DGX Spark</p>",
+          "Version" : "0x03000508",
+          "Filename" : "ec_fused.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "df369a79bf6fa0652efecff0059fae3031de2512",
+            "3f220245f0803c4927490d01a8403560687fe6a631ec17e2c2d7359f76c3bef1"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 519263,
+          "Created" : 1780617600,
+          "Locations" : [
+            "https://fwupd.org/downloads/3f220245f0803c4927490d01a8403560687fe6a631ec17e2c2d7359f76c3bef1-ec_fused.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x03000302",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.20"
+            },
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x03000302",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.20"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.ec.firmware",
+          "ReleaseId" : "139394",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark EC FW",
+          "Summary" : "DGX Spark Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Embedded Controller in DGX Spark</p>",
+          "Version" : "0x03000302",
+          "Filename" : "ec_fused.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "3dfc3559fc967b9d013c9686a5b5ce4eb34e0bb7",
+            "49331b349e0605909a4d3ef63c188e595fd923340fb79dfbd8495921848c0106"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 519263,
+          "Created" : 1775088000,
+          "Locations" : [
+            "https://fwupd.org/downloads/49331b349e0605909a4d3ef63c188e595fd923340fb79dfbd8495921848c0106-ec_fused.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x02004b03",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.34"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.ec.firmware",
+          "ReleaseId" : "137588",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark EC FW",
+          "Summary" : "DGX Spark Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Embedded Controller in DGX Spark</p>",
+          "Version" : "0x02004e18",
+          "Filename" : "ec_fused.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "1e99063c715410efd8bd2e5b4875708bc360ba6f",
+            "5eff7450264e378140c4949a99600c43d35f46844bb366fb10df171a78ad3fd3"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 519263,
+          "Created" : 1773360000,
+          "Locations" : [
+            "https://fwupd.org/downloads/5eff7450264e378140c4949a99600c43d35f46844bb366fb10df171a78ad3fd3-ec_fused.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x02004e12",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.33"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.ec.firmware",
+          "ReleaseId" : "135056",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark EC FW",
+          "Summary" : "DGX Spark Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Embedded Controller in DGX Spark</p>",
+          "Version" : "0x02004e12",
+          "Filename" : "ec_fused.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "007182cb0e910b57be766ea61f403516fb5d7eef",
+            "55f0d41a5a93b39bb6a0afa3765b6b746ddcc667f4e9047972f02f2d57cc1073"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 519263,
+          "Created" : 1768262400,
+          "Locations" : [
+            "https://fwupd.org/downloads/55f0d41a5a93b39bb6a0afa3765b6b746ddcc667f4e9047972f02f2d57cc1073-ec_fused.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 30
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.ec.firmware",
+          "ReleaseId" : "130970",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark EC FW",
+          "Summary" : "DGX Spark Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Embedded Controller in DGX Spark</p>",
+          "Version" : "0x02004b03",
+          "Filename" : "ec_fused.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "ad5110e09e3e1e48a25728f6a8efcaf5e37f65b6",
+            "fa1589e62de2643c5cee7a6095613cb4c42bd9fcece0e7ea89951f1d82106d9c"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 519263,
+          "Created" : 1761264000,
+          "Locations" : [
+            "https://fwupd.org/downloads/fa1589e62de2643c5cee7a6095613cb4c42bd9fcece0e7ea89951f1d82106d9c-ec_fused.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 30
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.ec.firmware",
+          "ReleaseId" : "127753",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark EC FW",
+          "Summary" : "DGX Spark Embedded Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the Embedded Controller in DGX Spark</p>",
+          "Version" : "0x02004203",
+          "Filename" : "ec_fused.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-EmbeddedController"
+          ],
+          "Checksum" : [
+            "b79d542fb7213879e43454ccea38493e3acc5e26",
+            "b7b173196585847faea4ae3fdd2ae23da32e9ca51f9c3a88df1c4a4dd1513438"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 519263,
+          "Created" : 1758844800,
+          "Locations" : [
+            "https://fwupd.org/downloads/b7b173196585847faea4ae3fdd2ae23da32e9ca51f9c3a88df1c4a4dd1513438-ec_fused.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 30
+        }
+      ]
+    },
+    {
+      "Name" : "KEK CA",
+      "DeviceId" : "b7a1d3d90faa1f6275d9a98da4fb3be7118e61c7",
+      "ParentDeviceId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "CompositeId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_Microsoft&NAME_Microsoft-KEK-CA",
+        "UEFI\\CRT_DEC64D7746D983DB3774829A00BF829D9F19E9CF"
+      ],
+      "Guid" : [
+        "814e950f-1449-566a-a190-42c9d3a3a2df",
+        "cd94ec34-7163-5f27-8549-1bd4b7872ae8"
+      ],
+      "Plugin" : "uefi_kek",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "2023",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2023,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "MT2910 Family (ConnectX-7)",
+      "DeviceId" : "dd1874030ca6e437ad6b4a957955e37d8732b39a",
+      "Serial" : "REDACTED",
+      "Summary" : "Devlink device (pci/0000:01:00.0)",
+      "Plugin" : "devlink",
+      "Protocols" : [
+        "org.kernel.devlink"
+      ],
+      "Flags" : [
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Mellanox",
+      "VendorIds" : [
+        "PCI:0x15B3"
+      ],
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "MT2910 Family (ConnectX-7) (Composite)",
+      "DeviceId" : "5e4ef975d7d175611cb61c1685eba6f6ee744cb6",
+      "ParentDeviceId" : "dd1874030ca6e437ad6b4a957955e37d8732b39a",
+      "CompositeId" : "dd1874030ca6e437ad6b4a957955e37d8732b39a",
+      "InstanceIds" : [
+        "PCI\\VEN_15B3&DEV_1021&COMPONENT_fw",
+        "PCI\\VEN_15B3&DEV_1021&COMPONENT_fw&FW.PSID_NVD0000000087"
+      ],
+      "Guid" : [
+        "04089056-a45b-544f-98d9-1085877daba5",
+        "479999c8-4487-580a-aaae-2b8cb961952a"
+      ],
+      "Plugin" : "devlink",
+      "Protocols" : [
+        "org.kernel.devlink"
+      ],
+      "Flags" : [
+        "updatable",
+        "dual-image",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "Vendor" : "Mellanox",
+      "VendorIds" : [
+        "PCI:0x15B3"
+      ],
+      "Version" : "28.45.4028",
+      "VersionFormat" : "triplet",
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "MZALC4T0HBL1-00B07",
+      "DeviceId" : "7de5ffdca08fa52d95fd4bb42aa5d07a4b35d2dd",
+      "InstanceIds" : [
+        "NVME\\VEN_144D&DEV_A810",
+        "NVME\\VEN_144D&DEV_A810&SUBSYS_144DA801",
+        "SAMSUNG MZALC4T0HBL1-00B07"
+      ],
+      "Guid" : [
+        "35abf34a-7ed8-51b2-ba1b-edef527d47e6",
+        "095ba8dd-3778-52b4-9f32-02a67c210ce5",
+        "93768061-87bf-5c78-b9ea-5b7a6301012b"
+      ],
+      "Serial" : "REDACTED",
+      "Summary" : "NVM Express solid state drive",
+      "Plugin" : "nvme",
+      "Protocols" : [
+        "org.nvmexpress"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Samsung",
+      "VendorIds" : [
+        "PCI:0x144D"
+      ],
+      "Version" : "NXHB202Q",
+      "VersionFormat" : "plain",
+      "Icons" : [
+        "drive-harddisk"
+      ],
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "SBAT",
+      "DeviceId" : "6469856584e2f5873b2f148302e46c9313c7d054",
+      "InstanceIds" : [
+        "UEFI\\OS_ubuntu&VAR_SbatLevelRT"
+      ],
+      "Guid" : [
+        "9947c120-b97b-52d6-9d83-738a1c342e23"
+      ],
+      "Summary" : "Generation number based revocation mechanism",
+      "Plugin" : "uefi_sbat",
+      "Protocols" : [
+        "com.uefi.sbat"
+      ],
+      "Flags" : [
+        "updatable",
+        "needs-reboot",
+        "signed-payload"
+      ],
+      "VendorIds" : [
+        "OS:ubuntu"
+      ],
+      "Version" : "1.5.4",
+      "VersionFormat" : "triplet",
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "UEFI CA",
+      "DeviceId" : "5bc922b7bd1adb5b6f99592611404036bd9f42d0",
+      "ParentDeviceId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "CompositeId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_Microsoft&NAME_Microsoft-UEFI-CA",
+        "UEFI\\CRT_7CD7437C555F89E7C2B50E21937E420C4E583E80"
+      ],
+      "Guid" : [
+        "26f42cba-9bf6-5365-802b-e250eb757e96",
+        "308281c7-d0c5-52e0-8c1a-810540de03df"
+      ],
+      "Plugin" : "uefi_db",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "supported",
+        "needs-reboot",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "2023",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2023,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175169,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.microsoft.db-uefi-3p.firmware",
+          "ReleaseId" : "116503",
+          "RemoteId" : "lvfs",
+          "Name" : "Secure Boot Signature Database",
+          "Summary" : "UEFI Secure Boot Signature Database",
+          "Description" : "<p>This updates the 3rd Party UEFI Signature Database (the &quot;db&quot;) to the latest release from Microsoft.It also adds the latest OptionROM UEFI Signature Database update.</p>",
+          "Version" : "2023",
+          "Filename" : "DBUpdate-3P2023_OROM2023.cab",
+          "Protocol" : "org.uefi.dbx2",
+          "Categories" : [
+            "X-Configuration",
+            "X-System"
+          ],
+          "Checksum" : [
+            "b53eb93620abf86bdf56d97811b7a9ab102ed4be",
+            "4bdf420ad7e5ddde89d7a66ffe1b4328927059d56551f03afac855c4ed80f6c3"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 10023,
+          "Created" : 1745884800,
+          "Locations" : [
+            "https://fwupd.org/downloads/4bdf420ad7e5ddde89d7a66ffe1b4328927059d56551f03afac855c4ed80f6c3-DBUpdate-3P2023_OROM2023.cab"
+          ],
+          "Homepage" : "https://fwupd.github.io/libfwupdplugin/uefi-db.html",
+          "Vendor" : "Microsoft",
+          "Flags" : [
+            "trusted-metadata"
+          ],
+          "Reports" : [
+            {
+              "DeviceName" : "LENOVO ThinkPad P15v Gen 1",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "25.10",
+              "VersionOld" : "2011",
+              "Vendor" : "Lenovo",
+              "RemoteId" : "lvfs",
+              "VendorId" : 84,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.16"
+            },
+            {
+              "DeviceName" : "Framework Laptop 16 (AMD Ryzen 7040 Series)",
+              "DistroId" : "fedora",
+              "DistroVariant" : "workstation",
+              "DistroVersion" : "42",
+              "VersionOld" : "2011",
+              "Vendor" : "Framework",
+              "RemoteId" : "lvfs",
+              "VendorId" : 438,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.16"
+            },
+            {
+              "DeviceName" : "Framework Laptop (12th Gen Intel Core)",
+              "DistroId" : "fedora",
+              "DistroVariant" : "workstation",
+              "DistroVersion" : "42",
+              "VersionOld" : "2011",
+              "Vendor" : "Framework",
+              "RemoteId" : "lvfs",
+              "VendorId" : 438,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.16"
+            },
+            {
+              "DeviceName" : "Framework Laptop 13 (Intel Core Ultra Series 1)",
+              "DistroId" : "nixos",
+              "DistroVersion" : "25.11",
+              "VersionOld" : "2011",
+              "Vendor" : "Framework",
+              "RemoteId" : "lvfs",
+              "VendorId" : 438,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.12"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Name" : "UEFI Device Firmware",
+      "DeviceId" : "0681fd3882fb4fdca996e412ec249365f6e85838",
+      "Guid" : [
+        "b488217b-3895-4fc0-b1bf-ab7005a2d45a"
+      ],
+      "Summary" : "UEFI System Resource Table device (Updated via capsule-on-disk)",
+      "Plugin" : "uefi_capsule",
+      "Protocols" : [
+        "org.uefi.capsule"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "supported",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "RequestFlags" : [
+        "allow-generic-message"
+      ],
+      "Vendor" : "NVIDIA",
+      "VendorIds" : [
+        "DMI:American Megatrends International, LLC."
+      ],
+      "Version" : "0x02009b0b",
+      "VersionLowest" : "0x02007300",
+      "VersionFormat" : "hex",
+      "VersionRaw" : 33594123,
+      "VersionLowestRaw" : 33583872,
+      "Created" : 1787175169,
+      "UpdateState" : 2,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.socfw.firmware",
+          "ReleaseId" : "143466",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark SoC FW",
+          "Summary" : "DGX Spark SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the System-on-Chip Firmware including UEFI and GPU in DGX Spark</p>",
+          "Version" : "0x02009b0b",
+          "Filename" : "socfw.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "5152ade39aba27d6781cbd3837e62ff4f6fb96a7",
+            "35e2452645affc35365ee66259d82908d441283f61a16b8305593bcff3e505b1"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411871,
+          "Created" : 1781222400,
+          "Locations" : [
+            "https://fwupd.org/downloads/35e2452645affc35365ee66259d82908d441283f61a16b8305593bcff3e505b1-socfw.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x0200980f",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.20"
+            },
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x0200980f",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "2.0.20"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.socfw.firmware",
+          "ReleaseId" : "139396",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark SoC FW",
+          "Summary" : "DGX Spark SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the System-on-Chip Firmware including UEFI and GPU in DGX Spark</p>",
+          "Version" : "0x0200980f",
+          "Filename" : "socfw.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "d00fa1b552684dad59d35c7e44dff33dbe040219",
+            "6ee8bd62c9c6b96a3d45fe8d3ba4ef8e98eb577427d00eb486bf7293b2ef75cc"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411871,
+          "Created" : 1775088000,
+          "Locations" : [
+            "https://fwupd.org/downloads/6ee8bd62c9c6b96a3d45fe8d3ba4ef8e98eb577427d00eb486bf7293b2ef75cc-socfw.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA DGX Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x0200941b",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.33"
+            },
+            {
+              "DeviceName" : "NVIDIA DGX Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x0200941a",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.34"
+            },
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x02009009",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.34"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.socfw.firmware",
+          "ReleaseId" : "136978",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark SoC FW",
+          "Summary" : "DGX Spark SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the System-on-Chip Firmware including UEFI and GPU in DGX Spark</p>",
+          "Version" : "0x0200941a",
+          "Filename" : "socfw.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "f8bd13fafc7437926dc1076513a72340b12f80a7",
+            "d4b05b4b9455d4c139361ce3ff521b2cad53e7de90d9637f2f76419231081a2b"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411871,
+          "Created" : 1771891200,
+          "Locations" : [
+            "https://fwupd.org/downloads/d4b05b4b9455d4c139361ce3ff521b2cad53e7de90d9637f2f76419231081a2b-socfw.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x02009009",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.33"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.socfw.firmware",
+          "ReleaseId" : "135015",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark SoC FW",
+          "Summary" : "DGX Spark SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the System-on-Chip Firmware including UEFI and GPU in DGX Spark</p>",
+          "Version" : "0x02009418",
+          "Filename" : "socfw.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "6288f7ee62652ecd2c349524fbb74b88300db7e3",
+            "3313ea36efb7fead10e0429b530b8599cc5ec7f35c2945ac6be7a4ce21242313"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411871,
+          "Created" : 1768262400,
+          "Locations" : [
+            "https://fwupd.org/downloads/3313ea36efb7fead10e0429b530b8599cc5ec7f35c2945ac6be7a4ce21242313-socfw.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 30
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.socfw.firmware",
+          "ReleaseId" : "130971",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark SoC FW",
+          "Summary" : "DGX Spark SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the System-on-Chip Firmware including UEFI and GPU in DGX Spark</p>",
+          "Version" : "0x02009009",
+          "Filename" : "socfw.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "7d42badea6e9556ea91f76a4eaa0899c2c1be0d3",
+            "71a880b7565f6ab4e55874acf0fc962caa2368c843bb5943376ca46d733ee9c8"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411871,
+          "Created" : 1761264000,
+          "Locations" : [
+            "https://fwupd.org/downloads/71a880b7565f6ab4e55874acf0fc962caa2368c843bb5943376ca46d733ee9c8-socfw.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 300,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA DGX Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x02008433",
+              "Vendor" : "H3C",
+              "RemoteId" : "lvfs",
+              "VendorId" : 3474,
+              "Flags" : [
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.31"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.socfw.firmware",
+          "ReleaseId" : "129403",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark SoC FW",
+          "Summary" : "DGX Spark SoC Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the System-on-Chip Firmware including UEFI and GPU in DGX Spark</p>",
+          "Version" : "0x02008433",
+          "Filename" : "socfw.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-System"
+          ],
+          "Checksum" : [
+            "d891bc30af9558c5b0fd3410a305c86d2e5b888e",
+            "98a7e7ad4d56801eedfeef1bc5e6db73e5c3903251880f26f7fc2fe074b172f5"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 30411871,
+          "Created" : 1760054400,
+          "Locations" : [
+            "https://fwupd.org/downloads/98a7e7ad4d56801eedfeef1bc5e6db73e5c3903251880f26f7fc2fe074b172f5-socfw.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-downgrade"
+          ],
+          "InstallDuration" : 30
+        }
+      ]
+    },
+    {
+      "Name" : "UEFI Device Firmware",
+      "DeviceId" : "a6c6b7f79c96a1cc84d9612d804675e0c3d879c4",
+      "Guid" : [
+        "dd1a238a-5f8e-46bd-9401-a88da99c5a96"
+      ],
+      "Summary" : "UEFI System Resource Table device (Updated via capsule-on-disk)",
+      "Plugin" : "uefi_capsule",
+      "Protocols" : [
+        "org.uefi.capsule"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "require-ac",
+        "supported",
+        "needs-reboot",
+        "usable-during-update",
+        "signed-payload"
+      ],
+      "RequestFlags" : [
+        "allow-generic-message"
+      ],
+      "Vendor" : "NVIDIA",
+      "VendorIds" : [
+        "DMI:American Megatrends International, LLC."
+      ],
+      "Version" : "0x00000001",
+      "VersionLowest" : "0x00000400",
+      "VersionFormat" : "hex",
+      "VersionRaw" : 1,
+      "VersionLowestRaw" : 1024,
+      "Created" : 1787175169,
+      "UpdateState" : 2,
+      "Releases" : [
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.usbpd2.firmware",
+          "ReleaseId" : "136899",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark USB-C PD FW",
+          "Summary" : "DGX Spark USB-C Power Delivery Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the USB Power Delivery Controller in DGX Spark for USB-C Ports</p>",
+          "Version" : "0x00000516",
+          "Filename" : "usbpd.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-Controller"
+          ],
+          "Checksum" : [
+            "2d32414cc0e9b1649309c89f1125641f8230039c",
+            "67b78ec42481411977b8f90eb1e8dc29ba5e536da87bce54113f736f9b17b9ca"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 1051743,
+          "Created" : 1771459200,
+          "Locations" : [
+            "https://fwupd.org/downloads/67b78ec42481411977b8f90eb1e8dc29ba5e536da87bce54113f736f9b17b9ca-usbpd.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-upgrade",
+            "trusted-report"
+          ],
+          "InstallDuration" : 30,
+          "Reports" : [
+            {
+              "DeviceName" : "NVIDIA DGX Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x00000507",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.33"
+            },
+            {
+              "DeviceName" : "NVIDIA DGX Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x00000507",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.34"
+            },
+            {
+              "DeviceName" : "NVIDIA NVIDIA_DGX_Spark",
+              "DistroId" : "ubuntu",
+              "DistroVersion" : "24.04",
+              "VersionOld" : "0x00000500",
+              "Vendor" : "NVIDIA",
+              "RemoteId" : "lvfs",
+              "VendorId" : 67,
+              "Flags" : [
+                "from-oem",
+                "is-upgrade"
+              ],
+              "RuntimeVersion(org.freedesktop.fwupd)" : "1.9.34"
+            }
+          ]
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.usbpd2.firmware",
+          "ReleaseId" : "133185",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark USB-C PD FW",
+          "Summary" : "DGX Spark USB-C Power Delivery Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the USB Power Delivery Controller in DGX Spark for USB-C Ports</p>",
+          "Version" : "0x00000507",
+          "Filename" : "usbpd.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-Controller"
+          ],
+          "Checksum" : [
+            "068f9cbd4fc47e17ee3a6a8801d66b00ef81d80a",
+            "575ee2e586119a941c83659b6d73b47ffe761a64bb783668803a3625beceeb6f"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 1051743,
+          "Created" : 1764806400,
+          "Locations" : [
+            "https://fwupd.org/downloads/575ee2e586119a941c83659b6d73b47ffe761a64bb783668803a3625beceeb6f-usbpd.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-upgrade"
+          ],
+          "InstallDuration" : 30
+        },
+        {
+          "AppstreamId" : "com.nvidia.dgx.spark.usbpd2.firmware",
+          "ReleaseId" : "126800",
+          "RemoteId" : "lvfs",
+          "Name" : "DGX Spark USB-C PD FW",
+          "Summary" : "DGX Spark USB-C Power Delivery Controller Firmware Update",
+          "Description" : "<p>This update improves the performance and stability of the USB Power Delivery Controller in DGX Spark for USB-C Ports</p>",
+          "Version" : "0x00000500",
+          "Filename" : "usbpd.cab",
+          "Protocol" : "org.uefi.capsule",
+          "Categories" : [
+            "X-Controller"
+          ],
+          "Checksum" : [
+            "8d65a8353fdf08f5d72a0bd63e3437346a19d7fd",
+            "b5f3bc9de4035199c1cfd0931abcbba9e2ce961b848100e60206d3fb3f953a7d"
+          ],
+          "License" : "LicenseRef-proprietary",
+          "Size" : 1051743,
+          "Created" : 1758153600,
+          "Locations" : [
+            "https://fwupd.org/downloads/b5f3bc9de4035199c1cfd0931abcbba9e2ce961b848100e60206d3fb3f953a7d-usbpd.cab"
+          ],
+          "Homepage" : "https://developer.nvidia.com",
+          "Vendor" : "NVIDIA",
+          "Flags" : [
+            "trusted-metadata",
+            "is-upgrade"
+          ],
+          "InstallDuration" : 30
+        }
+      ]
+    },
+    {
+      "Name" : "UEFI Key Exchange Key",
+      "DeviceId" : "2a4c23bfb79b5dabe474cb7b1b3e604645d6f9c6",
+      "Plugin" : "uefi_kek",
+      "Flags" : [
+        "internal"
+      ],
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "UEFI Signature Database",
+      "DeviceId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "Plugin" : "uefi_db",
+      "Flags" : [
+        "internal"
+      ],
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "UEFI dbx",
+      "DeviceId" : "362301da643102b9f38477387e2193e57abaa590",
+      "InstanceIds" : [
+        "UEFI\\CRT_3CD3F0309EDAE228767A976DD40D9F4AFFC4FBD5218F2E8CC3C9DD97E8AC6F9D&ARCH_AA64",
+        "UEFI\\CRT_A1117F516A32CEFCBA3F2D1ACE10A87972FD6BBE8FE0D0B996E09E65D802A503&ARCH_AA64"
+      ],
+      "Guid" : [
+        "10ec82f4-ff64-5362-9e5d-688febf5dbb0",
+        "67d35028-ca5b-5834-834a-f97380381082"
+      ],
+      "Summary" : "UEFI revocation database",
+      "Plugin" : "uefi_dbx",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "needs-reboot",
+        "usable-during-update",
+        "only-version-upgrade",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Checksums" : [
+        "ab311e737112e4d34abf545836bc671637663e93738cefa37405214ce8c92a58"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "20230501",
+      "VersionLowest" : "20230501",
+      "VersionFormat" : "number",
+      "Icons" : [
+        "application-certificate"
+      ],
+      "InstallDuration" : 1,
+      "Created" : 1787175169
+    },
+    {
+      "Name" : "Windows UEFI CA",
+      "DeviceId" : "d31da5f926c6d962ed810b284fab5a2ef623007b",
+      "ParentDeviceId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "CompositeId" : "0352a8acc949c7df21fec16e566ba9a74e797a97",
+      "InstanceIds" : [
+        "UEFI\\VENDOR_Microsoft&NAME_Windows-UEFI-CA",
+        "UEFI\\CRT_A794240D25F0CCB2EC8142DC2F7411890717DEAD"
+      ],
+      "Guid" : [
+        "914015a8-9d92-5462-9a9b-f2b361e4faae",
+        "89a825bf-78b5-5f1c-905b-e982b2f02584"
+      ],
+      "Plugin" : "uefi_db",
+      "Protocols" : [
+        "org.uefi.dbx2"
+      ],
+      "Flags" : [
+        "internal",
+        "updatable",
+        "needs-reboot",
+        "signed-payload",
+        "can-emulation-tag"
+      ],
+      "Vendor" : "Microsoft",
+      "VendorIds" : [
+        "UEFI:Microsoft"
+      ],
+      "Version" : "2023",
+      "VersionFormat" : "number",
+      "VersionRaw" : 2023,
+      "Icons" : [
+        "application-certificate"
+      ],
+      "Created" : 1787175169
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "metadata": {
+    "name": "OTA2604-ebeta",
+    "external_name": "",
+    "description": "lorem ipsum",
+    "priority": "important",
+    "releaseNotesUrl": "https://docs.nvidia.com/dgx/dgx-spark/release-notes.html",
+    "releaseDate": "2026-03-31T01:00:00.000Z"
+  },
+  "package": [
+    {
+      "name": "nvidia-spark-avahi-conf",
+      "version": "1.0-1"
+    },
+    {
+      "name": "nvidia-spark-limits",
+      "version": "1.0-1"
+    },
+    {
+      "name": "nvidia-spark-ota-check",
+      "version": "1.0.0-1"
+    },
+    {
+      "name": "nvidia-spark-repo",
+      "version": "1.1-1"
+    },
+    {
+      "name": "dgx-spark-ota-update-meta",
+      "version": "26.03.2"
+    },
+    {
+      "name": "dgx-dashboard",
+      "version": "0.25.9"
+    },
+    {
+      "name": "dgx-oobe",
+      "version": "0.20.1"
+    },
+    {
+      "name": "nvidia-dgx-telemetry",
+      "version": "5.22"
+    }
+  ],
+  "firmware": [
+    {
+      "name": "SOCFW",
+      "version": "2.148.26",
+      "guid": "b488217b-3895-4fc0-b1bf-ab7005a2d45a"
+    },
+    {
+      "name": "EC",
+      "version": "2.78.24",
+      "guid": "3d13c989-e6a8-4ead-95ee-921f09868f65"
+    },
+    {
+      "name": "EC Unfused",
+      "version": "2.78.24",
+      "guid": "1a2b3c4d-5e6f-7a8b-9cad-becfd1e2f304"
+    },
+    {
+      "name": "USBPD",
+      "version": "0.5.7",
+      "guid": "dd1a238a-5f8e-46bd-9401-a88da99c5a96"
+    },
+    {
+      "name": "TPM",
+      "version": "7.516.1",
+      "guid": "0eb9bda9-3010-493a-a6a8-b5e80eddf870"
+    }
+  ],
+  "connectx": [
+    {
+      "name": "CX7",
+      "version": "28.45.4028"
+    }
+  ],
+  "software": [
+    {
+      "name": "kernel",
+      "version": "6.17.0-1008-nvidia"
+    },
+    {
+      "name": "driver",
+      "version": "580.126.09"
+    }
+  ]
+}

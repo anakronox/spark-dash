@@ -1,0 +1,4 @@
+0000:01:00.0 Ethernet controller: Mellanox Technologies MT2910 Family [ConnectX-7]
+0000:01:00.1 Ethernet controller: Mellanox Technologies MT2910 Family [ConnectX-7]
+0002:01:00.0 Ethernet controller: Mellanox Technologies MT2910 Family [ConnectX-7]
+0002:01:00.1 Ethernet controller: Mellanox Technologies MT2910 Family [ConnectX-7]
