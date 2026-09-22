@@ -1,5 +1,17 @@
-"""The controller: collects every Spark on a timer, scores it, serves the
-dashboard, and runs updates when a person presses the button.
+"""The controller: collects every Spark on a timer, scores it, and runs
+updates when a person presses the button.
+
+It no longer serves anything. Upstream this module also held a stdlib HTTP
+server, a self-signed TLS context and a `main()`; AL3b took those out, because
+the dashboard's backend is the server and `FleetUpdates.svelte` is the page.
+What is left is a plain object the backend owns: give it a data directory and
+a check interval, start its scheduler in the app's lifespan, stop it on
+shutdown. Nothing here reads the environment, so a test can build one on a
+tmp_path and a second instance cannot fight the first over module globals.
+
+ONE INSTANCE PER PROCESS, and one process: `self.runs`, the per-node locks and
+`checking` are in memory. See AL4.4 -- uvicorn runs no workers here, and two
+would mean two schedulers sweeping the same Sparks.
 
 Everything is files under the data directory:
   fleet.json          inventory
@@ -12,31 +24,23 @@ Everything is files under the data directory:
 from __future__ import annotations
 
 import json
-import os
+import logging
 import shutil
-import ssl
-import subprocess
-import sys
 import threading
 import time
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
 
 from . import ssh, posture as posture_mod
 from .executor import Run
 from .inventory import Inventory
 
+log = logging.getLogger(__name__)
+
 HERE = Path(__file__).resolve().parent
-DATA = Path(os.environ.get("SPARK_FLEET_DATA", "state")).resolve()
-PORT = int(os.environ.get("SPARK_FLEET_PORT", "8080"))
-INTERVAL_MIN = float(os.environ.get("SPARK_FLEET_INTERVAL_MIN", "60"))
+# Read as text and piped to each node's python3 -- never imported. That is why
+# it has to be inside the package rather than beside it: AL3a checked it ships.
 COLLECT_SCRIPT = (HERE / "node_collect.py").read_text()
-TLS_MODE = os.environ.get("SPARK_FLEET_TLS", "auto").lower()          # auto | off
-TLS_CERT = os.environ.get("SPARK_FLEET_TLS_CERT", "")
-TLS_KEY = os.environ.get("SPARK_FLEET_TLS_KEY", "")
-ALLOW_PLAIN_PASSWORD = os.environ.get("SPARK_FLEET_ALLOW_PLAIN_PASSWORD", "") == "1"
 
 
 def _now() -> str:
@@ -44,29 +48,35 @@ def _now() -> str:
 
 
 class Service:
-    def __init__(self):
+    def __init__(self, data_dir: Path, interval_min: float = 60.0):
+        self.data = Path(data_dir).resolve()
+        self.interval_min = interval_min
         for d in ("posture", "facts", "runs", "recipes"):
-            (DATA / d).mkdir(parents=True, exist_ok=True)
-        if not any((DATA / "recipes").glob("spark-ota-*.json")):
+            (self.data / d).mkdir(parents=True, exist_ok=True)
+        if not any((self.data / "recipes").glob("spark-ota-*.json")):
             for p in (HERE / "recipes").glob("spark-ota-*.json"):
-                shutil.copy(p, DATA / "recipes" / p.name)
-        self.inv = Inventory(DATA / "fleet.json")
+                shutil.copy(p, self.data / "recipes" / p.name)
+        self.inv = Inventory(self.data / "fleet.json")
         self.runs: dict[str, Run] = {}
         self._node_locks: dict[str, threading.Lock] = {}
         self.checking: set[str] = set()
         self.last_sweep: str | None = None
         self.next_sweep: str | None = None
+        # The scheduler waits on this rather than sleeping, so shutdown is
+        # immediate instead of up to an hour late.
+        self._stop = threading.Event()
+        self._scheduler: threading.Thread | None = None
         self._load_runs()
 
     # ── recipes ──────────────────────────────────────────────────────────
     def _carried_recipe_hashes(self) -> dict[str, str]:
         import hashlib
-        return {p.name: hashlib.md5(p.read_bytes()).hexdigest() for p in (DATA / "recipes").glob("spark-ota-*.json")}
+        return {p.name: hashlib.md5(p.read_bytes()).hexdigest() for p in (self.data / "recipes").glob("spark-ota-*.json")}
 
     def _adopt_recipes(self, files: dict[str, str], from_node: str) -> None:
         for name, text in files.items():
-            (DATA / "recipes" / name).write_text(text)
-        (DATA / "recipes" / "REFRESHED").write_text(f"{_now()} from {from_node}\n")
+            (self.data / "recipes" / name).write_text(text)
+        (self.data / "recipes" / "REFRESHED").write_text(f"{_now()} from {from_node}\n")
 
     # ── collecting ───────────────────────────────────────────────────────
     def collect_node(self, node: dict, reason: str = "scheduled") -> dict | None:
@@ -91,7 +101,7 @@ class Service:
             self._write_posture(name, rec)
             return rec
         facts = json.loads(r.out)
-        (DATA / "facts" / f"{name}.json").write_text(r.out)
+        (self.data / "facts" / f"{name}.json").write_text(r.out)
         carried = self._carried_recipe_hashes()
         match = facts.get("recipes") == carried
         if not match and facts.get("recipes"):
@@ -105,14 +115,14 @@ class Service:
                         match = True
                     except json.JSONDecodeError:
                         pass
-        rec = posture_mod.build(node, facts, DATA / "recipes")
+        rec = posture_mod.build(node, facts, self.data / "recipes")
         rec["recipes_match"] = match
         rec["collect_reason"] = reason
         self._write_posture(name, rec)
         try:
             self.detect_clusters()
-        except Exception as e:  # never let topology break a collect
-            print("cluster detection failed:", repr(e), file=sys.stderr)
+        except Exception:  # never let topology break a collect
+            log.exception("cluster detection failed")
         return rec
 
     # ── who is cabled to whom ────────────────────────────────────────────
@@ -191,13 +201,13 @@ class Service:
         return clusters
 
     def _write_posture(self, name: str, rec: dict) -> None:
-        p = DATA / "posture" / f"{name}.json"
+        p = self.data / "posture" / f"{name}.json"
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(rec, indent=1))
         tmp.replace(p)
 
     def posture(self, name: str) -> dict | None:
-        p = DATA / "posture" / f"{name}.json"
+        p = self.data / "posture" / f"{name}.json"
         return json.loads(p.read_text()) if p.exists() else None
 
     def sweep(self, reason: str = "scheduled") -> None:
@@ -206,18 +216,35 @@ class Service:
         for t in threads: t.join()
         self.last_sweep = _now()
 
+    def start(self) -> None:
+        """Begin the hourly check. Called from the app's lifespan; idempotent."""
+        if self._scheduler and self._scheduler.is_alive():
+            return
+        self._stop.clear()
+        self._scheduler = threading.Thread(target=self.scheduler, daemon=True, name="fleet-scheduler")
+        self._scheduler.start()
+        log.info("fleet updater started: %d Spark(s), checking every %g min",
+                 len(self.inv.nodes), self.interval_min)
+
+    def stop(self, timeout: float = 5.0) -> None:
+        """Stop checking. A run already under way is NOT cancelled -- it is a
+        systemd unit on the Spark and outlives this process by design."""
+        self._stop.set()
+        if self._scheduler:
+            self._scheduler.join(timeout=timeout)
+
     def scheduler(self) -> None:
-        while True:
+        while not self._stop.is_set():
             try:
                 self.sweep()
-            except Exception as e:
-                print("sweep failed:", e, file=sys.stderr)
-            self.next_sweep = datetime.fromtimestamp(time.time() + INTERVAL_MIN * 60, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            time.sleep(INTERVAL_MIN * 60)
+            except Exception:
+                log.exception("fleet sweep failed")
+            self.next_sweep = datetime.fromtimestamp(time.time() + self.interval_min * 60, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self._stop.wait(self.interval_min * 60)
 
     # ── runs ─────────────────────────────────────────────────────────────
     def _load_runs(self) -> None:
-        for d in sorted((DATA / "runs").iterdir()):
+        for d in sorted((self.data / "runs").iterdir()):
             if (d / "state.json").exists():
                 st = json.loads((d / "state.json").read_text())
                 if st.get("status") == "running":      # the controller died mid-run
@@ -227,7 +254,7 @@ class Service:
 
     def run_states(self) -> list[dict]:
         out = []
-        for d in sorted((DATA / "runs").iterdir(), reverse=True):
+        for d in sorted((self.data / "runs").iterdir(), reverse=True):
             if (d / "state.json").exists():
                 out.append(json.loads((d / "state.json").read_text()))
         return out
@@ -251,14 +278,14 @@ class Service:
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + name + ("-rehearsal" if rehearse else "")
         if rehearse:
             nodes = [self.inv.get(name)]          # a rehearsal is one node, whatever it is cabled to
-        run = Run(run_id, DATA / "runs" / run_id, nodes, self, rehearse=rehearse, password=password)
+        run = Run(run_id, self.data / "runs" / run_id, nodes, self, rehearse=rehearse, password=password)
         self.runs[run_id] = run
         run.start()
         return run.state
 
     def verify_run(self, run_id: str) -> dict:
         """Finish a run that was held at the restart, now that the Spark is back."""
-        d = DATA / "runs" / run_id
+        d = self.data / "runs" / run_id
         if not (d / "state.json").exists():
             raise KeyError(run_id)
         st = json.loads((d / "state.json").read_text())
@@ -280,7 +307,7 @@ class Service:
     # ── the fleet view ───────────────────────────────────────────────────
     def fleet(self) -> dict:
         nodes = []
-        recipes = posture_mod.load_recipes(DATA / "recipes")
+        recipes = posture_mod.load_recipes(self.data / "recipes")
         latest = max((r for r in recipes if not r.is_ebeta), key=lambda r: r.release_date)
         for n in self.inv.nodes:
             p = self.posture(n["name"]) or {"name": n["name"], "host": n["host"], "reachable": None}
@@ -293,159 +320,5 @@ class Service:
         return {"nodes": nodes, "clusters": self.inv.data.get("clusters", []),
                 "latest": {"name": latest.name, "external_name": latest.external_name,
                            "date": latest.release_date_str[:10]},
-                "last_sweep": self.last_sweep, "next_sweep": self.next_sweep, "interval_min": INTERVAL_MIN,
+                "last_sweep": self.last_sweep, "next_sweep": self.next_sweep, "interval_min": self.interval_min,
                 "ssh_user": ssh.SSH_USER or None, "now": _now()}
-
-
-SVC: Service
-
-
-class Handler(BaseHTTPRequestHandler):
-    server_version = "spark-fleet-updates"
-
-    def log_message(self, fmt, *args):
-        if "/api/fleet" in (args[0] if args else ""):
-            return
-        super().log_message(fmt, *args)   # request lines only — bodies (which may carry a password) are never logged
-
-    def _secure(self) -> bool:
-        """Is this request on a channel a password may travel over?"""
-        if isinstance(self.connection, ssl.SSLSocket):
-            return True
-        if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
-            return True
-        return ALLOW_PLAIN_PASSWORD
-
-    def _json(self, code: int, obj) -> None:
-        body = json.dumps(obj).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _body(self) -> dict:
-        n = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(n) or b"{}") if n else {}
-
-    def do_GET(self):
-        path = urlparse(self.path).path
-        parts = [p for p in path.split("/") if p]
-        try:
-            if path in ("/", "/index.html"):
-                body = (HERE / "web" / "index.html").read_bytes()
-                self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); return
-            if path == "/api/fleet":
-                return self._json(200, SVC.fleet())
-            if parts[:2] == ["api", "nodes"] and len(parts) == 4 and parts[3] == "updates":
-                p = SVC.posture(parts[2])
-                return self._json(200 if p else 404, p or {"error": "unknown node"})
-            if path == "/api/runs":
-                return self._json(200, SVC.run_states())
-            if parts[:2] == ["api", "runs"] and len(parts) == 3:
-                d = DATA / "runs" / parts[2]
-                return self._json(200, json.loads((d / "state.json").read_text())) if (d / "state.json").exists() else self._json(404, {"error": "no such run"})
-            if parts[:2] == ["api", "runs"] and len(parts) == 5 and parts[4] == "log":
-                f = DATA / "runs" / parts[2] / f"{parts[3]}.log"
-                text = f.read_text() if f.exists() else ""
-                return self._json(200, {"lines": text.splitlines()[-400:]})
-            self._json(404, {"error": "not found"})
-        except Exception as e:
-            self._json(500, {"error": repr(e)})
-
-    def do_POST(self):
-        path = urlparse(self.path).path
-        parts = [p for p in path.split("/") if p]
-        try:
-            body = self._body()
-            if path == "/api/nodes":
-                node = SVC.inv.add(body.get("name", ""), body.get("host", ""), body.get("user"))
-                threading.Thread(target=SVC.collect_node, args=(node, "added"), daemon=True).start()
-                return self._json(201, node)
-            if path == "/api/test":
-                r = ssh.reachable(body.get("host", ""), user=body.get("user"))
-                vendor = r.out.strip().splitlines()[-1] if r.ok and len(r.out.strip().splitlines()) > 1 else ""
-                return self._json(200, {"ok": r.ok, "board": vendor, "error": (r.err or "").strip()[:200]})
-            if path == "/api/check":
-                threading.Thread(target=SVC.sweep, args=("manual",), daemon=True).start()
-                return self._json(202, {"ok": True})
-            if parts[:2] == ["api", "nodes"] and len(parts) == 4:
-                name, action = parts[2], parts[3]
-                node = SVC.inv.get(name)
-                if not node:
-                    return self._json(404, {"error": "unknown node"})
-                if action == "remove":
-                    SVC.inv.remove(name); return self._json(200, {"ok": True})
-                if action == "rename":
-                    SVC.inv.rename(name, body.get("name", ""))
-                    old = DATA / "posture" / f"{name}.json"
-                    if old.exists(): old.rename(DATA / "posture" / f"{body['name'].strip()}.json")
-                    return self._json(200, {"ok": True})
-                if action == "check":
-                    threading.Thread(target=SVC.collect_node, args=(node, "manual"), daemon=True).start()
-                    return self._json(202, {"ok": True})
-                if action in ("update", "rehearse"):
-                    password = body.get("password") or None
-                    if password and not self._secure():
-                        return self._json(400, {"error": "a password is only accepted over HTTPS — open this page at https://, "
-                                                          "or put the controller behind a TLS proxy"})
-                    return self._json(202, SVC.start_update(name, rehearse=(action == "rehearse"), password=password))
-            if parts[:2] == ["api", "runs"] and len(parts) == 4 and parts[3] == "verify":
-                return self._json(202, SVC.verify_run(parts[2]))
-            if parts[:2] == ["api", "runs"] and len(parts) == 4 and parts[3] == "stop":
-                run = SVC.runs.get(parts[2])
-                if not run:
-                    return self._json(404, {"error": "no such active run"})
-                run.stop_requested = True
-                return self._json(200, {"ok": True})
-            if path == "/api/clusters/rename":
-                SVC.inv.name_cluster(body.get("members", []), body.get("name", "")); return self._json(200, {"ok": True})
-            if path == "/api/units":
-                SVC.inv.set_units(body.get("units", [])); return self._json(200, {"ok": True})
-            self._json(404, {"error": "not found"})
-        except (ValueError, KeyError) as e:
-            self._json(400, {"error": str(e)})
-        except Exception as e:
-            self._json(500, {"error": repr(e)})
-
-
-def _tls_context() -> ssl.SSLContext | None:
-    """HTTPS by default. Uses the certificate you give it, else makes a
-    self-signed one under the data directory on first start and keeps it."""
-    if TLS_MODE == "off":
-        return None
-    cert, key = Path(TLS_CERT) if TLS_CERT else DATA / "tls" / "cert.pem", Path(TLS_KEY) if TLS_KEY else DATA / "tls" / "key.pem"
-    if not (cert.exists() and key.exists()):
-        if TLS_CERT or TLS_KEY:
-            raise SystemExit(f"TLS certificate or key not found: {cert} / {key}")
-        cert.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
-                        "-nodes", "-days", "3650", "-subj", "/CN=spark-fleet-updates",
-                        "-addext", "subjectAltName=DNS:localhost,DNS:spark-fleet-updates,IP:127.0.0.1",
-                        "-keyout", str(key), "-out", str(cert)], check=True, capture_output=True)
-        os.chmod(key, 0o600)
-        print(f"made a self-signed certificate at {cert} — your browser will ask you to trust it once", flush=True)
-    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-    ctx.load_cert_chain(str(cert), str(key))
-    return ctx
-
-
-def main() -> None:
-    global SVC
-    SVC = Service()
-    threading.Thread(target=SVC.scheduler, daemon=True, name="scheduler").start()
-    httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    ctx = _tls_context()
-    if ctx:
-        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
-    scheme = "https" if ctx else "http"
-    print(f"spark-fleet-updates on {scheme}://0.0.0.0:{PORT} · data {DATA} · {len(SVC.inv.nodes)} Sparks · checks every {INTERVAL_MIN:g} min"
-          + ("" if ctx or ALLOW_PLAIN_PASSWORD else " · plain HTTP: passwords refused unless behind a TLS proxy"), flush=True)
-    httpd.serve_forever()
-
-
-if __name__ == "__main__":
-    main()

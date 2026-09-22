@@ -1,5 +1,17 @@
 """SSH transport. One function, no library: the framework's model is plain
-commands over ssh with stdout captured, and that is all this needs."""
+commands over ssh with stdout captured, and that is all this needs.
+
+The login, the key and the known-hosts file are module state set once by
+`configure()` from the backend's settings, where upstream they were read from
+the environment at import. Module state rather than an argument on every call
+because there is exactly one fleet service in exactly one process (AL4.4), and
+threading a config object through `run`, `run_python` and `reachable` would
+touch every call site in executor.py for no gain a second instance could use.
+A test overrides it by calling `configure` or by monkeypatching `run`.
+
+`configure` must be called before anything reaches a Spark; unconfigured, the
+key is empty and ssh falls back to the agent, which in a container is nothing.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +19,16 @@ import os
 import subprocess
 from dataclasses import dataclass
 
-SSH_USER = os.environ.get("SPARK_FLEET_SSH_USER", "")
-SSH_KEY = os.environ.get("SPARK_FLEET_SSH_KEY", "")
+SSH_USER = ""
+SSH_KEY = ""
+KNOWN_HOSTS = ""
 CONNECT_TIMEOUT = int(os.environ.get("SPARK_FLEET_CONNECT_TIMEOUT", "8"))
+
+
+def configure(*, user: str = "", key: str = "", known_hosts: str = "") -> None:
+    """Point this at the key and the login the Sparks trust."""
+    global SSH_USER, SSH_KEY, KNOWN_HOSTS
+    SSH_USER, SSH_KEY, KNOWN_HOSTS = user or "", key or "", known_hosts or ""
 
 
 @dataclass
@@ -29,6 +48,11 @@ def _base(host: str, user: str | None) -> list[str]:
             # In a container the known_hosts file starts empty; accept-new pins a host
             # on first contact and refuses a changed key afterwards.
             "-o", "StrictHostKeyChecking=accept-new", "-o", "LogLevel=ERROR"]
+    if KNOWN_HOSTS:
+        # The backend image's user has no home directory (AL4.3), so ssh has
+        # nowhere to put ~/.ssh/known_hosts and accept-new would fail on every
+        # first contact. This points it at the writable state directory.
+        argv += ["-o", f"UserKnownHostsFile={KNOWN_HOSTS}"]
     if SSH_KEY:
         argv += ["-i", SSH_KEY, "-o", "IdentitiesOnly=yes"]
     argv.append(target)

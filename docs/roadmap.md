@@ -6373,10 +6373,36 @@ today. That is the rollback, and it needs no image swap.
   code and why, and it goes when AL3g does. Anything genuinely wrong rather
   than merely unlike us is fixed in both copies while both exist, which is
   why `F401` is not on that list.
-- [ ] **AL3b. Split service from transport.** Keep `Service` (collect, sweep,
-  runs, `fleet()`); make its paths and interval constructor arguments; delete
-  `Handler`, `_tls_context`, `main`, `web/index.html`. `ssh.py`'s env-derived
-  user and key become settings.
+- [x] **AL3b. Shipped 2026-09-22.** `Service` now takes `(data_dir,
+  interval_min)` and reads no environment at all; `Handler`, `_tls_context`,
+  `main` and the module globals are gone. This is where the byte-identical
+  property from AL3a ends, on purpose and only for these two files.
+
+  Two changes beyond the plan, both because the plan's own next step needs
+  them:
+
+  - **A scheduler that can be stopped.** It waited on `time.sleep(interval)`,
+    so a shutdown would have taken up to an hour to be noticed. It waits on a
+    `threading.Event` now, with `start()` (idempotent — a lifespan can run
+    twice) and `stop()`. `stop()` deliberately does **not** cancel a run in
+    flight: that is a systemd unit on the Spark and outliving this process is
+    the whole reason it is one.
+  - **`ssh.configure(user, key, known_hosts)`** rather than environment reads
+    at import, and `known_hosts` is new. AL4.3 said uid 10002 has no home;
+    without somewhere writable to put it, `StrictHostKeyChecking=accept-new`
+    fails on first contact with every Spark. It points at the state directory.
+    Module state rather than an argument on every call, because there is one
+    service in one process (AL4.4) and threading a config object through
+    `run`/`run_python`/`reachable` would touch every call site in
+    `executor.py` to serve a second instance that must never exist.
+
+  `backend/tests/test_fleet_service.py` covers what was impossible before the
+  split: two services on two directories not sharing state, the recipes
+  seeding out of the wheel, the scheduler starting and stopping inside its
+  timeout, an unreachable Spark becoming a record rather than an exception,
+  the envelope rendering before any check has ever succeeded, the per-node
+  lock, and `configure` putting the key and known-hosts on the command line.
+  Seven tests, no Spark touched — `ssh.run` is faked throughout.
 - [ ] **AL3c. Wire the routes in-process.** The same `/api/fleet*` routes gain
   an embedded branch. Every blocking call goes through `asyncio.to_thread`;
   the hourly scheduler starts in `lifespan` and stops on shutdown.
