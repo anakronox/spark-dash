@@ -6238,7 +6238,7 @@ its own timer.
 user and interval. The panel links to the fleet page for those
 (`FLEET_UPDATES_PUBLIC_URL`).
 
-**Deployment** — [deployment.md](deployment.md#fleet-updates--optional): the
+**Deployment** — [deployment.md](deployment.md#dgx-os-updates--optional): the
 fleet container is a service of the central stack behind the `fleet`
 compose profile, running with `SPARK_FLEET_TLS=off`, its documented "behind
 a proxy on the same host" mode; its image is built from its own checkout. `/health` reports `fleet_updates` as ok /

@@ -1,4 +1,4 @@
-# Fleet updates — OPTIONAL, and off unless you opt in (roadmap AL5).
+# DGX OS updates — OPTIONAL, and off unless you opt in (roadmap AL5).
 #
 # Leave this file out of COMPOSE_FILE and the dashboard has no Updates button,
 # opens no SSH session and holds no key. There is nothing in compose.yaml to
@@ -22,7 +22,7 @@
 services:
   backend:
     environment:
-      # The login on every Spark. No default on purpose: a fleet updater that
+      # The login on every Spark. No default on purpose: an updater that
       # does not know who to log in as should refuse to start the feature, not
       # guess at `root`.
       - FLEET_SSH_USER=${SPARK_FLEET_SSH_USER:?set SPARK_FLEET_SSH_USER in .env — the login on each Spark}

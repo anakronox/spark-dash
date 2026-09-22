@@ -296,7 +296,17 @@
     '': 'text-ink-2',
   };
 
-  const EXPAND = 'grid gap-6 px-4 py-4 border-t border-rule min-[1000px]:grid-cols-[1.1fr_1fr_1.2fr]';
+  /* minmax(0,…) on every track, NOT a bare `1.1fr`. A bare fr is
+     minmax(AUTO, 1.1fr), and that auto floor is the column's min-content
+     width — so one unbreakable string anywhere in a column stops the whole
+     grid shrinking. The packages column holds version pairs like
+     `6.17.0-1032.32 → 7.0.0-1019.19~24.04.2+1`, which is exactly that: the
+     grid grew past the fly-out, the two narrow columns were crushed to a
+     word each, and the package rows ran off the right edge with nothing to
+     scroll them back. Measured at 42px of overflow before this. */
+  const EXPAND =
+    'grid gap-6 px-4 py-4 border-t border-rule ' +
+    'min-[1000px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.2fr)]';
   const H = 'text-label tracking-[0.1em] uppercase text-ink-muted mb-2';
   const LI = 'flex justify-between gap-3 py-[5px] border-b border-panel-raised last:border-b-0';
   /* A long value wraps; wrapped text that is right-aligned reads as ragged
@@ -323,7 +333,7 @@
 <dialog
   bind:this={dialog}
   class="flyout"
-  aria-label="Fleet updates"
+  aria-label="DGX OS updates"
   onclose={() => {
     feed.setOpen(false);
     disarm();
@@ -337,7 +347,7 @@
   <div class="panel" bind:this={panel}>
     <header>
       <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 min-w-0">
-        <h2 class="eyebrow">Fleet updates</h2>
+        <h2 class="eyebrow">DGX OS updates</h2>
         {#if fleet}
           <span class={HEADER_META}>{summaryOf(fleet)}</span>
         {/if}
@@ -374,7 +384,7 @@
       </p>
     {:else if !nodes.length}
       <p class={NOTE}>
-        No Sparks on the fleet list yet. Tick <em>fleet updates</em> under a node in Settings.
+        No Sparks are being checked yet. Tick <em>DGX OS updates</em> under a node in Settings.
       </p>
     {:else}
       <div>
@@ -668,8 +678,13 @@
         />
         {#each pkgView.slice(rows) as p (p.name)}
           <div class={LI}>
-            <span class="min-w-0 truncate">{p.name}</span>
-            <span class="text-right whitespace-nowrap">
+            <span class="min-w-0 truncate" title={p.name}>{p.name}</span>
+            <!-- WRAPS, and does not say `whitespace-nowrap`. A Debian version
+                 is long enough to be unbreakable on its own -- the kernel's is
+                 `7.0.0-1019.19~24.04.2+1` -- so holding it on one line makes
+                 the row wider than the column can ever be. The VALUE pattern
+                 above: the block sits right, its lines read from the left. -->
+            <span class="{VALUE} min-w-0 [overflow-wrap:anywhere]">
               <span class="text-ink-muted">{p.from || '—'}</span> → <span class="text-ink-2">{p.to}</span>
               <span class={p.new ? 'text-good' : p.security ? 'text-warning' : 'text-ink-muted'}>
                 · {p.new ? 'new' : p.security ? 'security' : p.source}
@@ -684,7 +699,7 @@
       {:else}
         {#each rows as p (p.name)}
           <div class={LI}>
-            <span class="min-w-0 truncate">{p.name}</span>
+            <span class="min-w-0 truncate" title={p.name}>{p.name}</span>
             <span class={p.new ? 'text-good' : 'text-ink-muted'}>
               {p.new ? 'new' : p.security ? 'security' : p.source}
             </span>

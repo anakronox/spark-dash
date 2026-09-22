@@ -628,7 +628,7 @@
                     onchange={(e) =>
                       setEnrolled(n.node_id, n.host, (e.currentTarget as HTMLInputElement).checked)}
                   />
-                  <span>fleet updates</span>
+                  <span>DGX OS updates</span>
                   {#if fleetBusy === n.node_id}
                     <span class="tag">…</span>
                   {:else if f?.reachable === false}
@@ -753,7 +753,7 @@
          control that could not actually change them. -->
     {#if fleet}
       <section class="stack">
-        <h3 class="eyebrow dim">Fleet updates</h3>
+        <h3 class="eyebrow dim">DGX OS updates</h3>
 
         <!-- AL5: the switch is shown whatever the state, because Settings is
              where a person goes to find out how to turn a thing ON. When the
@@ -772,7 +772,7 @@
 
         {#if !fleet.capability}
           <p class="note" data-tone="warning">
-            This needs an SSH key the dashboard can use and a login on each Spark that can run
+            DGX OS updates need an SSH key the dashboard can use and a login on each Spark that can run
             <code>apt</code> — a change to your compose file and a one-time step per Spark, not
             something the dashboard can do for itself.
             {#if missingRequirements.length}
@@ -789,20 +789,20 @@
             stays mounted. Turn it back on above.
           </p>
         {:else if !fleet.available}
-          <p class="note" data-tone="warning">The fleet updater is not answering. The checkboxes above wait for it.</p>
+          <p class="note" data-tone="warning">The updater is not answering. The checkboxes above wait for it.</p>
         {:else if fleet.fleet}
           <p class="note">
             <span class="num">{fleet.fleet.nodes.length}</span>
             <span class="dim">
-              Spark{fleet.fleet.nodes.length === 1 ? '' : 's'} on the fleet list — tick
-              <em>fleet updates</em> under a node above to add it. Checked every
+              Spark{fleet.fleet.nodes.length === 1 ? '' : 's'} being checked — tick
+              <em>DGX OS updates</em> under a node above to add it. Checked every
               <span class="num">{fleet.fleet.interval_min}</span> min
               {#if fleet.fleet.ssh_user}as <code>{fleet.fleet.ssh_user}</code>{/if}.
             </span>
           </p>
           {#if fleetOrphans.length}
             <div class="rt">
-              <span class="eyebrow dim">On the fleet list but not in this cluster</span>
+              <span class="eyebrow dim">Being checked but not in this cluster</span>
               {#each fleetOrphans as f (f.name)}
                 <div class="rt-row">
                   <span>{f.name}</span>

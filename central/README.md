@@ -100,7 +100,7 @@ can run as part of this stack, behind the `fleet` compose profile, and put an
 and build its image there; its state and key live inside that checkout,
 chowned to `1000`.
 The `.env` lines are in `.env.example` and the steps in
-[deployment.md](../docs/deployment.md#fleet-updates--optional). Leave the
+[deployment.md](../docs/deployment.md#dgx-os-updates--optional). Leave the
 profile off and there is no container and no button.
 
 ## Updating

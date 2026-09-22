@@ -571,7 +571,7 @@
         {/if}
       </button>
 
-      <!-- FLEET UPDATES (roadmap AK). Same control as alerts, same rule:
+      <!-- DGX OS UPDATES (roadmap AK/AL). Same control as alerts, same rule:
            quiet when every Spark is current, a counted badge when some are
            not, and a mark while an update is running. Rendered only when the
            backend has a fleet service to ask -- a control for a thing that
@@ -580,10 +580,10 @@
         <button
           class="{ALERTS_TRIGGER} {fleetFeed.withUpdates || fleetFeed.updating ? ALERTS_LOUD : ''}"
           aria-label={fleetFeed.updating
-            ? `${fleetFeed.updating} Spark${fleetFeed.updating === 1 ? '' : 's'} updating. Open fleet updates.`
+            ? `${fleetFeed.updating} Spark${fleetFeed.updating === 1 ? '' : 's'} updating. Open DGX OS updates.`
             : fleetFeed.withUpdates
-              ? `${fleetFeed.withUpdates} Spark${fleetFeed.withUpdates === 1 ? '' : 's'} with updates. Open fleet updates.`
-              : 'Open fleet updates'}
+              ? `${fleetFeed.withUpdates} Spark${fleetFeed.withUpdates === 1 ? '' : 's'} with updates. Open DGX OS updates.`
+              : 'Open DGX OS updates'}
           onclick={() => (fleetOpen = true)}
         >
           <span aria-hidden="true">{fleetFeed.updating ? '●' : '⇡'}</span>

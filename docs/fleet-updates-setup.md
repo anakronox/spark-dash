@@ -1,4 +1,4 @@
-# Fleet updates: the quick setup
+# DGX OS updates: the quick setup
 
 **This is optional.** The dashboard is complete without it. Skip this page and
 there is no extra mount, no extra login, and no Updates button — nothing else
@@ -85,8 +85,8 @@ Then redeploy the central stack the way you normally do.
 
 ## 5. Switch it on
 
-Open the dashboard, then **Settings → Fleet updates**. It will say the key is
-found. Turn the switch on, then tick **fleet updates** under each Spark you
+Open the dashboard, then **Settings → DGX OS updates**. It will say the key is
+found. Turn the switch on, then tick **DGX OS updates** under each Spark you
 want checked — the dashboard already knows their names and addresses from
 `cluster.yml`, so there is nothing to type twice.
 

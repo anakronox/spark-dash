@@ -86,15 +86,22 @@ Past a dozen links the card switches to a table — one row per link with a
 sparkline, sorted so anything down, faulted or unusually busy is at the top, and
 a column naming which of those put it there. Click a row for its full chart.
 
-**Optionally, NVIDIA release updates for the whole fleet.** If you also run
-[spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates) — a
-separate project that checks every Spark against NVIDIA's release recipes and
-installs updates on request — the dashboard can show it: an *updates* button in
-the header with how many Sparks have one, and a panel that shows what each
-update is and starts, watches and verifies it; which nodes it covers is a
-checkbox under each node in Settings. **You do not have to use this.**
-The dashboard is complete without it; the button only exists when the fleet
-service is configured, and nothing else changes either way.
+**Optionally, NVIDIA release updates for the whole fleet.** The dashboard can
+check every Spark against NVIDIA's release recipes and install what is
+available: an *updates* button in the header with how many Sparks have one, and
+a panel that shows what each update would change, then starts it, watches it
+and verifies it afterwards. It is NVIDIA's own sequence — `apt full-upgrade`,
+`fwupdmgr upgrade`, restart — one Spark at a time, over SSH, which is the
+mechanism NVIDIA publishes for a fleet. Which nodes it covers is a checkbox
+under each node in Settings.
+
+**You do not have to use this, and it is off until you set it up.** It needs an
+SSH key mounted into the backend and a login on each Spark, so leaving the
+setup undone means no button and no SSH: see
+[DGX OS updates: the quick setup](docs/fleet-updates-setup.md). Nothing else in
+the dashboard behaves differently either way. Nothing is ever installed on a
+timer — the hourly part is a read-only check, and every update is a button
+somebody pressed, after a confirmation naming the release and the packages.
 
 ## The page is yours
 
@@ -216,6 +223,10 @@ curl -s <monitoring-host>:8080/health | jq '{status, problems}'
 scraped. If a node is listed there but its agent isn't running yet, it shows up
 in `problems` with the reason.
 
+That is the whole install. If you also want the dashboard to update your
+Sparks, that is one more optional step and a separate page:
+[DGX OS updates: the quick setup](docs/fleet-updates-setup.md).
+
 ### 4. Adding a node, or an engine on one
 
 The cluster is defined in one file, `central/cluster/cluster.yml`. You can edit
@@ -289,12 +300,14 @@ images](docs/deployment.md#building-and-shipping-images). It needs
   and what was deliberately not built, with the reasoning kept.
 - [App design](docs/app-design.md) — backend/frontend stack (FastAPI + Svelte 5),
   API surface, live-update contract, and panel/visual design rules.
-- [Fleet updates](docs/fleet-updates.md) — how NVIDIA actually updates GB10
-  systems, from the OTA recipes and the DGX Dashboard's internals up to the
-  agentless-SSH Enterprise Manageability framework, read off live nodes. That
-  research became [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
-  a separate project the dashboard can optionally show — see
-  [Deployment](docs/deployment.md#fleet-updates--optional).
+- [DGX OS updates: the quick setup](docs/fleet-updates-setup.md) — turning the
+  updates feature on: make a key, put it on each Spark, one line in `.env`.
+  What it does, what it will never do on its own, and how to turn it off again.
+- [DGX OS updates: the research](docs/fleet-updates.md) — how NVIDIA actually
+  updates GB10 systems, from the OTA recipes and the DGX Dashboard's internals
+  up to the agentless-SSH Enterprise Manageability framework, read off live
+  nodes. The reference the feature is built on, and worth reading before
+  trusting any tool that updates a Spark — including this one.
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
   stays untouched) and the per-node/central Compose service breakdown.
 

@@ -143,15 +143,25 @@ requires a host kernel module.
   charts via uPlot (settled). Built to static assets and served by the backend
   container — one less service, no CORS, same-origin WebSocket. See
   [app-design.md](app-design.md).
-- **spark-fleet-updates** (optional — off by default, and the dashboard is
-  complete without it; [roadmap AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16))
-  — a separate project and container that checks every Spark for NVIDIA
-  releases and installs them on request. The backend is a typed proxy in
-  front of its JSON API (`/api/fleet/*`, `fleet_updates.py`) and the
-  frontend renders the fleet in its own idiom. The dashboard holds no SSH
-  key, no password and no node access; the fleet service keeps all of its
-  own guards, including refusing a password that did not travel over HTTPS —
-  the backend forwards the real `X-Forwarded-Proto` rather than vouching.
+- **DGX OS updates** (optional — off by default, and the dashboard is complete
+  without it; [AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16)
+  put the face in, [AL](roadmap.md#al--the-fleet-updater-folded-in--branch-fleet-embedded-started-2026-09-22)
+  brought the engine in) — checks every Spark against NVIDIA's release recipes
+  and installs what is available, one at a time, over SSH: NVIDIA's own
+  `apt full-upgrade` + `fwupdmgr upgrade` + restart. It runs **inside the
+  backend** (`spark_dash_backend/fleet/`, reached through `/api/fleet/*`);
+  until AL3g it can also proxy to the older standalone container, and
+  `fleet_api.py` is the seam the two implementations share.
+
+  **This is the one place the dashboard reaches a node other than over HTTP
+  to its agent**, and the line is drawn deliberately: the backend holds the
+  SSH key and opens the sessions, but only for this feature, only when a key
+  is mounted and a login named, and every guard is kept — a confirmation
+  first, a sudo password accepted only over TLS, the install as a transient
+  systemd unit that outlives a dropped session, HOLD-with-evidence on any
+  failed step, and nothing on a timer except a read-only hourly check. The
+  **node agent gains nothing**: it stays HTTP-only and unprivileged, with no
+  apt, no D-Bus to fwupd and no root.
 
 ### Live-view fast path
 
@@ -228,9 +238,10 @@ nothing else. What follows is why, and it applies equally to a fourth:
   ever be gated on "well, OAuth already checked this upstream." Read-only as
   to processes and models (no control actions), which keeps the blast radius
   low regardless of the auth path. The exceptions, each recorded where it
-  was decided: alert silences (G), maintenance windows (AH), and — when
-  spark-fleet-updates is configured — starting an update on a Spark (AK),
-  which the fleet service gates on its own password rule.
+  was decided: alert silences (G), maintenance windows (AH), and — when DGX OS
+  updates are set up — starting an update on a Spark (AK, AL), which is gated
+  on a confirmation and on a sudo password that is refused unless it arrived
+  over TLS.
 
 ## Storage / retention
 

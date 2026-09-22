@@ -243,13 +243,13 @@ the node stack's `.env`.
 
 Two new containers, plus a route on infrastructure that already exists.
 
-### Fleet updates — optional
+### DGX OS updates — optional
 
 **This is optional, and off by default.** The dashboard is complete without
 it: skip this section and there is no extra mount, no SSH key and no button,
 and nothing else in the stack behaves differently.
 
-**Start here: [fleet-updates-setup.md](fleet-updates-setup.md)** — make a key,
+**Start here: [DGX OS updates: the quick setup](fleet-updates-setup.md)** — make a key,
 put it on each Spark, add one line to `.env`, redeploy. The updater runs inside
 the backend; there is no second container to build. The rest of this section
 describes the older layout, a separate `spark-fleet-updates` container, which
@@ -274,7 +274,7 @@ same host" mode. Same network for free, no port to find.
    `FLEET_UPDATES_URL=http://spark-fleet-updates:8080`, and
    `FLEET_UPDATES_PUBLIC_URL` for where a browser reaches the fleet page on
    `:8090`, which the dashboard links to. Which Sparks the fleet checks is
-   then a *fleet updates* checkbox under each node in the dashboard's
+   then a *DGX OS updates* checkbox under each node in the dashboard's
    Settings — it hands over the node's id and host from `cluster.yml`, so
    nothing is typed twice.
 4. `docker compose up -d`. If a deploy tool runs its own copy of
