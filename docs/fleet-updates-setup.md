@@ -32,12 +32,20 @@ release and the packages. Nothing is on a timer except the read-only check.
 On the machine that runs your dashboard's central stack:
 
 ```bash
-mkdir -p central/fleet-ssh
+mkdir -p central/fleet-ssh central/fleet-state
 ssh-keygen -t ed25519 -N '' -C spark-dash-fleet -f central/fleet-ssh/id_ed25519
+chmod 700 central/fleet-ssh
+sudo chown -R 10002:10002 central/fleet-ssh central/fleet-state
 ```
 
-No passphrase: nobody is there to type one when the container starts. Keep the
-directory to yourself — `chmod 700 central/fleet-ssh`.
+No passphrase: nobody is there to type one when the container starts.
+
+**That `chown` is not optional, and skipping it fails confusingly.** The
+dashboard runs as uid 10002 inside its container, and `ssh` refuses to use a
+private key that belongs to somebody else — so a key left owned by you reads as
+"unreadable" in Settings even though it is plainly there. The state directory
+needs it for a different reason: that is where `ssh` records each Spark's host
+key the first time it connects.
 
 ## 2. Put it on each Spark
 
@@ -133,7 +141,7 @@ sudo systemctl restart dgx-dashboard-admin.service
 
 | what you see | what it means |
 |---|---|
-| Settings says a requirement is missing | Exactly that one: the key is not mounted, is unreadable, or `SPARK_FLEET_SSH_USER` is unset. Step 4. |
+| Settings says a requirement is missing | Exactly that one. **`ssh_key_readable` false with the key clearly present is the `chown` from step 1** — uid 10002 has to own it. The others are step 4. |
 | A Spark reads **could not connect** | The key is not on that Spark, or the login is wrong. Re-run step 2 and test it by hand. |
 | **firmware needs the two read-only sudo rules** | Firmware versions come from `dmidecode` and `mstflint`, which need root to read. The row still scores everything else. |
 | Update refuses your password | The page is not on HTTPS. Reach the dashboard through your tunnel, or use passwordless sudo. |

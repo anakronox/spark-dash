@@ -48,6 +48,15 @@ RUN uv sync --frozen --no-dev --no-editable --package spark-dash-backend
 
 FROM python:3.12-slim
 
+# openssh-client is here for ONE optional feature: the fleet updater (roadmap
+# AL). It reaches each Spark the way NVIDIA's own fleet guidance says to --
+# plain commands over ssh with stdout captured -- so without this binary the
+# feature cannot work, and with it and no key mounted nothing happens at all.
+# ~5 MB, and the alternative is a second image for people who want updates.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssh-client \
+ && rm -rf /var/lib/apt/lists/*
+
 # Set by publish-images.sh from the git sha. The agent has always recorded this
 # and the backend did not, so `/health` could name every agent's build but not
 # its own — and the only record of what backend was running was the image tag
@@ -71,6 +80,16 @@ RUN useradd --system --uid 10002 --no-create-home sparkdash
 # directory's ownership onto a freshly created named volume, which is what lets
 # the non-root user render scrape targets into it.
 RUN mkdir -p /etc/prometheus/targets && chown -R 10002:10002 /etc/prometheus/targets
+
+# The fleet updater's state: the enrolment list, each Spark's posture, the run
+# records, and known_hosts. Seeded with the right ownership for the same reason
+# as the targets directory above.
+#
+# known_hosts is why this has to be writable rather than just readable. The
+# user above has --no-create-home, so ssh has nowhere to put ~/.ssh/known_hosts
+# and `StrictHostKeyChecking=accept-new` would fail on first contact with every
+# Spark. `ssh.configure()` points it here instead (AL4.3).
+RUN mkdir -p /data/fleet && chown -R 10002:10002 /data/fleet
 
 USER 10002
 

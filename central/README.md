@@ -88,7 +88,13 @@ If you'd rather run both as some other uid, set `PUID`/`PGID` in `.env`
 instead of chowning. Leaving them unset keeps each container on its own
 non-root user, which is the better default.
 
-Optionally — and you do not have to — [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates)
+Optionally — and you do not have to — the dashboard can check and update every
+Spark: an **Updates** button in the header, NVIDIA's own `apt` + `fwupd` +
+restart sequence behind a confirmation. It runs inside the backend, and turning
+it on is a key plus one line in `.env`:
+[docs/fleet-updates-setup.md](../docs/fleet-updates-setup.md).
+
+The older layout below — [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates)
 can run as part of this stack, behind the `fleet` compose profile, and put an
 "updates" button in the dashboard's header. Clone it as `./fleet` (gitignored)
 and build its image there; its state and key live inside that checkout,

@@ -43,5 +43,13 @@ cluster.yml
 
 # The fleet updater's own checkout, when the `fleet` profile is on — its
 # source, its state and its SSH key, which is root-equivalent on every Spark
-# that trusts it.
+# that trusts it. (AK's layout, a second container. AL3g removes it.)
 fleet/
+
+# The embedded fleet updater's state and key (AL3e), when compose.fleet.yaml
+# is in COMPOSE_FILE. Same reasoning and a stronger version of it: the key is
+# root-equivalent on every Spark that trusts it, and fleet-state carries each
+# Spark's posture and every run's record. Neither is config anybody should
+# pull over, and the repo is public.
+fleet-ssh/
+fleet-state/

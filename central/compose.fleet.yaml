@@ -1,0 +1,51 @@
+# Fleet updates — OPTIONAL, and off unless you opt in (roadmap AL5).
+#
+# Leave this file out of COMPOSE_FILE and the dashboard has no Updates button,
+# opens no SSH session and holds no key. There is nothing in compose.yaml to
+# comment out or delete: the whole of the capability is the two mounts and the
+# login below.
+#
+# To turn it on, one line in .env:
+#
+#   COMPOSE_FILE=compose.yaml:compose.fleet.yaml
+#   SPARK_FLEET_SSH_USER=youruser
+#
+# then redeploy. The walkthrough — making the key, putting it on each Spark,
+# and what it will and will not do — is docs/fleet-updates-setup.md.
+#
+# AN OVERLAY RATHER THAN A `profiles:` KEY, which is J1's mechanism and J1's
+# reasoning: a profile has to be declared in the base file, so every existing
+# deployment would silently lose or gain something the first time it deployed
+# without the flag set. An overlay leaves compose.yaml untouched, so an install
+# that never opts in cannot regress.
+
+services:
+  backend:
+    environment:
+      # The login on every Spark. No default on purpose: a fleet updater that
+      # does not know who to log in as should refuse to start the feature, not
+      # guess at `root`.
+      - FLEET_SSH_USER=${SPARK_FLEET_SSH_USER:?set SPARK_FLEET_SSH_USER in .env — the login on each Spark}
+      - FLEET_SSH_KEY=/ssh/id_ed25519
+      - FLEET_STATE_DIR=/data/fleet
+      - FLEET_INTERVAL_MIN=${SPARK_FLEET_INTERVAL_MIN:-60}
+      # "1" accepts a sudo password over plain HTTP as well. The LAN-only
+      # opt-out and yours to make; unset, Update works through the tunnel and
+      # is refused on the LAN. This project does not set it.
+      - FLEET_ALLOW_PLAIN_PASSWORD=${SPARK_FLEET_ALLOW_PLAIN_PASSWORD:-}
+    volumes:
+      # The enrolment list, each Spark's posture, every run's record, and the
+      # known_hosts file. WRITABLE, and it must be owned by uid 10002 — the
+      # image's user, which has no home directory, so this is the only place
+      # ssh can pin a host key on first contact.
+      #
+      #   mkdir -p central/fleet-state && sudo chown -R 10002:10002 central/fleet-state
+      #
+      # Docker auto-creates a missing bind source as an empty root-owned
+      # directory, which fails QUIETLY: the backend starts, reports the state
+      # directory unwritable in Settings, and offers nothing.
+      - ./fleet-state:/data/fleet
+      # The key the Sparks trust. Read-only — nothing in the dashboard ever
+      # writes it. It must be mode 0600 and owned by uid 10002, or ssh refuses
+      # to use it; the guide's step 1 says so.
+      - ./fleet-ssh:/ssh:ro

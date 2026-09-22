@@ -246,8 +246,14 @@ Two new containers, plus a route on infrastructure that already exists.
 ### Fleet updates — optional
 
 **This is optional, and off by default.** The dashboard is complete without
-it: skip this section and there is no extra container, no extra port and no
-button, and nothing else in the stack behaves differently.
+it: skip this section and there is no extra mount, no SSH key and no button,
+and nothing else in the stack behaves differently.
+
+**Start here: [fleet-updates-setup.md](fleet-updates-setup.md)** — make a key,
+put it on each Spark, add one line to `.env`, redeploy. The updater runs inside
+the backend; there is no second container to build. The rest of this section
+describes the older layout, a separate `spark-fleet-updates` container, which
+still works and still takes precedence when `FLEET_UPDATES_URL` is set.
 
 If you also run [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
 the dashboard can show it

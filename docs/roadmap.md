@@ -6533,8 +6533,38 @@ today. That is the rollback, and it needs no image swap.
   by its checkbox and checked — 158 updates on `sparky` — and `fleet.json`
   afterwards reading `{"enrolled": ["sparky"], "enabled": true}` and nothing
   else.
-- [ ] **AL3e. Container and stack.** `openssh-client` in the backend image, a
-  writable known-hosts path for uid 10002, and `central/compose.fleet.yaml`.
+- [x] **AL3e. Shipped 2026-09-22.** `openssh-client` in the backend image
+  (~5 MB; the alternative is a second image for people who want updates),
+  `/data/fleet` created and chowned to 10002 in the image, and
+  `central/compose.fleet.yaml`.
+
+  **The base compose file gains nothing**, which is AL5's promise and is now a
+  test rather than an intention: leave the overlay out of `COMPOSE_FILE` and
+  there is nothing to comment out or delete. An overlay rather than a
+  `profiles:` key for J1's reason — a profile has to be declared in the base
+  file, so every existing install would silently gain or lose something the
+  first time it deployed without the flag.
+
+  `tests/test_fleet_overlay.py` checks the seams that fail *quietly*: the
+  overlay touches only the backend and opens no port; the four settings the
+  readiness check looks for are all present; `SPARK_FLEET_SSH_USER` uses `:?`
+  so a missing login fails the deploy rather than defaulting to `root`; state
+  is writable and the key read-only; `/data/fleet` is the same string in the
+  image, the overlay and the settings default; and the guide's paths match the
+  overlay's, since a walkthrough that drifts produces a dashboard that starts
+  and offers nothing.
+
+  **The `chown` is the trap.** The image's user is uid 10002 with no home, so
+  the state directory is where ssh pins host keys — and ssh refuses a private
+  key owned by somebody else, which surfaces as `ssh_key_readable: false` with
+  the key plainly sitting there. Docker will not fix the ownership of a bind
+  mount, so the guide says `sudo chown -R 10002:10002` in step 1 and the
+  troubleshooting table names that exact symptom.
+
+  **Not verified here, and it needs to be on the VM:** this machine has no
+  Docker, so the image has not been built and the uid-10002 SSH path has only
+  been reasoned about. A build plus one `/health` read is the check — and the
+  ownership rule above is the thing most likely to be wrong.
 - [ ] **AL3f. Tests.** The route tests re-pointed at the embedded service with
   `ssh.run` faked — check, update, rehearse, stop, verify, all with no Spark
   in the room. Plus AL2's password-residue test and AL4's restart-reconcile
@@ -6751,8 +6781,11 @@ turn a thing on.
   whose rows are the failures this work actually produced. It carries AL6.1's
   warning about the DGX Dashboard being the refresher, and links *down* into
   [fleet-updates.md](fleet-updates.md) rather than repeating it.
-- [ ] **AL5b.** `central/README.md` and [deployment.md](deployment.md) replace
-  today's clone-and-build instructions with a pointer to the guide.
+- [x] **AL5b. Shipped 2026-09-22.** `central/README.md`,
+  [deployment.md](deployment.md) and `.env.example` lead with the embedded
+  setup and keep the clone-and-build instructions below it, marked as the
+  older layout that still wins when `FLEET_UPDATES_URL` is set. Kept rather
+  than deleted for one release, because it is the rollback.
 
 ### J — Single-host profile (everything on one GB10)
 
