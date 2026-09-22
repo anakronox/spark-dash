@@ -6561,10 +6561,35 @@ today. That is the rollback, and it needs no image swap.
   mount, so the guide says `sudo chown -R 10002:10002` in step 1 and the
   troubleshooting table names that exact symptom.
 
-  **Not verified here, and it needs to be on the VM:** this machine has no
-  Docker, so the image has not been built and the uid-10002 SSH path has only
-  been reasoned about. A build plus one `/health` read is the check — and the
-  ownership rule above is the thing most likely to be wrong.
+  **Verified on the VM the same day, in a throwaway stack beside the live
+  one** (Brian's suggestion: build under another tag, its own compose file and
+  `.env`, different ports). `/docker/fleet-test/` — its own project name, one
+  container, port 8081, **no Prometheus, no Alertmanager, no targets mount**
+  (a second backend rendering into the live targets directory would fight the
+  real one) and `cluster.yml` mounted read-only so a stray "save cluster"
+  could not rewrite what production polls from. The branch was cloned to its
+  own directory rather than checked out in `/docker/spark-dash-homegrown`,
+  whose working tree the live stack bind-mounts config from.
+
+  **The ownership rule is right, and it fails earlier than expected.** Mounted
+  with the existing key still owned by uid 1000, mode 0600, the dashboard came
+  up reporting `ssh_key_readable: false` — caught by the readiness check
+  before `ssh` was ever invoked, which is a plain POSIX permission failure
+  rather than ssh's own ownership rule. `chown 10002` and a restart flipped it
+  to configured. That is exactly the symptom the guide's troubleshooting table
+  names, arrived at from the other direction.
+
+  What the containerised updater then did, with the real fleet: pinned three
+  host keys into `known_hosts` **inside the state mount** — AL4.3's fix proven
+  against a homeless uid 10002 in the real image, not reasoned about — read
+  158/68 on `sparky` and 143/60 on the pair, read the six pins and eighteen
+  kept-back packages off `sparketa`, derived the pair from `cluster.yml` and
+  named the detected cluster `danflashes` from it, reported no orphans, no
+  fabric disagreements and no stranded Dashboards, and **passed a full
+  rehearsal on `sparky`**. Afterwards: no leftover unit, no
+  `/tmp/spark-fleet-apply.sh`, `settings.json` still enabled. Production's
+  backend stayed on `192ae` throughout, `/health` ok, every live container
+  still up.
 - [x] **AL3f. Shipped 2026-09-22**, as a twin rather than a re-point. The
   plan said to move the route tests onto the embedded service; both
   implementations exist until AL3g, and the contract has to hold for both —
