@@ -1,8 +1,11 @@
-"""The fleet updater running inside this process (AL3c).
+"""The DGX OS updater, running inside this process (AL3c).
 
-The other implementation of `fleet_api.FleetBackend`. Where `ProxyFleet` turns
-an intent into an HTTP request to a second container, this turns it into a
-call on `fleet.service.Service`, which is now an object this backend owns.
+It turns each thing the dashboard can ask -- `envelope`, `check_all`,
+`node_action`, `run_action`, `log`, `enrol` -- into a call on
+`fleet.service.Service`, an object this backend owns. Until AL3g there was a
+second implementation of the same methods that made an HTTP request to a
+separate `spark-fleet-updates` container instead; it was the rollback while
+the cutover was new, and it went once a real update had run through this one.
 
 TWO THINGS EVERY METHOD HERE DOES.
 
@@ -43,7 +46,7 @@ PASSWORD_NEEDS_TLS = (
 
 
 class EmbeddedFleet:
-    """`FleetBackend` over a local `Service`."""
+    """The updater, over a local `Service`."""
 
     def __init__(
         self,
@@ -128,6 +131,14 @@ class EmbeddedFleet:
         }
 
     async def set_enabled(self, on: bool, *, secure: bool) -> dict[str, Any]:
+        """AL5's second knob: use, as opposed to capability.
+
+        Capability is the compose overlay -- a key mounted and a login named,
+        which the dashboard cannot grant itself. This is the switch a person
+        flips in Settings once that is true, and "configured but deliberately
+        quiet" is a state the feature has to have: a fleet held back while a
+        bad kernel sits in the repos is exactly that.
+        """
         if not self.capability:
             missing = [k for k, ok in self.requirements().items() if not ok]
             raise FleetError(

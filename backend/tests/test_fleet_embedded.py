@@ -375,14 +375,19 @@ async def test_switching_on_without_the_compose_change_says_what_to_do(tmp_path)
     assert "ssh_key_mounted" in exc.value.detail
 
 
-async def test_the_status_is_the_same_shape_whichever_backend_answers(tmp_path):
-    """Settings renders from this, and must not need to know which one it got."""
-    from spark_dash_backend.fleet_updates import FleetUpdatesClient
+async def test_status_carries_what_settings_renders(tmp_path):
+    """Settings draws its whole section from this, including the warning that
+    names the missing requirement, so the keys are a contract.
 
-    embedded = make(tmp_path).status()
-    proxied = FleetUpdatesClient("http://fleet:8080").status()
-    assert embedded.keys() == proxied.keys()
-    assert embedded["embedded"] is True and proxied["embedded"] is False
+    It used to assert that the proxy and the embedded backend returned the
+    same shape. The proxy went at AL3g; what the shape has to satisfy is the
+    panel, which is what this checks now."""
+    status = make(tmp_path).status()
+    assert set(status) == {"capability", "enabled", "requirements", "embedded"}
+    assert status["capability"] is True and status["enabled"] is True
+    assert set(status["requirements"]) == {
+        "ssh_key_mounted", "ssh_key_readable", "ssh_user_set", "state_dir_writable",
+    }
 
 
 async def test_the_switch_can_be_switched_back_on(tmp_path):

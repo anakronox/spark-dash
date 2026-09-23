@@ -249,51 +249,49 @@ Two new containers, plus a route on infrastructure that already exists.
 it: skip this section and there is no extra mount, no SSH key and no button,
 and nothing else in the stack behaves differently.
 
-**Start here: [DGX OS updates: the quick setup](fleet-updates-setup.md)** — make a key,
-put it on each Spark, add one line to `.env`, redeploy. The updater runs inside
-the backend; there is no second container to build. The rest of this section
-describes the older layout, a separate `spark-fleet-updates` container, which
-still works and still takes precedence when `FLEET_UPDATES_URL` is set.
+**Start here: [DGX OS updates: the quick setup](fleet-updates-setup.md)** —
+make a key, put it on each Spark, add one line to `.env`, redeploy. The
+updater runs inside the backend; there is no second container.
 
-If you also run [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates),
-the dashboard can show it
-([roadmap AK](roadmap.md#ak--fleet-updates-from-the-dashboard--built-2026-09-16)).
-It runs as a service of the central stack behind the `fleet` compose
-profile, with its own TLS off, because the backend is the proxy in front of
-it — the fleet service's documented "behind a TLS-terminating proxy on the
-same host" mode. Same network for free, no port to find.
+The capability is a compose overlay rather than a profile, so an install that
+never opts in carries none of it:
 
-1. Clone it as `central/fleet` and build the image there — it is not
-   published: `git clone https://github.com/anakronox/spark-fleet-updates.git fleet`
-   then `docker build -t spark-fleet-updates:latest fleet`.
-2. Its state and key are `central/fleet/data` and `central/fleet/ssh` — a
-   standalone deployment's own `./data` and `./ssh`, in place — both
-   `chown 1000:1000`, the image's user. That repo ignores both; this one
-   ignores `fleet/`.
-3. In `.env`: `COMPOSE_PROFILES=fleet`, `SPARK_FLEET_SSH_USER`,
-   `FLEET_UPDATES_URL=http://spark-fleet-updates:8080`, and
-   `FLEET_UPDATES_PUBLIC_URL` for where a browser reaches the fleet page on
-   `:8090`, which the dashboard links to. Which Sparks the fleet checks is
-   then a *DGX OS updates* checkbox under each node in the dashboard's
-   Settings — it hands over the node's id and host from `cluster.yml`, so
-   nothing is typed twice.
-4. `docker compose up -d`. If a deploy tool runs its own copy of
-   `compose.yaml` from elsewhere, that copy needs BOTH halves: the service
-   (with its two mounts made absolute) and the two `FLEET_UPDATES_*` lines
-   under the backend's `environment:`. Missing the second half is silent —
-   the fleet container comes up healthy and `/health` says
-   `not configured`.
+```
+COMPOSE_FILE=compose.yaml:compose.fleet.yaml
+SPARK_FLEET_SSH_USER=youruser
+```
 
-The password rule is the fleet service's and is forwarded, not bypassed:
-through the tunnel (`https://`, where cloudflared sets `X-Forwarded-Proto`)
-an update accepts the sudo password; on the plain-HTTP LAN — including the
-fleet page itself on `:8090` — the fleet service refuses it and the panel
-shows its sentence. `SPARK_FLEET_ALLOW_PLAIN_PASSWORD=1` is the opt-out, and
-it is yours to set. Sparks that grant passwordless sudo never ask.
+`compose.fleet.yaml` mounts `central/fleet-ssh` (the key, read-only) and
+`central/fleet-state` (the enrolment list, posture, run records and the
+`known_hosts` ssh pins into). **Both must be owned by uid 10002**, the backend
+image's user, or ssh will not read the key — Docker will not do this for a
+bind mount, and it auto-creates a missing source as an empty root-owned
+directory, which fails quietly.
 
-`/health` reports `fleet_updates: ok | unreachable | not configured`.
-Unreachable is not counted as a problem — the dashboard is not blind without
-it.
+If a deploy tool runs its own copy of `compose.yaml` from elsewhere, that copy
+needs the same four environment lines and two mounts, with the mounts made
+absolute. Missing them is silent: the backend comes up healthy and Settings
+says the feature is not set up.
+
+The password rule is not bypassed: through the tunnel (`https://`, where
+cloudflared sets `X-Forwarded-Proto`) an update accepts the sudo password; on
+the plain-HTTP LAN it is refused. `SPARK_FLEET_ALLOW_PLAIN_PASSWORD=1` is the
+opt-out and yours to set. Sparks that grant passwordless sudo never ask.
+
+`/health` reports `fleet_updates: ok | unreachable | not configured`, and
+names any Spark that has stopped refreshing its package lists
+(`updates_not_refreshing`) or was left with its own DGX Dashboard updater
+paused (`dashboards_paused`). Unreachable is not counted as a problem — the
+dashboard is not blind without this.
+
+**Until 2026-09-23 this ran as a separate `spark-fleet-updates` container**
+that the backend proxied to, behind a `fleet` compose profile. It was folded
+into the backend ([roadmap AL](roadmap.md#al--the-fleet-updater-folded-in--branch-fleet-embedded-started-2026-09-22))
+and the proxy was removed once a real update had run through the new path. If
+you are upgrading from that layout: drop `COMPOSE_PROFILES=fleet` and
+`FLEET_UPDATES_URL` from `.env`, add the two lines above, and copy the old
+`fleet/data/fleet.json` to `central/fleet-state/` — your enrolment list is
+migrated in place, so nothing needs re-ticking.
 
 ### Sizing
 

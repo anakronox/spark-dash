@@ -34,7 +34,6 @@ export class FleetFeed {
   enabled = $state(true);
   /** Which requirement is unmet, one at a time, so the warning can say. */
   requirements = $state<Record<string, boolean>>({});
-  publicUrl = $state<string | null>(null);
   fleet = $state<Fleet | null>(null);
   loaded = $state(false);
   /** The panel is open: poll faster, because someone is looking. */
@@ -65,7 +64,6 @@ export class FleetFeed {
       this.capability = body.capability ?? body.configured;
       this.enabled = body.enabled ?? true;
       this.requirements = body.requirements ?? {};
-      this.publicUrl = body.public_url;
       this.fleet = body.fleet;
     } catch {
       // The backend itself did not answer. Leave `configured` alone -- the

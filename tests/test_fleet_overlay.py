@@ -55,12 +55,13 @@ def test_the_base_file_says_nothing_about_the_embedded_fleet():
     FLEET_SSH_* line in the base file would mean an install that never opted in
     still carried the feature's configuration.
 
-    Scoped to the backend on purpose. The base file also still carries the old
-    `spark-fleet-updates` container behind its `fleet` profile, which mounts a
-    key of its own -- that is AK's proxy layout, kept until one real update has
-    run embedded, and AL3g deletes it. It is off unless a profile is named, so
-    it cannot affect an install that has not asked for it.
+    Scoped to the backend because that is the only service the overlay
+    touches. It used to be scoped that way for another reason too -- the base
+    file still carried the old `spark-fleet-updates` container behind a
+    profile, mounting a key of its own -- and AL3g removed it, which the
+    assertion below now also proves.
     """
+    assert "spark-fleet-updates" not in load(BASE)["services"], "the proxy container is back"
     backend = load(BASE)["services"]["backend"]
     for key in env_of(backend):
         assert not key.startswith("FLEET_SSH"), f"the backend carries {key} in the base file"

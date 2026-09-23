@@ -1,20 +1,19 @@
 <script lang="ts">
-  /* The fleet updater, as a right-anchored fly-out (roadmap AK).
+  /* DGX OS updates, as a right-anchored fly-out (roadmap AK, AL).
    *
-   * WHAT THIS IS. spark-fleet-updates is its own service with its own page:
-   * every Spark on one line, is there an update, and a button to install it.
-   * This is that page again, drawn in the dashboard's idiom and fed through
-   * the backend proxy -- so the answer to "are the Sparks current?" is one
-   * click from the numbers, behind the same OAuth as the rest of this page,
-   * and without the fleet service's port having to be reachable from
-   * wherever you are reading.
+   * WHAT THIS IS. Every Spark on one line: is there an update, what would it
+   * change, and a button to install it. One click from the numbers, behind
+   * the same OAuth as the rest of the page.
    *
-   * WHAT IT IS NOT. Not the fleet service's administration. Which nodes are
-   * on its list is decided in Settings, a checkbox under each node of the
-   * cluster, since the dashboard already knows every id and host; the fleet
-   * page, which the header links to, has the rest. Not a second opinion,
-   * either: every word of status here is `lib/fleet.ts`, ported from the
-   * fleet page's own functions, so the two never disagree about a Spark.
+   * It began (AK) as a second drawing of a separate service's own page, fed
+   * through a proxy in the backend. AL folded that service into the backend
+   * and AL3g removed the proxy, so this is now the only page there is --
+   * which is why nothing here links out any more, and why `lib/fleet.ts` is
+   * the one copy of the wording rather than a port kept in step with one.
+   *
+   * WHAT IT IS NOT. Not administration. Which nodes are checked is decided in
+   * Settings, a checkbox under each node of the cluster, since the dashboard
+   * already knows every id and host.
    *
    * THE SAME SHELL AS ALERTS AND SETTINGS -- <dialog> + showModal(), for
    * the platform's focus trap, Escape, backdrop and focus restore -- but
@@ -366,21 +365,19 @@
             check all now
           </button>
         {/if}
-        {#if feed.publicUrl}
-          <a class={LINK} href={feed.publicUrl} target="_blank" rel="noopener">fleet page ↗</a>
-        {/if}
         <button class={CLOSE_BTN} aria-label="Close" onclick={onclose}>×</button>
       </div>
     </header>
 
     {#if !feed.configured}
       <p class={NOTE}>
-        Fleet updates are not configured — set <code>FLEET_UPDATES_URL</code> on the backend.
+        DGX OS updates are not set up yet — <b>Settings → DGX OS updates</b> says what is
+        missing.
       </p>
     {:else if !feed.available}
       <p class="{NOTE} text-warning">
-        spark-fleet-updates is not answering. The dashboard keeps trying; nothing on the Sparks
-        is affected.
+        The updater is not answering. The dashboard keeps trying; nothing on the Sparks is
+        affected.
       </p>
     {:else if !nodes.length}
       <p class={NOTE}>

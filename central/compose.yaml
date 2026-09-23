@@ -155,13 +155,6 @@ services:
       - LIVE_POLL_INTERVAL_S=${LIVE_POLL_INTERVAL_S:-2.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
 
-      # ---- fleet updates: optional ----
-      # spark-fleet-updates, if you run it. Empty (the default) means the
-      # feature is off and the header shows no button. See .env.example for
-      # the layout: that container joins this stack's network and runs with
-      # SPARK_FLEET_TLS=off, because this backend is the proxy in front of it.
-      - FLEET_UPDATES_URL=${FLEET_UPDATES_URL:-}
-      - FLEET_UPDATES_PUBLIC_URL=${FLEET_UPDATES_PUBLIC_URL:-}
     volumes:
       # Writable here — this is the service that renders the target files.
       - ./targets:/etc/prometheus/targets/generated
@@ -182,48 +175,6 @@ services:
       # Prometheus and Alertmanager stay LAN-only, so Google OAuth at the
       # tunnel edge guards the whole externally-reachable surface.
       - "${BACKEND_BIND:-0.0.0.0}:8080:8080"
-    networks:
-      - sparkdash
-
-  # spark-fleet-updates — OPTIONAL, behind the `fleet` profile (roadmap AK).
-  # You do not have to use this; the dashboard is complete without it. Off
-  # unless .env sets COMPOSE_PROFILES=fleet, so a stack without a fleet
-  # updater gets no container and no port. The backend is the TLS-terminating
-  # proxy in front of it, which is why TLS is off here and the backend reaches
-  # it as http://spark-fleet-updates:8080 over this network — FLEET_UPDATES_URL
-  # is exactly that string.
-  #
-  # THE IMAGE IS BUILT FROM ITS OWN CHECKOUT, which lives here as ./fleet:
-  #   git clone https://github.com/anakronox/spark-fleet-updates.git fleet
-  #   docker build -t spark-fleet-updates:latest fleet
-  # Its state and its SSH key sit inside that checkout as ./fleet/data and
-  # ./fleet/ssh — that repo ignores both, and this one ignores fleet/ — and
-  # both must be owned by uid 1000, the image's own user.
-  spark-fleet-updates:
-    image: ${FLEET_IMAGE:-spark-fleet-updates:latest}
-    container_name: sparkdash-fleet-updates
-    profiles: [fleet]
-    restart: unless-stopped
-    environment:
-      SPARK_FLEET_SSH_USER: ${SPARK_FLEET_SSH_USER:?set SPARK_FLEET_SSH_USER in .env — the login on each Spark}
-      SPARK_FLEET_INTERVAL_MIN: ${SPARK_FLEET_INTERVAL_MIN:-60}
-      # Off on purpose: the backend is the proxy and forwards the REAL
-      # X-Forwarded-Proto, so the fleet service's rule that a sudo password
-      # only travels over HTTPS still sees the truth.
-      SPARK_FLEET_TLS: "off"
-      # "1" accepts the password over plain HTTP as well — the LAN-only
-      # opt-out, and yours to make. Unset, Update works through the tunnel.
-      SPARK_FLEET_ALLOW_PLAIN_PASSWORD: ${SPARK_FLEET_ALLOW_PLAIN_PASSWORD:-}
-    volumes:
-      - ./fleet/data:/data              # inventory, posture, run records
-      - ./fleet/ssh:/ssh:ro             # id_ed25519 that the Sparks trust
-    ports:
-      # The fleet service's own page, for adding, renaming and removing
-      # Sparks — what the dashboard panel links to as FLEET_UPDATES_PUBLIC_URL.
-      # 8090 on the host because the backend has 8080. LAN-only by the same
-      # reasoning as Prometheus; remove the port if the dashboard is the only
-      # way you ever reach it.
-      - "${FLEET_BIND:-0.0.0.0}:8090:8080"
     networks:
       - sparkdash
 

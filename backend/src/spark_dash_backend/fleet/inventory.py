@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import threading
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 _lock = threading.Lock()
@@ -41,7 +41,7 @@ Resolver = Callable[[str], dict | None]
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Inventory:

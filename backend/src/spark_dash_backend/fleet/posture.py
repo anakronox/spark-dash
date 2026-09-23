@@ -9,11 +9,19 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from .otascore import (NodeFacts, get_all_scores, get_detected, is_ota_available,
-                       load_recipes, parse_dpkg_query, parse_fwupd_devices, summary)
+from .otascore import (
+    NodeFacts,
+    get_all_scores,
+    get_detected,
+    is_ota_available,
+    load_recipes,
+    parse_dpkg_query,
+    parse_fwupd_devices,
+    summary,
+)
 from .vendors import platform_firmware
 
 _INST = re.compile(r"^Inst (\S+)(?: \[([^\]]*)\])? \(([^ )]+) ([^)]*)\)")
@@ -22,7 +30,7 @@ _KEPT_BACK = re.compile(r"^The following packages have been kept back:\n((?:^  .
 
 
 def _iso(ts: int | None) -> str | None:
-    return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if ts else None
+    return datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if ts else None
 
 
 def parse_apt_sim(text: str) -> dict:
@@ -205,7 +213,7 @@ def build(node: dict, facts: dict, recipes_dir: Path) -> dict:
 
     return {
         "name": node["name"], "host": node["host"], "reachable": True,
-        "collected_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "collected_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "hostname": facts.get("hostname"), "board": facts.get("board_vendor"),
         "board_kind": "NVIDIA-built" if nf.is_nvidia_fe else "OEM-built",
         # the three lines the page shows, kept apart: what apt can move, what the

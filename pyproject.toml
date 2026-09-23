@@ -19,31 +19,34 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-# The fleet updater's engine, moved in from its own repo in AL3a module for
-# module. It is written in that project's denser style -- semicolons, long
-# single-purpose lines, a bare `OPTIONS` guarded by NameError in the script
-# that gets piped to a node's interpreter -- and reformatting it to this
-# repo's rules would mean ~190 edits across nine files, which is exactly the
-# diff that would stop anyone checking the move was faithful.
+# The DGX OS updater's engine, moved in from its own repo at AL3a and written
+# in that project's denser style: semicolons, long single-purpose lines, a
+# bare `OPTIONS` guarded by NameError in the script that gets piped to a
+# node's interpreter.
 #
-# SUNSET: this block goes when AL3g archives spark-fleet-updates. At that
-# point there is no upstream left to diff against, and the code becomes
-# ordinary backend code held to the ordinary rules. Anything genuinely wrong
-# rather than merely unlike us is fixed in BOTH copies while both exist, so
-# they stay byte-identical -- that is why F401 is not on this list.
+# THE STATED SUNSET FOR THIS ARRIVED AT AL3g AND WAS DECLINED, which is worth
+# more than quietly leaving it. The original reason was that the code had to
+# stay diffable against the upstream repo; archiving that repo ended it. But
+# clearing the list means 145 hand edits -- 114 line wraps and 31 semicolon
+# splits -- to code that reboots machines and had just run a real update on
+# one. That is real risk bought with nothing but consistency.
+#
+# What was taken instead: every fix ruff could make on its own (22 of them --
+# import order, `datetime.UTC`, compound imports), leaving only the rules that
+# need a human to retype a working line. The list below is therefore shorter
+# than it was and each entry now costs a manual edit.
+#
+# REVISIT WHEN one of these files is being substantially rewritten anyway. The
+# churn is only dangerous when it is the whole point of the change.
 "backend/src/spark_dash_backend/fleet/*.py" = [
-    "E401",   # `import json, os, subprocess` -- the piped collector keeps its header compact
     "E501",   # long lines
     "E701",   # `if x: return` on one line
     "E702",   # `a = 1; b = 2`
     "E741",   # `l` as a loop variable
-    "I001",   # import block ordering
-    "UP017",  # datetime.timezone.utc rather than datetime.UTC
     "SIM105", # try/except/pass rather than contextlib.suppress
     "B018",   # the `OPTIONS` NameError probe in node_collect.py
 ]
-# Its test came across with it and is the same ported code in the same style.
-# Only its imports and fixture path were rewritten, which is what the move is.
+# Its test came across with it, in the same style.
 "backend/tests/test_fleet_posture.py" = ["E501", "E731"]
 
 [tool.pytest.ini_options]

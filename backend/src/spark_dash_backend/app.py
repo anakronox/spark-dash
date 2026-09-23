@@ -48,9 +48,8 @@ from spark_dash_backend.cluster import (
     write_cluster,
 )
 from spark_dash_backend.config import Settings
-from spark_dash_backend.fleet_api import FleetBackend, FleetError
+from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
-from spark_dash_backend.fleet_updates import FleetUpdatesClient
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
@@ -177,34 +176,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.alertmanager_url, timeout_s=settings.alertmanager_timeout_s
     )
     maintenance = MaintenanceService(alertmanager, inventory)
-    # One of two implementations of fleet_api.FleetBackend, chosen here and
-    # nowhere else (AL3c). The proxy wins when FLEET_UPDATES_URL is set, so a
-    # backend built from this branch and deployed with today's .env behaves
-    # exactly as it did -- the rollback, with no image swap. AL3g deletes the
-    # proxy and this choice with it.
-    fleet_updates: FleetBackend
-    if settings.fleet_updates_url:
-        fleet_updates = FleetUpdatesClient(
-            settings.fleet_updates_url, timeout_s=settings.fleet_updates_timeout_s
-        )
-    else:
-        def _resolve_node(name: str) -> dict | None:
-            """AL3d: the fleet's node list is ids only, and this is where an id
-            becomes an address and a cluster. `cluster.yml` is the one place a
-            Spark is described, so the fleet cannot hold a stale host."""
-            for node in inventory.nodes():
-                if node.node_id == name:
-                    return {"name": node.node_id, "host": node.host, "cluster": node.cluster}
-            return None
+    # The DGX OS updater, in this process. Until AL3g there was a second
+    # implementation here -- a typed proxy to a separate spark-fleet-updates
+    # container, chosen when FLEET_UPDATES_URL was set -- which existed to be
+    # the rollback while the cutover was new. A real update ran embedded on
+    # 2026-09-23 and it went.
+    def _resolve_node(name: str) -> dict | None:
+        """AL3d: the fleet's node list is ids only, and this is where an id
+        becomes an address and a cluster. `cluster.yml` is the one place a
+        Spark is described, so the fleet cannot hold a stale host."""
+        for node in inventory.nodes():
+            if node.node_id == name:
+                return {"name": node.node_id, "host": node.host, "cluster": node.cluster}
+        return None
 
-        fleet_updates = EmbeddedFleet(
-            state_dir=settings.fleet_state_dir,
-            ssh_user=settings.fleet_ssh_user,
-            ssh_key=settings.fleet_ssh_key,
-            interval_min=settings.fleet_interval_min,
-            allow_plain_password=settings.fleet_allow_plain_password,
-            resolve=_resolve_node,
-        )
+    fleet_updates = EmbeddedFleet(
+        state_dir=settings.fleet_state_dir,
+        ssh_user=settings.fleet_ssh_user,
+        ssh_key=settings.fleet_ssh_key,
+        interval_min=settings.fleet_interval_min,
+        allow_plain_password=settings.fleet_allow_plain_password,
+        resolve=_resolve_node,
+    )
     poller = LivePoller(
         inventory,
         interval_s=settings.live_poll_interval_s,
@@ -227,13 +220,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # The embedded fleet updater's hourly check, and -- before it -- the
         # AL4.1 reconcile that undoes any Dashboard pause a previous process
         # died holding. A no-op when the feature is off or proxied.
-        if isinstance(fleet_updates, EmbeddedFleet):
-            await asyncio.to_thread(fleet_updates.start)
+        await asyncio.to_thread(fleet_updates.start)
         try:
             yield
         finally:
-            if isinstance(fleet_updates, EmbeddedFleet):
-                await asyncio.to_thread(fleet_updates.stop)
+            await asyncio.to_thread(fleet_updates.stop)
 
     app = FastAPI(title="spark-dash", summary="GB10 inference cluster dashboard", lifespan=lifespan)
     app.state.poller = poller
@@ -1104,29 +1095,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # THE THIRD WRITE, and a different kind from the two before it (roadmap
     # AK). Silencing and maintenance passed G's test -- a permitted write
     # cannot repoint an agent, load a model or touch a process. Updating a
-    # Spark reboots it. Brian chose it anyway, 2026-09-16, with the line
-    # drawn here rather than at "no writes": the dashboard holds no SSH key,
-    # no password and no node access. Everything below is a forwarded POST
-    # to spark-fleet-updates, which keeps every guard it already has -- the
-    # confirmation, the HTTPS-only password, the transient unit that survives
-    # a dropped session, the HOLD on any failed step.
+    # Spark reboots it. Brian chose it anyway, 2026-09-16.
     #
-    # EXPLICIT ROUTES, NOT A WILDCARD PROXY. Every action the dashboard can
-    # take on a Spark is a line in this table and a row in /docs. Membership
-    # -- add and remove -- is routed because Settings enrols a node from the
+    # AK drew the line at "the dashboard holds no SSH key, no password and no
+    # node access", because everything here was a POST forwarded to a separate
+    # service. AL moved that service into this process, so the line moved with
+    # it (AL0): this backend DOES hold the key and open the sessions -- for
+    # this feature only, off unless a key is mounted and a login named, and
+    # with every guard intact: the confirmation, the TLS-only password, the
+    # transient unit that survives a dropped session, the HOLD on any failed
+    # step, and nothing on a timer but a read-only check. The node agent
+    # gained nothing; it is still HTTP-only and unprivileged.
+    #
+    # EXPLICIT ROUTES, NOT A WILDCARD. Every action the dashboard can take on
+    # a Spark is a line in this table and a row in /docs. Membership -- add
+    # and remove -- is routed because Settings enrols a node from the
     # cluster's own id and host (AK, the checkbox), so the fleet never needs
     # a second inventory typed in. Rename is not: a dashboard node's id IS
     # the fleet name, and a rename there is a remove and an add here. A
     # `Literal` on the action keeps anything else unreachable by URL.
 
-    def _stranded_dashboards(backend: FleetBackend) -> list[str]:
+    def _stranded_dashboards(backend: EmbeddedFleet) -> list[str]:
         """Sparks left with their Dashboard updater paused, if this process is
         the one that would know. Cheap and synchronous: it reads a list the
         reconcile filled at startup, never a node."""
         svc = getattr(backend, "svc", None)
         return [x["node"] for x in getattr(svc, "dashboards_stranded", [])]
 
-    def _not_refreshing(backend: FleetBackend) -> list[str]:
+    def _not_refreshing(backend: EmbeddedFleet) -> list[str]:
         """Sparks whose own DGX Dashboard updater is switched off (AL6.1).
 
         Worth a line in /health rather than only in the panel, because the
@@ -1179,7 +1175,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         base = {
             "configured": fleet_updates.configured,
             "available": False,
-            "public_url": settings.fleet_updates_public_url or None,
             "fleet": None,
             # AL5: capability and use are different questions with different
             # answers, and Settings shows the section either way -- so the

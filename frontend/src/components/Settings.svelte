@@ -821,9 +821,6 @@
             there is one list and not two. The login and the cadence are
             <code>FLEET_SSH_USER</code> and <code>FLEET_INTERVAL_MIN</code>; the key is
             mounted into this backend. <a href={SETUP_GUIDE} target="_blank" rel="noopener">Setup guide ↗</a>
-            {#if fleet.publicUrl}
-              <a href={fleet.publicUrl} target="_blank" rel="noopener">Fleet page ↗</a>
-            {/if}
           </p>
         {/if}
 

@@ -6631,7 +6631,7 @@ today. That is the rollback, and it needs no image swap.
   Both guards were checked by breaking what they guard: reading the password
   through a model again fails four of these, and removing the TLS check fails
   exactly the two that assert it.
-- [ ] **AL3g. Remove the proxy.** **The gate was met on 2026-09-23**: Brian ran
+- [x] **AL3g. Shipped 2026-09-23.** **The gate was met the same day**: Brian ran
   a real, non-rehearsal update on `sparky` through the embedded updater, and
   the three paths a rehearsal deliberately omits all ran for the first time.
 
@@ -6655,8 +6655,28 @@ today. That is the rollback, and it needs no image swap.
   partner-board case the scorer exists to report honestly, and it says so in
   words rather than leaving a number looking stuck.
 
-  What remains is the deletion itself, which is still a decision rather than a
-  chore: the proxy is the rollback. `fleet_updates.py`, `FLEET_UPDATES_URL`, `FLEET_UPDATES_PUBLIC_URL`
+  **So the proxy went.** `fleet_updates.py` and its tests, the
+  `spark-fleet-updates` service and the two `FLEET_UPDATES_*` settings, the
+  `public_url` field and the "fleet page ↗" links that pointed at the other
+  service's own page, and the `FleetBackend` Protocol — a shape with one
+  implementation is a shape without a reason. `fleet_api.py` keeps what was
+  never about the transport: `FleetError`, and the two rules written at the
+  top of it.
+
+  **The lint exemption's sunset arrived here and was declined**, which is
+  worth more than quietly leaving it. Clearing the list meant 145 hand edits
+  — 114 line wraps and 31 semicolon splits — to code that reboots machines and
+  had just run a real update on one. Taken instead: every fix ruff could make
+  on its own, 22 of them. `pyproject.toml` records the reasoning and the
+  trigger for revisiting it.
+
+  Left deliberately: the *historical* mentions in comments, which explain what
+  went and why, and this repo's habit of keeping the reason rather than only
+  the result. Removed as actively wrong: the empty state that told people to
+  set `FLEET_UPDATES_URL`, a variable that no longer exists.
+
+  Still to do by hand, and not something this repo can do for itself: archive
+  `github.com/anakronox/spark-fleet-updates` with a pointer here. `fleet_updates.py`, `FLEET_UPDATES_URL`, `FLEET_UPDATES_PUBLIC_URL`
   and the `spark-fleet-updates` service go; the other repo is archived with a
   pointer here.
 

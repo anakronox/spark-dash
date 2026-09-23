@@ -28,10 +28,11 @@ import logging
 import shutil
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from . import executor, posture as posture_mod, ssh
+from . import executor, ssh
+from . import posture as posture_mod
 from .executor import Run
 from .inventory import Inventory
 
@@ -44,7 +45,7 @@ COLLECT_SCRIPT = (HERE / "node_collect.py").read_text()
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Service:
@@ -357,7 +358,7 @@ class Service:
                 self.sweep()
             except Exception:
                 log.exception("fleet sweep failed")
-            self.next_sweep = datetime.fromtimestamp(time.time() + self.interval_min * 60, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            self.next_sweep = datetime.fromtimestamp(time.time() + self.interval_min * 60, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
             self._stop.wait(self.interval_min * 60)
 
     # ── runs ─────────────────────────────────────────────────────────────
@@ -393,7 +394,7 @@ class Service:
         # the member that was asked for goes first
         members.sort(key=lambda m: m != name)
         nodes = [self.inv.get(m) for m in members]
-        run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + name + ("-rehearsal" if rehearse else "")
+        run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + name + ("-rehearsal" if rehearse else "")
         if rehearse:
             nodes = [self.inv.get(name)]          # a rehearsal is one node, whatever it is cabled to
         run = Run(run_id, self.data / "runs" / run_id, nodes, self, rehearse=rehearse, password=password)

@@ -24,29 +24,17 @@ class Settings(BaseSettings):
     alertmanager_url: str = "http://alertmanager:9093"
     alertmanager_timeout_s: float = 5.0
 
-    # spark-fleet-updates, the controller that checks and updates every Spark,
-    # reached over the compose network (roadmap AK). Empty means the feature
-    # is off: /api/fleet reports configured=false and the header shows no
-    # button. The backend is the TLS-terminating proxy in front of it, so the
-    # controller runs with SPARK_FLEET_TLS=off and reads X-Forwarded-Proto.
-    fleet_updates_url: str = ""
-    fleet_updates_timeout_s: float = 10.0
-    # Where a person goes for what the panel does not do (add, rename or
-    # remove a Spark). Separate from the URL above because the backend reaches
-    # the container by service name and a browser cannot.
-    fleet_updates_public_url: str = ""
-
-    # ---- fleet updates, embedded (roadmap AL) ----
+    # ---- DGX OS updates (roadmap AL) ----
     #
-    # The same feature with no second container: this process holds the key and
-    # opens the SSH sessions. It is OFF unless a key is mounted and a login is
-    # named, which is what makes the compose overlay the deployment-level knob
-    # (AL5) -- leave the overlay out and these stay empty and nothing changes.
+    # This process holds the key and opens the SSH sessions; there is no second
+    # container. OFF unless a key is mounted and a login is named, which is
+    # what makes the compose overlay the deployment-level knob (AL5) -- leave
+    # the overlay out and these stay empty and nothing changes.
     #
-    # FLEET_UPDATES_URL wins if both are set, so a backend built from this
-    # branch and deployed with today's .env behaves exactly as it did. That is
-    # the rollback, and it needs no image swap. AL3g removes the proxy and this
-    # sentence with it.
+    # Until AL3g there was also FLEET_UPDATES_URL, which pointed at a separate
+    # spark-fleet-updates container and took precedence over all of this. It
+    # was the rollback while the cutover was new, and it went on 2026-09-23
+    # once a real update had run embedded.
     fleet_ssh_key: Path | None = None
     fleet_ssh_user: str = ""
     # Its own directory, not the stack root: mounting it must not also expose

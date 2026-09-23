@@ -76,15 +76,19 @@ def enrol(client: TestClient, name: str = "sparky") -> None:
 # ---------------------------------------------------------------- the routes
 
 
-def test_the_feature_is_on_and_the_envelope_is_the_same_shape_as_the_proxys(client):
-    """The panel is written against one envelope and must not know which
-    implementation filled it."""
+def test_the_envelope_carries_what_the_panel_reads(client):
+    """One envelope, and every field in it is something the panel renders.
+
+    `public_url` was here until AL3g: a link to the separate container's own
+    page, for the few things the panel could not do. There is no other page
+    now, and the panel does all of it."""
     body = client.get("/api/fleet").json()
     assert body["configured"] is True
     assert body["available"] is True
     assert body["embedded"] is True
-    assert set(body) >= {"configured", "available", "public_url", "fleet", "capability",
+    assert set(body) >= {"configured", "available", "fleet", "capability",
                          "enabled", "requirements"}
+    assert "public_url" not in body
     assert body["fleet"]["nodes"] == []
 
 

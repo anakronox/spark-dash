@@ -7,15 +7,16 @@
  * state (`spark_fleet/executor.py`) and its `/api/fleet` envelope
  * (`spark_fleet/service.py`), with only the fields the panel reads.
  *
- * THE WORDING IS PORTED, NOT INVENTED. `statusOf` and `lineOf` are the fleet
- * page's own functions (`spark_fleet/web/index.html`), rewritten in TypeScript
- * with the same branches in the same order. `pinnedOf` is the exception and
- * is new here (AL6.3); it is ported the other way, into that page. The hard-won part is the partner
- * board case: a Spark with nothing to install that is still not on NVIDIA's
- * latest, because its vendor has not published the firmware, must read as
- * "waiting on ASUS" and never as neglected -- and one whose vendor HAS
- * published a newer bundle must read as behind. Three lines that must not
- * collapse into one. Keep this file in step with that one when either moves.
+ * THE WORDING STARTED AS A PORT AND IS NOW THE ONLY COPY. `statusOf` and
+ * `lineOf` began as a separate service's own functions rewritten in
+ * TypeScript, branch for branch, and had to be kept in step with them; AL3g
+ * archived that service, so this is simply where the wording lives.
+ *
+ * The hard-won part is the partner-board case: a Spark with nothing to
+ * install that is still not on NVIDIA's latest, because its vendor has not
+ * published the firmware, must read as "waiting on ASUS" and never as
+ * neglected -- and one whose vendor HAS published a newer bundle must read as
+ * behind. Three lines that must not collapse into one.
  *
  * Plain TypeScript with no runes and no DOM, so it runs under node in
  * tests/js/fleet.test.mjs -- the branching is exactly what a source-level
@@ -198,7 +199,6 @@ export interface FleetEnvelope {
   requirements?: Record<string, boolean>;
   configured: boolean;
   available: boolean;
-  public_url: string | null;
   fleet: Fleet | null;
 }
 

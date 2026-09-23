@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DETECTION_FW_WEIGHT = 0.35
@@ -188,7 +188,7 @@ class OTARecipe:
     @property
     def release_date(self) -> datetime:
         if not self.release_date_str:
-            return datetime.min.replace(tzinfo=timezone.utc)
+            return datetime.min.replace(tzinfo=UTC)
         return datetime.fromisoformat(self.release_date_str.replace("Z", "+00:00"))
 
     @property

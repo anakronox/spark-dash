@@ -94,14 +94,9 @@ restart sequence behind a confirmation. It runs inside the backend, and turning
 it on is a key plus one line in `.env`:
 [docs/fleet-updates-setup.md](../docs/fleet-updates-setup.md).
 
-The older layout below — [spark-fleet-updates](https://github.com/anakronox/spark-fleet-updates)
-can run as part of this stack, behind the `fleet` compose profile, and put an
-"updates" button in the dashboard's header. Clone it as `./fleet` (gitignored)
-and build its image there; its state and key live inside that checkout,
-chowned to `1000`.
 The `.env` lines are in `.env.example` and the steps in
-[deployment.md](../docs/deployment.md#dgx-os-updates--optional). Leave the
-profile off and there is no container and no button.
+[deployment.md](../docs/deployment.md#dgx-os-updates--optional). Leave them out
+and there is no mount, no key and no button.
 
 ## Updating
 

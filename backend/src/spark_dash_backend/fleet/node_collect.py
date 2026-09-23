@@ -5,7 +5,11 @@
 # those use `sudo -n` and come back empty when not permitted.
 #
 # The controller prepends a line `OPTIONS = {...}` before piping.
-import json, os, subprocess, hashlib, glob
+import glob
+import hashlib
+import json
+import os
+import subprocess
 
 try:
     OPTIONS
