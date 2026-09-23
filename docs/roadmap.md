@@ -6631,8 +6631,32 @@ today. That is the rollback, and it needs no image swap.
   Both guards were checked by breaking what they guard: reading the password
   through a model again fails four of these, and removing the TLS check fails
   exactly the two that assert it.
-- [ ] **AL3g. Remove the proxy**, after one real (non-rehearsal) update has run
-  embedded. `fleet_updates.py`, `FLEET_UPDATES_URL`, `FLEET_UPDATES_PUBLIC_URL`
+- [ ] **AL3g. Remove the proxy.** **The gate was met on 2026-09-23**: Brian ran
+  a real, non-rehearsal update on `sparky` through the embedded updater, and
+  the three paths a rehearsal deliberately omits all ran for the first time.
+
+  `20260923T193223Z-sparky`, status **ok**, "updated sparky". check → install
+  → restart → verify, all ok. **163 updates to 0.** The restart took **46
+  seconds** and `boot_id` moved from `1dd84c82…` to `6a50689d…`, so the
+  reboot-and-come-back wait worked against a machine that really did reboot.
+  `dashboard_settings_before` came back **null** and the Spark's
+  `settings.json` reads `{"update":{"enabled":true}}` — the pause-and-restore,
+  the thing that caused the original outage, ran for real and closed itself.
+  `dashboards_stranded` empty.
+
+  `sparky` is up on **7.0.0-1019-nvidia** with driver 580.178.04, both
+  llama.cpp routers answering 200 and the agent reporting three runtimes. It
+  is now the fleet's canary for that kernel; the pair is still on
+  `6.17.0-1032` behind its holds, which is exactly the asymmetry AL4.8 chose.
+
+  Worth noting what `verify` said rather than glossing it: `sparky` is still
+  **on April 2026 with an update available**, because July 2026 needs firmware
+  ASUS has not published for this board. Nothing is wrong — that is the
+  partner-board case the scorer exists to report honestly, and it says so in
+  words rather than leaving a number looking stuck.
+
+  What remains is the deletion itself, which is still a decision rather than a
+  chore: the proxy is the rollback. `fleet_updates.py`, `FLEET_UPDATES_URL`, `FLEET_UPDATES_PUBLIC_URL`
   and the `spark-fleet-updates` service go; the other repo is archived with a
   pointer here.
 
