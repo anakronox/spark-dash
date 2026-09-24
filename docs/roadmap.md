@@ -6744,12 +6744,42 @@ today. That is the rollback, and it needs no image swap.
    149 packages, so security updates keep flowing; `sparky`'s plan still
    carries it. `sudo apt-mark unhold <the six>` undoes it.
 
-   The argument against holding still stands and is now a work item rather
+   The argument against holding still stands and became a work item rather
    than a reason not to: **a hold is per-node state this tool does not
    manage, does not report and would not remove**, and a forgotten hold
-   withholds every later fix in silence. So the tool learns to see it —
-   AL6.3. Until then the holds live here, in this paragraph, which is the
-   only place they are written down.
+   withholds every later fix in silence. AL6.3 taught the tool to see it, and
+   the rows carried `6 packages pinned here, 18 kept back` for as long as the
+   holds existed.
+
+   **The holds came off on 2026-09-24, and the regression is mitigated.** A
+   forum moderator reported a package; it checks out, and it is one file:
+
+       /etc/default/grub.d/nvidia-spark-kho.cfg
+       GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT kho=off"
+
+   `nvidia-spark-grub-kho` 1.0-1, `Depends: grub-common` only, pulled in by
+   `dgx-spark-ota-update-meta` — so it arrives in the same apt transaction as
+   the kernel and `grub.cfg` is regenerated with it before the reboot. There
+   is no window in which a node comes up on `7.0.0-1019` without the
+   mitigation. `sparky` had it already, unnoticed, from its 2026-09-23 update.
+
+   **Verified on the pair rather than taken on trust.** Both updated, both on
+   `7.0.0-1019-nvidia` with `kho=off` on the running cmdline and driver
+   580.178.04. All four RDMA devices ACTIVE, both 200 Gb/sec links up. vLLM
+   started and the `danflashes` cluster is serving a model spanning both
+   nodes — 247.6 GB of 261.3 in use — which is precisely what the regression
+   broke. Zero `ibv_reg_mr` failures, zero Xid, zero NVRM faults.
+
+   **The OOM report did not reproduce.** A forum member reported an OOM after
+   updating, uncorroborated, and it was worth taking seriously because the
+   July 2026 release describes itself as changing out-of-memory handling and
+   the driver moves 580.173.02 → 580.178.04. This fleet is a harder test than
+   most — GB10 has no separate VRAM, so a resident model leaves nothing in
+   reserve — and both nodes sat back at 97-98% of a unified pool with zero
+   OOM kills. Not proof it never happens; good evidence it is not general.
+
+   **`6.17.0-1032` is still installed on both**, so the rollback stays a
+   reboot into the previous GRUB entry rather than a reinstall.
 
 #### AL6 — What seventeen silent days actually taught
 
