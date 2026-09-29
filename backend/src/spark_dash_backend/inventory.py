@@ -30,7 +30,13 @@ from pathlib import Path
 import yaml
 from spark_dash_common.models import ENGINE_RUNTIMES
 
-from spark_dash_backend.cluster import ClusterConfigError, authority, load_cluster
+from spark_dash_backend.cluster import (
+    ClusterConfigError,
+    GatewayConfig,
+    authority,
+    load_cluster,
+    load_gateway,
+)
 
 log = logging.getLogger(__name__)
 
@@ -300,6 +306,33 @@ def render_engine_file_sd(cluster_nodes, runtime: str, *, header: str) -> str:
     return f"{header}\n{body}"
 
 
+def render_gateway_file_sd(gateway: GatewayConfig | None, *, header: str) -> str:
+    """The LiteLLM gateway as a Prometheus `file_sd` target (roadmap AM3).
+
+    ALWAYS WRITTEN, usually empty. The `litellm` job is declared in every
+    prometheus.yml and reads this file, so an install with no gateway has an
+    empty target list, no `up{job="litellm"}` series and nothing to alert on.
+    Configured but switched off is also empty: the scrape stops on the next
+    file_sd refresh and the history already stored is kept.
+
+    https goes in `__scheme__`, the one per-target scheme Prometheus honours,
+    so the job itself needs no scheme and one job covers either.
+    """
+    entries = []
+    if gateway is not None and gateway.enabled:
+        entry: dict = {"targets": [gateway.authority]}
+        if gateway.scheme == "https":
+            entry["labels"] = {"__scheme__": "https"}
+        entries.append(entry)
+    body = yaml.safe_dump(entries, default_flow_style=False, sort_keys=False)
+    return f"{header}\n{body}"
+
+
+#: Passed as `gateway` when the gateway block could not be read: the target
+#: file is left as it was rather than emptied.
+KEEP_GATEWAY_TARGET = object()
+
+
 def _generated_header(source: str) -> str:
     """Name the file's real source, so an operator editing the wrong thing
     finds out from the file itself rather than from a change that never
@@ -328,6 +361,7 @@ def write_prometheus_targets(
     *,
     source: str = "cluster.yml",
     cluster_nodes=None,
+    gateway: GatewayConfig | None | object = None,
 ) -> bool:
     """Write the target files Prometheus reads. Returns True if anything changed.
 
@@ -349,6 +383,12 @@ def write_prometheus_targets(
             files[f"{runtime}.yml"] = render_engine_file_sd(
                 cluster_nodes, runtime, header=header
             )
+    # A typo in `gateway:` leaves the last good target in place, the same way a
+    # typo in the node list keeps the previous inventory: stopping the scrape
+    # over a hand edit would lose history for nothing. /health says it is
+    # invalid.
+    if gateway is not KEEP_GATEWAY_TARGET:
+        files["litellm.yml"] = render_gateway_file_sd(gateway, header=header)
 
     changed = False
     failures: list[str] = []
@@ -494,12 +534,32 @@ class Inventory:
             rendered = self.nodes()
         finally:
             self._syncing = False
+        gateway, error = self.gateway()
         return write_prometheus_targets(
             rendered,
             self._prometheus_targets_dir,
             source=self.source,
             cluster_nodes=self._cluster,
+            gateway=KEEP_GATEWAY_TARGET if error else gateway,
         )
+
+    def gateway(self) -> tuple[GatewayConfig | None, str | None]:
+        """The LiteLLM gateway, and why it could not be read if it could not.
+
+        Read from the file on every call rather than cached with the nodes: it
+        is one small file, and a toggle in Settings should not appear to fail
+        for a TTL.
+        """
+        if self._cluster_config is None:
+            return None, None
+        try:
+            return load_gateway(self._cluster_config), None
+        except ClusterConfigError as exc:
+            return None, str(exc)
+
+    @property
+    def cluster_file_present(self) -> bool:
+        return self._cluster_config is not None and self._cluster_config.exists()
 
     def _load(self) -> list[Node]:
         # cluster.yml first: it is the one place the cluster is defined, and it

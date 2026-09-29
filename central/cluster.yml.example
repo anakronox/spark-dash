@@ -34,6 +34,19 @@
 # colours come from this list. So cluster members need not be adjacent here,
 # and moving them together to tidy the file WOULD repaint.
 
+# CLIENT STATS — OPTIONAL. Which clients and harnesses are calling the
+# engines. The engines never record a caller, so this needs a LiteLLM proxy in
+# front of them, with its Prometheus callback on and /metrics readable without
+# a key. Leave the block out and the feature stays off; nothing else changes.
+# Usually set from Settings rather than here. `url` is the gateway's address;
+# the /v1 a client uses is accepted and dropped. `enabled: false` keeps the
+# address but stops the scrape. See docs/deployment.md, "Client stats".
+#
+# gateway:
+#   litellm:
+#     url: http://litellm.invalid:4000
+#     enabled: true
+
 nodes:
   - id: CHANGE-ME
     # The id becomes the `node` label on every metric. Choose it once and keep

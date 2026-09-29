@@ -91,6 +91,16 @@ scrape_configs:
       - files: [/etc/prometheus/targets/generated/sglang.yml]
         refresh_interval: 30s
 
+  # The LiteLLM gateway, for client stats (roadmap AM). OPTIONAL: the backend
+  # writes an empty target list unless a gateway URL is set and switched on in
+  # Settings, so an install without one scrapes nothing here. /metrics must
+  # answer without a key. LiteLLM redirects /metrics to /metrics/, which
+  # Prometheus follows by default.
+  - job_name: litellm
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/generated/litellm.yml]
+        refresh_interval: 30s
+
   # Prometheus scraping itself — cheap, and it's how you notice the monitoring
   # host is struggling before it starts dropping samples.
   - job_name: prometheus

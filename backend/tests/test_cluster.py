@@ -8,6 +8,8 @@ runtimes" — which would leave every node reporting no models with nothing
 saying why.
 """
 
+import re
+
 import pytest
 import yaml
 from spark_dash_backend.cluster import (
@@ -924,3 +926,107 @@ class TestWritePreservesWhatItDoesNotOwn:
         path.write_text("nodes: [unterminated\n")
         write_cluster(path, parse_cluster(self.NODES))
         assert [n["id"] for n in yaml.safe_load(path.read_text())["nodes"]] == ["sparky"]
+
+
+class TestGateway:
+    """AM2b. The gateway block: parsed apart from the nodes, so a typo in it
+    never costs a node, and written without touching anything else."""
+
+    NODES = "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
+
+    def _gw(self, block):
+        from spark_dash_backend.cluster import parse_gateway
+
+        return parse_gateway(yaml.safe_load(block + self.NODES))
+
+    @pytest.mark.parametrize(
+        ("raw", "url"),
+        [
+            ("http://litellm.invalid:4000", "http://litellm.invalid:4000"),
+            # What gets pasted: the client URL. Measured, 2026-09-29.
+            ("http://litellm.invalid:4000/v1", "http://litellm.invalid:4000"),
+            ("http://litellm.invalid:4000/v1/", "http://litellm.invalid:4000"),
+            ("https://litellm.invalid", "https://litellm.invalid"),
+            ("  http://10.0.0.9:4000/  ", "http://10.0.0.9:4000"),
+        ],
+    )
+    def test_urls_are_normalised_to_the_gateway_base(self, raw, url):
+        gw = self._gw(f"gateway:\n  litellm:\n    url: '{raw}'\n")
+        assert gw.url == url
+        assert gw.enabled is True
+
+    @pytest.mark.parametrize(
+        ("raw", "says"),
+        [
+            ("", "missing"),
+            ("litellm.invalid:4000", "not an http(s) URL"),
+            ("ftp://litellm.invalid", "not an http(s) URL"),
+            ("http://user:sk-secret@litellm.invalid:4000", "credentials"),
+            ("http://litellm.invalid:4000/metrics", "not a path"),
+            ("http://litellm.invalid:4000/v1?x=1", "not a path"),
+            ("http://litellm.invalid:99999", "bad port"),
+        ],
+    )
+    def test_bad_urls_say_what_is_wrong(self, raw, says):
+        with pytest.raises(ClusterConfigError, match=re.escape(says)):
+            self._gw(f"gateway:\n  litellm:\n    url: '{raw}'\n")
+
+    def test_enabled_must_be_a_real_bool(self):
+        """`enabled: "false"` is truthy in Python. Refused, not guessed."""
+        with pytest.raises(ClusterConfigError, match="true or false"):
+            self._gw("gateway:\n  litellm:\n    url: http://g.invalid\n    enabled: 'false'\n")
+
+    def test_no_block_is_no_gateway(self):
+        assert self._gw("") is None
+        assert self._gw("gateway:\n  other: {}\n") is None
+
+    def test_a_gateway_typo_costs_no_node(self, tmp_path):
+        """The nodes load, and a node save still works, while the gateway
+        block is broken."""
+        from spark_dash_backend.cluster import load_gateway, write_cluster
+
+        path = tmp_path / "cluster.yml"
+        path.write_text("gateway:\n  litellm:\n    url: not-a-url\n" + self.NODES)
+        assert [n.node_id for n in load_cluster(path)] == ["sparky"]
+        with pytest.raises(ClusterConfigError):
+            load_gateway(path)
+        write_cluster(path, load_cluster(path))
+        assert yaml.safe_load(path.read_text())["gateway"]["litellm"]["url"] == "not-a-url"
+
+    def test_write_sets_and_clears_without_touching_nodes(self, tmp_path):
+        from spark_dash_backend.cluster import GatewayConfig, load_gateway, write_gateway
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(self.NODES + "future_block:\n  x: 1\n")
+        write_gateway(path, GatewayConfig(url="http://litellm.invalid:4000", enabled=False))
+        doc = yaml.safe_load(path.read_text())
+        assert list(doc) == ["gateway", "nodes", "future_block"]
+        assert load_gateway(path) == GatewayConfig(url="http://litellm.invalid:4000", enabled=False)
+        assert [n.node_id for n in load_cluster(path)] == ["sparky"]
+
+        write_gateway(path, None)
+        doc = yaml.safe_load(path.read_text())
+        assert "gateway" not in doc
+        assert list(doc) == ["nodes", "future_block"]
+
+    def test_write_keeps_other_gateway_entries(self, tmp_path):
+        """`gateway:` may hold more than litellm one day. Clearing litellm
+        leaves a sibling where it was."""
+        from spark_dash_backend.cluster import write_gateway
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(
+            self.NODES + "gateway:\n  other: {a: 1}\n  litellm:\n    url: http://g.invalid\n"
+        )
+        write_gateway(path, None)
+        assert yaml.safe_load(path.read_text())["gateway"] == {"other": {"a": 1}}
+
+    def test_write_refuses_without_a_cluster_file(self, tmp_path):
+        """Creating the file just to hold `gateway:` would read as an empty
+        cluster to a deployment still on SPARK_NODES."""
+        from spark_dash_backend.cluster import GatewayConfig, write_gateway
+
+        path = tmp_path / "cluster.yml"
+        with pytest.raises(ClusterConfigError, match="SPARK_NODES"):
+            write_gateway(path, GatewayConfig(url="http://g.invalid"))
+        assert not path.exists()

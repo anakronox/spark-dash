@@ -423,9 +423,6 @@ def write_cluster(path: Path, nodes: list[ClusterNode]) -> None:
     a partial write would otherwise be read as a truncated cluster and take
     every node dark. The same reason the mount is a directory and not a file.
     """
-    import os
-    import tempfile
-
     validate_cluster(nodes)
     # READ-MODIFY-WRITE. This module owns `nodes` and nothing else in the file.
     # Writing only what it owns deleted every other top-level block, so the
@@ -434,6 +431,13 @@ def write_cluster(path: Path, nodes: list[ClusterNode]) -> None:
     # is replaced rather than refused, since refusing would leave Settings
     # unable to repair it.
     text = dump_cluster(nodes, preserve=_current_document(path))
+    _atomic_write(path, text)
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    import os
+    import tempfile
+
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Re-parse what we are about to write. Writing something we cannot read
@@ -451,6 +455,131 @@ def write_cluster(path: Path, nodes: list[ClusterNode]) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+# --- gateway (roadmap AM2) ---------------------------------------------------
+#
+# A LiteLLM gateway in front of the engines, for client stats. It lives in this
+# file because this is the one server-side config the backend already writes,
+# but it is parsed SEPARATELY from the nodes: a typo in `gateway:` must never
+# take a node off the dashboard.
+
+
+@dataclass(frozen=True)
+class GatewayConfig:
+    """Where the gateway is, and whether its stats are wanted.
+
+    `url` is always a base, `scheme://host[:port]`; `parse_gateway` strips the
+    `/v1` a client URL carries, since that is what gets pasted.
+    """
+
+    url: str
+    enabled: bool = True
+
+    @property
+    def authority(self) -> str:
+        """`host:port`, as a Prometheus target."""
+        return urlparse(self.url).netloc
+
+    @property
+    def scheme(self) -> str:
+        return urlparse(self.url).scheme
+
+
+def normalize_gateway_url(raw: object) -> str:
+    """`http://host:4000/v1/` -> `http://host:4000`, or a ClusterConfigError
+    saying what is wrong with it."""
+    hint = "give the gateway's address, like http://<gateway-host>:4000"
+    if not isinstance(raw, str) or not raw.strip():
+        raise ClusterConfigError(f"gateway.litellm.url is missing; {hint}")
+    parsed = urlparse(raw.strip())
+    try:
+        parsed.port  # noqa: B018 — raises on a non-numeric or out-of-range port
+    except ValueError as exc:
+        raise ClusterConfigError(f"gateway.litellm.url has a bad port: {raw!r}") from exc
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ClusterConfigError(f"gateway.litellm.url is not an http(s) URL: {raw!r}; {hint}")
+    if parsed.username or parsed.password:
+        # This file is served to the UI and written by it. A key belongs in the
+        # gateway's own config, not in an address the dashboard displays.
+        raise ClusterConfigError("gateway.litellm.url must not carry credentials")
+    if parsed.query or parsed.fragment or parsed.path.rstrip("/") not in ("", "/v1"):
+        raise ClusterConfigError(
+            f"gateway.litellm.url should be the gateway itself, not a path on it: {raw!r}. "
+            "A trailing /v1 is fine."
+        )
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def parse_gateway(payload: object) -> GatewayConfig | None:
+    """The `gateway.litellm` block, or None when there is none."""
+    if not isinstance(payload, dict) or payload.get("gateway") is None:
+        return None
+    block = payload["gateway"]
+    if not isinstance(block, dict):
+        raise ClusterConfigError("`gateway:` must be a mapping")
+    litellm = block.get("litellm")
+    if litellm is None:
+        return None
+    if not isinstance(litellm, dict):
+        raise ClusterConfigError("`gateway.litellm:` must be a mapping with a `url:`")
+    enabled = litellm.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ClusterConfigError(f"gateway.litellm.enabled must be true or false, not {enabled!r}")
+    return GatewayConfig(url=normalize_gateway_url(litellm.get("url")), enabled=enabled)
+
+
+def load_gateway(path: Path) -> GatewayConfig | None:
+    """The gateway as the file stands. No file means no gateway."""
+    try:
+        text = path.read_text()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ClusterConfigError(f"could not read {path}: {exc}") from exc
+    try:
+        payload = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ClusterConfigError(f"not valid YAML: {exc}") from exc
+    return parse_gateway(payload)
+
+
+def write_gateway(path: Path, gateway: GatewayConfig | None) -> None:
+    """Set the gateway block, or remove it with None, leaving the rest alone.
+
+    NEEDS AN EXISTING CLUSTER FILE. Without one, a deployment reads its nodes
+    from SPARK_NODES, and creating the file just to hold `gateway:` would
+    make the backend read it as an empty cluster instead. Refused with a
+    sentence Settings can show.
+    """
+    doc = _current_document(path)
+    if doc is None or not isinstance(doc.get("nodes"), list):
+        raise ClusterConfigError(
+            f"client stats are configured in the cluster file ({path.name}), and this "
+            "deployment does not have one yet. Nodes still come from SPARK_NODES; "
+            "move them into the cluster file first."
+        )
+    nodes = parse_cluster(path.read_text())
+
+    block = dict(doc.get("gateway") or {})
+    if gateway is None:
+        block.pop("litellm", None)
+    else:
+        block["litellm"] = {"url": gateway.url, "enabled": gateway.enabled}
+
+    rest = {k: v for k, v in doc.items() if k != "gateway"}
+    # A new block goes first, where the example file puts it; an existing one
+    # keeps its place.
+    if "gateway" in doc:
+        updated = {k: (block if k == "gateway" else v) for k, v in doc.items()}
+    else:
+        updated = {"gateway": block, **rest}
+    if not block:
+        updated.pop("gateway", None)
+
+    text = dump_cluster(nodes, preserve=updated)
+    parse_gateway(yaml.safe_load(text))
+    _atomic_write(path, text)
 
 
 def _current_document(path: Path) -> Mapping | None:

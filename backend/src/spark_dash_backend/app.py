@@ -36,6 +36,7 @@ from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
 from spark_dash_backend.annotations import as_dicts, fetch_annotations
+from spark_dash_backend.clients import gateway_health
 from spark_dash_backend.cluster import (
     ClusterConfigError,
     ClusterNode,
@@ -1304,6 +1305,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         prom_ok = await prom.healthy()
         alerts_ok = await alertmanager.reachable()
         fleet_ok = await fleet_updates.reachable()
+        gateway, gateway_error = inventory.gateway()
+        litellm = await gateway_health(gateway, gateway_error, prom)
 
         # Poll if we have no reasonably fresh view of the cluster. The live
         # poller only runs while a dashboard is open, so without this the
@@ -1374,6 +1377,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if fleet_ok
                 else "unreachable"
             ),
+            # AM3. Also not a `problems` entry, for the same reason as fleet.
+            "litellm": litellm,
             # AL4.1. A Spark whose own DGX Dashboard this tool paused and could
             # not resume is muted: its Updates page reads "disabled by your
             # administrator" and no release notification ever appears there.

@@ -7096,14 +7096,17 @@ nodes:
   so Settings can still repair it. Five tests in `test_cluster.py`, three of
   which failed before the fix. Ships before anything writes `gateway:`, so
   no build exists in which saving a node loses it.
-- [ ] **AM2b. Parse and validate.** `parse_gateway(payload)` beside
-  `parse_cluster`: `url` is `http(s)://host[:port]`, and a trailing `/v1` is
-  **accepted and stripped**, not rejected: that is the address clients use,
-  and it is what gets pasted (it was, the first time, 2026-09-29). Any other
-  path is an error. The backend appends `/metrics` and `/health/liveliness`
-  itself. `enabled` is a bool defaulting to `true` when a URL is given. A bad block is a `ClusterConfigError` naming the field, surfaced
-  the way node errors are. `load_cluster` returns it alongside the nodes;
-  `Inventory` exposes `gateway()`.
+- [x] **AM2b. Shipped 2026-09-29.** `GatewayConfig`, `parse_gateway`,
+  `load_gateway` and `write_gateway` in `cluster.py`, parsed **apart from
+  the nodes**: a typo in `gateway:` fails the gateway and never a node, and a
+  node save still works around it. The URL is normalised to
+  `scheme://host[:port]`; a trailing `/v1` is dropped, and credentials, any
+  other path, a query or a bad port are refused with a sentence saying which.
+  `enabled` must be a real bool, since `"false"` is truthy. `write_gateway`
+  edits only its own block, keeps a sibling under `gateway:`, and **refuses
+  when there is no cluster file**: a deployment still on `SPARK_NODES` would
+  read a file created just for `gateway:` as an empty cluster. Documented,
+  commented out, in `cluster.yml.example`.
 
 #### AM3 — Scraped by Prometheus; the backend only queries
 
@@ -7111,19 +7114,20 @@ LiteLLM is one per cluster, not one per node, so it is **not an agent
 collector**. Prometheus scrapes it and the backend asks Prometheus, which has
 to compute `increase()` over counters anyway and keeps the history for free.
 
-- [ ] **AM3a. A `litellm` job that is always declared and usually empty.**
-  `prometheus.yml` and `prometheus.single-host.yml` gain a job reading
-  `targets/generated/litellm.yml`. `write_prometheus_targets` renders it from
-  the gateway block: one target when capability and use are both on, `[]`
-  otherwise. Turning the toggle off stops the scrape on the next file_sd
-  refresh (30 s) and keeps the history; an install that never configures a
-  gateway scrapes nothing and has no `up{job="litellm"}` series to alert on.
-  Tests: target present/absent across the four capability × use states, and
-  an existing deploy whose `prometheus.yml` predates the job still writes the
-  file without error.
-- [ ] **AM3b. `/health`** gains `"litellm": "not configured" | "off" | "ok" |
-  "not scraped"`, the last from `up{job="litellm"}`. Kept out of `problems`,
-  as fleet is: the dashboard is not blind without a gateway.
+- [x] **AM3a. Shipped 2026-09-29.** A `litellm` job in both
+  `prometheus.yml` and `prometheus.single-host.yml`, reading
+  `targets/generated/litellm.yml`, which `write_prometheus_targets` always
+  writes: one target when the gateway is configured and on, `[]` otherwise,
+  including on a `SPARK_NODES` deployment. An https gateway carries
+  `__scheme__: https` on its target, so one job covers either scheme. **A typo
+  in the block leaves the last good target in place** instead of stopping the
+  scrape, the same way a typo in the node list keeps the last good inventory.
+  Deploying it needs the Prometheus config pulled and reloaded, like any
+  config change here.
+- [x] **AM3b. Shipped 2026-09-29.** `/health` has `"litellm": "not configured"
+  | "off" | "ok" | "not scraped" | "unknown" | "invalid: <why>"`, from
+  `up{job="litellm"}`. `off` asks Prometheus nothing. Kept out of
+  `problems`, as fleet is. 16 tests in `test_clients.py`.
 
 #### AM4 — Backend API
 
@@ -7169,7 +7173,9 @@ Then:
 
 - **Harness** from a pattern table in `clients.py`: `claude-cli/` → Claude
   Code, `opencode/` → opencode, and so on, with the raw string kept for a
-  tooltip. SDK defaults (`OpenAI/Python`, `AsyncOpenAI/Python`,
+  tooltip. Seeded from harnesses actually in use (Hermes Agent, opencode, with
+  Pi and others to come) rather than a guessed list, and each new one is a
+  row plus a test. SDK defaults (`OpenAI/Python`, `AsyncOpenAI/Python`,
   `Anthropic/Python`, `python-httpx`, `node-fetch`) show as *"OpenAI SDK
   (Python), unidentified"* rather than as a harness. That row's size is what
   tells you whether AM8's per-client keys are worth having. Grouping
@@ -7177,7 +7183,12 @@ Then:
   `user_agent` series, and the card should not show five of them.
 - **Client** from `client_ip`: a node's id when it matches a `cluster.yml`
   host, else reverse DNS (cached an hour, 0.5 s timeout, in `to_thread`), else
-  the IP. If LiteLLM ever sits behind another proxy, every row is that proxy's
+  the IP. Shown as the short name (`hermes`), the full name and the IP on
+  hover. **For many clients this column is the identity, not the harness.**
+  Measured 2026-09-29: the first real traffic through the gateway was
+  `OpenAI/Python 2.24.0`, from the machine running Hermes Agent,
+  Brian's main harness, sending the SDK's default User-Agent, and his custom
+  apps do the same. The LAN's DNS answers PTR for every client seen so far. If LiteLLM ever sits behind another proxy, every row is that proxy's
   IP. The deployment notes say so (AM9a).
 - **Endpoint** from `api_base`: its host:port is the same string as
   `EngineMetrics.server` (`192.168.50.61:8001` on both sides, measured), so it
@@ -7224,6 +7235,9 @@ Nothing in the layout knows a card can be unavailable: `SECTIONS` is static,
 and the add menu, `reconcile` and `bands` include every kind. This is the
 first card whose data may not exist.
 
+**Brian, 2026-09-29:** when the feature is on, the Clients card is a card like
+any other. When it is off, it is not on the page at all.
+
 - [ ] **AM6a. Optional kinds, generically.** `SectionDef` gains
   `optional?: true`. `App.svelte` hands the layout the set of optional kinds
   that are available, and an unavailable kind is left out of the add menu and
@@ -7248,7 +7262,10 @@ first card whose data may not exist.
 #### AM7 — One alert
 
 - [ ] **AM7a.** `LiteLLMGatewayDown`: `up{job="litellm"} == 0` for 2m, warning,
-  in `alerts.yml`. With no gateway there is no series, so it cannot fire. The
+  in `alerts.yml`. Until it lands, AM3a's job is already caught by
+  `PrometheusTargetScrapeFailing` (`up{job!~"vllm|sglang"} == 0` for 15m),
+  with a generic message. When it lands, that rule's selector must exclude
+  `litellm` too, or one outage raises both. With no gateway there is no series, so it cannot fire. The
   annotation says what is actually true: clients pointed at the gateway are
   failing, and the engines themselves may be fine. The Health strip already
   shows whether they are.
