@@ -66,7 +66,7 @@ seven SoC zones, the NVMe, one per ConnectX port, the radio — ranked by how
 close each is to *its own* limit, which differ by twenty degrees across one
 machine. On this cluster an SoC zone hit 95.4°C while the GPU read 72°C.
 
-**Alerting you can trust.** 34 rules, with push notifications via
+**Alerting you can trust.** 35 rules, with push notifications via
 [ntfy](https://ntfy.sh) — no account, no API key. Thermal bands come from each
 node's own hardware limits, and you're told if a node falls back to a guess. A
 GX10 sits at ~84°C doing routine work, so a generic 80°C threshold would page
@@ -92,6 +92,12 @@ you start it. It runs NVIDIA's own sequence — `apt full-upgrade`,
 Spark: [the quick setup](docs/fleet-updates-setup.md). Nothing installs on a
 timer — the hourly part is a read-only check, and every update is a button
 somebody pressed.
+
+**Optionally, who is calling.** The engines count requests and never record the
+caller. Put a [LiteLLM](https://docs.litellm.ai/docs/simple_proxy) proxy in
+front of them and a Clients card shows which harness, on which machine, sent
+how many requests to which model on which node, and how many failed. An agent
+that sends an SDK's default User-Agent is still named, by its machine.
 
 ## The page is yours
 
@@ -287,6 +293,15 @@ together.
 
 A few minutes, once: **[DGX OS updates: the quick
 setup](docs/fleet-updates-setup.md)**.
+
+### 6. Optional: client stats
+
+Needs a LiteLLM proxy in front of your engines, with its Prometheus callback on
+and `/metrics` readable without a key. Running one is outside this project;
+LiteLLM's docs cover it. Then, in **Settings → Clients**, paste the gateway's
+address, press **Test**, and save. The Clients card appears once Prometheus is
+reading it. Details and troubleshooting:
+**[Client stats](docs/deployment.md#client-stats--optional)**.
 
 ## Docs
 

@@ -77,17 +77,20 @@ def _alert_expr(name: str) -> str:
     raise AssertionError(f"alert {name!r} not found")
 
 
-def test_the_two_scrape_alerts_partition_the_jobs_by_engine():
-    """They must stay complements. A job in neither would never alert on a
-    failed scrape at all; a job in both would alert twice under rules that age
-    out differently — the infrastructure one never does, which is the whole
-    reason inference targets are separated from it."""
+def test_the_scrape_alerts_partition_the_jobs():
+    """Infrastructure, inference and the LiteLLM gateway (AM7) must partition
+    the jobs. A job in none would never alert on a failed scrape at all; a job
+    in two would alert twice under rules that age out differently — the
+    infrastructure one never does, which is the whole reason inference targets
+    are separated from it."""
     infra = _alert_expr("PrometheusTargetScrapeFailing")
     inference = _alert_expr("InferenceTargetScrapeFailing")
+    gateway = _alert_expr("LiteLLMGatewayDown")
 
     excluded = re.search(r'up\{job!~"([^"]+)"\}', infra)
     assert excluded, "infrastructure rule no longer excludes jobs by name"
-    assert set(excluded.group(1).split("|")) == set(ENGINE_RUNTIMES)
+    assert set(excluded.group(1).split("|")) == set(ENGINE_RUNTIMES) | {"litellm"}
+    assert 'up{job="litellm"}' in gateway
 
     for match in re.findall(r'up\{job=~"([^"]+)"\}', inference):
         assert set(match.split("|")) == set(ENGINE_RUNTIMES)

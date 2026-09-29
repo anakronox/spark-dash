@@ -7005,7 +7005,7 @@ turn a thing on.
   older layout that still wins when `FLEET_UPDATES_URL` is set. Kept rather
   than deleted for one release, because it is the rollback.
 
-### AM — Who is calling: client stats from a LiteLLM gateway — **planned 2026-09-29**
+### AM — Who is calling: client stats from a LiteLLM gateway — **shipped 2026-09-29**
 
 Brian, 2026-09-29: which clients and harnesses are hitting the engines? Nothing
 the agent scrapes can say. llama.cpp, vLLM and SGLang count requests and
@@ -7308,14 +7308,14 @@ any other. When it is off, it is not on the page at all.
 
 #### AM7 — One alert
 
-- [ ] **AM7a.** `LiteLLMGatewayDown`: `up{job="litellm"} == 0` for 2m, warning,
-  in `alerts.yml`. Until it lands, AM3a's job is already caught by
-  `PrometheusTargetScrapeFailing` (`up{job!~"vllm|sglang"} == 0` for 15m),
-  with a generic message. When it lands, that rule's selector must exclude
-  `litellm` too, or one outage raises both. With no gateway there is no series, so it cannot fire. The
-  annotation says what is actually true: clients pointed at the gateway are
-  failing, and the engines themselves may be fine. The Health strip already
-  shows whether they are.
+- [x] **AM7a. Shipped 2026-09-29.** `LiteLLMGatewayDown`: `up{job="litellm"}
+  == 0` for 2m, warning. Its message is what is true when it fires: clients
+  pointed at the gateway are failing, and the engines may be fine.
+  `PrometheusTargetScrapeFailing` now excludes `litellm`, so one outage
+  raises one alert, and `test_engine_wiring.py` checks that the three scrape
+  rules partition the jobs. Checked with `promtool` from the live stack's own
+  Prometheus image (v3.1.0): all 34 rules in the file are valid, and a
+  scripted outage fires at 2m, not at 1m, and never under the generic rule.
 
 #### AM8 — Deferred, each with its trigger
 
@@ -7345,20 +7345,19 @@ before AM5 ships, since Settings links to it.
   about LiteLLM's health checks, and six links to LiteLLM's docs. The
   troubleshooting table quotes each message the dashboard can show, word
   for word, so the reader can search for it.
-- [ ] **AM9b. `metrics.md`.** The LiteLLM series the dashboard reads and what
-  each label means once it arrives: requests are attempts, failures carry no
-  `api_base`, `requested_model="other"` is a rejected name, a failed
-  `/v1/messages` has no User-Agent, `api_base` is a URL whose host:port joins
-  to an engine's `server`. The PromQL behind each column, and why there is no
-  token column.
-- [ ] **AM9c. The card and Settings, for someone using them.** Each column;
-  the window picker; how User-Agents become harness names and what
-  *unidentified SDK*, *Anthropic-API client* and *no such model* rows mean;
-  how Client and Endpoint are resolved. In `app-design.md` beside the other
-  cards, with a line in the README's feature list and a screenshot once
-  there is traffic worth showing.
-- [ ] **AM9d. `/docs` (OpenAPI)** carries the five `/api/clients` routes with
-  their bodies, as fleet's routes are.
+- [x] **AM9b. Shipped 2026-09-29.** `metrics.md`, "LiteLLM gateway —
+  optional, per client": the series read and the labels used, what each label
+  means once it arrives, why there is no token column, and the counting query
+  with the live numbers that justified it (9 counted, 8.31 by `increase()`,
+  21 by adding the whole value back).
+- [x] **AM9c. Shipped 2026-09-29.** `app-design.md` describes the Clients
+  card column by column, including what *sdk*, *Anthropic-API client* and *no
+  such model* mean. It also says optional cards are the one exception to
+  "a missing tile is easy to miss". The README gains a feature entry and
+  quickstart step 6, and its alert count is now 35. The screenshot waits for
+  traffic from more than one client.
+- [x] **AM9d. Shipped 2026-09-29.** The five `/api/clients` routes are in
+  `/docs` with their request bodies, and in `app-design.md`'s API surface.
 
 ### J — Single-host profile (everything on one GB10)
 

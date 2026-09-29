@@ -203,6 +203,72 @@ Metrics to surface:
   similarly)
 - Slot usage (`/slots` endpoint) — concurrent request slots in use vs. available
 
+## LiteLLM gateway — optional, per client
+
+The engines count requests per model and never record who sent them. When a
+LiteLLM proxy sits in front of them, its Prometheus metrics do, and the
+**Clients card** reads them. Setting one up is in
+[deployment.md](deployment.md#client-stats--optional). Prometheus scrapes the
+gateway's `/metrics` as the `litellm` job; the target list is written by the
+backend, and is empty while the feature is off. The agent is not involved.
+
+| Series | Labels read | Used for |
+|---|---|---|
+| `litellm_deployment_total_requests_total` | `user_agent`, `client_ip`, `api_base`, `requested_model` | requests per row, req/min, and the engine each row went to |
+| `litellm_proxy_failed_requests_metric_total` | `user_agent`, `client_ip`, `requested_model`, `exception_status`, `route` | the failed column and its breakdown by status |
+| `up{job="litellm"}` | | whether the gateway is being read (Settings, `/health`, `LiteLLMGatewayDown`) |
+
+What the labels mean once they arrive, measured against LiteLLM 1.103.0:
+
+- **Requests are attempts.** A request the engine answered with a 500 is in
+  both series, so a row reads "212 requests, 3 failed", not 215.
+- **Failures carry no `api_base`.** They join their row on the other three
+  labels; the model's prefix names the engine anyway.
+- **`api_base` is a URL**, `http://192.168.50.62:8003/v1`. Its host:port is
+  the same string as an engine's `server` in the snapshot, which is how a row
+  names *node · runtime*. Hostnames and IPs are resolved before comparing,
+  since the gateway and `cluster.yml` are configured separately.
+- **`requested_model="other"`** is a request for a model no gateway route
+  matched: refused at the gateway, reaching no engine. Shown as *no such
+  model*.
+- **A failed `/v1/messages` request has `user_agent="None"`.** LiteLLM keeps
+  the User-Agent on success and drops it on this route's failures, so Claude
+  Code's errors arrive unattributed and get a row of their own.
+- **A User-Agent that is a library default** (`OpenAI/Python 2.24.0`) names
+  the SDK, not the program. Many agents and scripts send it unchanged. The
+  card tags these `sdk`, and the client's machine name is usually what says
+  who it was.
+- **Every client version is a new series.** Rows are grouped by the full
+  User-Agent, and a harness's name comes from a pattern table in `clients.py`.
+
+**Not available: tokens per client.** The token and latency series carry
+neither `user_agent` nor `client_ip`, only key, team and user labels. That
+would need a LiteLLM key per client, and those need its database.
+
+### Counting a window correctly
+
+`increase()` never counts a counter's first value, so a client that appears
+mid-window with one request reads 0 and vanishes. Adding a new series' whole
+value back instead overcounts, because a series that is new *to Prometheus*
+when the scrape starts carries the gateway's history from before anyone was
+counting. The rows query separates three cases:
+
+```promql
+sum by (…) (
+    (increase(c[W]) and c offset W)                   # existed when the window opened
+  or ((max_over_time(c[W]) unless c offset W)
+        and on() (up{job="litellm"} offset W))        # born later, while already scraped: all of it
+  or ((max_over_time(c[W]) - min_over_time(c[W])
+        unless c offset W)
+        unless on() (up{job="litellm"} offset W))     # new only because the scrape began: what was seen
+)
+```
+
+On the live gateway, 2026-09-29, a counter that read 14 at its first scrape
+and 23 later came out as 9. `increase()` alone said 8.31, and adding the whole
+value back said 21. When the third case applies, the card says when counting
+began.
+
 ## What the agent itself exports
 
 Everything above describes what the ENGINES and exporters publish upstream.

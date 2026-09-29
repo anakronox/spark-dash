@@ -71,6 +71,25 @@ backend that's running but wedged is caught rather than passing a naive check.
 This is what [UptimeKuma watches](deployment.md#monitoring-the-monitor--existing-uptimekuma-instance)
 to close the "who monitors the monitor" gap.
 
+### REST — client stats (optional)
+
+From a LiteLLM gateway, when one is set up
+([deployment](deployment.md#client-stats--optional),
+[metrics](metrics.md#litellm-gateway--optional-per-client)). The address and
+the switch live in `cluster.yml`'s `gateway:` block, which the node editor
+leaves alone when it saves.
+
+| Endpoint | Does |
+|---|---|
+| `GET /api/clients?minutes=` | The Clients card's rows, 5 minutes to 30 days. Empty while off; 503 when Prometheus is down. |
+| `GET /api/clients/status` | `capability` (an address is set), `enabled` (the switch), `url`, `error`, `cluster_file`, and `state`, which is `/health`'s value. Asks Prometheus, never the gateway, so it can be polled freely. |
+| `PUT /api/clients/config` | `{url}` sets the address (a trailing `/v1` is dropped); `{url: null}` removes it. `enabled`, if omitted, keeps the switch as it was. 409 on a deployment with no `cluster.yml`. |
+| `POST /api/clients/enabled` | `{enabled}`. Answers while off, so off is never a state you cannot leave. 409 with no address yet. |
+| `POST /api/clients/test` | `{url}`, unsaved. Requests `/health/liveliness` and `/metrics` on the gateway and nothing else: LiteLLM's `/health` sends a real request to every model. |
+
+Every write returns the new status and re-renders Prometheus's target list, so
+the scrape starts or stops within one refresh (30 s).
+
 ### WebSocket — live view
 
 `GET /ws/live?scope=cluster` or `?scope=node:<id>`
@@ -236,6 +255,30 @@ Single-page, no navigation chrome for the primary view:
 
 A down node keeps its tile in place showing its status rather than vanishing —
 a missing tile is easy to miss; a red one isn't.
+
+**Optional cards are the exception, on purpose.** A card whose data may not
+exist on this install is off the page and out of the `+ element` menu while
+its feature is off, and keeps its place in the saved layout, so switching the
+feature back on returns it to where it was. The Clients card is the first:
+
+- **Harness** — named from the User-Agent. An `sdk` tag means it is a
+  library's default, which says which SDK and not which program; the hover
+  shows the raw string. *Anthropic-API client* is a failed `/v1/messages`
+  request, which LiteLLM passes on without its User-Agent.
+- **Client** — the machine: a node's id if it is one, else its reverse-DNS
+  name, else its address. Hover for the full name and the IP. For an agent
+  sending an SDK default, this is the column that says who it was, which is
+  why both are required columns.
+- **Model** — what was asked for, prefix included. *No such model* is a name
+  no gateway route matched, refused before reaching an engine.
+- **Engine** — *node · runtime*, joined from the gateway's `api_base` to
+  `cluster.yml`, or the bare address for an endpoint this dashboard does not
+  monitor.
+- **Requests**, **req/min**, **failed**, **active** — over the window picked
+  in the card's header (1h to 7d). Requests include failed attempts; failed
+  breaks down by status on hover; active means something was sent in the last
+  five minutes. The header says *counting since* when the gateway's scrape
+  began inside the window.
 
 ## Open items
 

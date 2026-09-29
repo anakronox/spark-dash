@@ -887,8 +887,10 @@ groups:
       # never age out: the hardware still exists, so a target that stays down
       # is a fault however long it lasts, and letting it expire would blind
       # the dashboard to exactly the failure it exists to catch.
+      #
+      # The LiteLLM gateway is excluded too: it has its own rule below.
       - alert: PrometheusTargetScrapeFailing
-        expr: up{job!~"vllm|sglang"} == 0
+        expr: up{job!~"vllm|sglang|litellm"} == 0
         for: 15m
         labels:
           severity: warning
@@ -915,9 +917,10 @@ groups:
       # keeps reporting a configured-but-absent target (see roadmap G3), so it
       # stops nagging without being forgotten.
       #
-      # The job list is the ENGINES, and the two rules must stay complements of
-      # each other: a job in neither would never alert at all, and a job in
-      # both would alert twice with different ageing rules.
+      # The job list is the ENGINES, and the three scrape rules (this one, the
+      # infrastructure one above and the gateway one below) must partition the
+      # jobs: a job in none would never alert at all, and a job in two would
+      # alert twice with different ageing rules.
       - alert: InferenceTargetScrapeFailing
         expr: >-
           up{job=~"vllm|sglang"} == 0
@@ -932,3 +935,23 @@ groups:
             stays down for 24 hours, on the assumption the model was retired —
             the dashboard will still show it as configured but absent. If it
             was NOT deliberate, that is the window to act in.
+
+      # THE LITELLM GATEWAY (roadmap AM7). Its own rule, because what is true
+      # when it is down is specific: every client pointed at it is failing,
+      # while the engines behind it may be fine. Two minutes rather than the
+      # infrastructure rule's fifteen, because clients are failing now.
+      #
+      # It exists only while client stats are on. Off, the target list is
+      # empty, there is no up{job="litellm"} series, and this cannot fire:
+      # switching the feature off in Settings is how to retire it.
+      - alert: LiteLLMGatewayDown
+        expr: up{job="litellm"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The LiteLLM gateway at {{ $labels.instance }} is not answering"
+          description: >-
+            Clients pointed at the gateway are failing. The engines behind it
+            may be fine; the node cards say whether they are. Client stats stop
+            counting until it is back.
