@@ -544,6 +544,10 @@ def load_gateway(path: Path) -> GatewayConfig | None:
     return parse_gateway(payload)
 
 
+class NoClusterFileError(ClusterConfigError):
+    """The gateway needs the cluster file, and this deployment has none."""
+
+
 def write_gateway(path: Path, gateway: GatewayConfig | None) -> None:
     """Set the gateway block, or remove it with None, leaving the rest alone.
 
@@ -554,7 +558,7 @@ def write_gateway(path: Path, gateway: GatewayConfig | None) -> None:
     """
     doc = _current_document(path)
     if doc is None or not isinstance(doc.get("nodes"), list):
-        raise ClusterConfigError(
+        raise NoClusterFileError(
             f"client stats are configured in the cluster file ({path.name}), and this "
             "deployment does not have one yet. Nodes still come from SPARK_NODES; "
             "move them into the cluster file first."

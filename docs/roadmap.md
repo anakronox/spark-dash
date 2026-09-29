@@ -7204,7 +7204,16 @@ Then:
   the join is tested even though no SGLang server is.
 - **No token columns.** AM0: the token metrics do not carry the client.
 
-- [ ] **AM4a.** Status, config, enabled, test, with the probe-URL guard.
+- [x] **AM4a. Shipped 2026-09-29.** `GET /api/clients/status`,
+  `PUT /api/clients/config` (`url: null` removes it; `enabled` omitted keeps
+  the toggle), `POST /api/clients/enabled` (409 without an address, or with a
+  broken block) and `POST /api/clients/test`. **Status asks Prometheus, never
+  the gateway**: `up{job="litellm"} == 1` already proves it reachable and
+  readable without a key, so Settings can poll it for free. Only Test talks
+  to the gateway, and `PROBE_PATHS` is the whole list of what it requests.
+  The guard was checked by pointing the probe at `/health`, which failed six
+  tests. A missing cluster file is its own error, a 409 that says
+  `SPARK_NODES`. 17 more tests in `test_clients.py`.
 - [ ] **AM4b.** Rows, UA classification and the endpoint join, tested against
   a canned Prometheus response in the `test_api.py` style.
 
@@ -7291,27 +7300,13 @@ The dashboard's side is documented fully; the gateway's gets a note and
 links to LiteLLM's own public docs. Written alongside the code, and AM9a
 before AM5 ships, since Settings links to it.
 
-- [ ] **AM9a. `deployment.md`: "Client stats — optional".** What the feature
-  shows, and why it needs a gateway at all: the engines never record a
-  caller, and the only place a client names itself is the HTTP request, so
-  **a LiteLLM proxy in front of the engines is the lynchpin of client
-  identification.** Without one the feature stays off and nothing else in
-  the dashboard changes; the engines are still scraped directly either way.
-  What it needs from the gateway: the Prometheus callback, `/metrics`
-  readable without a key, and clients pointed at it. Turning it on: the URL
-  in Settings (`/v1` accepted), Test, the toggle. What Test calls
-  (`/health/liveliness` and `/metrics`, never `/health`). One note, not a
-  guide: LiteLLM's health checks send real requests to models, which on a
-  llama.cpp router with autoload loads them. Then the links, and nothing
-  more:
-  [LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy),
-  [deploying it](https://docs.litellm.ai/docs/proxy/deploy),
-  [config](https://docs.litellm.ai/docs/proxy/configs),
-  [Prometheus metrics](https://docs.litellm.ai/docs/proxy/prometheus),
-  [health checks](https://docs.litellm.ai/docs/proxy/health),
-  [source](https://github.com/BerriAI/litellm). A troubleshooting table
-  limited to what the dashboard reports: unreachable, `/metrics` 401, not
-  scraped, no rows yet, every client showing one IP.
+- [x] **AM9a. Shipped 2026-09-29:** `deployment.md`, "Client stats —
+  optional". It covers why a LiteLLM proxy is the lynchpin (the engines never
+  record a caller), the three things the dashboard needs from it, turning the
+  feature on, exactly what the dashboard sends the gateway, one caution
+  about LiteLLM's health checks, and six links to LiteLLM's docs. The
+  troubleshooting table quotes each message the dashboard can show, word
+  for word, so the reader can search for it.
 - [ ] **AM9b. `metrics.md`.** The LiteLLM series the dashboard reads and what
   each label means once it arrives: requests are attempts, failures carry no
   `api_base`, `requested_model="other"` is a rejected name, a failed

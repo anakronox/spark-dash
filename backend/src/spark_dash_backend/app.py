@@ -36,17 +36,21 @@ from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
 from spark_dash_backend.annotations import as_dicts, fetch_annotations
-from spark_dash_backend.clients import gateway_health
+from spark_dash_backend.clients import gateway_health, gateway_status, probe_gateway
 from spark_dash_backend.cluster import (
     ClusterConfigError,
     ClusterNode,
+    GatewayConfig,
     InterfacePolicy,
+    NoClusterFileError,
     NodeRuntimes,
     RouterConfig,
     _own_port,
     authority,
     load_cluster,
+    normalize_gateway_url,
     write_cluster,
+    write_gateway,
 )
 from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
@@ -137,6 +141,22 @@ class FleetEnabled(BaseModel):
     """The Settings toggle. A bool and nothing else -- no secret to echo."""
 
     enabled: bool
+
+
+class GatewayWrite(BaseModel):
+    """AM4a. The gateway's address; `url: null` removes it. `enabled` omitted
+    keeps whatever the toggle was."""
+
+    url: str | None
+    enabled: bool | None = None
+
+
+class GatewayEnabled(BaseModel):
+    enabled: bool
+
+
+class GatewayTest(BaseModel):
+    url: str
 
 
 class FleetEnrol(BaseModel):
@@ -1261,6 +1281,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             lambda *, secure: fleet_updates.set_enabled(body.enabled, secure=secure),
             needs_on=False,
         )
+
+    # ---- client stats (roadmap AM4a) ----------------------------------------
+    #
+    # Capability is the gateway URL, use is the toggle, both in cluster.yml.
+    # Every write re-renders Prometheus's targets, so the scrape starts or
+    # stops within one file_sd refresh.
+
+    async def _save_gateway(gateway: GatewayConfig | None) -> dict:
+        try:
+            await asyncio.to_thread(write_gateway, settings.cluster_config, gateway)
+        except NoClusterFileError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        inventory.sync_prometheus_targets()
+        return await gateway_status(inventory, prom)
+
+    @app.get("/api/clients/status")
+    async def api_clients_status() -> dict:
+        """What Settings shows. Asks Prometheus, never the gateway."""
+        return await gateway_status(inventory, prom)
+
+    @app.put("/api/clients/config")
+    async def api_clients_config(body: GatewayWrite) -> dict:
+        """Set the gateway's address, or remove it with `url: null`."""
+        if body.url is None:
+            return await _save_gateway(None)
+        try:
+            url = normalize_gateway_url(body.url)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        current, _ = inventory.gateway()
+        enabled = body.enabled
+        if enabled is None:
+            enabled = current.enabled if current else True
+        return await _save_gateway(GatewayConfig(url=url, enabled=enabled))
+
+    @app.post("/api/clients/enabled")
+    async def api_clients_enabled(body: GatewayEnabled) -> dict:
+        """The toggle. Reachable while off, or off would be a trap door (AL3d)."""
+        current, error = inventory.gateway()
+        if error:
+            raise HTTPException(status_code=409, detail=f"fix the gateway block first: {error}")
+        if current is None:
+            raise HTTPException(status_code=409, detail="set the gateway's address first")
+        return await _save_gateway(replace(current, enabled=body.enabled))
+
+    @app.post("/api/clients/test")
+    async def api_clients_test(body: GatewayTest) -> dict:
+        """Try an address without saving it. Requests /health/liveliness and
+        /metrics on the gateway and nothing else; see `clients.PROBE_PATHS`."""
+        try:
+            return await probe_gateway(body.url)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/fleet/runs/{run_id}/{action}")
     async def api_fleet_run_action(

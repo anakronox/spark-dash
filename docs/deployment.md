@@ -293,6 +293,75 @@ you are upgrading from that layout: drop `COMPOSE_PROFILES=fleet` and
 `fleet/data/fleet.json` to `central/fleet-state/` — your enrolment list is
 migrated in place, so nothing needs re-ticking.
 
+### Client stats — optional
+
+**This is optional, and off until you give it a gateway.** It shows which
+clients and harnesses are calling the engines, from which machines, how many
+requests each sent to which model, and how many failed.
+
+**It needs a LiteLLM proxy in front of the engines.** llama.cpp, vLLM and
+SGLang count requests per model and never record who sent them. The only
+place a client names itself is its HTTP request, so the one way to see
+callers is a proxy that every client talks to. LiteLLM's Prometheus metrics
+carry each request's User-Agent, client IP and the engine it went to, and
+that is what the dashboard reads.
+
+Running the gateway is outside this project. LiteLLM's own docs cover it:
+[the proxy](https://docs.litellm.ai/docs/simple_proxy),
+[deploying it](https://docs.litellm.ai/docs/proxy/deploy),
+[its config](https://docs.litellm.ai/docs/proxy/configs),
+[Prometheus metrics](https://docs.litellm.ai/docs/proxy/prometheus),
+[health checks](https://docs.litellm.ai/docs/proxy/health) and
+[the source](https://github.com/BerriAI/litellm). What the dashboard needs
+from it:
+
+- the Prometheus callback on;
+- `/metrics` readable without a key;
+- clients pointed at the gateway rather than at the engines. A client that
+  still calls an engine directly does not appear.
+
+The engines are scraped directly either way. The gateway adds who called; it
+replaces nothing.
+
+**Turning it on.** In Settings, under Clients: paste the gateway's address
+(the `…/v1` URL clients use is accepted), press Test, save, and switch it on.
+That writes a `gateway:` block to `cluster.yml`, so it needs one: a
+deployment whose nodes still come from `SPARK_NODES` is told to move them
+first. Prometheus starts scraping the gateway within 30 seconds and the
+Clients card appears. Switching it off stops the scrape and removes the
+card, and the history already collected is kept. The block is documented,
+commented out, in `central/cluster.yml.example`.
+
+Prometheus reads the gateway through a `litellm` job in
+`central/config/prometheus.yml`, with a target list the backend writes and
+leaves empty while the feature is off. An existing install picks the job up
+with the usual config pull and reload.
+
+**What the dashboard sends the gateway.** Test requests `/health/liveliness`
+and `/metrics`, and nothing else. After that only Prometheus talks to it,
+and only to read `/metrics`.
+
+One caution about the gateway itself: LiteLLM's health checks (its `/health`
+route, background health checks, and the check buttons in its admin UI) send
+a real request to every configured model. Behind a llama.cpp router started
+with `--models-autoload`, that loads each one. See
+[its health-check docs](https://docs.litellm.ai/docs/proxy/health).
+
+`/health` reports `litellm: ok | not scraped | off | not configured |
+unknown | invalid: <why>`. None of these counts as a problem: the dashboard
+is not blind without a gateway.
+
+| Settings or `/health` says | Meaning |
+|---|---|
+| No answer from … | The gateway is not reachable from the monitoring VM at that address. |
+| … answered 404 on /health/liveliness | Wrong port, or not a LiteLLM proxy. |
+| The gateway asks for a key on /metrics | LiteLLM requires a key there by default. Its [Prometheus docs](https://docs.litellm.ai/docs/proxy/prometheus) cover turning that off. |
+| /metrics … carries no LiteLLM series | The Prometheus callback is not on. |
+| `not scraped` | Prometheus cannot reach the gateway, or has not refreshed its targets yet (30 s). `up{job="litellm"}` says which. |
+| … configured in the cluster file, and this deployment does not have one yet | Nodes still come from `SPARK_NODES`. Move them into `cluster.yml` first. |
+| `invalid: …` | The `gateway:` block in `cluster.yml` has a mistake, named in the message. Scraping continues at the last good address, and saving an address in Settings replaces the block. |
+| Every client shows the same address | Something else proxies in front of the gateway, so it is the only client LiteLLM sees. |
+
 ### Sizing
 
 2 vCPU / 4GB RAM / ~50GB disk is comfortable for a handful of nodes. Prometheus
