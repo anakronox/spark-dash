@@ -7087,12 +7087,15 @@ nodes:
 
 *Capability* is `url` set; *use* is `enabled`. Absent block: capability absent.
 
-- [ ] **AM2a. The round-trip fix, first and alone.** `dump_cluster` writes
-  `{"nodes": out}` and nothing else (`cluster.py:380`), so the first node saved
-  from Settings would **silently delete** a `gateway:` block. `write_cluster`
-  becomes read-modify-write, keeping every top-level key it does not own.
-  Tested with an unknown key surviving a node save. Ships before anything
-  writes `gateway:`, so no build ever exists in which saving a node loses it.
+- [x] **AM2a. Shipped 2026-09-29, first and alone.** `dump_cluster` wrote
+  `{"nodes": out}` and nothing else, so the first node saved from Settings
+  would **silently delete** a `gateway:` block. `write_cluster` is now
+  read-modify-write: every top-level key other than `nodes` comes through in
+  its original place, and `nodes` is replaced by the list being saved. A file
+  that is not YAML has nothing to keep and is replaced rather than refused,
+  so Settings can still repair it. Five tests in `test_cluster.py`, three of
+  which failed before the fix. Ships before anything writes `gateway:`, so
+  no build exists in which saving a node loses it.
 - [ ] **AM2b. Parse and validate.** `parse_gateway(payload)` beside
   `parse_cluster`: `url` is `http(s)://host[:port]`, and a trailing `/v1` is
   **accepted and stripped**, not rejected: that is the address clients use,

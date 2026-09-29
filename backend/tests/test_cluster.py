@@ -861,3 +861,66 @@ def test_a_target_file_it_cannot_write_is_reported_not_just_logged(tmp_path):
 
     if os.geteuid() != 0:  # root ignores the mode bits
         assert any("agents.yml" in f for f in TARGET_WRITE_FAILURES)
+
+
+class TestWritePreservesWhatItDoesNotOwn:
+    """AM2a. The dashboard writes this file on every cluster edit, and it only
+    knows about `nodes`. A top-level block it does not own — `gateway:` is the
+    first — must come through a node save untouched, or the first edit in
+    Settings silently deletes it."""
+
+    GATEWAY = "gateway:\n  litellm:\n    url: http://litellm.invalid:4000\n    enabled: true\n"
+    NODES = "nodes:\n- id: sparky\n  host: 192.168.50.61\n"
+
+    def _write(self, path):
+        from spark_dash_backend.cluster import write_cluster
+
+        write_cluster(path, load_cluster(path))
+
+    def test_a_block_it_does_not_own_survives_a_node_save(self, tmp_path):
+        path = tmp_path / "cluster.yml"
+        path.write_text(self.GATEWAY + self.NODES)
+        self._write(path)
+        written = yaml.safe_load(path.read_text())
+        assert written["gateway"] == {
+            "litellm": {"url": "http://litellm.invalid:4000", "enabled": True}
+        }
+        assert [n["id"] for n in written["nodes"]] == ["sparky"]
+
+    def test_the_file_keeps_its_key_order(self, tmp_path):
+        """A block above `nodes` stays above it, so a hand-arranged file does
+        not reshuffle every time the dashboard writes."""
+        path = tmp_path / "cluster.yml"
+        path.write_text(self.GATEWAY + self.NODES + "future_block:\n  x: 1\n")
+        self._write(path)
+        assert list(yaml.safe_load(path.read_text())) == ["gateway", "nodes", "future_block"]
+
+    def test_the_node_list_is_still_the_one_being_saved(self, tmp_path):
+        """Preserving the rest must not mean preserving the OLD nodes."""
+        from spark_dash_backend.cluster import write_cluster
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(self.GATEWAY + self.NODES)
+        nodes = parse_cluster("nodes:\n- id: sparketa\n  host: 192.168.50.62\n")
+        write_cluster(path, nodes)
+        written = yaml.safe_load(path.read_text())
+        assert [n["id"] for n in written["nodes"]] == ["sparketa"]
+        assert "gateway" in written
+
+    def test_a_missing_file_is_written_with_nodes_only(self, tmp_path):
+        from spark_dash_backend.cluster import write_cluster
+
+        path = tmp_path / "cluster.yml"
+        write_cluster(path, parse_cluster(self.NODES))
+        assert list(yaml.safe_load(path.read_text())) == ["nodes"]
+
+    def test_an_unreadable_file_can_still_be_replaced(self, tmp_path):
+        """Recovery path: a file that is not YAML at all has nothing to
+        preserve, and refusing to write would leave Settings unable to fix
+        it. It is replaced by the nodes being saved."""
+        from spark_dash_backend.cluster import write_cluster
+
+        path = tmp_path / "cluster.yml"
+        path.write_text("nodes: [unterminated\n")
+        write_cluster(path, parse_cluster(self.NODES))
+        assert [n["id"] for n in yaml.safe_load(path.read_text())["nodes"]] == ["sparky"]

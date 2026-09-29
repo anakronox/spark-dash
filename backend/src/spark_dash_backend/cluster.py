@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
@@ -333,8 +334,12 @@ def validate_cluster(nodes: list[ClusterNode]) -> None:
                 raise ClusterConfigError(f"node {n.node_id!r}: port {port} out of range")
 
 
-def dump_cluster(nodes: list[ClusterNode]) -> str:
+def dump_cluster(nodes: list[ClusterNode], *, preserve: Mapping | None = None) -> str:
     """Render the cluster back to YAML.
+
+    `preserve` is the file's current top-level mapping. Every key in it other
+    than `nodes` is written back unchanged and in its original place; `nodes`
+    is replaced by `nodes`. See `write_cluster`.
 
     PORTS, NOT URLS. A runtime on the node's own host is written as a port, so
     changing a node's address stays one edit — and it is what keeps a UI write
@@ -377,7 +382,11 @@ def dump_cluster(nodes: list[ClusterNode]) -> str:
             entry["interfaces"] = {"ignore": list(n.interfaces.ignore)}
         out.append(entry)
 
-    body = yaml.safe_dump({"nodes": out}, default_flow_style=False, sort_keys=False)
+    doc: dict = {}
+    for key, value in (preserve or {}).items():
+        doc[key] = out if key == "nodes" else value
+    doc.setdefault("nodes", out)
+    body = yaml.safe_dump(doc, default_flow_style=False, sort_keys=False)
     return (
         "# The cluster — nodes and what each one serves.\n"
         "#\n"
@@ -418,7 +427,13 @@ def write_cluster(path: Path, nodes: list[ClusterNode]) -> None:
     import tempfile
 
     validate_cluster(nodes)
-    text = dump_cluster(nodes)
+    # READ-MODIFY-WRITE. This module owns `nodes` and nothing else in the file.
+    # Writing only what it owns deleted every other top-level block, so the
+    # first node saved from Settings would have silently removed the gateway
+    # config (roadmap AM2a). A file that is not YAML has nothing to keep, and
+    # is replaced rather than refused, since refusing would leave Settings
+    # unable to repair it.
+    text = dump_cluster(nodes, preserve=_current_document(path))
     path.parent.mkdir(parents=True, exist_ok=True)
 
     # Re-parse what we are about to write. Writing something we cannot read
@@ -436,6 +451,15 @@ def write_cluster(path: Path, nodes: list[ClusterNode]) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
         raise
+
+
+def _current_document(path: Path) -> Mapping | None:
+    """The file's top-level mapping as it stands, or None if there is none to keep."""
+    try:
+        payload = yaml.safe_load(path.read_text())
+    except (OSError, yaml.YAMLError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def load_cluster(path: Path) -> list[ClusterNode]:
