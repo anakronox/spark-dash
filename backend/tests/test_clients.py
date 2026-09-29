@@ -13,8 +13,8 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 from spark_dash_backend.app import create_app
-from spark_dash_backend.clients import gateway_health
-from spark_dash_backend.cluster import GatewayConfig
+from spark_dash_backend.clients import Names, classify, client_rows, gateway_health
+from spark_dash_backend.cluster import GatewayConfig, parse_cluster
 from spark_dash_backend.config import Settings
 from spark_dash_backend.inventory import Inventory, write_prometheus_targets
 from spark_dash_backend.prometheus import PrometheusError, Series
@@ -368,3 +368,272 @@ def test_no_cluster_file_is_a_409_that_says_why(tmp_path, monkeypatch):
     assert response.status_code == 409
     assert "SPARK_NODES" in response.json()["detail"]
     assert not (tmp_path / "cluster" / "cluster.yml").exists()
+
+
+# ------------------------------------------------------------------ AM4b
+
+
+class TestClassify:
+    @pytest.mark.parametrize(
+        ("ua", "name", "kind"),
+        [
+            ("claude-cli/2.1.0 (external, cli)", "Claude Code", "harness"),
+            # Measured 2026-09-29: Hermes Agent sends the SDK default.
+            ("OpenAI/Python 2.24.0", "OpenAI SDK (Python)", "sdk"),
+            ("AsyncOpenAI/Python 2.54.0", "OpenAI SDK (Python)", "sdk"),
+            ("Anthropic/Python 0.40.0", "Anthropic SDK (Python)", "sdk"),
+            ("curl/8.7.1", "curl", "tool"),
+            ("python-httpx/0.28.1", "httpx", "tool"),
+            # Not in the table yet: readable, not guessed.
+            ("opencode/1.2.3 (darwin)", "opencode", "unknown"),
+            ("SomeApp 3", "SomeApp", "unknown"),
+        ],
+    )
+    def test_user_agents(self, ua, name, kind):
+        assert classify(ua) == {"name": name, "kind": kind}
+
+    def test_a_failed_messages_request_has_no_user_agent(self):
+        """LiteLLM drops it on a failed /v1/messages; the route still says
+        which API the client was speaking."""
+        assert classify("None", "/v1/messages")["name"] == "Anthropic-API client"
+        assert classify(None)["kind"] == "unattributed"
+
+
+CLUSTER_RT = """
+nodes:
+- id: sparky
+  host: sparky.invalid
+  runtimes:
+    llama_routers:
+    - port: 8001
+- id: sparketa
+  host: 10.0.0.2
+  runtimes:
+    vllm: [8003]
+    sglang: [30000]
+"""
+
+HERMES = {"user_agent": "OpenAI/Python 2.24.0", "client_ip": "10.0.0.99"}
+CLAUDE = {"user_agent": "claude-cli/2.1.0 (external, cli)", "client_ip": "10.0.0.50"}
+
+
+def s(labels, value):
+    return Series(labels=labels, points=[(0.0, float(value))])
+
+
+class RowsProm:
+    """Answers each of `client_rows`' five queries from a table."""
+
+    def __init__(self, requests=(), rates=(), failures=(), scraped=True, first=1000.0):
+        self.requests, self.rates, self.failures = list(requests), list(rates), list(failures)
+        self.scraped, self.first = scraped, first
+
+    async def query(self, expr):
+        from spark_dash_backend.clients import FAILURES, REQUESTS
+
+        if expr.startswith("up{") and "offset" in expr:
+            return [s({"job": "litellm"}, 1)] if self.scraped else []
+        if expr.startswith("min_over_time(timestamp("):
+            return [s({}, self.first)]
+        if "rate(" in expr and REQUESTS in expr:
+            return self.rates
+        if REQUESTS in expr:
+            return self.requests
+        if FAILURES in expr:
+            return self.failures
+        raise AssertionError(f"unexpected query {expr}")
+
+
+def names():
+    ptr = {"10.0.0.99": "agents.lan.invalid", "10.0.0.50": "laptop.lan.invalid"}
+    a = {"sparky.invalid": "10.0.0.1"}
+
+    def reverse(ip):
+        if ip not in ptr:
+            raise OSError("no PTR")
+        return ptr[ip]
+
+    def forward(host):
+        if host not in a:
+            raise OSError("no A")
+        return a[host]
+
+    return Names(reverse=reverse, forward=forward)
+
+
+def rows(prom, minutes=60):
+    return asyncio.run(client_rows(prom, parse_cluster(CLUSTER_RT), names(), minutes))
+
+
+class TestRows:
+    def test_a_row_names_the_harness_the_machine_and_the_engine(self):
+        body = rows(
+            RowsProm(
+                requests=[s({**HERMES, "api_base": "http://10.0.0.2:8003/v1",
+                             "requested_model": "flash/glm"}, 211.7)],
+                rates=[s({**HERMES, "api_base": "http://10.0.0.2:8003/v1",
+                          "requested_model": "flash/glm"}, 0.05)],
+            )
+        )
+        (row,) = body["rows"]
+        assert row["harness"] == {"name": "OpenAI SDK (Python)", "kind": "sdk"}
+        assert row["client"] == {"ip": "10.0.0.99", "node": None, "name": "agents",
+                                 "fqdn": "agents.lan.invalid"}
+        assert row["engine"] == {"server": "10.0.0.2:8003", "node": "sparketa", "runtime": "vllm"}
+        assert (row["requests"], row["per_min"], row["active"]) == (212, 3.0, True)
+        assert body["counting_since"] is None
+
+    def test_sglang_joins_like_any_engine(self):
+        """No SGLang server exists to test against; its rows are built the same
+        way from cluster.yml's `sglang:` entries, and this is the proof."""
+        (row,) = rows(
+            RowsProm(requests=[s({**CLAUDE, "api_base": "http://10.0.0.2:30000/v1",
+                                  "requested_model": "sg/qwen"}, 4)])
+        )["rows"]
+        assert row["engine"] == {
+            "server": "10.0.0.2:30000", "node": "sparketa", "runtime": "sglang"
+        }
+
+    def test_a_hostname_in_the_cluster_joins_an_ip_in_the_gateway(self):
+        """The two are configured apart; sparky.invalid resolves to 10.0.0.1."""
+        (row,) = rows(
+            RowsProm(requests=[s({**CLAUDE, "api_base": "http://10.0.0.1:8001/v1/responses",
+                                  "requested_model": "prod/qwen"}, 3)])
+        )["rows"]
+        assert row["engine"] == {"server": "sparky.invalid:8001", "node": "sparky",
+                                 "runtime": "llama.cpp"}
+
+    def test_an_endpoint_the_dashboard_does_not_monitor_is_shown_verbatim(self):
+        (row,) = rows(
+            RowsProm(requests=[s({**CLAUDE, "api_base": "http://10.9.9.9:9000/v1",
+                                  "requested_model": "elsewhere/m"}, 1)])
+        )["rows"]
+        assert row["engine"] == {"server": "10.9.9.9:9000", "node": None, "runtime": None}
+
+    def test_a_client_that_is_a_node_is_named_by_its_id(self):
+        (row,) = rows(
+            RowsProm(requests=[s({"user_agent": "curl/8", "client_ip": "10.0.0.2",
+                                  "api_base": "http://10.0.0.2:8003/v1",
+                                  "requested_model": "flash/glm"}, 1)])
+        )["rows"]
+        assert (row["client"]["name"], row["client"]["node"]) == ("sparketa", "sparketa")
+
+    def test_no_ptr_record_falls_back_to_the_ip(self):
+        (row,) = rows(
+            RowsProm(requests=[s({"user_agent": "curl/8", "client_ip": "10.0.0.77",
+                                  "api_base": "http://10.0.0.2:8003/v1",
+                                  "requested_model": "flash/glm"}, 1)])
+        )["rows"]
+        assert row["client"] == {"ip": "10.0.0.77", "node": None, "name": "10.0.0.77", "fqdn": None}
+
+    def test_failures_join_their_row_and_requests_include_them(self):
+        """Requests are attempts: 10 requests with 2 failed is 10, not 12."""
+        labels = {**CLAUDE, "requested_model": "flash/glm"}
+        (row,) = rows(
+            RowsProm(
+                requests=[s({**labels, "api_base": "http://10.0.0.2:8003/v1"}, 10)],
+                failures=[s({**labels, "exception_status": "500", "route": "/v1/messages"}, 2)],
+            )
+        )["rows"]
+        assert (row["requests"], row["failed"], row["statuses"]) == (10, 2, {"500": 2})
+
+    def test_unattributed_failures_get_their_own_row(self):
+        """A failed /v1/messages loses its User-Agent, so it cannot join the
+        row its request is counted in. Shown apart, with no requests of its
+        own, rather than folded into a harness it might not be."""
+        body = rows(
+            RowsProm(
+                requests=[s({**CLAUDE, "api_base": "http://10.0.0.2:8003/v1",
+                             "requested_model": "flash/glm"}, 5)],
+                failures=[s({"user_agent": "None", "client_ip": "10.0.0.50",
+                             "requested_model": "flash/glm", "exception_status": "404",
+                             "route": "/v1/messages"}, 3)],
+            )
+        )
+        by_name = {r["harness"]["name"]: r for r in body["rows"]}
+        assert by_name["Claude Code"]["failed"] == 0
+        orphan = by_name["Anthropic-API client"]
+        assert (orphan["requests"], orphan["failed"], orphan["engine"]) == (0, 3, None)
+
+    def test_a_request_for_no_such_model_is_marked_rejected(self):
+        (row,) = rows(
+            RowsProm(failures=[s({"user_agent": "curl/8", "client_ip": "10.0.0.50",
+                                  "requested_model": "other", "exception_status": "400",
+                                  "route": "/v1/chat/completions"}, 1)])
+        )["rows"]
+        assert (row["rejected"], row["model"], row["failed"]) == (True, None, 1)
+
+    def test_quiet_rows_are_dropped_and_the_busiest_come_first(self):
+        base = {"api_base": "http://10.0.0.2:8003/v1", "requested_model": "flash/glm"}
+        body = rows(
+            RowsProm(requests=[s({**HERMES, **base}, 3), s({**CLAUDE, **base}, 40),
+                               s({"user_agent": "curl/8", "client_ip": "10.0.0.7", **base}, 0.2)])
+        )
+        assert [r["client"]["name"] for r in body["rows"]] == ["laptop", "agents"]
+
+    def test_counting_since_when_the_scrape_began_inside_the_window(self):
+        assert rows(RowsProm(scraped=False, first=1790685442.0))["counting_since"] == 1790685442.0
+        assert rows(RowsProm(scraped=True))["counting_since"] is None
+
+
+def test_the_counting_query_has_its_three_cases():
+    """The PromQL itself: existing series by increase(), new ones whole when
+    the scrape was already running, and only what was seen otherwise. Its
+    behaviour was checked against the live gateway (see `counted`)."""
+    from spark_dash_backend.clients import counted
+
+    q = counted("m_total", "a, b", "60m")
+    assert q.startswith("sum by (a, b) (")
+    assert "(increase(m_total[60m]) and m_total offset 60m)" in q
+    assert 'and on() (up{job="litellm"} offset 60m)' in q
+    assert 'unless on() (up{job="litellm"} offset 60m)' in q
+    assert "max_over_time(m_total[60m]) - min_over_time(m_total[60m])" in q
+
+
+class TestNames:
+    def test_lookups_are_cached_including_failures(self):
+        calls = []
+
+        def reverse(ip):
+            calls.append(ip)
+            raise OSError("no PTR")
+
+        n = Names(reverse=reverse, forward=lambda h: h)
+        assert asyncio.run(n.hostname("10.0.0.1")) is None
+        assert asyncio.run(n.hostname("10.0.0.1")) is None
+        assert calls == ["10.0.0.1"]
+
+    def test_a_slow_resolver_costs_half_a_second_not_a_stall(self):
+        import time
+
+        def slow(ip):
+            time.sleep(2)
+            return "late.lan.invalid"
+
+        n = Names(reverse=slow, forward=lambda h: h)
+
+        async def timed():
+            # Timed inside the loop: asyncio.run itself waits for the stray
+            # thread on exit, which the server's long-lived loop never does.
+            start = time.monotonic()
+            name = await n.hostname("10.0.0.1")
+            return name, time.monotonic() - start
+
+        name, took = asyncio.run(timed())
+        assert name is None
+        assert took < 1.0
+
+
+def test_the_rows_route_is_empty_while_off(api):
+    assert api.get("/api/clients").json() == {
+        "configured": False, "window_minutes": 60, "counting_since": None, "rows": [],
+    }
+
+
+def test_the_rows_route_reports_prometheus_down_as_503(api, monkeypatch):
+    async def down(self, expr):
+        raise PrometheusError("unreachable")
+
+    api.put("/api/clients/config", json={"url": "http://litellm.invalid:4000"})
+    monkeypatch.setattr("spark_dash_backend.prometheus.PrometheusClient.query", down)
+    assert api.get("/api/clients?minutes=60").status_code == 503

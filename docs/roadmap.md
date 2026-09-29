@@ -7214,8 +7214,31 @@ Then:
   The guard was checked by pointing the probe at `/health`, which failed six
   tests. A missing cluster file is its own error, a 409 that says
   `SPARK_NODES`. 17 more tests in `test_clients.py`.
-- [ ] **AM4b.** Rows, UA classification and the endpoint join, tested against
-  a canned Prometheus response in the `test_api.py` style.
+- [x] **AM4b. Shipped 2026-09-29.** `GET /api/clients?minutes=` (5 min to
+  30 days), empty while the feature is off, 503 when Prometheus is down.
+  Checked against the live gateway before the tests were written: Hermes
+  Agent's traffic came back as *OpenAI SDK (Python)* from its machine's own name, to
+  `sparketa · vllm`, with `counting_since` set because the scrape had begun
+  inside the window.
+
+  **The counting query was the finding.** `increase()` never counts a series'
+  first value, so a client that appeared mid-window with one request read 0
+  and vanished: on the live data it said 8.31 where the counter had moved by
+  9. Adding a new series' whole value back overcounted to 21, because a
+  series new *to Prometheus* when the scrape starts carries the gateway's
+  history from before anyone counted. `counted()` separates three cases:
+  series that existed when the window opened use `increase()`; series born
+  while the gateway was already scraped count whole; series born because
+  the scrape started count only what Prometheus saw, and the card is told
+  when that was. It came out at exactly 9.
+
+  Harness names come only from User-Agents actually seen. Anything else
+  reads as its product token (`opencode/1.2` → "opencode") until it is
+  confirmed and added. Reverse and forward DNS are cached for an hour with
+  a 0.5 s timeout, and failures are cached too. The engine join resolves
+  both sides to IPs, since the gateway and `cluster.yml` may name the same
+  host differently. The SGLang join is covered by fixtures, since there is
+  no SGLang server to test against. 25 more tests.
 
 #### AM5 — Settings: "Clients (LiteLLM)"
 

@@ -36,7 +36,13 @@ from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
 from spark_dash_backend.annotations import as_dicts, fetch_annotations
-from spark_dash_backend.clients import gateway_health, gateway_status, probe_gateway
+from spark_dash_backend.clients import (
+    Names,
+    client_rows,
+    gateway_health,
+    gateway_status,
+    probe_gateway,
+)
 from spark_dash_backend.cluster import (
     ClusterConfigError,
     ClusterNode,
@@ -1297,6 +1303,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         inventory.sync_prometheus_targets()
         return await gateway_status(inventory, prom)
+
+    client_names = Names()
+
+    @app.get("/api/clients")
+    async def api_clients(minutes: int = Query(60, ge=5, le=60 * 24 * 30)) -> dict:
+        """The Clients card's rows (AM4b): who called which model, how often,
+        and how often it failed, over the last `minutes`."""
+        gateway, _ = inventory.gateway()
+        if gateway is None or not gateway.enabled:
+            return {
+                "configured": False,
+                "window_minutes": minutes,
+                "counting_since": None,
+                "rows": [],
+            }
+        try:
+            body = await client_rows(prom, inventory.cluster_nodes(), client_names, minutes)
+        except PrometheusError as exc:
+            raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
+        return {"configured": True, **body}
 
     @app.get("/api/clients/status")
     async def api_clients_status() -> dict:

@@ -557,6 +557,15 @@ class Inventory:
         except ClusterConfigError as exc:
             return None, str(exc)
 
+    def cluster_nodes(self) -> list:
+        """The cluster file's entries, runtimes included, as of this cycle.
+
+        `nodes()` first, for the same reason as in `sync_prometheus_targets`:
+        it is what refreshes them. Empty under SPARK_NODES.
+        """
+        self.nodes()
+        return list(self._cluster)
+
     @property
     def cluster_file_present(self) -> bool:
         return self._cluster_config is not None and self._cluster_config.exists()
