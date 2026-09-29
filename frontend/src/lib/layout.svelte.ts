@@ -219,6 +219,9 @@ export interface SectionDef {
   id: string;
   /** Shown in the drag handle's accessible name and its tooltip. */
   label: string;
+  /** A card whose data may not exist on this install (roadmap AM6a). Off the
+   *  page and out of the add menu until the app says it is available. */
+  optional?: boolean;
 }
 
 /** Default order, top to bottom.
@@ -269,6 +272,11 @@ export const SECTIONS: SectionDef[] = [
   { id: 'thermal', label: 'Temperatures' },
   { id: 'models', label: 'Models' },
   { id: 'activity', label: 'Model activity' },
+  /* OPTIONAL, the first card that is (AM6a): its data comes from a LiteLLM
+     gateway, and an install without one has none. Last by default, so an
+     existing layout that meets it for the first time finds it appended at
+     the end rather than wedged between cards it already arranged. */
+  { id: 'clients', label: 'Clients', optional: true },
 ];
 
 const DEFAULT_ORDER = SECTIONS.map((s) => s.id);
@@ -340,6 +348,7 @@ const DEFAULT_ROWS: Record<string, number> = {
      applies to each. 8 here is 21 rows of package sensors alone at three
      nodes. */
   thermal: 8,
+  clients: 10,
 };
 
 function readColumns(available: string[] = DEFAULT_ORDER): Record<string, Zone> {
@@ -1103,7 +1112,30 @@ export class Layout {
    * every position below it out of step with what is on screen.
    */
   get visible(): string[] {
-    return this.order.filter((id) => !this.isHidden(id));
+    return this.order.filter((id) => !this.isHidden(id) && this.isAvailable(kindOf(id)));
+  }
+
+  /* OPTIONAL KINDS (roadmap AM6a). A kind in here has no data on this install
+     right now, so its cards are off the page and out of the add menu.
+
+     Filtered from `visible` rather than removed from `order`, so everything
+     derived from the page -- bands, zones, drag positions, "3 of 5" -- simply
+     never sees it, and its saved place survives: switching the feature off
+     and on puts the card back where it was.
+
+     Every optional kind STARTS unavailable, so a card for a feature that
+     turns out to be off never flashes onto the page while its status loads. */
+  unavailable = $state<string[]>(SECTIONS.filter((s) => s.optional).map((s) => s.id));
+
+  isAvailable(kind: string): boolean {
+    return !this.unavailable.includes(kind);
+  }
+
+  setAvailable(kind: string, on: boolean) {
+    if (on === this.isAvailable(kind)) return;
+    this.unavailable = on
+      ? this.unavailable.filter((k) => k !== kind)
+      : [...this.unavailable, kind];
   }
 
   move(from: number, to: number) {

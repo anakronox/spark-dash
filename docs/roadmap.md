@@ -7280,26 +7280,31 @@ first card whose data may not exist.
 **Brian, 2026-09-29:** when the feature is on, the Clients card is a card like
 any other. When it is off, it is not on the page at all.
 
-- [ ] **AM6a. Optional kinds, generically.** `SectionDef` gains
-  `optional?: true`. `App.svelte` hands the layout the set of optional kinds
-  that are available, and an unavailable kind is left out of the add menu and
-  skipped by `bands`. Its place in the saved order is **kept**, so switching the
-  gateway off and on restores the card where it was. AK's rule applied
-  to cards: a card for a thing that is not there does not hold a seat. Guards in
-  `test_section_drag.py` for a hidden kind keeping its position.
-- [ ] **AM6b. `ClientsTable.svelte`**, on `ModelsTable`'s pattern:
-  `ColumnView('clients', COLUMNS)`, `TableView` sorting, `table-fixed`, a
-  width on every column, the slack column. Registered in
-  `tests/test_table_columns.py`'s `TABLES`. Columns:
-
-  | Harness | Client | Model | Endpoint | Requests | Req/min | Failed | Active |
-  |---|---|---|---|---|---|---|---|
-
-  Sorted by Requests. A window picker from `RANGES` (1h/6h/24h/7d), remembered
-  per instance through `instanceKey`. `ClientsFeed` polls with `poll()` every
-  30 s while the card is on the page and the tab is visible, and not at all
-  otherwise. Active is `rate > 0` over the last 5 min; the row's other numbers
-  cover the window.
+- [x] **AM6a. Shipped 2026-09-29.** `SectionDef.optional`, and a layout
+  list of optional kinds that are unavailable right now. They are filtered
+  out of `visible`, which bands, zones, drag positions and the "3 of 5"
+  counts all read, and they are **not** removed from `order`, so the card
+  keeps its saved place. Every optional kind starts unavailable, so a card
+  for a feature that turns out to be off never flashes up while its status
+  loads. The add menu offers available kinds only. `App.svelte` ties the
+  `clients` kind to `ClientsFeed.configured`. Source guards in
+  `tests/test_optional_cards.py`, since the layout's runes cannot run under
+  node.
+- [x] **AM6b. Shipped 2026-09-29.** `ClientsTable.svelte` on ModelsTable's
+  pattern. Columns: harness (with an `sdk` tag when it is a library default),
+  client, model, engine, requests, req/min, failed and active. Harness and
+  client are both required: the first real traffic was an agent sending the
+  OpenAI SDK's default User-Agent, so the machine's name was what said who.
+  A 1h/6h/24h/7d range is saved per instance, and the table polls every
+  30 s while visible. The header carries the client and request counts and
+  "counting since" when the scrape began inside the window. Tooltips give
+  the raw User-Agent, the reverse-DNS name and address, and failures by
+  status. Registered in `test_table_columns.py`; `test_card_resize.py`'s
+  per-instance guard now counts three cards. Checked in a browser against
+  live data: it is last on the page while on, and gone from both the page
+  and the add menu while off. Switching it back on returned it to its place.
+  Four default widths were too narrow for their uppercase headers or for
+  "OpenAI SDK (Python)" plus its tag, and were widened after the first look.
 
 #### AM7 — One alert
 

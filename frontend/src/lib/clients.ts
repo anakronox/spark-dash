@@ -83,3 +83,94 @@ export function sameAddress(draft: string, saved: string | null): boolean {
   const norm = (u: string) => u.trim().replace(/\/+$/, '').replace(/\/v1$/, '');
   return norm(draft) === norm(saved ?? '');
 }
+
+// --- the Clients card (roadmap AM6) -------------------------------------------
+
+/** One row of GET /api/clients: a client, speaking as one harness, to one
+ *  model. */
+export interface ClientRow {
+  harness: { name: string; kind: 'harness' | 'sdk' | 'tool' | 'unknown' | 'unattributed' };
+  user_agent: string | null;
+  client: { ip: string | null; node: string | null; name: string | null; fqdn: string | null };
+  /** Null when `rejected`: the request named a model no gateway route matched. */
+  model: string | null;
+  rejected: boolean;
+  /** Null for a request that reached no engine. `node` is null for an
+   *  endpoint the gateway fronts that this dashboard does not monitor. */
+  engine: { server: string; node: string | null; runtime: string | null } | null;
+  /** Attempts, failures included. */
+  requests: number;
+  failed: number;
+  statuses: Record<string, number>;
+  routes: string[];
+  per_min: number;
+  active: boolean;
+}
+
+export interface ClientsResponse {
+  configured: boolean;
+  window_minutes: number;
+  /** Set when Prometheus began scraping the gateway inside the window, so
+   *  nothing before this moment was counted. Epoch seconds. */
+  counting_since: number | null;
+  rows: ClientRow[];
+}
+
+/** Stable across polls, so a sorted table does not reshuffle its keys. */
+export function rowKey(r: ClientRow): string {
+  return [r.user_agent ?? '', r.client.ip ?? '', r.model ?? '', r.rejected ? 'x' : ''].join('|');
+}
+
+export function engineText(r: ClientRow): string {
+  if (!r.engine) return '—';
+  return r.engine.node ? `${r.engine.node} · ${r.engine.runtime}` : r.engine.server;
+}
+
+export function modelText(r: ClientRow): string {
+  return r.rejected ? 'no such model' : (r.model ?? '—');
+}
+
+/** Why a harness name reads the way it does. */
+export function harnessTitle(r: ClientRow): string {
+  const raw = r.user_agent && r.user_agent !== 'None' ? r.user_agent : 'no User-Agent';
+  switch (r.harness.kind) {
+    case 'sdk':
+      return `${raw}. A library's default User-Agent, which many programs send unchanged, so it cannot say which one; the Client column usually can.`;
+    case 'unattributed':
+      return 'LiteLLM drops the User-Agent from a failed /v1/messages request, so these failures cannot be matched to the client that sent them.';
+    case 'unknown':
+      return `${raw}. Not a harness the dashboard recognises yet.`;
+    default:
+      return raw;
+  }
+}
+
+export function clientTitle(r: ClientRow): string {
+  const who = r.client.node ? `node ${r.client.node}` : (r.client.fqdn ?? 'no reverse DNS');
+  return r.client.ip ? `${who} · ${r.client.ip}` : who;
+}
+
+/** "3 × 500, 1 × 404", most common first. */
+export function failedTitle(r: ClientRow): string {
+  return Object.entries(r.statuses)
+    .sort((a, b) => b[1] - a[1])
+    .map(([status, n]) => `${n} × ${status}`)
+    .join(', ');
+}
+
+/** The header's summary: distinct clients and total requests. */
+export function summaryText(rows: ClientRow[]): string {
+  if (!rows.length) return '';
+  const machines = new Set(rows.map((r) => r.client.ip ?? r.client.name));
+  const total = rows.reduce((n, r) => n + r.requests, 0);
+  return `${machines.size} client${machines.size === 1 ? '' : 's'} · ${total} request${total === 1 ? '' : 's'}`;
+}
+
+/** "counting since 15:17", when the window reaches back before the scrape
+ *  began; otherwise nothing. */
+export function countingNote(since: number | null, locale?: string): string {
+  if (since == null) return '';
+  const t = new Date(since * 1000);
+  const time = t.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return `counting since ${time}`;
+}

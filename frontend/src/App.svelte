@@ -26,6 +26,7 @@
   import { AlertFeed, endMaintenance, timeLeft } from './lib/alerts.svelte';
   import { FleetFeed } from './lib/fleet.svelte';
   import { ClientsFeed } from './lib/clients.svelte';
+  import ClientsTable from './components/ClientsTable.svelte';
   import type { MaintenanceWindow } from './lib/alerts.svelte';
   import { fetchWithTimeout } from './lib/request';
   import { poll } from './lib/visibility.svelte';
@@ -46,6 +47,10 @@
   let settingsOpen = $state(false);
   let fleetOpen = $state(false);
   const layout = new Layout();
+  /* The Clients card is on the page exactly while the feature is on (AM6a).
+     Brian, 2026-09-29: on, it is a card like any other; off, it is not there
+     at all. */
+  $effect(() => layout.setAvailable('clients', clientsFeed.configured));
 
   /** Add a card, then take the reader to it. `tick()` so the new slot exists
    *  before it is scrolled to; the lift clears itself after a moment. */
@@ -610,7 +615,7 @@
            lifts it for a moment -- on a long page, a click with nothing visibly
            happening would read as broken. -->
       <PickMenu
-        groups={[{ items: SECTIONS.map((s) => ({ key: s.id, label: s.label, checked: false, note: String(layout.countOf(s.id)) })) }]}
+        groups={[{ items: SECTIONS.filter((s) => layout.isAvailable(s.id)).map((s) => ({ key: s.id, label: s.label, checked: false, note: String(layout.countOf(s.id)) })) }]}
         ontoggle={addCard}
         what="Add an element"
         of="the dashboard"
@@ -908,6 +913,8 @@
       <Section {layout} {id}>
         {#if kind === 'models'}
           <ModelsTable {nodes} maxRows={layout.rowsFor(id)} />
+        {:else if kind === 'clients'}
+          <ClientsTable maxRows={layout.rowsFor(id)} instance={id} />
         {:else if kind === 'processes'}
           <ProcessTable {nodes} maxRows={layout.rowsFor(id)} />
         {:else if kind === 'activity'}
