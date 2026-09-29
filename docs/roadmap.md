@@ -7040,61 +7040,23 @@ model that is not loaded, exactly as `--models-autoload` would load it.
 | `/metrics` auth | On by default since 1.85.0. The off switch is `litellm_settings.require_auth_for_metrics_endpoint: false`. Under `general_settings` it is silently ignored and `/metrics` answers 401. |
 | What the engines see | Every request arrives from LiteLLM's IP as `AsyncOpenAI/Python 2.x`. Engine logs, and any socket-level view on the node, see only the gateway from then on. |
 
-#### AM1 — The gateway itself, which this repo does not run
+#### AM1 — The gateway is out of scope
 
-LiteLLM runs on **its own small Proxmox VM**: 2 vCPU, 2–4 GB, no Postgres. Not on
-the monitoring VM, because it sits in the request path of every inference call
-and a monitoring-stack upgrade would take inference down with it. Not on a GX10,
-because it also fronts sparketa's vLLM. Not an LXC, because Docker-in-LXC is
-the fragile route and every other stack here is a Dockhand-managed compose file.
+Brian, 2026-09-29: supplying LiteLLM configuration or documentation is beyond
+this project. That boundary is why the gateway was spun off: it has its own
+project, with its own config, safety tests and deployment notes, on the
+private forge and never published. This repo consumes a gateway and does not
+ship one, and nothing in it links to that project.
 
-One wildcard entry per endpoint, prefixed, so a model loaded or removed on a
-router needs no config edit and the same model on two routers stays two names:
+What the dashboard depends on, and so all its docs state about the gateway: a
+LiteLLM proxy in front of the engines, with the Prometheus callback on and
+`/metrics` readable without a key. AM0 is kept here because the dashboard's
+design rests on it — the probe that must never call `/health` (AM4), the
+labels the rows are built from — not as setup instructions for users.
 
-```yaml
-model_list:
-  - model_name: "sparky-8001/*"
-    litellm_params: {model: "openai/*", api_base: "http://sparky.invalid:8001/v1", api_key: none}
-  - model_name: "sparky-8108/*"
-    litellm_params: {model: "openai/*", api_base: "http://sparky.invalid:8108/v1", api_key: none}
-  - model_name: "danflashes/*"
-    litellm_params: {model: "openai/*", api_base: "http://sparketa.invalid:8003/v1", api_key: none}
-
-litellm_settings:
-  callbacks: ["prometheus"]
-  check_provider_endpoint: true
-  require_auth_for_metrics_endpoint: false
-  num_retries: 0          # default 2 would re-run a timed-out generation twice
-  request_timeout: 1800   # a request for a sleeping model waits out the load
-  use_chat_completions_url_for_anthropic_messages: true   # not /v1/responses
-
-general_settings:
-  allowed_routes: [/v1/chat/completions, /v1/messages, /v1/models, /health/liveliness, /metrics, ...]
-```
-
-`openai/*` for vLLM too: `hosted_vllm/*` routes requests, but its models never
-appear in `/v1/models`, with or without `check_provider_endpoint`.
-
-**The rules, each tied to a row of AM0:** no `background_health_checks`; nothing
-ever probes `/health` — a Dockhand healthcheck or uptime monitor uses
-`/health/liveliness`; no `fallbacks`, which would load a different model.
-`allowed_routes` closes `/health` and `/health/test_connection` with a 403 for
-every key, the master key included, and that matters because without a
-database every client holds the master key. LiteLLM logs it as an Enterprise
-feature on each request and enforces it anyway (`auth_utils.py` logs and does
-not return), so a release could quietly reopen `/health`. The gateway project
-tests for exactly that before each upgrade.
-
-- [x] **AM1a. Spun off 2026-09-29 as its own project, `litellm-gateway`**
-  (private for now, not published). `docs/deployment.md` holds every finding above and
-  the rules. `config/config.example.yaml` comments each setting with its
-  reason. `verify/autoload-test.sh <version>` runs that config against fake
-  autoload routers and fails on any wake, an open `/health`, catalog names or a
-  keyed `/metrics`. `verify/check-gateway.sh` checks a live gateway without
-  waking anything: its `/health` probe names a model no route matches, and
-  LiteLLM checks nothing in that case (`no_models_after_filter`), so the probe
-  is safe even if the allowlist has failed. The Settings section links to
-  its deployment doc once the repo has a public URL.
+- [x] **AM1a. Spun off 2026-09-29** as its own project. It carries the
+  config, the rules behind each setting, and a test that runs any LiteLLM
+  version against fake autoload routers before an upgrade.
 - [x] **AM1b. Run 2026-09-29** against sparky's router on 8001 with the rules
   in place, and against fake vLLM and SGLang engines, since there is no
   SGLang engine to test with and there will likely never be one. A sleeping
@@ -7103,8 +7065,7 @@ tests for exactly that before each upgrade.
   `cache_prompt`, `id_slot`, `grammar`, `n_probs` and `chat_template_kwargs`
   passed through. Time to first token: median 97 ms direct, 105 ms through
   the gateway. The model slept again at +1201 s against the router's 1200 s
-  timeout, with the gateway polling throughout. The gateway's `autoload-test.sh` now checks
-  all three engine shapes and the `/v1/messages` path on every upgrade.
+  timeout, with the gateway polling throughout.
 
 #### AM2 — Capability is a URL in `cluster.yml`, not a compose overlay
 
@@ -7185,8 +7146,8 @@ api_base, requested_model` for requests, and a `rate(…[5m])` of the same for
 req/min. Failures come from `litellm_proxy_failed_requests_metric_total` by
 `user_agent, client_ip, requested_model, exception_status`. **That metric has
 no `api_base`**, so failures join to rows on the other three labels; the
-model's prefix names the endpoint anyway. Label facts, measured in the
-gateway project:
+model's prefix names the endpoint anyway. Label facts, measured
+2026-09-29:
 
 - Requests count **attempts**: a 500 from the engine is in both the requests
   and the failures, so the card shows "212 requests, 3 failed", not 215.
@@ -7214,7 +7175,7 @@ Then:
 - **Client** from `client_ip`: a node's id when it matches a `cluster.yml`
   host, else reverse DNS (cached an hour, 0.5 s timeout, in `to_thread`), else
   the IP. If LiteLLM ever sits behind another proxy, every row is that proxy's
-  IP. The guide says so.
+  IP. The deployment notes say so (AM9a).
 - **Endpoint** from `api_base`: its host:port is the same string as
   `EngineMetrics.server` (`192.168.50.61:8001` on both sides, measured), so it
   joins to *node · runtime* through the cluster file. Either side may use a
@@ -7224,10 +7185,9 @@ Then:
 - **SGLang is a first-class row with no live engine behind it.** Nothing in
   the gateway's labels differs by engine: an SGLang deployment is an
   `openai/*` entry like the rest, and joins through `cluster.yml`'s `sglang:`
-  runtimes exactly as vLLM does through `vllm:`. The AM4b fixtures include
-  SGLang rows, built from the SGLang-shaped engine in the gateway's
-  `verify/mock_router.py`, so the join is tested even though no SGLang
-  server is.
+  runtimes exactly as vLLM does through `vllm:`. The AM4b fixtures, canned
+  Prometheus responses kept in this repo's tests, include SGLang rows, so
+  the join is tested even though no SGLang server is.
 - **No token columns.** AM0: the token metrics do not carry the client.
 
 - [ ] **AM4a.** Status, config, enabled, test, with the probe-URL guard.
@@ -7241,7 +7201,9 @@ A section beneath "DGX OS updates", built from its markup
 
 - *capability absent*: a URL field, **Test**, and one sentence: this needs a
   LiteLLM gateway in front of the engines, and that gateway is set up outside
-  this dashboard. Then the guide link. Test shows the probe's result inline:
+  this dashboard. Then a link to AM9a's section of `deployment.md`, by
+  absolute GitHub URL as AL5a's is, since the dashboard is usually read
+  through a tunnel. Test shows the probe's result inline:
   *reachable · metrics readable*, or the 401 sentence.
 - *present, off*: the URL, editable; "Set up and switched off."
 - *on*: the URL, the checks from `/api/clients/status`, and the client count.
@@ -7302,6 +7264,48 @@ first card whose data may not exist.
 - [ ] **Requests by client over time.** Trends is keyed by node; a per-client
   series has no node slot. Wants its own chart kind, not a chip.
 - [ ] **A Grafana panel** on X's terms, once the queries in AM4b have settled.
+
+#### AM9 — Documenting the feature, and only the feature
+
+The dashboard's side is documented fully; the gateway's gets a note and
+links to LiteLLM's own public docs. Written alongside the code, and AM9a
+before AM5 ships, since Settings links to it.
+
+- [ ] **AM9a. `deployment.md`: "Client stats — optional".** What the feature
+  shows, and why it needs a gateway at all: the engines never record a
+  caller, and the only place a client names itself is the HTTP request, so
+  **a LiteLLM proxy in front of the engines is the lynchpin of client
+  identification.** Without one the feature stays off and nothing else in
+  the dashboard changes; the engines are still scraped directly either way.
+  What it needs from the gateway: the Prometheus callback, `/metrics`
+  readable without a key, and clients pointed at it. Turning it on: the URL
+  in Settings (`/v1` accepted), Test, the toggle. What Test calls
+  (`/health/liveliness` and `/metrics`, never `/health`). One note, not a
+  guide: LiteLLM's health checks send real requests to models, which on a
+  llama.cpp router with autoload loads them. Then the links, and nothing
+  more:
+  [LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy),
+  [deploying it](https://docs.litellm.ai/docs/proxy/deploy),
+  [config](https://docs.litellm.ai/docs/proxy/configs),
+  [Prometheus metrics](https://docs.litellm.ai/docs/proxy/prometheus),
+  [health checks](https://docs.litellm.ai/docs/proxy/health),
+  [source](https://github.com/BerriAI/litellm). A troubleshooting table
+  limited to what the dashboard reports: unreachable, `/metrics` 401, not
+  scraped, no rows yet, every client showing one IP.
+- [ ] **AM9b. `metrics.md`.** The LiteLLM series the dashboard reads and what
+  each label means once it arrives: requests are attempts, failures carry no
+  `api_base`, `requested_model="other"` is a rejected name, a failed
+  `/v1/messages` has no User-Agent, `api_base` is a URL whose host:port joins
+  to an engine's `server`. The PromQL behind each column, and why there is no
+  token column.
+- [ ] **AM9c. The card and Settings, for someone using them.** Each column;
+  the window picker; how User-Agents become harness names and what
+  *unidentified SDK*, *Anthropic-API client* and *no such model* rows mean;
+  how Client and Endpoint are resolved. In `app-design.md` beside the other
+  cards, with a line in the README's feature list and a screenshot once
+  there is traffic worth showing.
+- [ ] **AM9d. `/docs` (OpenAPI)** carries the five `/api/clients` routes with
+  their bodies, as fleet's routes are.
 
 ### J — Single-host profile (everything on one GB10)
 
