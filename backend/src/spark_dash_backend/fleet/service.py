@@ -62,6 +62,10 @@ class Service:
         self.inv = Inventory(self.data / "fleet.json", resolve=resolve)
         self.runs: dict[str, Run] = {}
         self._node_locks: dict[str, threading.Lock] = {}
+        # Held from the "already being updated" check until the new run has
+        # written its state, so two requests cannot both pass the check, and
+        # two runs in one second cannot share an id.
+        self._start_lock = threading.Lock()
         self.checking: set[str] = set()
         self.last_sweep: str | None = None
         self.next_sweep: str | None = None
@@ -387,20 +391,35 @@ class Service:
     def start_update(self, name: str, rehearse: bool = False, password: str | None = None) -> dict:
         if not self.inv.get(name):
             raise KeyError(name)
-        members = self.inv.unit_of(name)
-        for m in members:
-            if self.active_run_for(m):
-                raise ValueError(f"{m} is already being updated")
-        # the member that was asked for goes first
-        members.sort(key=lambda m: m != name)
-        nodes = [self.inv.get(m) for m in members]
-        run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + name + ("-rehearsal" if rehearse else "")
-        if rehearse:
-            nodes = [self.inv.get(name)]          # a rehearsal is one node, whatever it is cabled to
-        run = Run(run_id, self.data / "runs" / run_id, nodes, self, rehearse=rehearse, password=password)
-        self.runs[run_id] = run
+        with self._start_lock:
+            members = self.inv.unit_of(name)
+            for m in members:
+                if self.active_run_for(m):
+                    raise ValueError(f"{m} is already being updated")
+            # the member that was asked for goes first
+            members.sort(key=lambda m: m != name)
+            nodes = [self.inv.get(m) for m in members]
+            run_id = self._new_run_id(name, rehearse)
+            if rehearse:
+                nodes = [self.inv.get(name)]          # a rehearsal is one node, whatever it is cabled to
+            # Run() writes state.json as `running` before returning, so the next
+            # request through this lock sees it and is refused.
+            run = Run(run_id, self.data / "runs" / run_id, nodes, self, rehearse=rehearse, password=password)
+            self.runs[run_id] = run
         run.start()
         return run.state
+
+    def _new_run_id(self, name: str, rehearse: bool) -> str:
+        """`20260929T124452Z-sparky`, then `-2`, `-3` for another in the same
+        second. The id is second-resolution and names the run's directory, so
+        a repeat used to reuse the directory and race the earlier run's
+        state.tmp. Suffixed rather than finer-grained, so every existing id
+        and the newest-first sort keep working."""
+        base = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + name + ("-rehearsal" if rehearse else "")
+        run_id, n = base, 2
+        while run_id in self.runs or (self.data / "runs" / run_id).exists():
+            run_id, n = f"{base}-{n}", n + 1
+        return run_id
 
     def verify_run(self, run_id: str) -> dict:
         """Finish a run that was held at the restart, now that the Spark is back."""

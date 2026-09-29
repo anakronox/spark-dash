@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from datetime import UTC, datetime
 
 import pytest
 from spark_dash_backend.fleet import ssh
@@ -241,3 +242,84 @@ def test_an_old_fleet_json_is_migrated_rather_than_retyped(tmp_path):
     # the declared unit is gone, and cluster.yml gives the same answer anyway
     svc.inv.add("sparkjr")
     assert svc.inv.unit_of("sparketa") == ["sparketa", "sparkjr"]
+
+
+class _FrozenClock:
+    """`datetime` with `now()` pinned, so two runs land in the same second."""
+
+    @classmethod
+    def now(cls, tz=None):
+        return datetime(2026, 9, 29, 12, 44, 52, tzinfo=UTC)
+
+    @classmethod
+    def fromtimestamp(cls, ts, tz=None):
+        return datetime.fromtimestamp(ts, tz)
+
+
+def _finish(svc, run_id):
+    run = svc.runs[run_id]
+    if run.thread:
+        run.thread.join(timeout=10)
+    assert run.state["status"] != "running", "the run should have held at its first step"
+
+
+def test_two_runs_in_the_same_second_get_their_own_ids(tmp_path, unreachable, monkeypatch):
+    """Run ids have one-second resolution. Two updates of one Spark inside a
+    second used to share an id and a directory, and the second run's
+    state.tmp raced the first's: FileNotFoundError on the rename, seen as a
+    flaky test_a_malformed_password_field_is_not_echoed_back."""
+    from spark_dash_backend.fleet import service as service_mod
+
+    monkeypatch.setattr(service_mod, "datetime", _FrozenClock)
+    svc = Service(tmp_path, interval_min=60, resolve=RESOLVE)
+    svc.inv.add("sparky")
+
+    first = svc.start_update("sparky")["id"]
+    _finish(svc, first)
+    second = svc.start_update("sparky")["id"]
+    _finish(svc, second)
+
+    assert first == "20260929T124452Z-sparky"
+    assert second == "20260929T124452Z-sparky-2"
+    for run_id in (first, second):
+        state = json.loads((tmp_path / "runs" / run_id / "state.json").read_text())
+        assert state["id"] == run_id
+    # Newest first, as the panel lists them.
+    assert [s["id"] for s in svc.run_states()] == [second, first]
+
+
+def test_two_simultaneous_starts_on_one_spark_start_one_run(tmp_path, monkeypatch):
+    """A double-click. The "already being updated" check and the run's
+    creation were not atomic, so two requests could both pass the check and
+    update the same Spark twice at once."""
+    gate = threading.Event()
+
+    def slow_run(host, command, *, user=None, stdin=None, timeout=60):
+        gate.wait(5)  # hold the first run at its first step, still `running`
+        return ssh.Result(255, "", "ssh: connect to host port 22: No route to host")
+
+    monkeypatch.setattr(ssh, "run", slow_run)
+    svc = Service(tmp_path, interval_min=60, resolve=RESOLVE)
+    svc.inv.add("sparky")
+
+    barrier = threading.Barrier(2)
+    started, refused = [], []
+
+    def click():
+        barrier.wait()
+        try:
+            started.append(svc.start_update("sparky")["id"])
+        except ValueError as exc:
+            refused.append(str(exc))
+
+    threads = [threading.Thread(target=click) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    gate.set()
+    for run_id in started:
+        _finish(svc, run_id)
+
+    assert len(started) == 1, f"two runs started: {started}"
+    assert refused and "already being updated" in refused[0]
