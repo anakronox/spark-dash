@@ -7005,6 +7005,304 @@ turn a thing on.
   older layout that still wins when `FLEET_UPDATES_URL` is set. Kept rather
   than deleted for one release, because it is the rollback.
 
+### AM — Who is calling: client stats from a LiteLLM gateway — **planned 2026-09-29**
+
+Brian, 2026-09-29: which clients and harnesses are hitting the engines? Nothing
+the agent scrapes can say. llama.cpp, vLLM and SGLang count requests and
+tokens per model and never record a caller; their request logs carry an IP at
+best, never a User-Agent. The only place a harness names itself is the HTTP
+request. Getting there without a shim per endpoint means one gateway in front
+of all of them, and LiteLLM already exports what is needed:
+`litellm_deployment_total_requests` carries `user_agent`, `client_ip` **and**
+`api_base`, which is enough to say *Claude Code on the laptop sent 212 requests
+to sparky:8001 in the last hour*.
+
+**Optional, off unless configured, at AL5's two levels.** An install with no
+gateway sees no card, no header change and no scrape target. What differs from
+fleet is where the capability lives, and why (AM2).
+
+#### AM0 — What was verified before planning
+
+Checked against LiteLLM 1.103.0 (the source at 1.104.0 `main`), run against a
+fake llama.cpp router that logs every request and flags any request naming a
+model that is not loaded, exactly as `--models-autoload` would load it.
+
+| question | answer |
+|---|---|
+| Does LiteLLM wake models on its own? | **No.** At startup, and every 300 s (`MODEL_INFO_REFRESH_SECONDS`, `llms/openai_like/model_info.py`), it sends `GET /v1/models` per configured endpoint to read context limits. No model parameter; cannot autoload. Idle 5½ min: nothing else. |
+| Is there any way it wakes them? | **Yes: every health check is a real chat completion** (`max_tokens` 16). Background checks are off by default (`background_health_checks: False`). `GET /health` checks every model at once, and it woke both non-loaded ones in one call. The UI's per-model and "check all" buttons do the same. Opening the UI does not: on load it reads `/health/latest` only. |
+| Read-only endpoints? | `/v1/models`, `/model/info`, `/model_group/info`, `/health/liveliness`, `/health/readiness`, `/metrics` sent nothing upstream. |
+| Wildcard routes (`openai/*`) | `/v1/models` lists **~200 names from LiteLLM's OpenAI catalog** (`r2/gpt-5`, `r2/sora-2`…) unless `litellm_settings.check_provider_endpoint: true`, which lists the backend's real models via the same safe `/v1/models`. |
+| Can `/health` be closed? | **Yes.** `general_settings.allowed_routes` returns 403 for `/health` and `/health/test_connection` for every key, master key included. It is logged as Enterprise-only on each request and enforced anyway. |
+| `hosted_vllm/*` wildcard | Routes requests (200) but lists **zero** models in `/v1/models`, even with `check_provider_endpoint`. `openai/*` lists them. |
+| Claude Code (`/v1/messages`) | Translated by default to OpenAI's **Responses API** (`/v1/responses`), not chat completions. llama.cpp and vLLM serve both; SGLang is untestable here. `use_chat_completions_url_for_anthropic_messages: true` sends chat completions. With it, tool calls and streaming came through intact from llama.cpp-, vLLM- and SGLang-shaped engines, and from the real sparky router. |
+| Which metrics name the client? | `litellm_proxy_total_requests_metric`, `litellm_deployment_total_requests` (+ `api_base`), `litellm_proxy_failed_requests_metric` (+ `exception_status`). **Token and latency metrics carry neither `user_agent` nor `client_ip`**, so tokens per client are not available without per-client API keys. |
+| `/metrics` auth | On by default since 1.85.0. The off switch is `litellm_settings.require_auth_for_metrics_endpoint: false`. Under `general_settings` it is silently ignored and `/metrics` answers 401. |
+| What the engines see | Every request arrives from LiteLLM's IP as `AsyncOpenAI/Python 2.x`. Engine logs, and any socket-level view on the node, see only the gateway from then on. |
+
+#### AM1 — The gateway itself, which this repo does not run
+
+LiteLLM runs on **its own small Proxmox VM**: 2 vCPU, 2–4 GB, no Postgres. Not on
+the monitoring VM, because it sits in the request path of every inference call
+and a monitoring-stack upgrade would take inference down with it. Not on a GX10,
+because it also fronts sparketa's vLLM. Not an LXC, because Docker-in-LXC is
+the fragile route and every other stack here is a Dockhand-managed compose file.
+
+One wildcard entry per endpoint, prefixed, so a model loaded or removed on a
+router needs no config edit and the same model on two routers stays two names:
+
+```yaml
+model_list:
+  - model_name: "sparky-8001/*"
+    litellm_params: {model: "openai/*", api_base: "http://sparky.invalid:8001/v1", api_key: none}
+  - model_name: "sparky-8108/*"
+    litellm_params: {model: "openai/*", api_base: "http://sparky.invalid:8108/v1", api_key: none}
+  - model_name: "danflashes/*"
+    litellm_params: {model: "openai/*", api_base: "http://sparketa.invalid:8003/v1", api_key: none}
+
+litellm_settings:
+  callbacks: ["prometheus"]
+  check_provider_endpoint: true
+  require_auth_for_metrics_endpoint: false
+  num_retries: 0          # default 2 would re-run a timed-out generation twice
+  request_timeout: 1800   # a request for a sleeping model waits out the load
+  use_chat_completions_url_for_anthropic_messages: true   # not /v1/responses
+
+general_settings:
+  allowed_routes: [/v1/chat/completions, /v1/messages, /v1/models, /health/liveliness, /metrics, ...]
+```
+
+`openai/*` for vLLM too: `hosted_vllm/*` routes requests, but its models never
+appear in `/v1/models`, with or without `check_provider_endpoint`.
+
+**The rules, each tied to a row of AM0:** no `background_health_checks`; nothing
+ever probes `/health` — a Dockhand healthcheck or uptime monitor uses
+`/health/liveliness`; no `fallbacks`, which would load a different model.
+`allowed_routes` closes `/health` and `/health/test_connection` with a 403 for
+every key, the master key included, and that matters because without a
+database every client holds the master key. LiteLLM logs it as an Enterprise
+feature on each request and enforces it anyway (`auth_utils.py` logs and does
+not return), so a release could quietly reopen `/health`. The gateway project
+tests for exactly that before each upgrade.
+
+- [x] **AM1a. Spun off 2026-09-29 as its own project, `litellm-gateway`**
+  (private for now, not published). `docs/deployment.md` holds every finding above and
+  the rules. `config/config.example.yaml` comments each setting with its
+  reason. `verify/autoload-test.sh <version>` runs that config against fake
+  autoload routers and fails on any wake, an open `/health`, catalog names or a
+  keyed `/metrics`. `verify/check-gateway.sh` checks a live gateway without
+  waking anything: its `/health` probe names a model no route matches, and
+  LiteLLM checks nothing in that case (`no_models_after_filter`), so the probe
+  is safe even if the allowlist has failed. The Settings section links to
+  its deployment doc once the repo has a public URL.
+- [x] **AM1b. Run 2026-09-29** against sparky's router on 8001 with the rules
+  in place, and against fake vLLM and SGLang engines, since there is no
+  SGLang engine to test with and there will likely never be one. A sleeping
+  `qwen36-35b` (23.1 GB) loaded and answered `/v1/messages` in 30.7 s.
+  Claude Code tool calls, plain and streamed, came back as `tool_use` blocks.
+  `cache_prompt`, `id_slot`, `grammar`, `n_probs` and `chat_template_kwargs`
+  passed through. Time to first token: median 97 ms direct, 105 ms through
+  the gateway. The model slept again at +1201 s against the router's 1200 s
+  timeout, with the gateway polling throughout. The gateway's `autoload-test.sh` now checks
+  all three engine shapes and the `/v1/messages` path on every upgrade.
+
+#### AM2 — Capability is a URL in `cluster.yml`, not a compose overlay
+
+Decided 2026-09-29. Fleet's capability is an overlay because it is mounts: a
+key and a writable state directory, which only compose can grant. LiteLLM's is
+a URL. An overlay for one environment variable would still need the toggle
+stored somewhere writable, which is two places and a redeploy to change an
+address. `cluster.yml` is already the one server-side config (F), the backend
+already writes it, and scrape targets are already rendered from it.
+
+```yaml
+gateway:
+  litellm:
+    url: http://litellm.invalid:4000
+    enabled: true
+nodes:
+  ...
+```
+
+*Capability* is `url` set; *use* is `enabled`. Absent block: capability absent.
+
+- [ ] **AM2a. The round-trip fix, first and alone.** `dump_cluster` writes
+  `{"nodes": out}` and nothing else (`cluster.py:380`), so the first node saved
+  from Settings would **silently delete** a `gateway:` block. `write_cluster`
+  becomes read-modify-write, keeping every top-level key it does not own.
+  Tested with an unknown key surviving a node save. Ships before anything
+  writes `gateway:`, so no build ever exists in which saving a node loses it.
+- [ ] **AM2b. Parse and validate.** `parse_gateway(payload)` beside
+  `parse_cluster`: `url` is `http(s)://host[:port]`, and a trailing `/v1` is
+  **accepted and stripped**, not rejected: that is the address clients use,
+  and it is what gets pasted (it was, the first time, 2026-09-29). Any other
+  path is an error. The backend appends `/metrics` and `/health/liveliness`
+  itself. `enabled` is a bool defaulting to `true` when a URL is given. A bad block is a `ClusterConfigError` naming the field, surfaced
+  the way node errors are. `load_cluster` returns it alongside the nodes;
+  `Inventory` exposes `gateway()`.
+
+#### AM3 — Scraped by Prometheus; the backend only queries
+
+LiteLLM is one per cluster, not one per node, so it is **not an agent
+collector**. Prometheus scrapes it and the backend asks Prometheus, which has
+to compute `increase()` over counters anyway and keeps the history for free.
+
+- [ ] **AM3a. A `litellm` job that is always declared and usually empty.**
+  `prometheus.yml` and `prometheus.single-host.yml` gain a job reading
+  `targets/generated/litellm.yml`. `write_prometheus_targets` renders it from
+  the gateway block: one target when capability and use are both on, `[]`
+  otherwise. Turning the toggle off stops the scrape on the next file_sd
+  refresh (30 s) and keeps the history; an install that never configures a
+  gateway scrapes nothing and has no `up{job="litellm"}` series to alert on.
+  Tests: target present/absent across the four capability × use states, and
+  an existing deploy whose `prometheus.yml` predates the job still writes the
+  file without error.
+- [ ] **AM3b. `/health`** gains `"litellm": "not configured" | "off" | "ok" |
+  "not scraped"`, the last from `up{job="litellm"}`. Kept out of `problems`,
+  as fleet is: the dashboard is not blind without a gateway.
+
+#### AM4 — Backend API
+
+A feature-owned module, `clients.py`, on the fleet pattern: plain dicts, no
+Prometheus query built from user input.
+
+| route | does |
+|---|---|
+| `GET /api/clients/status` | `{capability, enabled, configured, url, checks: {reachable, metrics_readable, scraped}}` |
+| `PUT /api/clients/config` | `{url}`: writes the gateway block, re-renders targets |
+| `POST /api/clients/enabled` | `{enabled}`: the toggle. Reachable when off, or it becomes AL's trap door. |
+| `POST /api/clients/test` | `{url}`, unsaved: `GET /health/liveliness`, then `GET /metrics`, looking for `litellm_deployment_total_requests`. A 401 answers with the exact setting and where it goes. |
+| `GET /api/clients?minutes=60` | the card's rows |
+
+**The probe must never request `/health`.** That is AM0's one way to wake every
+model, and it is the obvious thing to write for "test the connection". Guarded
+the way `test_llama_router.py` guards `/metrics?model=`: an `httpx.MockTransport`
+records every URL the probe requests, and the test asserts the exact list.
+
+**Rows** come from instant queries over `[{minutes}m]`:
+`increase(litellm_deployment_total_requests_total)` by `user_agent, client_ip,
+api_base, requested_model` for requests, and a `rate(…[5m])` of the same for
+req/min. Failures come from `litellm_proxy_failed_requests_metric_total` by
+`user_agent, client_ip, requested_model, exception_status`. **That metric has
+no `api_base`**, so failures join to rows on the other three labels; the
+model's prefix names the endpoint anyway. Label facts, measured in the
+gateway project:
+
+- Requests count **attempts**: a 500 from the engine is in both the requests
+  and the failures, so the card shows "212 requests, 3 failed", not 215.
+- `api_base` is a URL (`http://192.168.50.61:8001/v1`), with `/responses`
+  appended when a request took that route. Take the host:port.
+- `requested_model="other"` with an empty `api_base` is a request for a model
+  no route matches, rejected at the gateway. That gets its own row, "no such
+  model", because a client with a typo'd prefix should be visible.
+- **A failed `/v1/messages` request has `user_agent="None"`.** LiteLLM keeps
+  the User-Agent on success and drops it on this route's failures, so Claude
+  Code's errors arrive unattributed. They are shown as *"Anthropic-API
+  client"*, from `route="/v1/messages"` on `litellm_proxy_total_requests_metric`,
+  rather than folded into another harness.
+
+Then:
+
+- **Harness** from a pattern table in `clients.py`: `claude-cli/` → Claude
+  Code, `opencode/` → opencode, and so on, with the raw string kept for a
+  tooltip. SDK defaults (`OpenAI/Python`, `AsyncOpenAI/Python`,
+  `Anthropic/Python`, `python-httpx`, `node-fetch`) show as *"OpenAI SDK
+  (Python), unidentified"* rather than as a harness. That row's size is what
+  tells you whether AM8's per-client keys are worth having. Grouping
+  here also absorbs version churn: every Claude Code release is a new
+  `user_agent` series, and the card should not show five of them.
+- **Client** from `client_ip`: a node's id when it matches a `cluster.yml`
+  host, else reverse DNS (cached an hour, 0.5 s timeout, in `to_thread`), else
+  the IP. If LiteLLM ever sits behind another proxy, every row is that proxy's
+  IP. The guide says so.
+- **Endpoint** from `api_base`: its host:port is the same string as
+  `EngineMetrics.server` (`192.168.50.61:8001` on both sides, measured), so it
+  joins to *node · runtime* through the cluster file. Either side may use a
+  hostname where the other uses an IP, so both are resolved before comparing,
+  with the same cache as Client. Unknown bases are shown verbatim, since a
+  gateway can front things this dashboard does not monitor.
+- **SGLang is a first-class row with no live engine behind it.** Nothing in
+  the gateway's labels differs by engine: an SGLang deployment is an
+  `openai/*` entry like the rest, and joins through `cluster.yml`'s `sglang:`
+  runtimes exactly as vLLM does through `vllm:`. The AM4b fixtures include
+  SGLang rows, built from the SGLang-shaped engine in the gateway's
+  `verify/mock_router.py`, so the join is tested even though no SGLang
+  server is.
+- **No token columns.** AM0: the token metrics do not carry the client.
+
+- [ ] **AM4a.** Status, config, enabled, test, with the probe-URL guard.
+- [ ] **AM4b.** Rows, UA classification and the endpoint join, tested against
+  a canned Prometheus response in the `test_api.py` style.
+
+#### AM5 — Settings: "Clients (LiteLLM)"
+
+A section beneath "DGX OS updates", built from its markup
+(`Settings.svelte:754-836`), always present:
+
+- *capability absent*: a URL field, **Test**, and one sentence: this needs a
+  LiteLLM gateway in front of the engines, and that gateway is set up outside
+  this dashboard. Then the guide link. Test shows the probe's result inline:
+  *reachable · metrics readable*, or the 401 sentence.
+- *present, off*: the URL, editable; "Set up and switched off."
+- *on*: the URL, the checks from `/api/clients/status`, and the client count.
+
+The error line sits outside the branches, as fleet's does. Pure wording goes in
+`lib/clients.ts` so `tests/js/clients.test.mjs` can run it under node, with a
+`tests/test_clients_js.py` runner like `test_fleet_js.py`.
+
+- [ ] **AM5a.** Section, `ClientsFeed` in `lib/clients.svelte.ts` modelled on
+  `FleetFeed` (`load`, `setEnabled`, `setUrl`, `test`), wording tests.
+
+#### AM6 — The Clients card, and the first optional card
+
+Nothing in the layout knows a card can be unavailable: `SECTIONS` is static,
+and the add menu, `reconcile` and `bands` include every kind. This is the
+first card whose data may not exist.
+
+- [ ] **AM6a. Optional kinds, generically.** `SectionDef` gains
+  `optional?: true`. `App.svelte` hands the layout the set of optional kinds
+  that are available, and an unavailable kind is left out of the add menu and
+  skipped by `bands`. Its place in the saved order is **kept**, so switching the
+  gateway off and on restores the card where it was. AK's rule applied
+  to cards: a card for a thing that is not there does not hold a seat. Guards in
+  `test_section_drag.py` for a hidden kind keeping its position.
+- [ ] **AM6b. `ClientsTable.svelte`**, on `ModelsTable`'s pattern:
+  `ColumnView('clients', COLUMNS)`, `TableView` sorting, `table-fixed`, a
+  width on every column, the slack column. Registered in
+  `tests/test_table_columns.py`'s `TABLES`. Columns:
+
+  | Harness | Client | Model | Endpoint | Requests | Req/min | Failed | Active |
+  |---|---|---|---|---|---|---|---|
+
+  Sorted by Requests. A window picker from `RANGES` (1h/6h/24h/7d), remembered
+  per instance through `instanceKey`. `ClientsFeed` polls with `poll()` every
+  30 s while the card is on the page and the tab is visible, and not at all
+  otherwise. Active is `rate > 0` over the last 5 min; the row's other numbers
+  cover the window.
+
+#### AM7 — One alert
+
+- [ ] **AM7a.** `LiteLLMGatewayDown`: `up{job="litellm"} == 0` for 2m, warning,
+  in `alerts.yml`. With no gateway there is no series, so it cannot fire. The
+  annotation says what is actually true: clients pointed at the gateway are
+  failing, and the engines themselves may be fine. The Health strip already
+  shows whether they are.
+
+#### AM8 — Deferred, each with its trigger
+
+- [ ] **Tokens per client.** Needs a LiteLLM virtual key per client
+  (`api_key_alias` is on the token metrics), which needs Postgres. *Trigger:*
+  the "unidentified SDK" row carries a real share of traffic.
+- [ ] **Clients that bypass the gateway.** The agent can read an engine's
+  `/proc/<pid>/net/tcp` through `--pid host` and list peers of its port.
+  After the cut-over, any peer that is not the gateway is a client that did
+  not move. Streaming and keep-alive connections show up, and short one-shot
+  requests are mostly missed. *Trigger:* after migration, when requests reach
+  the engines that the gateway did not send.
+- [ ] **Requests by client over time.** Trends is keyed by node; a per-client
+  series has no node slot. Wants its own chart kind, not a chip.
+- [ ] **A Grafana panel** on X's terms, once the queries in AM4b have settled.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
