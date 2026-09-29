@@ -32,6 +32,9 @@
   import type { Layout } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
   import type { FleetFeed } from '../lib/fleet.svelte';
+  import type { ClientsFeed } from '../lib/clients.svelte';
+  import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
+  import type { ProbeResult } from '../lib/clients';
 
 
   interface Props {
@@ -42,8 +45,64 @@
     /** The fleet updater, when the backend has one (roadmap AK). Absent or
      *  unconfigured, nothing about it renders. */
     fleet?: FleetFeed;
+    /** Client stats from a LiteLLM gateway (roadmap AM5). */
+    clients?: ClientsFeed;
   }
-  const { theme, layout, open, onclose, fleet }: Props = $props();
+  const { theme, layout, open, onclose, fleet, clients }: Props = $props();
+
+  /* CLIENTS — a gateway address and a switch, AL5's two levels (roadmap AM).
+   *
+   * The address is capability and the switch is use; both live in
+   * cluster.yml's `gateway:` block. Test tries an address without saving it,
+   * so a typo is found before it is written. Save, the switch and Remove
+   * apply at once, like the fleet checkboxes, and each answers with the new
+   * status, so the Clients card appears or goes on the same click.
+   */
+  let clientsDraft = $state('');
+  let clientsBusy = $state(false);
+  let clientsError = $state<string | null>(null);
+  let probe = $state<ProbeResult | null>(null);
+
+  /** Linked by URL for the same reason as SETUP_GUIDE below: this is read
+   *  through a tunnel, where a relative docs link goes nowhere. */
+  const CLIENTS_NOTES =
+    'https://github.com/anakronox/spark-dash/blob/main/docs/deployment.md#client-stats--optional';
+
+  const clientsView = $derived(viewOf(clients?.status ?? null));
+  const clientsDirty = $derived(!sameAddress(clientsDraft, clients?.status?.url ?? null));
+
+  async function clientsAction(fn: () => Promise<void>) {
+    if (!clients || clientsBusy) return;
+    clientsBusy = true;
+    clientsError = null;
+    try {
+      await fn();
+    } catch (err) {
+      clientsError = (err as Error).message;
+    } finally {
+      clientsBusy = false;
+    }
+  }
+
+  const testGateway = () =>
+    clientsAction(async () => {
+      probe = await clients!.test(clientsDraft);
+    });
+
+  const saveGateway = () =>
+    clientsAction(async () => {
+      await clients!.setUrl(clientsDraft);
+      clientsDraft = clients!.status?.url ?? '';
+    });
+
+  const removeGateway = () =>
+    clientsAction(async () => {
+      await clients!.setUrl(null);
+      clientsDraft = '';
+      probe = null;
+    });
+
+  const setClientsEnabled = (on: boolean) => clientsAction(() => clients!.setEnabled(on));
 
   /* FLEET UPDATES — a checkbox per node, not a second inventory.
    *
@@ -440,6 +499,11 @@
       // The fleet feed idles at a minute between loads; the checkboxes
       // should reflect the list as it is now, not as it was.
       fleet?.load();
+      // The field starts from what is saved; a test result from last time
+      // would describe an address that may no longer be in it.
+      probe = null;
+      clientsError = null;
+      clients?.load().then(() => (clientsDraft = clients?.status?.url ?? ''));
     } else if (!open && dialog.open) dialog.close();
   });
 </script>
@@ -829,6 +893,86 @@
              and that refusal happens in the state where none of them render. -->
         {#if fleetError}
           <p class="note" data-tone="warning">{fleetError}</p>
+        {/if}
+      </section>
+    {/if}
+
+    <!-- Client stats (roadmap AM5). Always present when the feed exists, like
+         DGX OS updates above: Settings is where a person goes to find out how
+         to turn a thing on. -->
+    {#if clients}
+      <section class="stack">
+        <h3 class="eyebrow dim">Clients</h3>
+
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={clients.configured}
+            disabled={clientsBusy || clientsView === 'no-cluster-file'}
+            onchange={(e) => setClientsEnabled((e.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>show which clients call the engines</span>
+        </label>
+
+        {#if clientsView === 'no-cluster-file'}
+          <p class="note" data-tone="warning">
+            The gateway's address is kept in <code>cluster.yml</code>, and this deployment takes its
+            nodes from <code>SPARK_NODES</code> instead. Move the nodes into <code>cluster.yml</code>
+            first. <a href={CLIENTS_NOTES} target="_blank" rel="noopener">Deployment notes ↗</a>
+          </p>
+        {:else}
+          <div class="rt-row">
+            <input
+              class="in"
+              placeholder="http://gateway-host:4000"
+              aria-label="LiteLLM gateway address"
+              bind:value={clientsDraft}
+            />
+            <button class="mini" disabled={clientsBusy || !clientsDraft.trim()} onclick={testGateway}
+              >Test</button
+            >
+            <button
+              class="mini save"
+              disabled={clientsBusy || !clientsDraft.trim() || !clientsDirty}
+              onclick={saveGateway}>Save</button
+            >
+            {#if clients.status?.capability}
+              <button class="mini" disabled={clientsBusy} onclick={removeGateway}>Remove</button>
+            {/if}
+          </div>
+
+          {#if probe}
+            {@const line = probeLine(probe)}
+            <p class="note" data-tone={line.tone || undefined}>{line.text}</p>
+          {/if}
+
+          {#if clientsView === 'invalid'}
+            <p class="note" data-tone="warning">
+              The <code>gateway:</code> block in <code>cluster.yml</code> has a mistake:
+              {clients.status?.error} Saving an address here replaces it.
+            </p>
+          {:else if clientsView === 'absent'}
+            <p class="note dim">
+              Needs a LiteLLM proxy in front of the engines, set up outside this dashboard. The
+              engines never record who called them; the gateway does.
+              <a href={CLIENTS_NOTES} target="_blank" rel="noopener">Deployment notes ↗</a>
+            </p>
+          {:else if clientsView === 'off'}
+            <p class="note dim">
+              Set up and switched off. Nothing is scraped and the Clients card is hidden; the history
+              already collected is kept.
+            </p>
+          {:else if clients.status}
+            {@const line = stateLine(clients.status)}
+            <p class="note" data-tone={line.tone || undefined}>{line.text}</p>
+          {/if}
+        {/if}
+
+        <!-- Outside the branches, as the fleet error is: the refusals worth
+             reading (no address yet, no cluster file) arrive in states where
+             none of them render. -->
+        {#if clientsError}
+          <p class="note" data-tone="warning">{clientsError}</p>
         {/if}
       </section>
     {/if}

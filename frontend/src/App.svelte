@@ -25,6 +25,7 @@
   import { pageFocus } from './lib/focus.svelte';
   import { AlertFeed, endMaintenance, timeLeft } from './lib/alerts.svelte';
   import { FleetFeed } from './lib/fleet.svelte';
+  import { ClientsFeed } from './lib/clients.svelte';
   import type { MaintenanceWindow } from './lib/alerts.svelte';
   import { fetchWithTimeout } from './lib/request';
   import { poll } from './lib/visibility.svelte';
@@ -38,6 +39,9 @@
      panel opening: the header button carries how many Sparks have updates,
      which is the number that decides whether to open it at all. */
   const fleetFeed = new FleetFeed();
+  /* Client stats (roadmap AM). Polled from the start: whether the Clients
+     card is on the page depends on it. */
+  const clientsFeed = new ClientsFeed();
   let historyOpen = $state(false);
   let settingsOpen = $state(false);
   let fleetOpen = $state(false);
@@ -71,10 +75,12 @@
     feed.connect();
     alertFeed.start();
     fleetFeed.start();
+    clientsFeed.start();
     return () => {
       feed.close();
       alertFeed.stop();
       fleetFeed.stop();
+      clientsFeed.stop();
     };
   });
 
@@ -664,7 +670,7 @@
     </p>
   {/each}
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
-  <Settings {theme} {layout} fleet={fleetFeed} open={settingsOpen} onclose={() => (settingsOpen = false)} />
+  <Settings {theme} {layout} fleet={fleetFeed} clients={clientsFeed} open={settingsOpen} onclose={() => (settingsOpen = false)} />
   <FleetUpdates feed={fleetFeed} open={fleetOpen} slots={slotOf} onclose={() => (fleetOpen = false)} />
 
   <!-- SCOPED, AND SAYING SO. Without this a filtered page is indistinguishable

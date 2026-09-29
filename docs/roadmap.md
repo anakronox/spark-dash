@@ -7235,8 +7235,18 @@ The error line sits outside the branches, as fleet's does. Pure wording goes in
 `lib/clients.ts` so `tests/js/clients.test.mjs` can run it under node, with a
 `tests/test_clients_js.py` runner like `test_fleet_js.py`.
 
-- [ ] **AM5a.** Section, `ClientsFeed` in `lib/clients.svelte.ts` modelled on
-  `FleetFeed` (`load`, `setEnabled`, `setUrl`, `test`), wording tests.
+- [x] **AM5a. Shipped 2026-09-29.** The Clients section in Settings: a switch,
+  an address field with Test, Save and Remove, and one note per state
+  (no cluster file, a broken block, not set up, off, on). `ClientsFeed` in
+  `lib/clients.svelte.ts` polls the status every minute from page load,
+  since whether the card is on the page depends on it, and applies each
+  write's answer at once. The states and wording are in `lib/clients.ts`,
+  run under node by `tests/js/clients.test.mjs`. Walked through in a browser
+  against the real gateway and the real Prometheus: the pasted `…/v1`
+  address tested as reachable and readable, saved without `/v1`, and read
+  "not scraped" (that Prometheus reads the VM's target files, not the local
+  ones). Off emptied the target, Remove took the block out of `cluster.yml`,
+  and the nodes came through every write intact.
 
 #### AM6 — The Clients card, and the first optional card
 
