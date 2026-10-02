@@ -56,8 +56,8 @@ WebSocket is same-origin. Not worth a separate nginx service at this scale.
 | `GET /api/cluster/summary` | Aggregate GPU utilization, free capacity, total tokens/sec |
 | `GET /api/models` | "What's running where": node × runtime × model × status |
 
-A field per engine under `runtimes`, even though vLLM and SGLang carry the same
-shape. The alternative — one `engines` list with a `runtime` discriminator —
+A field per engine under `runtimes`, even though vLLM, SGLang and TensorFold
+carry the same shape. The alternative — one `engines` list with a `runtime` discriminator —
 would rename the `sparkdash_vllm_*` metric family that the alert rules and every
 recorded series are written against. The collector is shared (one spec of metric
 names per engine); the wire is per-engine. `kv_cache_pct` is null for an engine
@@ -135,7 +135,8 @@ Snapshot shape (illustrative):
                 "prompt_tokens_per_sec": 0.0, "tokens_per_sec": 88.5}],
       "sglang": [{"model": "deepseek-v3", "running": 2, "waiting": 5,
                   "kv_cache_pct": null, "generation_tokens_per_sec": 137.5,
-                  "prompt_tokens_per_sec": 0.0, "tokens_per_sec": 137.5}]
+                  "prompt_tokens_per_sec": 0.0, "tokens_per_sec": 137.5}],
+      "tensorfold": []
     }
   }]
 }

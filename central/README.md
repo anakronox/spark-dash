@@ -501,7 +501,7 @@ git clone "$SRC" "$REPO" || git -C "$REPO" pull
 
 | Path in container | Source | Contents |
 |---|---|---|
-| `targets/generated/` | Docker volume, written by the backend | `agents.yml`, `node-exporters.yml`, and one file per engine (`vllm.yml`, `sglang.yml`) — all from `cluster.yml` |
+| `targets/generated/` | Docker volume, written by the backend | `agents.yml`, `node-exporters.yml`, and one file per engine (`vllm.yml`, `sglang.yml`, `tensorfold.yml`) — all from `cluster.yml` |
 
 There used to be a second, `targets/static/`, for the hand-maintained vLLM
 list. Sharing one directory was impossible while that existed — the volume

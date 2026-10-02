@@ -248,6 +248,7 @@ nodes:
         - port: 8108
       vllm: [8120]
       sglang: [30000]          # only if started with --enable-metrics
+      tensorfold: [8080]       # under --tp, only on the node running rank 0
 
   - id: node-2
     host: 10.0.0.12

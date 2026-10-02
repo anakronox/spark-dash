@@ -299,8 +299,8 @@ migrated in place, so nothing needs re-ticking.
 clients and harnesses are calling the engines, from which machines, how many
 requests each sent to which model, and how many failed.
 
-**It needs a LiteLLM proxy in front of the engines.** llama.cpp, vLLM and
-SGLang count requests per model and never record who sent them. The only
+**It needs a LiteLLM proxy in front of the engines.** llama.cpp, vLLM,
+SGLang and TensorFold count requests per model and never record who sent them. The only
 place a client names itself is its HTTP request, so the one way to see
 callers is a proxy that every client talks to. LiteLLM's Prometheus metrics
 carry each request's User-Agent, client IP and the engine it went to, and

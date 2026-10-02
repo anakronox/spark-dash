@@ -434,12 +434,12 @@ Per model: `model`, `router`. Per router: `router`.
 | `llama_model_tokens_per_second` | the two added together; legacy, kept so history is not orphaned |
 | `llama_model_kv_cache_percent`, `llama_model_requests_running`, `llama_model_requests_waiting` | active models only — emitting 0 for a sleeping one is indistinguishable from idle-but-loaded |
 
-### Inference — engines (vLLM, SGLang)
+### Inference — engines (vLLM, SGLang, TensorFold)
 
-One family per engine, `sparkdash_vllm_*` and `sparkdash_sglang_*`, each
-labelled `model`. A family per engine rather than one with a `runtime` label,
-because the vLLM names are what alert rules and stored history are written
-against.
+One family per engine, `sparkdash_vllm_*`, `sparkdash_sglang_*` and
+`sparkdash_tensorfold_*`, each labelled `model`. A family per engine rather
+than one with a `runtime` label, because the vLLM names are what alert rules
+and stored history are written against.
 
 | metric | meaning |
 |---|---|
@@ -447,7 +447,7 @@ against.
 | `{engine}_prompt_tokens_per_second` | prefill |
 | `{engine}_tokens_per_second` | the two added together; legacy |
 | `{engine}_requests_running`, `{engine}_requests_waiting` | |
-| `{engine}_kv_cache_percent` | **vLLM only.** The family exists for SGLang and never carries samples: SGLang publishes `cache_hit_rate`, which is prefix-cache hits rather than occupancy — a different question with the same 0–1 shape |
+| `{engine}_kv_cache_percent` | **vLLM and TensorFold only.** The family exists for SGLang and never carries samples: SGLang publishes `cache_hit_rate`, which is prefix-cache hits rather than occupancy — a different question with the same 0–1 shape |
 | `endpoint_reachable` | `runtime`, `endpoint` — 0 for a configured endpoint that did not answer |
 
 ### The three that will catch you out

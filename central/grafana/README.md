@@ -25,6 +25,7 @@ that file, which is maintained separately and deliberately.
 | `sparkdash_*` | 77 | the agent: GPU, unified memory, PSI, clocks, thermals, models, fabric |
 | `node_*` | ~314 | stock node_exporter, one job per node plus the monitoring host |
 | `vllm:*` / `sglang:*` | ~106 | scraped **directly**, so the full upstream surface is here |
+| `tensorfold:*` / `tensorfold_health:*` | 25 | scraped directly too; no series carries a `model` label |
 
 The engines are scraped by Prometheus rather than proxied through the agent, so
 metrics the bundled frontend never renders — `vllm:time_to_first_token_seconds`,
@@ -49,8 +50,8 @@ family is prefill and decode ADDED TOGETHER, and is kept only so recorded
 history stays readable — build panels on `..._generation_tokens_per_second`
 (decode) instead, or a single prompt landing inside one poll window will spike
 the panel to five figures while the model generates fifty tokens a second. You cannot
-recompute it over a window of your choosing. vLLM and SGLang publish real token
-counters and are scraped natively, so for those engines you can.
+recompute it over a window of your choosing. vLLM, SGLang and TensorFold publish real
+token counters and are scraped natively, so for those engines you can.
 
 **`cluster` is present only on nodes that have one.** Clustered nodes pool
 memory for distributed inference; standalone ones do not. A standalone node
@@ -73,7 +74,7 @@ serves. This was a live bug here. Select the families by `__name__` and sum
 once:
 
 ```promql
-sum by (node) ({__name__=~"sparkdash_(llama_model|vllm|sglang)_tokens_per_second"})
+sum by (node) ({__name__=~"sparkdash_(llama_model|vllm|sglang|tensorfold)_tokens_per_second"})
 ```
 
 **States are one series per state, not an encoded number.**
