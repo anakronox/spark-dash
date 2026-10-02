@@ -1,4 +1,4 @@
-"""vLLM and SGLang, scraped from their native Prometheus endpoints.
+"""vLLM, SGLang and TensorFold, scraped from their native Prometheus endpoints.
 
 Both engines answer the same questions in the same shape — a text exposition
 endpoint carrying running/queued requests, token counters and a model name
@@ -96,6 +96,18 @@ SPECS: dict[str, EngineSpec] = {
         kv_cache=None,
         throughput_gauge="sglang:gen_throughput",
     ),
+    # TensorFold (roadmap AN), read from a live server on 2026-10-02 (v0.6.0).
+    # Its series carry NO model label: the name comes from /v1/models instead
+    # (see `_model_from_listing`). kv_cache_usage_ratio is a 0-1 fraction,
+    # labelled per memory pool; one pool is what a tensor-parallel pair showed.
+    "tensorfold": EngineSpec(
+        runtime="tensorfold",
+        running="tensorfold:requests_running",
+        waiting="tensorfold:requests_waiting",
+        prompt_tokens="tensorfold:prompt_tokens_total",
+        generation_tokens="tensorfold:generation_tokens_total",
+        kv_cache="tensorfold:kv_cache_usage_ratio",
+    ),
 }
 
 
@@ -187,6 +199,9 @@ class EngineCollector(Collector[list[EngineMetrics]]):
                 reachable=False,
             )
 
+        if model_name is None:
+            model_name = self._model_from_listing(client, url, budget)
+
         prompt = values.get(spec.prompt_tokens, 0.0)
         generation = values.get(spec.generation_tokens, 0.0)
         kv = values.get(spec.kv_cache) if spec.kv_cache else None
@@ -209,6 +224,32 @@ class EngineCollector(Collector[list[EngineMetrics]]):
             prompt_tokens_total=int(prompt),
             generation_tokens_total=int(generation),
         )
+
+    def _model_from_listing(self, client: httpx.Client, url: str, budget: Budget) -> str | None:
+        """The served model's name from the engine's own /v1/models, for an
+        engine whose metrics carry no model label.
+
+        vLLM and SGLang label every series with the model, so they never get
+        here. TensorFold labels none, and without this its row read as its own
+        address: the "configured but not answering" look, while it served.
+
+        Only when the engine lists exactly ONE model: with several, nothing in
+        the metrics says which one the numbers belong to, and guessing would put
+        one model's load on another's row. `GET /v1/models` names no model, so
+        it is as read-only as the scrape itself.
+        """
+        if budget.spent:
+            return None
+        base = url[: -len("/metrics")] if url.endswith("/metrics") else url.rstrip("/")
+        try:
+            resp = client.get(f"{base}/v1/models", timeout=budget.timeout(self._timeout))
+            resp.raise_for_status()
+            ids = [m.get("id") for m in resp.json().get("data", []) if isinstance(m, dict)]
+        except Exception:  # noqa: BLE001 — a missing name costs the label, not the row
+            log.debug("%s model listing failed for %s", self._spec.runtime, base, exc_info=True)
+            return None
+        ids = [i for i in ids if i]
+        return str(ids[0]) if len(ids) == 1 else None
 
     def _throughput(
         self, url: str, values: dict[str, float], prompt: float, generation: float

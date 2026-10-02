@@ -126,6 +126,12 @@ def infer_runtime(name: str, command: str = "", cwd: str = "") -> str | None:
     # a process that belongs to another runtime.
     if _looks_like_atlas(name, command):
         return "atlas"
+    # TensorFold before the substring checks below: its argv carries the model's
+    # path, and a model with "llama" in its name would otherwise read as
+    # llama.cpp. The word is the executable (`tensorfold serve ...`) and the
+    # process name, never an ordinary English word.
+    if "tensorfold" in haystack:
+        return "tensorfold"
     # vLLM is checked before llama.cpp: a vLLM process serving a Llama model
     # has "llama" in its argv and would otherwise be misattributed.
     if "vllm" in haystack:
@@ -310,7 +316,7 @@ def _looks_like_comfyui(haystack: str) -> bool:
 
 # Runtimes that serve LLM inference, as opposed to other GPU consumers. Lets
 # the UI separate "what's serving models" from "what else is eating the pool".
-LLM_RUNTIMES = frozenset({"vllm", "llama.cpp", "sglang", "atlas", "tgi", "ollama"})
+LLM_RUNTIMES = frozenset({"vllm", "llama.cpp", "sglang", "tensorfold", "atlas", "tgi", "ollama"})
 
 
 class GpuCollector(Collector[GpuMetrics]):

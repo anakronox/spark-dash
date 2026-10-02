@@ -280,3 +280,77 @@ def test_collector_is_named_for_its_runtime():
     """`safe_collect` files failures under `Collector.name`; two engines
     sharing one name would file the second's errors under the first."""
     assert {EngineCollector(spec, []).name for spec in SPECS.values()} == set(SPECS)
+
+
+# ------------------------------------------------------------- TensorFold (AN)
+
+from pathlib import Path  # noqa: E402
+
+TENSORFOLD_BODY = (Path(__file__).parent / "fixtures" / "tensorfold-0.6.0-metrics.txt").read_text()
+TENSORFOLD_MODELS = (
+    '{"object":"list","data":[{"id":"GLM-5.3-Flash-EXL3","object":"model","owned_by":"tensorfold"}]}'
+)
+
+
+def tensorfold_transport(models: str = TENSORFOLD_MODELS, seen: list | None = None):
+    """A TensorFold server: /metrics as captured, /v1/models as it answers."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if seen is not None:
+            seen.append(request.url.path)
+        if request.url.path == "/v1/models":
+            return httpx.Response(200, text=models)
+        return httpx.Response(200, text=TENSORFOLD_BODY)
+
+    return httpx.MockTransport(handler)
+
+
+class TestTensorFold:
+    URL = "http://192.168.50.62:8003/metrics"
+
+    def _collect(self, **kw):
+        collector = EngineCollector(SPECS["tensorfold"], [self.URL])
+        client = httpx.Client(transport=tensorfold_transport(**kw))
+        return collector._collect_one(client, self.URL, Budget(5.0))
+
+    def test_reads_the_real_scrape(self):
+        """The captured exposition, unedited: counters, gauges and the
+        per-pool KV ratio all land."""
+        result = self._collect()
+        assert result.reachable is True
+        assert (result.requests_running, result.requests_waiting) == (0, 0)
+        assert (result.prompt_tokens_total, result.generation_tokens_total) == (22537, 298)
+        assert result.kv_cache_pct == 0.0
+        assert result.server == "192.168.50.62:8003"
+
+    def test_names_the_model_from_its_listing(self):
+        """No series carries a model label, so the name comes from /v1/models.
+        Without it the row read as its own address while the engine served."""
+        seen: list[str] = []
+        result = self._collect(seen=seen)
+        assert result.model == "GLM-5.3-Flash-EXL3"
+        # Only the listing, and nothing that names a model.
+        assert seen == ["/metrics", "/v1/models"]
+
+    def test_several_models_listed_is_not_guessed(self):
+        """Nothing in the metrics says which model the numbers belong to."""
+        two = '{"data":[{"id":"a"},{"id":"b"}]}'
+        assert self._collect(models=two).model == self.URL
+
+    def test_a_failed_listing_costs_the_name_not_the_row(self):
+        result = self._collect(models="not json")
+        assert result.reachable is True
+        assert result.model == self.URL
+
+    def test_labelled_engines_never_ask_for_the_listing(self):
+        """vLLM and SGLang label their series; the extra request is TensorFold's."""
+        seen: list[str] = []
+
+        def handler(request):
+            seen.append(request.url.path)
+            return httpx.Response(200, text=SGLANG_BODY)
+
+        collector = EngineCollector(SPECS["sglang"], ["http://sglang:30000/metrics"])
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        collector._collect_one(client, "http://sglang:30000/metrics", Budget(5.0))
+        assert seen == ["/metrics"]

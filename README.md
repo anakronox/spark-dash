@@ -2,7 +2,7 @@
 
 A web dashboard for a home cluster of NVIDIA GB10 machines — ASUS GX10 / "DGX
 Spark" class. It shows GPU and system health, and live metrics for the LLM jobs
-running on them (llama.cpp router, vLLM, SGLang).
+running on them (llama.cpp router, vLLM, SGLang, TensorFold).
 
 Works with one node or many.
 
@@ -37,14 +37,14 @@ days in Prometheus. Read-only: it can't load, unload or kill anything.
 - **Memory pressure (PSI).** Contention shows up here before swap does.
 
 **Which process is holding the memory.** Per-process GPU attribution, labelled
-with the runtime that owns it — llama.cpp, vLLM, SGLang, ComfyUI. "97 GiB used"
+with the runtime that owns it — llama.cpp, vLLM, SGLang, TensorFold, ComfyUI. "97 GiB used"
 becomes "97 GiB held by these two vLLM shards".
 
 **Per-model inference state.**
 
 - llama.cpp router: which models are loaded, sleeping or unloaded, slots in use,
   KV-cache occupancy, and a timeline of every load and unload.
-- vLLM and SGLang are scraped directly by Prometheus, so their full metric
+- vLLM, SGLang and TensorFold are scraped directly by Prometheus, so their full metric
   surface is stored whether or not this UI draws it.
 - **Decode and prefill counted separately.** Combined, they once read 47,672
   tok/s while the model was generating 48.
@@ -226,7 +226,7 @@ scrape targets from it, so there's no second list to keep in sync.
 - **`+ router`** adds a llama.cpp router by **port**. The **metrics** tick beside
   it opts that router in to `/metrics?model=`, which is what provides per-model
   tokens/sec and KV-cache detail.
-- **`+ vLLM`** and **`+ SGLang`** add those engines the same way, by port.
+- **`+ vLLM`**, **`+ SGLang`** and **`+ TensorFold`** add those engines the same way, by port.
 - **copy yaml** shows the YAML for that node if you would rather paste it
   somewhere than save from here.
 

@@ -172,6 +172,38 @@ it is instantaneous *decode* throughput, while every other runtime contributes
 prompt+generation over the poll interval, and the node card sums them. It is
 the fallback only when the token counters are absent from a scrape.
 
+### TensorFold (per instance) — same shape, no model label
+
+TensorFold serves one model, tensor-parallel across a cluster's nodes (`--tp`),
+with a native Prometheus endpoint. Read from a live server on 2026-10-02
+(v0.6.0, `GLM-5.3-Flash-EXL3` across the `danflashes` pair).
+
+- Endpoint: `http://<host>:<port>/metrics` on **rank 0 only**. The other ranks
+  serve no HTTP; their processes hold shards and are credited to rank 0's
+  model across the `cluster:`. TensorFold's default port is 8080.
+- Metric prefixes: `tensorfold:*` (the engine) and `tensorfold_health:*`.
+
+| TensorFold | maps to | vLLM's name for it |
+|---|---|---|
+| `tensorfold:requests_running` | requests running | `vllm:num_requests_running` |
+| `tensorfold:requests_waiting` | requests waiting | `vllm:num_requests_waiting` |
+| `tensorfold:prompt_tokens_total` | → tokens/sec | `vllm:prompt_tokens_total` |
+| `tensorfold:generation_tokens_total` | → tokens/sec | `vllm:generation_tokens_total` |
+| `tensorfold:kv_cache_usage_ratio{pool}` | KV cache % (a 0-1 fraction, per memory pool) | `vllm:kv_cache_usage_perc` |
+
+**No series carries a model label**, which is how the agent names a vLLM or
+SGLang row. Read from the scrape alone, the row showed its own address, the
+"configured but not answering" look, while it served. So for an engine with
+no label, the agent asks `GET /v1/models` and uses the id when exactly one is
+listed. With several, nothing says which the numbers belong to, and the row
+keeps its address rather than guessing.
+
+Stored by Prometheus and not drawn by the dashboard yet:
+`tensorfold_health:context_length` (the per-request window, 1,048,576 here),
+`streams_max`, `pool_tokens` / `pool_free_tokens`, `mtp_drafted_total` /
+`mtp_accepted_total` (speculative decoding: 194 of 275 drafts accepted, 71%,
+on the live server), and histograms of request latency and time to first token.
+
 ## 3. llama.cpp (router mode, per node)
 
 `llama-server` exposes a Prometheus-compatible endpoint via the `--metrics` flag.

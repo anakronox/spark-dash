@@ -124,6 +124,7 @@ class NodeWrite(BaseModel):
     # rather than becoming a map of maps.
     vllm: list[int] = Field(default_factory=list)
     sglang: list[int] = Field(default_factory=list)
+    tensorfold: list[int] = Field(default_factory=list)
     #: Interfaces excluded from alerting, by name. Free text rather than a
     #: port, because a name is what sysfs reports and nothing resolves it into
     #: a request — unlike a runtime endpoint, an interface name is inert.

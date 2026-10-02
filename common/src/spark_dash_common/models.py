@@ -529,6 +529,9 @@ class Runtimes(BaseModel):
     llama_cpp: list[LlamaRouterMetrics] = Field(default_factory=list)
     vllm: list[EngineMetrics] = Field(default_factory=list)
     sglang: list[EngineMetrics] = Field(default_factory=list)
+    #: TensorFold (roadmap AN): tensor-parallel across a cluster's nodes, the
+    #: API on rank 0 only. Same shape as vLLM and SGLang.
+    tensorfold: list[EngineMetrics] = Field(default_factory=list)
 
     @property
     def engines(self) -> dict[str, list[EngineMetrics]]:
@@ -766,11 +769,9 @@ class NodeSnapshot(BaseModel):
     def total_tokens_per_sec(self) -> float:
         """Prefill and decode combined. Kept for the callers that predate the
         split; `total_generation_tokens_per_sec` is the one to read."""
-        return (
-            sum(v.tokens_per_sec for v in self.runtimes.vllm)
-            + sum(s.tokens_per_sec for s in self.runtimes.sglang)
-            + sum(r.tokens_per_sec for r in self.runtimes.llama_cpp)
-        )
+        return sum(
+            e.tokens_per_sec for instances in self.runtimes.engines.values() for e in instances
+        ) + sum(r.tokens_per_sec for r in self.runtimes.llama_cpp)
 
     @property
     def total_generation_tokens_per_sec(self) -> float:
@@ -781,11 +782,14 @@ class NodeSnapshot(BaseModel):
         orders of magnitude above the decode rate, and adding the two together
         made the summary read 47,672 tok/s while the model generated 48.
         """
-        return (
-            sum(v.generation_tokens_per_sec for v in self.runtimes.vllm)
-            + sum(s.generation_tokens_per_sec for s in self.runtimes.sglang)
-            + sum(r.generation_tokens_per_sec for r in self.runtimes.llama_cpp)
-        )
+        # Every engine, not a list of them: these named vLLM and SGLang, and an
+        # engine added without editing them would have been left out of the
+        # node's headline TOK/S without anything failing.
+        return sum(
+            e.generation_tokens_per_sec
+            for instances in self.runtimes.engines.values()
+            for e in instances
+        ) + sum(r.generation_tokens_per_sec for r in self.runtimes.llama_cpp)
 
 
 class ClusterSnapshot(BaseModel):

@@ -259,7 +259,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum({__name__=~\"sparkdash_(llama_model|vllm|sglang)_generation_tokens_per_second\", node=~\"$node\"}) or vector(0)",
+          "expr": "sum({__name__=~\"sparkdash_(llama_model|vllm|sglang|tensorfold)_generation_tokens_per_second\", node=~\"$node\"}) or vector(0)",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1405,7 +1405,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (node, model) ({__name__=~\"sparkdash_(llama_model|vllm|sglang)_generation_tokens_per_second\", node=~\"$node\"})",
+          "expr": "sum by (node, model) ({__name__=~\"sparkdash_(llama_model|vllm|sglang|tensorfold)_generation_tokens_per_second\", node=~\"$node\"})",
           "legendFormat": "{{node}} \u00b7 {{model}}",
           "range": true,
           "refId": "A"
@@ -1497,7 +1497,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (node) ({__name__=~\"sparkdash_(llama_model|vllm|sglang)_requests_running\", node=~\"$node\"})",
+          "expr": "sum by (node) ({__name__=~\"sparkdash_(llama_model|vllm|sglang|tensorfold)_requests_running\", node=~\"$node\"})",
           "legendFormat": "{{node}} running",
           "range": true,
           "refId": "A"
@@ -1508,7 +1508,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (node) ({__name__=~\"sparkdash_(llama_model|vllm|sglang)_requests_waiting\", node=~\"$node\"})",
+          "expr": "sum by (node) ({__name__=~\"sparkdash_(llama_model|vllm|sglang|tensorfold)_requests_waiting\", node=~\"$node\"})",
           "legendFormat": "{{node}} waiting",
           "range": true,
           "refId": "B"
@@ -1519,7 +1519,7 @@
       "id": 20,
       "type": "timeseries",
       "title": "KV cache",
-      "description": "vLLM and llama.cpp only. SGLang is deliberately absent: it publishes cache_hit_rate, which is the fraction of prompt tokens served from the PREFIX cache \u2014 a different question with the same 0-1 shape. 93% prefix hits is a node doing well; 93% occupancy is a node about to evict.",
+      "description": "vLLM, TensorFold and llama.cpp only. SGLang is deliberately absent: it publishes cache_hit_rate, which is the fraction of prompt tokens served from the PREFIX cache \u2014 a different question with the same 0-1 shape. 93% prefix hits is a node doing well; 93% occupancy is a node about to evict.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1602,7 +1602,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "{__name__=~\"sparkdash_(llama_model|vllm)_kv_cache_percent\", node=~\"$node\"}",
+          "expr": "{__name__=~\"sparkdash_(llama_model|vllm|tensorfold)_kv_cache_percent\", node=~\"$node\"}",
           "legendFormat": "{{node}} \u00b7 {{model}}",
           "range": true,
           "refId": "A"

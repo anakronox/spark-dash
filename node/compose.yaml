@@ -160,6 +160,7 @@ services:
       # only exposes one when started with `--enable-metrics`.
       - VLLM_URLS=${VLLM_URLS:-}
       - SGLANG_URLS=${SGLANG_URLS:-}
+      - TENSORFOLD_URLS=${TENSORFOLD_URLS:-}
 
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
 

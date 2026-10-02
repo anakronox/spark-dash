@@ -103,7 +103,8 @@ def exported() -> set[str]:
                                     generation_tokens_per_sec=1.0,
                                     prompt_tokens_per_sec=1.0, kv_cache_pct=1.0)])],
             vllm=[EngineMetrics(model="v", server="h:8120", kv_cache_pct=1.0)],
-            sglang=[EngineMetrics(model="s", server="h:30000")]),
+            sglang=[EngineMetrics(model="s", server="h:30000")],
+            tensorfold=[EngineMetrics(model="t", server="h:8003", kv_cache_pct=1.0)]),
         errors={"psi": "OSError"},
     )
     registry = CollectorRegistry()

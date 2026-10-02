@@ -890,7 +890,7 @@ groups:
       #
       # The LiteLLM gateway is excluded too: it has its own rule below.
       - alert: PrometheusTargetScrapeFailing
-        expr: up{job!~"vllm|sglang|litellm"} == 0
+        expr: up{job!~"vllm|sglang|tensorfold|litellm"} == 0
         for: 15m
         labels:
           severity: warning
@@ -923,8 +923,8 @@ groups:
       # alert twice with different ageing rules.
       - alert: InferenceTargetScrapeFailing
         expr: >-
-          up{job=~"vllm|sglang"} == 0
-          and max_over_time(up{job=~"vllm|sglang"}[24h]) == 1
+          up{job=~"vllm|sglang|tensorfold"} == 0
+          and max_over_time(up{job=~"vllm|sglang|tensorfold"}[24h]) == 1
         for: 15m
         labels:
           severity: warning

@@ -7359,6 +7359,39 @@ before AM5 ships, since Settings links to it.
 - [x] **AM9d. Shipped 2026-09-29.** The five `/api/clients` routes are in
   `/docs` with their request bodies, and in `app-design.md`'s API surface.
 
+### AN — TensorFold, a third engine — **shipped 2026-10-02**
+
+Brian, 2026-10-02: TensorFold now serves `GLM-5.3-Flash-EXL3` on the
+`danflashes` pair, tensor-parallel 2, rank 0 on sparketa (API on 8003, where
+vLLM was) and rank 1 on sparkjr. The agents saw two anonymous `tensorfold`
+processes of 91.9 and 90.8 GiB and a vLLM endpoint answering with no model.
+
+- [x] **AN1. The engine, everywhere V put SGLang.** A spec in `engine.py`
+  (running, waiting, prompt and generation counters, `kv_cache_usage_ratio`),
+  a `Runtimes` field, `TENSORFOLD_URLS`, the editor's field and button, a
+  Prometheus job and target file, the alert rules' engine lists, Grafana's
+  throughput, request and KV panels, `cluster.yml.example`, and the GX10
+  validation script. `test_engine_wiring.py` named every place left.
+- [x] **AN2. A model name from `/v1/models`.** TensorFold labels no series
+  with its model, so its row read as its own address while it served. For an
+  engine with no label the agent now asks `GET /v1/models` and uses the id
+  when exactly one is listed; with several it keeps the address rather than
+  guess. vLLM and SGLang label theirs and never make the request.
+- [x] **AN3. Process detection**, ahead of the substring checks: TensorFold's
+  argv carries the model path, and a model with "llama" in its name would
+  otherwise read as llama.cpp. sparkjr's rank-1 process, with no endpoint, is
+  credited to rank 0's model by the existing cluster-shard attribution.
+- [x] **AN4. Two places that would have failed quietly**, found on the way:
+  the node's headline throughput summed vLLM and SGLang by name, and the
+  history queries listed engines in a regex. Both now come from
+  `ENGINE_RUNTIMES`, so the next engine cannot be left out of either.
+
+Tests use the real scrape, captured unedited as
+`agent/tests/fixtures/tensorfold-0.6.0-metrics.txt`. Not drawn yet, though
+stored: `context_length`, speculative-decoding acceptance
+(`mtp_accepted`/`mtp_drafted`, 71% on the live server), and the latency and
+time-to-first-token histograms.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

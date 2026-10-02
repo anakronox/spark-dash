@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 
 import httpx
+from spark_dash_common.models import ENGINE_RUNTIMES
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +119,11 @@ _NODES = 'job="node-exporter"'
 
 # Named queries the frontend asks for by key, so PromQL lives here rather than
 # being assembled from user input in the request path.
+#: Every family that reports throughput: llama.cpp's per-model series, and one
+#: per engine. From ENGINE_RUNTIMES, so an engine added there is charted without
+#: an edit here; this named vLLM and SGLang until TensorFold (roadmap AN).
+_THROUGHPUT_FAMILIES = "|".join(("llama_model", *ENGINE_RUNTIMES))
+
 HISTORY_QUERIES: dict[str, str] = {
     "gpu_utilization": "sparkdash_gpu_utilization_percent",
     "gpu_temperature": "sparkdash_gpu_temperature_celsius",
@@ -160,14 +166,14 @@ HISTORY_QUERIES: dict[str, str] = {
     # series is still recorded; it is just not what this chip plots.
     "tokens_per_second": (
         "sum by (node) ({__name__=~"
-        '"sparkdash_(llama_model|vllm|sglang)_generation_tokens_per_second"})'
+        f'"sparkdash_({_THROUGHPUT_FAMILIES})_generation_tokens_per_second"}})'
     ),
     # Prefill, offered separately rather than folded in. It answers "how fast
     # are requests being accepted", which is a real question and a different
     # one.
     "prompt_tokens_per_second": (
         "sum by (node) ({__name__=~"
-        '"sparkdash_(llama_model|vllm|sglang)_prompt_tokens_per_second"})'
+        f'"sparkdash_({_THROUGHPUT_FAMILIES})_prompt_tokens_per_second"}})'
     ),
     # WHAT MONITORING COSTS, summed from every component that measures
     # ITSELF. Prometheus, Alertmanager and node_exporter export

@@ -223,6 +223,9 @@
   const ENGINE_UI: Record<EngineRuntime, { label: string; port: number }> = {
     vllm: { label: 'vLLM', port: 8120 },
     sglang: { label: 'SGLang', port: 30000 },
+    // 8003, where the danflashes pair publishes it; TensorFold's own default
+    // is 8080 (cli_args.py, v0.6.0).
+    tensorfold: { label: 'TensorFold', port: 8003 },
   };
 
   /** Tolerates a config from a backend that predates an engine: an absent key

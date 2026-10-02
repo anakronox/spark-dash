@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     # through `engine_endpoints`, so nothing downstream names an engine twice.
     vllm_urls: str = ""
     sglang_urls: str = ""
+    tensorfold_urls: str = ""
 
     # Where to fetch this node's runtime config from.
     #

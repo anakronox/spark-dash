@@ -91,6 +91,14 @@ scrape_configs:
       - files: [/etc/prometheus/targets/generated/sglang.yml]
         refresh_interval: 30s
 
+  # TensorFold (roadmap AN): native Prometheus too, with its own `tensorfold:`
+  # names, so its own job like the engines above. Only rank 0 of a
+  # tensor-parallel group serves HTTP; that is the endpoint listed.
+  - job_name: tensorfold
+    file_sd_configs:
+      - files: [/etc/prometheus/targets/generated/tensorfold.yml]
+        refresh_interval: 30s
+
   # The LiteLLM gateway, for client stats (roadmap AM). OPTIONAL: the backend
   # writes an empty target list unless a gateway URL is set and switched on in
   # Settings, so an install without one scrapes nothing here. /metrics must

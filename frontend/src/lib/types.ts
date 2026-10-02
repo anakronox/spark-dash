@@ -225,6 +225,7 @@ export interface Runtimes {
   llama_cpp: LlamaRouterMetrics[];
   vllm: EngineMetrics[];
   sglang: EngineMetrics[];
+  tensorfold: EngineMetrics[];
 }
 
 /** The engine fields of `Runtimes`, keyed by runtime name — the frontend's
@@ -234,7 +235,7 @@ export interface Runtimes {
  *
  *  Tolerates a snapshot from an older backend that has no `sglang` key: the
  *  dashboard is deployed separately from the agents it reads. */
-export const ENGINE_RUNTIMES = ['vllm', 'sglang'] as const;
+export const ENGINE_RUNTIMES = ['vllm', 'sglang', 'tensorfold'] as const;
 
 export function engines(runtimes: Runtimes): [string, EngineMetrics[]][] {
   return ENGINE_RUNTIMES.map((r) => [r, runtimes?.[r] ?? []]);
@@ -305,4 +306,4 @@ export interface ClusterSnapshot {
  *  Mirrors LLM_RUNTIMES in the agent — on GB10 both compete for one pool, so
  *  telling them apart is the difference between "12GB used" and "12GB used by
  *  ComfyUI". */
-export const LLM_RUNTIMES = new Set(['vllm', 'llama.cpp', 'sglang', 'atlas', 'tgi', 'ollama']);
+export const LLM_RUNTIMES = new Set(['vllm', 'llama.cpp', 'sglang', 'tensorfold', 'atlas', 'tgi', 'ollama']);

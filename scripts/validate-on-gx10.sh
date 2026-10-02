@@ -200,7 +200,7 @@ else
   # footprint is real capacity pressure, not a footnote.
   printf '%s' "$SNAP" | python3 -c "
 import json,sys
-LLM={'vllm','llama.cpp','sglang','atlas','tgi','ollama'}
+LLM={'vllm','llama.cpp','sglang','tensorfold','atlas','tgi','ollama'}
 procs=json.load(sys.stdin).get('processes') or []
 llm=sum(p['gpu_mem_bytes'] for p in procs if p.get('runtime') in LLM)
 other=sum(p['gpu_mem_bytes'] for p in procs if p.get('runtime') not in LLM)
@@ -335,7 +335,7 @@ fi
 ENGINE_REPORT=$(printf '%s' "$SNAP" | python3 -c "
 import json,sys
 runtimes=json.load(sys.stdin).get('runtimes') or {}
-for name in ('vllm','sglang'):
+for name in ('vllm','sglang','tensorfold'):
     print(f\"{name} {len(runtimes.get(name) or [])}\")
 ")
 while read -r ENGINE COUNT; do

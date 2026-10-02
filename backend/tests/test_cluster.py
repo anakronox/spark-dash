@@ -189,10 +189,12 @@ class TestAgentConfigEndpoint:
             resp = c.get("/api/agent-config", params={"node": "newcomer"})
         assert resp.status_code == 200
         assert resp.json()["configured"] is False
+        # Every engine, empty: from ENGINE_RUNTIMES so a new one needs no edit.
+        from spark_dash_common.models import ENGINE_RUNTIMES
+
         assert resp.json()["runtimes"] == {
             "llama_routers": [],
-            "vllm": [],
-            "sglang": [],
+            **{runtime: [] for runtime in ENGINE_RUNTIMES},
         }
 
     def test_malformed_config_is_an_error_not_an_empty_answer(self, tmp_path):

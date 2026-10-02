@@ -448,7 +448,7 @@ says so loudly in its log rather than dropping back to an older source — check
 
 Everything under `targets/` is **generated** — gitignored, rewritten by the
 backend, never hand-edited. That now includes the engine targets: one file per
-engine (`vllm.yml`, `sglang.yml`), rendered from the same `cluster.yml` the
+engine (`vllm.yml`, `sglang.yml`, `tensorfold.yml`), rendered from the same `cluster.yml` the
 agents are told about, one entry per endpoint rather than one per node.
 
 `config/vllm-targets.yml` is **superseded and inert**, kept only so a deploy

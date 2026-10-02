@@ -126,6 +126,7 @@ def exported_metric_names() -> set[str]:
             )],
             vllm=[EngineMetrics(model="v", server="h:8120", kv_cache_pct=1.0)],
             sglang=[EngineMetrics(model="s", server="h:30000")],
+            tensorfold=[EngineMetrics(model="t", server="h:8003", kv_cache_pct=1.0)],
         ),
         # A failed collector, because `collector_errors` emits a series per
         # entry and an empty dict yields the family with no samples at all.

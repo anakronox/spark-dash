@@ -64,6 +64,23 @@ class TestInferModel:
 
 
 class TestInferRuntime:
+    def test_tensorfold_rank_zero(self):
+        """As running on sparketa, 2026-10-02: the API rank, with --name."""
+        cmd = ("/usr/bin/python3 /usr/local/bin/tensorfold serve /root/.cache/huggingface/hub/"
+               "models--Mia-AiLab--GLM-5.3-Flash-EXL3-TR3-4bpw/snapshots/25a4 --tp 2 --rank 0 "
+               "--master 10.100.136.2 --name GLM-5.3-Flash-EXL3 --port 8003")
+        assert infer_runtime("tensorfold", cmd) == "tensorfold"
+
+    def test_tensorfold_worker_rank(self):
+        """sparkjr's rank 1: no endpoint and no --name, still TensorFold."""
+        cmd = "/usr/bin/python3 /usr/local/bin/tensorfold serve /m --tp 2 --rank 1"
+        assert infer_runtime("tensorfold", cmd) == "tensorfold"
+
+    def test_tensorfold_serving_a_llama_model_is_not_llama_cpp(self):
+        """Its argv carries the model path; "llama" there must not win."""
+        cmd = "/usr/local/bin/tensorfold serve /models/Llama-3.1-70B"
+        assert infer_runtime("python3", cmd) == "tensorfold"
+
     def test_llama_server_by_name(self):
         assert infer_runtime("llama-server") == "llama.cpp"
 

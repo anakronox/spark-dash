@@ -70,7 +70,7 @@ knows about it, and are ignored once it does.
 |---|---|
 | `LLAMA_ROUTER_URLS` | Comma-separated router base URLs. |
 | `LLAMA_METRICS_ROUTERS` | **Leave empty unless certain.** Opt-in allowlist for `/metrics?model=` requests, which LOAD the model on an autoload router. |
-| `VLLM_URLS` / `SGLANG_URLS` | Comma-separated `/metrics` endpoints, per engine. |
+| `VLLM_URLS` / `SGLANG_URLS` / `TENSORFOLD_URLS` | Comma-separated `/metrics` endpoints, per engine. |
 
 ## Where things land
 

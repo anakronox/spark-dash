@@ -115,6 +115,15 @@ nodes:
       # sglang:
       #   - 30000
 
+      # TensorFold, the same shape. List it on the node that serves the API:
+      # with --tp, rank 0 serves HTTP and the other ranks hold shards with no
+      # endpoint of their own. Those shards are credited to this instance's
+      # model across the `cluster:` automatically. Its own default port is
+      # 8080; a stack may publish it elsewhere.
+      #
+      # tensorfold:
+      #   - 8080
+
     # Interfaces to EXCLUDE from alerting, by the name the node reports.
     #
     # AN IGNORE LIST, not an allowlist. Everything is watched unless named
