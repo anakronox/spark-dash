@@ -7509,6 +7509,20 @@ x=1281). Narrower, where the frames need more than half, cards already placed
 there show full width under the nodes. The bands leave the zone's cards out;
 the keyboard's column stepping skips it.
 
+### AR — Temperatures: choose the sensor groups — **shipped 2026-10-12**
+
+Brian, 2026-10-12: the Temperatures card "is just way too much"; a picker like
+System Activity's metrics should choose which groups it draws, and "if one is
+hidden the alerts will take care of the notification". On this cluster the
+card drew 44 sensors in five groups (Package 21, GPU 3, Storage 9, Network 8,
+Wireless 3).
+
+A "groups" picker beside the title lists each group with its sensor count.
+The hidden ones are stored, per card, so a group that appears later is drawn
+rather than withheld by a list saved before it existed; the last group cannot
+be hidden. The headline, hottest and closest to limit, still ranks every
+sensor, so a hidden group heating up names itself there before an alert does.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

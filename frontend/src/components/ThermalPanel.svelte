@@ -40,6 +40,8 @@
    */
   import ColumnGrip from './ColumnGrip.svelte';
   import ColumnMenu from './ColumnMenu.svelte';
+  import PickMenu from './PickMenu.svelte';
+  import { instanceKey } from '../lib/layout.svelte';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { ColumnView } from '../lib/columns.svelte';
@@ -53,11 +55,62 @@
     nodes: NodeSnapshot[];
     /** Rows before each domain's table pages. Infinity = uncapped. */
     maxRows?: number;
+    /** Which card this is, when there is more than one: keys the groups it
+     *  shows, so two copies do not share them. */
+    instance?: string;
   }
-  const { nodes, maxRows = 8 }: Props = $props();
+  const { nodes, maxRows = 8, instance = 'thermal' }: Props = $props();
 
   const rows = $derived(tempRows(nodes));
-  const groups = $derived(groupRows(rows));
+  const allGroups = $derived(groupRows(rows));
+
+  /* WHICH GROUPS TO SHOW (Brian, 2026-10-12: the card was "just way too
+     much"). The same picker as System Activity's metrics and Network
+     Activity's groups. A hidden group is still watched: the alert rules read
+     every sensor whatever this card draws, and the headline above ranks all of
+     them, so a hidden group heating up still names itself there.
+     HIDDEN, not shown, is what is stored, so a group that appears later (new
+     hardware, a sensor the classifier learns) is drawn rather than silently
+     withheld by a list saved before it existed. */
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const HIDDEN_KEY = instanceKey('spark-dash.thermal-hidden.v1', instance);
+  function readHidden(): string[] {
+    try {
+      const saved = JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? 'null');
+      return Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+  let hiddenGroups = $state<string[]>(readHidden());
+  function toggleGroup(key: string) {
+    const next = hiddenGroups.includes(key)
+      ? hiddenGroups.filter((k) => k !== key)
+      : [...hiddenGroups, key];
+    // Never an empty card -- the rule both other pickers keep.
+    if (allGroups.every((g) => next.includes(g.key))) return;
+    hiddenGroups = next;
+    try {
+      localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenGroups));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+  const groups = $derived(allGroups.filter((g) => !hiddenGroups.includes(g.key)));
+  const groupItems = $derived(
+    allGroups.map((g) => {
+      const on = !hiddenGroups.includes(g.key);
+      const last = on && groups.length === 1;
+      return {
+        key: g.key,
+        label: `${g.label} · ${g.rows.length}`,
+        checked: on,
+        disabled: last,
+        note: last ? 'last one' : undefined,
+      };
+    }),
+  );
   const slots = $derived(new Map(nodes.map((n, i) => [n.node_id, i])));
 
   /* TWO HEADLINES, because they answer different questions and are usually
@@ -251,6 +304,19 @@
 <section class="panel">
   <header>
     <h2 class="eyebrow">Temperatures</h2>
+    {#if allGroups.length > 1}
+      <PickMenu
+        groups={[{ items: groupItems }]}
+        ontoggle={toggleGroup}
+        what="Sensor groups"
+        of="Temperatures"
+        text="groups"
+        count={groups.length}
+        countLabel={`of ${allGroups.length} shown`}
+        icon="list"
+        columns={1}
+      />
+    {/if}
     {#if top}
       <!-- BOTH headlines, side by side. "Hottest" and "closest to its limit"
            are usually different sensors, and a card that showed only the first

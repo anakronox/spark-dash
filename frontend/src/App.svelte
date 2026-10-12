@@ -976,7 +976,7 @@
             instance={id}
           />
         {:else if kind === 'thermal'}
-          <ThermalPanel {nodes} maxRows={layout.rowsFor(id)} />
+          <ThermalPanel {nodes} maxRows={layout.rowsFor(id)} instance={id} />
         {:else if kind === 'network-history'}
           <NetworkTrends
             nodeIds={nodes.map((n) => n.node_id)}

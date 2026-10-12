@@ -101,3 +101,23 @@ def test_the_domain_notes_are_off_the_heading_but_not_lost():
     data = THERMAL.read_text()
     assert "note:" in data, "DOMAINS no longer carries the notes at all"
     assert "shutdown threshold" in data, "the GPU's limit is no longer explained anywhere"
+
+
+def test_the_reader_picks_which_sensor_groups_to_draw():
+    """AR (Brian, 2026-10-12): the card was "way too much". A groups picker
+    like System Activity's metrics. HIDDEN groups are stored, so a group that
+    appears later is drawn rather than withheld by an older list, and the card
+    can never be emptied."""
+    src = PANEL.read_text()
+    assert "<PickMenu" in src and 'what="Sensor groups"' in src, "no group picker"
+    assert "spark-dash.thermal-hidden.v1" in src, "the shown list is stored, so new groups stay hidden"
+    assert "allGroups.every((g) => next.includes(g.key))" in src, "the last group can be hidden"
+    assert "instanceKey(" in src, "two Temperatures cards would share one choice"
+
+
+def test_the_headline_still_ranks_every_sensor():
+    """A hidden group is still watched: the alert rules read every sensor, and
+    the headline names the hottest and the tightest across all of them, so a
+    hidden group heating up still says so on the card."""
+    src = PANEL.read_text()
+    assert "hottest(rows)" in src and "tightest(rows)" in src, "the headline only sees the shown groups"
