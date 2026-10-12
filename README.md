@@ -6,7 +6,7 @@ running on them (llama.cpp router, vLLM, SGLang, TensorFold).
 
 Works with one node or many.
 
-![The spark-dash dashboard: a pooled two-node cluster and a standalone node under memory pressure, twelve system metrics charted per node, RoCE and management interfaces charted separately, the GPU process table, and per-model state](Screenshot.jpg)
+![The spark-dash dashboard in compact view: a pooled two-node cluster and a standalone node in their own frames, with the Clients card beside them; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic with each node's received traffic above the line and sent below; the GPU process and model tables; and two Temperatures cards, each showing different sensor groups](Screenshot.jpg)
 
 Three GB10s: two pooled into a tensor-parallel cluster, one standalone. Every
 threshold is measured for this hardware, not guessed, and the layout is
