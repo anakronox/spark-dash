@@ -23,6 +23,7 @@
   import { bitRate, siScale } from '../lib/format';
   import type { MetricSpec } from '../lib/history';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
+  import { TIME_AXIS_PX, crossesDay, stampOf, timeLabels } from '../lib/chart-grid';
 
   interface Props {
     metric: MetricSpec;
@@ -49,7 +50,15 @@
       /** A maintenance window: drawn as a band from ts to here. */
       end_ts?: number | null;
     }[];
+    /** Height of a chart that draws the time axis. One that does not is
+     *  shorter by the axis band, so every plot in a grid is the same height. */
     height?: number;
+    /** Draw the time axis. A grid passes true for its bottom row only. */
+    showTime?: boolean;
+    /** The node this chart belongs to, named in the caption before the title,
+     *  in its colour. Network Activity's interface names repeat across nodes:
+     *  `enP7s7` exists on all three boxes. */
+    owner?: string;
     /** Colour every line by THIS id rather than by its own name.
      *
      * The history grid is one chart per metric with one line per node, so a
@@ -72,6 +81,8 @@
     syncKey,
     annotations = [],
     height = DEFAULT_PLOT_PX,
+    showTime = true,
+    owner,
     identity,
   }: Props = $props();
 
@@ -105,8 +116,10 @@
    * being pointed at. */
   let pointerHere = $state(false);
 
-  const stamp = (ts: number) =>
-    new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  /* The date rides on the tooltip when the window crosses a day, because the
+     axis then names a day only at midnight. */
+  const multiDay = $derived(x.length > 1 && crossesDay(x[0], x[x.length - 1]));
+  const stamp = (ts: number) => stampOf(ts, multiDay);
 
   /** Where the axis tops out.
    *
@@ -151,6 +164,9 @@
      so their axes are the densest type on the page and were also the smallest.
      Monospace, so the digits stay in tabular columns down the axis. */
   const AXIS_FONT = '11px ui-monospace, monospace';
+
+  /** Padding above the plot, and below it when no time axis is drawn. */
+  const PLOT_PAD = 8;
 
   /** Gap between the widest tick label and the plot's edge. */
   const AXIS_PAD = 14;
@@ -341,7 +357,20 @@
 
     const opts: uPlot.Options = {
       width,
-      height,
+      /* The same PLOT height on every row. A chart without the time axis gives
+         up the band the axis would take, less the padding that replaces it, so
+         the rows above the bottom one are shorter and their lines are drawn to
+         the same scale. */
+      height: showTime ? height : Math.max(1, height - TIME_AXIS_PX + PLOT_PAD),
+      /* Explicit above and below. uPlot's automatic padding was 17px on each
+         side, measured: that is where a 132px chart's missing plot went. 8px
+         is room for half of an 11px tick label at the top and bottom
+         gridlines.
+         The sides are fixed too. Left automatic, uPlot widened the right side
+         only on charts that drew time labels, for the last one's overhang, so
+         the bottom row's plots ended short of the rows above. 22px is half of
+         "12:45pm" with room to spare. */
+      padding: [PLOT_PAD, 22, showTime ? 0 : PLOT_PAD, 0],
       // The card's own legend names the nodes once for all eight charts;
       // repeating it under each would cost more vertical space than the plots.
       legend: { show: false },
@@ -387,8 +416,19 @@
         {
           stroke: t.axis,
           grid: { stroke: t.grid, width: 1 },
-          ticks: { stroke: t.grid },
+          /* One line, in a band sized for it, and nothing at all on a chart
+             that does not draw the time. Shown either way, because the axis
+             is what draws the vertical gridlines; it is the labels and the
+             band that go. */
+          ticks: { stroke: t.grid, size: showTime ? 4 : 0 },
           font: AXIS_FONT,
+          size: showTime ? TIME_AXIS_PX : 0,
+          gap: 3,
+          space: 64,
+          values: (u, splits) =>
+            showTime
+              ? timeLabels(splits, u.scales.x.min ?? splits[0], u.scales.x.max ?? splits[splits.length - 1])
+              : splits.map(() => ''),
         },
         {
           stroke: t.axis,
@@ -396,6 +436,9 @@
           ticks: { stroke: t.grid },
           font: AXIS_FONT,
           size: axisWidth,
+          /* A label every ~26px rather than uPlot's 30, so a taller chart
+             gains gridlines instead of only stretching the ones it had. */
+          space: 26,
           /* Two splits, not uPlot's automatic five. On a 0-1 scale it would
              offer 0, 0.25, 0.5, 0.75, 1 — three gridlines for values a boolean
              cannot take. */
@@ -464,6 +507,7 @@
       theme,
       width,
       height,
+      showTime,
       axisWidth,
     ].join(
       '~',
@@ -516,13 +560,10 @@
 
 <figure class="chart">
   <figcaption>
-    <span class="name" class:verbatim={metric.verbatim}>{metric.label}</span>
-    {#if !ceiling}
-      <!-- Named rather than quietly fitted: this chart's height means something
-           different from its neighbours', and a reader comparing peaks across
-           the grid deserves to know which one uses its own reference. -->
-      <span class="dim rel">relative</span>
+    {#if owner}
+      <span class="owner" style:color={nodeColor(slots.get(owner))}>{owner}</span>
     {/if}
+    <span class="name" class:verbatim={metric.verbatim}>{metric.label}</span>
   </figcaption>
 
   <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -541,7 +582,15 @@
         style:top="{hover.top}px"
         aria-hidden="true"
       >
-        <div class="when">{stamp(x[hover.idx])}</div>
+        <div class="when">
+          {stamp(x[hover.idx])}
+          <!-- Named rather than quietly fitted: this chart's height means
+               something different from its neighbours', and a reader comparing
+               peaks across the grid deserves to know which one uses its own
+               reference. In the tooltip rather than the caption, where it took
+               a second line on every chart of a grid that is mostly this kind. -->
+          {#if !ceiling}<span class="rel">· own scale</span>{/if}
+        </div>
         {#each nearbyAnnotations(x[hover.idx]) as a (a.kind + a.ts + a.label)}
           <!-- The point of the whole layer: the dip and its candidate
                explanation in one glance, instead of three views and mental
@@ -576,10 +625,14 @@
     min-width: 0;
   }
 
+  /* One line, always. A caption that wraps on a narrow chart pushes that
+     chart's plot down out of line with its row. */
   figcaption {
     display: flex;
     align-items: baseline;
     gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
     padding: 0 0 2px 2px;
     font-size: var(--text-micro);
     letter-spacing: 0.1em;
@@ -601,10 +654,14 @@
     letter-spacing: 0.02em;
   }
 
-  .rel {
-    font-size: var(--text-nano);
-    letter-spacing: 0.04em;
+  /* The node, before the title. Its own case and spacing: it is a name. */
+  .owner {
     text-transform: none;
+    letter-spacing: 0.02em;
+  }
+
+  .tip .rel {
+    color: var(--ink-muted);
   }
 
   .wrap {

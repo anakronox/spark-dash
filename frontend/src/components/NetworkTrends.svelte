@@ -35,6 +35,7 @@
   import RdmaTable, { RDMA_COLUMNS } from './RdmaTable.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
+  import { gridCols, onLastRow } from '../lib/chart-grid';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
@@ -419,10 +420,15 @@
      across, so the management ports were drawn at twice the width of the RoCE
      links. Chart width is a claim about importance, and that one was backwards.
      A short division simply leaves the rest of its row empty, which is what a
-     grid does. */
-  const colsFor = (n: number) => (n >= 4 ? 4 : n >= 2 ? 2 : 1);
-  const cols = $derived(colsFor(Math.max(0, ...groups.map((g) => g.charts.length))));
-  const colsMd = $derived(Math.min(cols, 2));
+     grid does.
+     From the card's measured width, not the viewport's, so a half-width card
+     halves its columns rather than squeezing four. GRID_GAP_PX is the column
+     gap in the stylesheet. */
+  const GRID_GAP_PX = 14;
+  let gridWidth = $state(0);
+  const cols = $derived(
+    gridCols(Math.max(0, ...groups.map((g) => g.charts.length)), gridWidth, GRID_GAP_PX),
+  );
 
   /* One page view per division grid, the way ThermalPanel keeps one per
      domain. `pageSize` is set from the effect below, never inside `pagesFor`,
@@ -706,7 +712,7 @@
         <RdmaTable {nodes} cols={rdmaCols} {maxRows} />
       </section>
     {:else}
-    <div class="divisions" class:loading>
+    <div class="divisions" class:loading bind:clientWidth={gridWidth}>
       <!-- OPENED CHARTS FIRST, above every division. A link opened from the
            Management table is still a chart, and filing it back under its own
            heading would put it below a table the reader is looking at — or
@@ -718,11 +724,12 @@
             <span class="count">{openCharts.length}</span>
             <span class="note dim">click a row again to close it</span>
           </h3>
-          <div class="charts" style:--cols={cols} style:--cols-md={colsMd}>
-            {#each openCharts as c (c.key)}
+          <div class="charts" style:--cols={cols}>
+            {#each openCharts as c, i (c.key)}
               <div class="cell">
-                <span class="owner">{c.link.node}</span>
                 <MetricChart
+                  owner={c.link.node}
+                  showTime={onLastRow(i, openCharts.length, cols)}
                   metric={c.metric}
                   {x}
                   columns={c.columns}
@@ -774,16 +781,14 @@
           <div
             class="charts"
             style:--cols={cols}
-            style:--cols-md={colsMd}
             data-rows-total={rowsTotal(g.charts.length)}
           >
-            {#each pages.slice(g.charts) as c (c.key)}
+            {#each pages.slice(g.charts) as c, i (c.key)}
+              {@const shown = pages.slice(g.charts).length}
               <div class="cell">
-                <!-- The node above the interface, because the interface name is
-                     the chart's title and the node is what disambiguates it:
-                     `enP7s7` exists on all three boxes. -->
-                <span class="owner">{c.link.node}</span>
                 <MetricChart
+                  owner={c.link.node}
+                  showTime={onLastRow(i, shown, cols)}
                   metric={c.metric}
                   {x}
                   columns={c.columns}
@@ -930,17 +935,6 @@
     gap: 10px 14px;
   }
 
-  @media (max-width: 1100px) {
-    .charts {
-      grid-template-columns: repeat(var(--cols-md), minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 700px) {
-    .charts {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
 
   /* Dimmed rather than replaced while reloading: swapping the grid for a
      spinner every refresh would make the card flash on its own timer. */
@@ -997,17 +991,6 @@
 
   .cell {
     min-width: 0;
-  }
-
-  /* Node ids keep their case for the same reason the interface name does: this
-     is the id from cluster.yml, and it is what every other surface on the page
-     — the cards, the legend, the tables — prints unchanged. */
-  .owner {
-    display: block;
-    padding-left: 2px;
-    font-size: var(--text-nano);
-    letter-spacing: 0.04em;
-    color: var(--ink-muted);
   }
 
   .empty,

@@ -7408,18 +7408,25 @@ Mockups of every phase, drawn with uPlot from one real hour of this cluster,
 were compared side by side before choosing. Brian picked option B for the
 network card: one chart per group, one line per node.
 
-- [ ] **AO1. Reclaim the space.** One-line time axis, about 20px, with the date
-  only when the window crosses a day (24h, 7d) and in the tooltip. Time labels
-  on the bottom row of a grid only. Default height 180px, up from 132px; the
-  resize corner keeps its 80–480px range. Y ticks every ~26px, so a taller
-  chart gets more labels. Column count from a minimum chart width rather than
-  a fixed four. In the mockup this took the plot from 62% of the chart to 84%.
+- [x] **AO1. Reclaim the space.** Built 2026-10-12. A 22px one-line time axis
+  on the bottom row of each grid only; across a day, midnight reads as the date
+  and the tooltip carries it. Rows above the bottom one are shorter by the
+  axis band, so every plot is the same height. Default height 180px, up from
+  132; the resize corner keeps its 80–480px range. Y ticks every ~26px.
+  Columns come from the grid's own width (`lib/chart-grid.ts`, at least 300px
+  a chart), not the viewport, so a half-width card goes two across rather than
+  four. Network captions are one line with the node in its colour; "relative"
+  moved into the tooltip as "own scale".
+  Measured at 1680px wide: every plot 150px, up from 65. The missing 17px of
+  the old chart was uPlot's automatic padding, 17px above the plot and below
+  it when no axis is drawn; padding is now explicit, 8px, and the sides fixed
+  so the bottom row's plots end where the rows above do.
 - [ ] **AO2. Fitted scales with a minimum span.** Each chart fits its data
   but never spans less than its metric's minimum (25 points for utilization,
   20 for memory, 15°C, 50W), and never goes below zero or past the physical
   ceiling. A climb fills the chart and a flat line stays flat. A Fit / Full
-  switch on the card; Full is today's fixed scales. Default: Fit, unless Brian
-  says otherwise.
+  switch on the card; Full is today's fixed scales. Default: Fit (Brian,
+  2026-10-12).
 - [ ] **AO3. Network Activity, one chart per group.** RoCE, Management, WiFi
   and Other each get one chart, one line per node, the node's interfaces in
   that group added together. In is drawn above the zero line and out below it,

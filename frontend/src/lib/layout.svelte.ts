@@ -376,13 +376,18 @@ function readColumns(available: string[] = DEFAULT_ORDER): Record<string, Zone> 
  */
 export const MIN_PLOT_PX = 80;
 export const MAX_PLOT_PX = 480;
-/** uPlot's height when nobody has dragged one.
+/** uPlot's height when nobody has dragged one: the height of a chart that
+ * draws the time axis. Charts above the bottom row of a grid are shorter by
+ * the axis band, so every plot is the same height.
+ *
+ * 180, up from 132 (2026-10-12). At 132 the plot was 65px, measured, and fixed
+ * scales left most lines in a third of that.
  *
  * MetricChart imports this for its own prop default rather than repeating the
  * number. Two literals that had to agree would be a silent divergence: charts
  * would render at one height and the grip would report another, and nothing
  * would error. */
-export const DEFAULT_PLOT_PX = 132;
+export const DEFAULT_PLOT_PX = 180;
 
 function readPlotHeights(available: string[] = DEFAULT_ORDER): Record<string, number> {
   try {

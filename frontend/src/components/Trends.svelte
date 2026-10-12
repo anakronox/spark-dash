@@ -10,6 +10,7 @@
   import PickMenu from './PickMenu.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
+  import { gridCols, onLastRow } from '../lib/chart-grid';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
   import { nodeColor } from '../lib/theme';
@@ -263,9 +264,11 @@
 
   /* Up to 4 across, snapping 1 / 2 / 4 — powers of two, the same reasoning as
      the node grid: clusters scale in powers of two, so a 3-wide row is the one
-     that strands a row. The two values are separate because the wide count has
-     to fall back on a narrower page, and `repeat()` cannot take a `min()`. */
-  const cols = $derived(charts.length >= 4 ? 4 : charts.length >= 2 ? 2 : 1);
+     that strands a row. From the GRID'S width, not the viewport's: a card in a
+     half-width column on a wide screen used to draw four 190px charts. */
+  const GRID_GAP_PX = 14;
+  let gridWidth = $state(0);
+  const cols = $derived(gridCols(charts.length, gridWidth, GRID_GAP_PX));
 
   /* PAGED BY CHART ROW, with the machinery tables use. A grid of charts was
      the one thing on the page that could not paginate, so a card of eight
@@ -277,7 +280,6 @@
   });
   const shownCharts = $derived(pages.slice(charts));
   const rowsTotal = $derived(Math.ceil(charts.length / cols));
-  const colsMd = $derived(Math.min(cols, 2));
 
   /** Click solos, click the soloed node again to restore. Shift adds.
    *
@@ -511,10 +513,10 @@
       class="charts"
       class:loading
       style:--cols={cols}
-      style:--cols-md={colsMd}
       data-rows-total={rowsTotal}
+      bind:clientWidth={gridWidth}
     >
-      {#each shownCharts as c (c.metric.key)}
+      {#each shownCharts as c, i (c.metric.key)}
         <MetricChart
           metric={c.metric}
           x={c.x}
@@ -525,6 +527,7 @@
           syncKey="spark-dash-history"
           annotations={showEvents ? annotations : []}
           height={plotHeight}
+          showTime={onLastRow(i, shownCharts.length, cols)}
         />
       {/each}
     </div>
@@ -640,6 +643,8 @@
 
   /* Small multiples ------------------------------------------------------ */
 
+  /* The column gap is GRID_GAP_PX in the script, which the column count is
+     worked out with; the two must agree. */
   .charts {
     display: grid;
     gap: 12px 14px;
@@ -647,23 +652,7 @@
     /* minmax(0, …), never a bare 1fr: `1fr` is minmax(auto, 1fr) and a track
        then refuses to be narrower than its content, so a chart's own width
        would push the grid around. Same bug as the section columns. */
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  /* Two across once there is room for two readable time axes, and the full
-     count only on a wide page. Both counts come from the chart count, so a
-     single selected metric still gets the whole width rather than a quarter of
-     it. */
-  @media (min-width: 760px) {
-    .charts {
-      grid-template-columns: repeat(var(--cols-md, 1), minmax(0, 1fr));
-    }
-  }
-
-  @media (min-width: 1500px) {
-    .charts {
-      grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
-    }
+    grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
   }
 
   /* Dim rather than blank while refetching: replacing the charts with a
