@@ -188,23 +188,39 @@ def test_reset_layout_clears_the_node_order_too():
     )
 
 
-def test_the_cluster_frame_still_spans_the_row_in_compact_mode():
-    """A frame means "these nodes pool memory", so one covering part of a row
-    would say something untrue about which nodes are grouped.
+def test_a_group_spans_one_column_per_member_in_compact_mode():
+    """A cluster's frame spans its members' columns, not the row, so a
+    standalone node sits beside it in a frame of its own (Brian, 2026-10-12):
+    the full-row frame left three of four columns empty on two rows.
 
     The drag handle made the WRAPPER the grid item. Left on `.cluster`, the
     span would apply to something that is no longer a grid item and silently do
-    nothing — the frame would shrink to one cell and the claim would be wrong.
+    nothing. Capped at the column count, or a five-node cluster in four columns
+    would add an implicit fifth.
     """
     app = without_comments(APP.read_text())
-    assert re.search(r"\.node-grid\.compact > :global\(\[data-group-framed\]\)", app), (
-        "the compact row-span is not on the group wrapper"
-    )
+    assert re.search(
+        r"\.node-grid\.compact > :global\(\[data-group\]\) \{\s*grid-column: span min\(var\(--span, 1\), var\(--cols\)\)",
+        app,
+    ), "the compact span is not on the group wrapper, capped at the column count"
     assert not re.search(r"\.node-grid\.compact \.cluster \{", app), (
-        "the span is still on .cluster, which is no longer the grid item"
+        "the span is on .cluster, which is not the grid item"
     )
     group = without_comments(NODE_GROUP.read_text())
-    assert "data-group-framed" in group, "the wrapper never marks a framed cluster"
+    assert "style:--span={span}" in group, "the wrapper never says how many columns it takes"
+
+
+def test_every_compact_card_is_the_same_width():
+    """Measured before: 397px for a cluster member against 420px standalone,
+    because members were gridded inside the frame's 13px a side. A standalone
+    node is framed the same way, and members are spaced by the outer gap plus
+    both frames, which puts every card on the outer column grid."""
+    app = without_comments(APP.read_text())
+    assert "column-gap: calc(12px + 26px)" in app, "members are not spaced to the outer columns"
+    solo = app[app.index(".node-grid.compact .nodes.solo {") :]
+    solo = solo[: solo.index("}")]
+    assert "padding: 12px" in solo and "border: 1px" in solo, "a standalone frame differs from a cluster's"
+    assert "minmax(0, 1fr)" in solo, "the full mode's 420px minimum pushes the card out of its frame"
 
 
 def test_node_dragging_aims_on_the_axis_the_layout_actually_uses():

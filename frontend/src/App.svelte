@@ -777,6 +777,7 @@
         position={`${gi + 1} of ${clusters.length}`}
         all={clusters.map((c) => c.key)}
         framed={!!cluster.name}
+        span={cluster.nodes.length}
       >
       {#if cluster.name}
         <!-- A frame only where clustering is real. Clustered nodes pool memory,
@@ -822,7 +823,10 @@
           </div>
         </section>
       {:else}
-        <div class="nodes">
+        <!-- A frame of its own in compact mode, the same as a cluster's, so a
+             standalone node beside a cluster reads as its own group and its
+             card is exactly as wide as a member's. -->
+        <div class="nodes" class:solo={layout.compactCards}>
           {#each cluster.nodes as node (node.node_id)}
             <NodeCard
               {node}
@@ -1027,9 +1031,12 @@
      row: four nodes become 3 + 1 and the second row is mostly empty. Snapping
      to 1/2/4 keeps a power-of-two fleet filling every row exactly.
      Fixed counts rather than auto-fill for the same reason — auto-fill picks
-     "as many as fit", which is 3 at this container width. */
+     "as many as fit", which is 3 at this container width.
+     The count is a variable, `--cols`, because a group's span is capped by it
+     below and a span past the column count would add implicit columns. */
   .node-grid.compact {
-    grid-template-columns: minmax(0, 1fr);
+    --cols: 1;
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
     align-items: start;
   }
 
@@ -1037,7 +1044,7 @@
 
   @media (min-width: 600px) {
     .node-grid.compact {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      --cols: 2;
     }
   }
 
@@ -1045,7 +1052,7 @@
 
   @media (min-width: 1160px) {
     .node-grid.compact {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      --cols: 4;
     }
   }
 
@@ -1057,64 +1064,46 @@
      show. */
   @media (min-width: 2320px) {
     .node-grid.compact {
-      grid-template-columns: repeat(8, minmax(0, 1fr));
+      --cols: 8;
     }
   }
 
 
 
-  /* The `display: contents` that used to sit here is gone with the wrapper.
-     It existed so a standalone node's `.nodes` box stopped generating a frame
-     and its card became an item of `.node-grid` itself. A standalone group
-     holds exactly one card — a standalone node is a cluster of one — so a
-     wrapper occupying one cell renders identically, and the drag handle needs
-     a real box to be positioned against. */
-
-
-
-  /* A framed cluster keeps its frame and spans the full row: the frame means
-     "these pool memory", and one covering part of a row would say something
-     untrue about which nodes are grouped. */
-  /* :global because the element is NodeGroup's, not this component's. The
-     wrapper is the grid item now that every group carries a drag handle, so
-     the span has to move to it — left on `.cluster` it would apply to
-     something that is no longer a grid item and silently do nothing. */
-  .node-grid.compact > :global([data-group-framed]) {
-    grid-column: 1 / -1;
+  /* ONE COLUMN PER MEMBER, not the whole row (Brian, 2026-10-12). A cluster's
+     frame used to span the row, so `danflashes` drew two cards in the left
+     half of a frame across the page and `sparky` dropped to a row of its own:
+     measured at 1680px, three of four columns empty on both rows. The frame
+     still says which nodes pool; a standalone node beside it has a frame of
+     its own, so nothing reads as grouped that is not.
+     :global because the element is NodeGroup's. */
+  .node-grid.compact > :global([data-group]) {
+    grid-column: span min(var(--span, 1), var(--cols));
   }
 
 
 
-  /* Its members then grid among themselves, inside the frame, on the same
-     power-of-two counts — a pooled cluster is exactly where sizes are powers
-     of two. Slightly narrower than the outer grid because of the frame's own
-     padding. */
+  /* EVERY CARD THE SAME WIDTH. A frame takes 13px each side (12px padding,
+     1px border), and members used to be gridded inside that on the outer
+     column count, so they came out narrower than a standalone card: 397px
+     against 420px, measured. Now a standalone node is framed the same way,
+     and members are spaced by the outer gap plus both frames' 26px, which is
+     exactly what puts each member on the outer column grid:
+     a group of N spans N columns and N-1 gaps, less 26px of frame, less N-1
+     inner gaps of (gap + 26px), leaves N columns of (column - 26px). */
   .node-grid.compact .cluster .nodes {
+    grid-template-columns: repeat(min(var(--span, 1), var(--cols)), minmax(0, 1fr));
+    column-gap: calc(12px + 26px);
+  }
+
+  /* One column whatever the full mode's 420px minimum says: that minimum is
+     for a card with the page to itself, and in a 403px column it pushed the
+     card out through its own frame. */
+  .node-grid.compact .nodes.solo {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-
-
-  @media (min-width: 600px) {
-    .node-grid.compact .cluster .nodes {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-
-
-  @media (min-width: 1160px) {
-    .node-grid.compact .cluster .nodes {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-  }
-
-
-
-  @media (min-width: 2320px) {
-    .node-grid.compact .cluster .nodes {
-      grid-template-columns: repeat(8, minmax(0, 1fr));
-    }
+    padding: 12px;
+    border: 1px dashed var(--rule);
+    border-radius: var(--radius);
   }
 
 

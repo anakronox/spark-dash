@@ -7465,6 +7465,20 @@ interfaces as they are and says in the chart's note that multicast reaching a
 port is counted once per function; on this cluster that is about 40 kb/s
 against 200 Gb/s links.
 
+### AP — Compact node cards on one grid — **shipped 2026-10-12**
+
+Brian, 2026-10-12: in compact view the clustered nodes' cards were narrower
+than the standalone one, and the single cluster frame spanned the screen.
+Measured at 1680px: members 397px against sparky's 420px, and three of four
+columns empty on both rows, the cluster's and sparky's.
+
+A group now spans one column per member, capped at the column count, so
+`sparky` sits beside `danflashes`. Standalone nodes get a frame of their own
+in compact view, the same 12px padding and 1px border as a cluster's, and a
+cluster's members are spaced by the outer gap plus both frames (38px). That
+puts every card on the outer column grid: all three measured 377.3px, a
+column less its frame. The full view is unchanged.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

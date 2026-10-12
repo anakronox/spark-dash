@@ -3,10 +3,9 @@
    *
    * SEPARATE FROM Section, deliberately. The two gestures look alike and are
    * not: a section has three zones, a band, a half-width state and a pairing
-   * drop. A node card has one axis and no width to change — a cluster frame
-   * spans the row because the frame means "these pool memory", and one
-   * covering half a row would say something untrue about which nodes are
-   * grouped. Generalising Section to cover both would have made the section
+   * drop. A node card has no width to change: in compact mode a group spans
+   * one column per member, and that is decided by the cluster, not by a
+   * gesture. Generalising Section to cover both would have made the section
    * drag carry parameters that are always the same value here.
    *
    * WHAT MOVES IS THE GROUP. Dragging `danflashes` moves its members with it;
@@ -24,13 +23,14 @@
     position: string;
     /** Every group currently on the page, in the order they render. */
     all: string[];
-    /** True for a framed cluster, which spans the whole row in compact mode:
-     *  the frame means "these pool memory", and one covering part of a row
-     *  would say something untrue about which nodes are grouped. */
+    /** True for a cluster, whose frame means "these pool memory". */
     framed: boolean;
+    /** Columns this group takes in compact mode: one per member, capped at
+     *  the grid's column count by the grid's own CSS. */
+    span: number;
     children: import('svelte').Snippet;
   }
-  const { layout, groupKey, label, position, all, framed, children }: Props = $props();
+  const { layout, groupKey, label, position, all, framed, span, children }: Props = $props();
 
   let grabbed = $state(false);
   let offsetY = $state(0);
@@ -137,6 +137,7 @@
   class="group"
   data-group={groupKey}
   data-group-framed={framed ? '' : undefined}
+  style:--span={span}
   class:grabbed
   style:transform={grabbed && offsetY ? `translateY(${offsetY}px)` : undefined}
 >
