@@ -65,6 +65,9 @@ otherwise invisible.
 seven SoC zones, the NVMe, one per ConnectX port, the radio — ranked by how
 close each is to *its own* limit, which differ by twenty degrees across one
 machine. On this cluster an SoC zone hit 95.4°C while the GPU read 72°C.
+The card's **groups** menu hides the groups you don't need to read. Alerts
+still watch every sensor, and the headline still names the hottest and the
+closest to its limit across all of them.
 
 **Alerting you can trust.** 35 rules, with push notifications via
 [ntfy](https://ntfy.sh) — no account, no API key. Thermal bands come from each
@@ -72,15 +75,20 @@ node's own hardware limits, and you're told if a node falls back to a guess. A
 GX10 sits at ~84°C doing routine work, so a generic 80°C threshold would page
 you all day.
 
-**History.** 15 metrics charted over 1h to 7d, per node or aggregated — GPU and
-CPU utilization, clocks, temperature, power, memory, all four PSI signals, swap
-and disk I/O, throughput and prefill.
+**History.** 20 metrics charted over 1h to 7d, a chart per metric and a line
+per node — GPU and CPU utilization, clocks, power, memory, every temperature
+group and its headroom, all four PSI signals, swap and disk I/O, throughput and
+prefill. Each axis fits its data but never spans less than a set minimum, so a
+45–70°C climb fills the chart and memory holding at 93% stays a flat line.
+**Full** puts the fixed 0–100% and 0–100°C axes back.
 
-**Each interface gets its own chart**, receive and transmit, over the same 1h to
-7d. Sharing one axis doesn't work here: these links span six orders of
-magnitude, so a busy management port would flatten a 200Gb RoCE link to zero.
-Past a dozen links the card becomes a table, worst first, with a column saying
-what put each row there.
+**Network traffic, a chart per group.** RoCE, management, Wi-Fi and the rest
+each get one chart with a line per node, received above the zero line and sent
+below it. The links span six orders of magnitude, so a **log** switch keeps a
+12 Mb/s management spike from flattening the 100 kb/s lines beside it. Errors,
+drops and an RDMA port changing state get a chart of their own when they
+happen. The table lists every interface, worst first, and opens any one's own
+chart; past a dozen links the card opens as the table.
 
 **Optionally, NVIDIA release updates.** The dashboard can check every Spark
 against NVIDIA's release recipes and install what's available: an *updates*
@@ -113,10 +121,16 @@ nothing is configured on the server.
   cards scroll inside their box instead, headers staying put.
 - **More than one.** `+ element` adds another copy of any card — one Network
   Activity showing RDMA ports, another showing charts.
-- **Each card has its own menus.** Which metrics, which interface groups,
-  charts or table or RDMA ports, which columns. Column edges drag.
-- **Seven themes**, dark instrument panel through to paper and high contrast,
-  plus a compact form for the node cards. **Reset layout** puts it all back.
+- **Each card has its own menus.** Which metrics, which interface or sensor
+  groups, fitted or full axes, linear or log, charts or table or RDMA ports,
+  which columns. Column edges drag.
+- **Compact node cards.** **Settings → Node elements → Compact** puts every node
+  on one grid at the same width, each cluster and each standalone node in its
+  own frame. When the frames fit in half the page, as on a wide monitor, the
+  right half becomes a column like the ones below: drag a half-width card into
+  it.
+- **Seven themes**, dark instrument panel through to paper and high contrast.
+  **Reset layout** puts it all back.
 
 ## Quickstart
 

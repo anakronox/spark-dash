@@ -233,29 +233,52 @@ highlighted, rest gray) when a single model needs to be the subject of a chart.
 
 ### Layout
 
-Single-page, no navigation chrome for the primary view:
+Single-page, no navigation chrome for the primary view. Below the header, the
+node frames, then the cards, each full width or in one of two columns:
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  HERO: cluster tokens/sec        [3 nodes up]  [live ●]      │
-├──────────────────────────────────────────────────────────────┤
-│  KPI ROW — one stat-tile group per node                      │
-│  ┌ gx10-1 ────┐ ┌ gx10-2 ────┐ ┌ gx10-3 ────┐                │
-│  │ util  87%  │ │ util  12%  │ │  ── down ──│  ← status      │
-│  │ mem  71%▁▃▅│ │ mem  30%▁▁▂│ │            │    icon+label  │
-│  │ 72°C  94W  │ │ 51°C  38W  │ │            │                │
-│  └────────────┘ └────────────┘ └────────────┘                │
-├──────────────────────────────────────────────────────────────┤
-│  WHAT'S RUNNING WHERE (table: node × runtime × model × state)│
-├──────────────────────────────────────────────────────────────┤
-│  PROCESS LIST (table, sorted by GPU mem — the nvitop view)   │
-├──────────────────────────────────────────────────────────────┤
-│  TREND (uPlot line, one series per node, direct-labeled)     │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ spark-dash  decode tok/s · largest free block · nodes up · prefill   │
+├──────────────────────────────────────────────────────────────────────┤
+│ ┌ DANFLASHES · 2 nodes pooled ───────┐ ┌ STANDALONE ┐                │
+│ │ pooled memory band                 │ │            │   beside the   │
+│ │ [sparketa]        [sparkjr]        │ │ [sparky]   │   nodes (wide  │
+│ └────────────────────────────────────┘ └────────────┘   monitors)    │
+├──────────────────────────────────────────────────────────────────────┤
+│ SYSTEM ACTIVITY  a chart per metric    │ NETWORK ACTIVITY  a chart   │
+│                                        │ per interface group         │
+├────────────────────────────────────────┼─────────────────────────────┤
+│ GPU PROCESSES                          │ MODELS                      │
+├────────────────────────────────────────┴─────────────────────────────┤
+│ TEMPERATURES  a table per sensor group                               │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 A down node keeps its tile in place showing its status rather than vanishing —
 a missing tile is easy to miss; a red one isn't.
+
+**Compact node cards share one grid.** At 1, 2, 4 or 8 columns by width, each
+cluster spans one column per member and each standalone node gets a frame of
+its own. Members are spaced so every card lands on the outer columns, so a
+member is exactly as wide as a standalone node (measured 377.3px each at 1680px
+wide, against 397 and 420 before). Frames on one row share three rows,
+header, memory band and cards, so they end level and every card starts at the
+same height. When the frames need half the columns or fewer, the top of the
+page splits: nodes on the left at half the column count, and on the right a
+column, *beside the nodes*, that takes half-width cards like the columns below.
+
+**Charts.** One time axis per grid, on its bottom row; the rows above give up
+that band, so every plot is the same height (150px at the default 180px,
+where it used to be 65 of 132). Columns come from the card's own width, at
+least 300px a chart. System Activity fits each axis to its data, never
+narrower than the metric's minimum span (25 points for GPU utilization, 20 for
+other percentages, 15°C, 50W, 500MHz), with **Full** for the fixed axes.
+Network Activity draws a chart per interface group, a line per node: received
+above zero, sent below, each side reaching its own peak but keeping a fifth of
+the height. Its **log** axis is asinh, linear inside 1 kb/s, with gridlines on
+decades. A node's interfaces in a group are added together, and a ConnectX
+port is two interfaces, so multicast reaching it counts on both (about
+40 kb/s here, against 200 Gb/s links).
 
 **Optional cards are the exception, on purpose.** A card whose data may not
 exist on this install is off the page and out of the `+ element` menu while
