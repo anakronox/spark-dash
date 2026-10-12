@@ -7479,6 +7479,13 @@ cluster's members are spaced by the outer gap plus both frames (38px). That
 puts every card on the outer column grid: all three measured 377.3px, a
 column less its frame. The full view is unchanged.
 
+Then, same day: the standalone frame ended short of the cluster's and its card
+sat higher than the members. Every group now takes three shared rows (header,
+band, cards) through a CSS subgrid, and a standalone node is built like a
+cluster, a "standalone" header and no band. Measured in a 1681px frame: both
+frames 225px tall from the same top, all three cards starting at the same y
+and 365.5px wide.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

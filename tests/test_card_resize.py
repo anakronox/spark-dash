@@ -362,9 +362,13 @@ def test_there_is_no_band_mode_left():
         src = without_comments(path.read_text())
         for token in ("bandMode", "BandMode", "BAND_MODE", "quantised"):
             assert token not in src, f"{path.name} still refers to {token}"
-    assert "subgrid" not in without_comments(APP.read_text()), (
-        "the aligned-mode subgrid rule survives"
-    )
+    # Aligned mode subgridded the SECTION columns. The node grid's subgrid
+    # (AP: frames on a row share header, band and card rows) is unrelated, so
+    # this looks only outside it.
+    app = without_comments(APP.read_text())
+    for m in re.finditer("subgrid", app):
+        selector = app[: m.start()].rsplit("}", 1)[-1]
+        assert ".node-grid" in selector, f"the aligned-mode subgrid rule survives: {selector.strip()[:80]}"
 
 
 def test_a_card_can_be_held_taller_than_its_content():

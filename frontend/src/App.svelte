@@ -822,11 +822,30 @@
             {/each}
           </div>
         </section>
+      {:else if layout.compactCards}
+        <!-- A frame of its own in compact mode, built like a cluster's, so a
+             standalone node beside a cluster reads as its own group, its card
+             is exactly as wide as a member's, and its card starts level with
+             theirs: the header shares the cluster header's row and the band
+             row is left empty (see the subgrid rules). -->
+        <section class="cluster solo">
+          <header class={CLUSTER_HEAD}>
+            <h2 class={CLUSTER_H2}>standalone</h2>
+          </header>
+          <div class="nodes">
+            {#each cluster.nodes as node (node.node_id)}
+              <NodeCard
+                {node}
+                slot={slotOf.get(node.node_id) ?? 0}
+                compact
+                lagging={stragglers.get(node.node_id) ?? []}
+                alerts={alertFeed}
+              />
+            {/each}
+          </div>
+        </section>
       {:else}
-        <!-- A frame of its own in compact mode, the same as a cluster's, so a
-             standalone node beside a cluster reads as its own group and its
-             card is exactly as wide as a member's. -->
-        <div class="nodes" class:solo={layout.compactCards}>
+        <div class="nodes">
           {#each cluster.nodes as node (node.node_id)}
             <NodeCard
               {node}
@@ -1037,7 +1056,6 @@
   .node-grid.compact {
     --cols: 1;
     grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-    align-items: start;
   }
 
 
@@ -1079,6 +1097,28 @@
      :global because the element is NodeGroup's. */
   .node-grid.compact > :global([data-group]) {
     grid-column: span min(var(--span, 1), var(--cols));
+    /* THREE SHARED ROWS PER GROUP: header, memory band, cards. A subgrid
+       through the wrapper into the frame, so every group on a row of the grid
+       has the same three row heights. Frames on one row then end level, and
+       a standalone card, which has no band, starts level with the cluster's
+       members instead of under its own header with a gap below it. */
+    grid-row: span 3;
+    display: grid;
+    grid-template-rows: subgrid;
+  }
+
+  .node-grid.compact .cluster {
+    grid-row: 1 / -1;
+    grid-template-rows: subgrid;
+  }
+
+  .node-grid.compact .cluster > header {
+    grid-row: 1;
+  }
+
+  .node-grid.compact .cluster > .nodes {
+    grid-row: 3;
+    align-self: start;
   }
 
 
@@ -1088,7 +1128,8 @@
      column count, so they came out narrower than a standalone card: 397px
      against 420px, measured. Now a standalone node is framed the same way,
      and members are spaced by the outer gap plus both frames' 26px, which is
-     exactly what puts each member on the outer column grid:
+     exactly what puts each member on the outer column grid. A standalone
+     node is a `.cluster.solo`, so these rules size its card the same way:
      a group of N spans N columns and N-1 gaps, less 26px of frame, less N-1
      inner gaps of (gap + 26px), leaves N columns of (column - 26px). */
   .node-grid.compact .cluster .nodes {
@@ -1096,15 +1137,7 @@
     column-gap: calc(12px + 26px);
   }
 
-  /* One column whatever the full mode's 420px minimum says: that minimum is
-     for a card with the page to itself, and in a 403px column it pushed the
-     card out through its own frame. */
-  .node-grid.compact .nodes.solo {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 12px;
-    border: 1px dashed var(--rule);
-    border-radius: var(--radius);
-  }
+
 
 
 

@@ -203,9 +203,9 @@ def test_a_group_spans_one_column_per_member_in_compact_mode():
         r"\.node-grid\.compact > :global\(\[data-group\]\) \{\s*grid-column: span min\(var\(--span, 1\), var\(--cols\)\)",
         app,
     ), "the compact span is not on the group wrapper, capped at the column count"
-    assert not re.search(r"\.node-grid\.compact \.cluster \{", app), (
-        "the span is on .cluster, which is not the grid item"
-    )
+    cluster = app[app.index(".node-grid.compact .cluster {") :]
+    cluster = cluster[: cluster.index("}")]
+    assert "grid-column" not in cluster, "the span is on .cluster, which is not the grid item"
     group = without_comments(NODE_GROUP.read_text())
     assert "style:--span={span}" in group, "the wrapper never says how many columns it takes"
 
@@ -217,10 +217,24 @@ def test_every_compact_card_is_the_same_width():
     both frames, which puts every card on the outer column grid."""
     app = without_comments(APP.read_text())
     assert "column-gap: calc(12px + 26px)" in app, "members are not spaced to the outer columns"
-    solo = app[app.index(".node-grid.compact .nodes.solo {") :]
-    solo = solo[: solo.index("}")]
-    assert "padding: 12px" in solo and "border: 1px" in solo, "a standalone frame differs from a cluster's"
-    assert "minmax(0, 1fr)" in solo, "the full mode's 420px minimum pushes the card out of its frame"
+    # The same element and class as a cluster's frame, so the padding, border
+    # and member columns cannot drift apart.
+    assert '<section class="cluster solo">' in app, "a standalone frame is not built like a cluster's"
+
+
+def test_frames_on_a_row_share_their_rows():
+    """Brian, 2026-10-12: the standalone frame ended short of the cluster's
+    and its card sat higher than the members. Every group takes three shared
+    rows, header, band and cards, through a subgrid, so frames on one row end
+    level and every card starts on the third."""
+    app = without_comments(APP.read_text())
+    wrapper = app[app.index(".node-grid.compact > :global([data-group]) {") :]
+    wrapper = wrapper[: wrapper.index("}")]
+    assert "grid-row: span 3" in wrapper and "grid-template-rows: subgrid" in wrapper
+    assert re.search(r"\.node-grid\.compact \.cluster \{\s*grid-row: 1 / -1;\s*grid-template-rows: subgrid", app)
+    assert re.search(r"\.node-grid\.compact \.cluster > \.nodes \{\s*grid-row: 3", app), (
+        "cards are not pinned to the third row, so a frame with no band lifts them"
+    )
 
 
 def test_node_dragging_aims_on_the_axis_the_layout_actually_uses():
