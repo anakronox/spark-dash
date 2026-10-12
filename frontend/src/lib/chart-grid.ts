@@ -91,3 +91,53 @@ export function stampOf(ts: number, withDate: boolean): string {
   const d = new Date(ts * 1000);
   return withDate ? `${dayOf(d)} ${clock(d, true)}` : clock(d, true);
 }
+
+/** A step of 1, 2 or 5 times a power of ten, at least `span`. No 2.5: a fitted
+ *  axis on whole degrees or watts should not grow a decimal on every label. */
+export function niceStep(span: number): number {
+  if (!(span > 0)) return 1;
+  const p = 10 ** Math.floor(Math.log10(span));
+  for (const m of [1, 2, 5]) if (m * p >= span) return m * p;
+  return 10 * p;
+}
+
+/** A y range fitted to the data, never narrower than `minSpan`.
+ *
+ * The fixed 0-100°C, 0-300W and 0-100% axes were honest and unreadable: at
+ * 150px a 45-70°C climb filled a third of the plot. Fitting alone is the
+ * opposite failure, a 0.3% wobble drawn as a cliff, which is what the minimum
+ * span is for: a real climb fills the chart and a flat line stays flat.
+ *
+ * Padded a tenth either side, widened about its middle to `minSpan`, moved
+ * back inside [floor, ceil] when that pushed it out, then rounded out to whole
+ * steps so the gridlines land on round numbers. Data outside [floor, ceil]
+ * still widens the range: a reading past its ceiling is the one to see. */
+export function fitRange(
+  min: number | null,
+  max: number | null,
+  { floor = 0, ceil = Infinity, minSpan }: { floor?: number; ceil?: number; minSpan: number },
+): [number, number] {
+  if (min == null || max == null || !isFinite(min) || !isFinite(max)) {
+    return [floor, isFinite(ceil) ? ceil : floor + minSpan];
+  }
+  const top = Math.max(ceil, max);
+  const bottom = Math.min(floor, min);
+  const pad = (max - min) * 0.1;
+  let lo = min - pad;
+  let hi = max + pad;
+  if (hi - lo < minSpan) {
+    const mid = (hi + lo) / 2;
+    lo = mid - minSpan / 2;
+    hi = mid + minSpan / 2;
+  }
+  if (lo < bottom) {
+    hi += bottom - lo;
+    lo = bottom;
+  }
+  if (hi > top) {
+    lo = Math.max(bottom, lo - (hi - top));
+    hi = top;
+  }
+  const step = niceStep((hi - lo) / 4);
+  return [Math.max(bottom, Math.floor(lo / step) * step), Math.min(top, Math.ceil(hi / step) * step)];
+}

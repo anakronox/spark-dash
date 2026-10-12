@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import {
   MIN_CHART_PX,
   crossesDay,
+  fitRange,
+  niceStep,
   gridCols,
   maxColsFor,
   onLastRow,
@@ -97,6 +99,48 @@ test('the tooltip names the day only when the window crosses one', () => {
   assert.equal(stampOf(t, true), 'Oct 12 9:05am');
   assert.equal(crossesDay(at('2026-10-12T00:10:00Z'), at('2026-10-12T23:50:00Z')), false);
   assert.equal(crossesDay(at('2026-10-11T23:50:00Z'), at('2026-10-12T00:10:00Z')), true);
+});
+
+test('steps are 1, 2 or 5 times a power of ten', () => {
+  assert.deepEqual([0.7, 3.75, 12, 30, 450].map(niceStep), [1, 5, 20, 50, 500]);
+});
+
+test('a real climb fills the chart: 45-70°C on a 0-100 axis', () => {
+  // 40-80 in steps of 10: the data fills 62% of the plot, against 25% of a
+  // fixed 0-100 axis.
+  const [lo, hi] = fitRange(45, 70, { ceil: 100, minSpan: 15 });
+  assert.ok(lo >= 40 && lo <= 45, `lo ${lo}`);
+  assert.ok(hi >= 70 && hi <= 80, `hi ${hi}`);
+  assert.ok((70 - 45) / (hi - lo) >= 0.6, `fills ${(70 - 45) / (hi - lo)}`);
+});
+
+test('a flat line stays flat: memory at 93% gets the minimum span, pinned under the ceiling', () => {
+  const [lo, hi] = fitRange(92.8, 93.3, { ceil: 100, minSpan: 20 });
+  assert.equal(hi, 100);
+  assert.ok(hi - lo >= 20, `span ${hi - lo}`);
+  assert.ok(lo <= 92.8);
+});
+
+test('never below the floor: an idle GPU at 0W', () => {
+  const [lo, hi] = fitRange(0, 3, { ceil: 300, minSpan: 50 });
+  assert.equal(lo, 0);
+  assert.ok(hi >= 50 && hi <= 60, `hi ${hi}`);
+});
+
+test('a reading past the ceiling widens the range rather than being clipped', () => {
+  const [, hi] = fitRange(80, 112, { ceil: 104, minSpan: 15 });
+  assert.ok(hi >= 112, `hi ${hi}`);
+});
+
+test('gridlines land on whole steps', () => {
+  const [lo, hi] = fitRange(51.3, 66.8, { ceil: 100, minSpan: 15 });
+  assert.equal(lo % 5, 0);
+  assert.equal(hi % 5, 0);
+});
+
+test('no data falls back to the full range', () => {
+  assert.deepEqual(fitRange(null, null, { ceil: 300, minSpan: 50 }), [0, 300]);
+  assert.deepEqual(fitRange(null, null, { minSpan: 50 }), [0, 50]);
 });
 
 console.log(`${passed}/${passed + failed} passed`);

@@ -66,6 +66,9 @@
   // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
   // component: App keys each card by id, so a different instance is a different mount.
   const EVENTS_KEY = instanceKey('spark-dash.trend-events.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const SCALE_KEY = instanceKey('spark-dash.trend-scale.v1', instance);
 
   /* WHAT A NEWCOMER SEES. The first cut defaulted to the first metric alone,
      which on a full-width card is one GPU-utilization line stretched across
@@ -112,6 +115,29 @@
      way of reading a shape. */
   let showEvents = $state(readEvents());
   let annotations = $state<Annotation[]>([]);
+
+  /* FIT BY DEFAULT (Brian, 2026-10-12). At 150px a fixed 0-100°C axis left a
+     45-70°C climb in a third of the plot. Each fitted chart keeps a minimum
+     span, so a flat line stays flat; Full is today's fixed axes, for reading
+     a value against its ceiling. Per card, like the events toggle. */
+  let scaleMode = $state<'fit' | 'full'>(readScale());
+
+  function readScale(): 'fit' | 'full' {
+    try {
+      return localStorage.getItem(SCALE_KEY) === 'full' ? 'full' : 'fit';
+    } catch {
+      return 'fit';
+    }
+  }
+
+  function setScale(mode: 'fit' | 'full') {
+    scaleMode = mode;
+    try {
+      localStorage.setItem(SCALE_KEY, mode);
+    } catch {
+      // Still applied for this session.
+    }
+  }
 
   function readEvents(): boolean {
     try {
@@ -482,6 +508,21 @@
         onclick={toggleEvents}
       >events{annotations.length ? ` · ${annotations.length}` : ''}</button>
 
+      <div class="segmented" role="group" aria-label="Y axis scale">
+        {#each ['fit', 'full'] as const as m (m)}
+          <button
+            class:active={scaleMode === m}
+            aria-pressed={scaleMode === m}
+            title={m === 'fit'
+              ? 'Fit each axis to its data, never narrower than a minimum span'
+              : 'Fixed axes: 0-100%, 0-100°C, 0-300W'}
+            onclick={() => setScale(m)}
+          >
+            {m}
+          </button>
+        {/each}
+      </div>
+
       <div class="ranges segmented" role="group" aria-label="Time range">
         {#each RANGES as r (r.key)}
           <button
@@ -528,6 +569,7 @@
           annotations={showEvents ? annotations : []}
           height={plotHeight}
           showTime={onLastRow(i, shownCharts.length, cols)}
+          fit={scaleMode === 'fit'}
         />
       {/each}
     </div>

@@ -36,6 +36,12 @@ export interface MetricSpec {
    * series is then explicitly relative and the tooltip's absolute value is the
    * one to trust. */
   scaleMax?: number;
+  /** The narrowest y range a FITTED chart may have, in the metric's units.
+   *  System Activity fits its axes by default (AO2): a climb fills the chart,
+   *  and this keeps a flat line flat, so a 0.3% wobble in memory is not drawn
+   *  as a cliff. Absent means the chart keeps its fixed or zero-anchored axis
+   *  even when fitting is on. */
+  minSpan?: number;
   /** Format ticks and readings with an SI prefix — 580Mb/s, not 580223842b/s.
    *
    * Network throughput spans six orders of magnitude on this cluster alone
@@ -74,35 +80,35 @@ export interface MetricSpec {
 }
 
 export const METRICS: MetricSpec[] = [
-  { key: 'gpu_utilization', label: 'GPU utilization', unit: '%', percent: true },
+  { key: 'gpu_utilization', label: 'GPU utilization', unit: '%', percent: true, minSpan: 25 },
   // 100°C: above the 90°C at which this part shuts down, so the plotted
   // height stays meaningful right through the danger band.
-  { key: 'gpu_temperature', label: 'GPU temperature', unit: '°C', scaleMax: 100 },
-  { key: 'memory_used_percent', label: 'Memory used', unit: '%', percent: true },
+  { key: 'gpu_temperature', label: 'GPU temperature', unit: '°C', scaleMax: 100, minSpan: 15 },
+  { key: 'memory_used_percent', label: 'Memory used', unit: '%', percent: true, minSpan: 20 },
   { key: 'tokens_per_second', label: 'Throughput', unit: 'tok/s' },
   /* Prefill as its own chip. It was previously added INTO Throughput, which
      made that chart spike three orders of magnitude while a prompt was being
      ingested — the chart said 47,672 while the model generated 48. */
   { key: 'prompt_tokens_per_second', label: 'Prefill', unit: 'tok/s' },
   // The GB10 idles ~12W and peaks well under 300W.
-  { key: 'gpu_power', label: 'GPU power', unit: 'W', scaleMax: 300 },
+  { key: 'gpu_power', label: 'GPU power', unit: 'W', scaleMax: 300, minSpan: 50 },
   // max_sm_clock as NVML reports it. Note the part actually runs ~2411MHz,
   // so a healthy clock sits around 80% here rather than at the top.
-  { key: 'gpu_clock', label: 'GPU clock', unit: 'MHz', scaleMax: 3003 },
-  { key: 'cpu_utilization', label: 'CPU utilization', unit: '%', percent: true },
+  { key: 'gpu_clock', label: 'GPU clock', unit: 'MHz', scaleMax: 3003, minSpan: 500 },
+  { key: 'cpu_utilization', label: 'CPU utilization', unit: '%', percent: true, minSpan: 20 },
   /* Grace cores throttling would slow prompt processing invisibly — the
      CPU-side equivalent of the GPU clock check. Averaged across cores rather
      than maxed, because throttling shows up as every core dropping together
      and a max would be held up by whichever one happened to boost.
      3500MHz: the part is observed at 3354MHz, so a healthy clock sits near the
      top of this axis rather than at it. */
-  { key: 'cpu_clock', label: 'CPU clock', unit: 'MHz', scaleMax: 3500 },
+  { key: 'cpu_clock', label: 'CPU clock', unit: 'MHz', scaleMax: 3500, minSpan: 500 },
   /* The 10-second average, deliberately: it shows a spike as a spike, which a
    * trend chart should. Note the pressure BAND on the node card follows the
    * 60-second average, so a brief peak here can sit above a calmer band — the
    * window is named in the label so that reads as intended rather than as a
    * contradiction. */
-  { key: 'psi_some_avg10', label: 'Memory pressure (10s)', unit: '%', percent: true },
+  { key: 'psi_some_avg10', label: 'Memory pressure (10s)', unit: '%', percent: true, minSpan: 20 },
   /* SOME vs FULL, and the distinction is the whole point. "Some" means at least
      one task stalled waiting on memory, which a busy inference box does
      routinely and which the chart above will show as a lively line. "Full"
@@ -115,7 +121,7 @@ export const METRICS: MetricSpec[] = [
 
      Same 10s window as its sibling deliberately, so the two can be read
      against each other. */
-  { key: 'psi_full_avg10', label: 'Memory stalled (10s)', unit: '%', percent: true },
+  { key: 'psi_full_avg10', label: 'Memory stalled (10s)', unit: '%', percent: true, minSpan: 20 },
   /* "SLOW" HAS AT LEAST THREE CAUSES and until now the dashboard could
      distinguish one. Memory pressure said the box was thrashing; a machine
      stalled on CPU runqueue or on disk read looked identical to a healthy one.
@@ -139,13 +145,13 @@ export const METRICS: MetricSpec[] = [
      real event this exists to show. The series is relative and the tooltip's
      absolute value is the one to read. */
   { key: 'swap_io', label: 'Swap I/O', unit: 'pages/s' },
-  { key: 'psi_cpu_some', label: 'CPU pressure', unit: '%', percent: true },
-  { key: 'psi_io_some', label: 'I/O pressure', unit: '%', percent: true },
+  { key: 'psi_cpu_some', label: 'CPU pressure', unit: '%', percent: true, minSpan: 20 },
+  { key: 'psi_io_some', label: 'I/O pressure', unit: '%', percent: true, minSpan: 20 },
   /* Explains a slow cold start: weights coming off disk. Maxed across devices,
      not averaged — saturation is "is any disk pegged", and averaging a busy
      disk against an idle one reports a comfortable 50% for a machine that is
      completely stalled on one of them. */
-  { key: 'disk_busy', label: 'Disk busy', unit: '%', percent: true },
+  { key: 'disk_busy', label: 'Disk busy', unit: '%', percent: true, minSpan: 20 },
   /* THE HOTTEST SENSOR ON THE BOX, whichever it is.
      The dashboard reported two temperatures — the GPU, and one CPU reading
      psutil happened to pick first — while the hardware exposes eighteen to
@@ -155,16 +161,16 @@ export const METRICS: MetricSpec[] = [
      104C: above the 104.8C kernel trip at which the machine powers itself off,
      so the plotted height stays meaningful right through the danger band —
      the same reasoning as the 100C ceiling on GPU temperature. */
-  { key: 'system_temperature', label: 'Hottest sensor', unit: '°C', scaleMax: 104 },
+  { key: 'system_temperature', label: 'Hottest sensor', unit: '°C', scaleMax: 104, minSpan: 15 },
   /* Per domain, because the LIMITS differ by twenty degrees across one box.
      Charted separately rather than as one "temperature" line: 104.8 for a
      package zone against 84.85 for the nvme means the same number is
      comfortable in one place and fatal in another. */
-  { key: 'package_temperature', label: 'Package temp', unit: '°C', scaleMax: 104 },
+  { key: 'package_temperature', label: 'Package temp', unit: '°C', scaleMax: 104, minSpan: 15 },
   // 90: just above the 84.85C the nvme calls critical.
-  { key: 'storage_temperature', label: 'Storage temp', unit: '°C', scaleMax: 90 },
+  { key: 'storage_temperature', label: 'Storage temp', unit: '°C', scaleMax: 90, minSpan: 15 },
   // 110: just above the 105C a ConnectX asic calls critical.
-  { key: 'network_temperature', label: 'NIC temp', unit: '°C', scaleMax: 110 },
+  { key: 'network_temperature', label: 'NIC temp', unit: '°C', scaleMax: 110, minSpan: 15 },
   /* Degrees left before the closest sensor reaches its OWN limit — the one
      scale on which a 52C NIC and an 85C GPU are comparable, as 53 degrees of
      margin against 5. Falls to zero at the point something trips, so unlike

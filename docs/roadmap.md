@@ -7421,12 +7421,18 @@ network card: one chart per group, one line per node.
   the old chart was uPlot's automatic padding, 17px above the plot and below
   it when no axis is drawn; padding is now explicit, 8px, and the sides fixed
   so the bottom row's plots end where the rows above do.
-- [ ] **AO2. Fitted scales with a minimum span.** Each chart fits its data
-  but never spans less than its metric's minimum (25 points for utilization,
-  20 for memory, 15°C, 50W), and never goes below zero or past the physical
-  ceiling. A climb fills the chart and a flat line stays flat. A Fit / Full
-  switch on the card; Full is today's fixed scales. Default: Fit (Brian,
-  2026-10-12).
+- [x] **AO2. Fitted scales with a minimum span.** Built 2026-10-12. Each
+  chart fits its data but never spans less than its metric's `minSpan` (25
+  points for GPU utilization, 20 for other percentages, 15°C, 50W, 500MHz),
+  never goes below zero, and stays under its ceiling unless a reading passes
+  it. Ranges round out to steps of 1, 2 or 5 so gridlines land on round
+  numbers (`fitRange` in `lib/chart-grid.ts`). A Fit / Full switch on System
+  Activity, saved per card; Full is the fixed axes. Default: Fit (Brian,
+  2026-10-12). Throughput, swap I/O and thermal headroom have no `minSpan` and
+  keep their zero-anchored axes. On the live hour: GPU temperature fitted to
+  30–80°C, GPU clock to 1800–2600MHz and flat, memory stalled to 0–20% with a
+  3% stall visible; memory used stayed 0–100% because sparky sat at 10–35%
+  while the pair sat at 93%.
 - [ ] **AO3. Network Activity, one chart per group.** RoCE, Management, WiFi
   and Other each get one chart, one line per node, the node's interfaces in
   that group added together. In is drawn above the zero line and out below it,

@@ -23,7 +23,7 @@
   import { bitRate, siScale } from '../lib/format';
   import type { MetricSpec } from '../lib/history';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
-  import { TIME_AXIS_PX, crossesDay, stampOf, timeLabels } from '../lib/chart-grid';
+  import { TIME_AXIS_PX, crossesDay, fitRange, stampOf, timeLabels } from '../lib/chart-grid';
 
   interface Props {
     metric: MetricSpec;
@@ -55,6 +55,10 @@
     height?: number;
     /** Draw the time axis. A grid passes true for its bottom row only. */
     showTime?: boolean;
+    /** Fit the y axis to the data, never narrower than the metric's
+     *  `minSpan`. Off, or for a metric with no `minSpan`, the axis is the
+     *  fixed one below. */
+    fit?: boolean;
     /** The node this chart belongs to, named in the caption before the title,
      *  in its colour. Network Activity's interface names repeat across nodes:
      *  `enP7s7` exists on all three boxes. */
@@ -82,6 +86,7 @@
     annotations = [],
     height = DEFAULT_PLOT_PX,
     showTime = true,
+    fit = false,
     owner,
     identity,
   }: Props = $props();
@@ -121,9 +126,12 @@
   const multiDay = $derived(x.length > 1 && crossesDay(x[0], x[x.length - 1]));
   const stamp = (ts: number) => stampOf(ts, multiDay);
 
-  /** Where the axis tops out.
+  /** Where the axis tops out on the Full scale, and the ceiling a fitted one
+   * stays under.
    *
-   * FIXED per metric, not fitted to the window. A fitted axis makes a quiet
+   * FIXED per metric, not fitted to the window. That was the only scale until
+   * AO2, and the argument below is why Fit has a minimum span rather than
+   * fitting freely. A fitted axis makes a quiet
    * hour look exactly like a busy one — a 2°C wobble and a 40°C climb draw the
    * same shape — and it would also rescale every chart the moment a node was
    * toggled off, which is movement under the reader's cursor in response to an
@@ -405,6 +413,13 @@
                itself. The gridlines still land on 0 and 1 because the splits
                below say so — this only moves the frame outward. */
             { range: () => [-0.12, 1.12] as [number, number] }
+          : fit && metric.minSpan
+          ? /* Fitted to whatever is drawn: uPlot passes the min and max of the
+               visible series, so hiding a node refits to the rest. */
+            {
+              range: (_u, min, max) =>
+                fitRange(min, max, { floor: 0, ceil: fixed ?? Infinity, minSpan: metric.minSpan! }),
+            }
           : fixed
           ? // A constant `range` is what stops uPlot auto-fitting.
             { range: () => [0, fixed] as [number, number] }
@@ -508,6 +523,7 @@
       width,
       height,
       showTime,
+      fit,
       axisWidth,
     ].join(
       '~',
