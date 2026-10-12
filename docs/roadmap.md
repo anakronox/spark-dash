@@ -7486,6 +7486,26 @@ cluster, a "standalone" header and no band. Measured in a 1681px frame: both
 frames 225px tall from the same top, all three cards starting at the same y
 and 365.5px wide.
 
+### AQ — Cards beside the nodes — **shipped 2026-10-12**
+
+Brian, 2026-10-12: with compact frames spanning their members, the node row
+left a column free, "that could be used for another info card". Asked which
+card, he chose any: a place cards can be dragged to, not a fixed one.
+
+The node grid is a fourth zone, `nodes`, with the placed cards as its own
+children after the groups, so Section's drag aims among them unchanged. A
+release over it shows a "drop here" cell where the card will land, not a line.
+In compact view a placed card takes one column and the three rows the frames
+share, with `height: 0` so it never adds to the row and `min-height:
+max(100%, 160px)` so it fills what the frames decided; its content scrolls
+inside. Alone on a row it keeps 160px. In the full node view it is a
+full-width card under the nodes. No resize corner there: the row sets the
+height. The keyboard's column stepping skips the zone; a drag puts a card
+there and a drag or the full-width toggle takes it out.
+
+Measured in a 1681px frame: Models, then Temperatures, dragged beside
+`danflashes` and `sparky`, each 392px wide, 225px tall from the frames' top.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

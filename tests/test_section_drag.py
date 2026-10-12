@@ -144,7 +144,10 @@ def test_the_keyboard_shift_keeps_its_place():
 def test_drop_indicators_are_matched_to_their_band():
     """Zone names repeat once there are several bands, so an indicator keyed on
     the zone alone would draw in every band at once."""
-    app = without_comments(APP.read_text())
+    full = without_comments(APP.read_text())
+    # The column zones' markup. The node grid is a zone too (AQ), but there is
+    # only one of it, so its drop cell needs no band.
+    app = full[full.index("{#snippet zone(") :]
     for kind in ("line", "pair"):
         block = app[app.index(f"kind === '{kind}'") - 200 : app.index(f"kind === '{kind}'") + 40]
         assert "drop?.band === band" in block, (
@@ -302,3 +305,30 @@ def test_the_dashed_swatch_is_not_killed_by_the_inline_colour():
         "the swatch sets the `background` shorthand, which wipes its dash gradient"
     )
     assert "style:background=" not in swatch
+
+
+def test_a_card_can_sit_beside_the_nodes():
+    """AQ (Brian, 2026-10-12): compact node frames leave columns free, and any
+    card can be dragged into them. The node grid is a zone whose cards are its
+    own children, so Section's aiming works unchanged; the bands leave those
+    cards out, or they would render twice."""
+    layout = without_comments(LAYOUT_SRC)
+    assert "'nodes'" in layout[layout.index("export type Zone") :][:80], "no nodes zone"
+    bands = layout[layout.index("get bands()") :]
+    bands = bands[: bands.index("flush();\n    return out;")]
+    assert "=== 'nodes') continue" in bands, "a card beside the nodes also renders in a band"
+    app = without_comments(APP.read_text())
+    assert 'data-zone="nodes"' in app, "the node grid is not a drop zone"
+    assert "{#each layout.inZone('nodes') as id (id)}" in app
+    section = without_comments(SECTION.read_text())
+    assert "{#if zone !== 'nodes'}" in section, "the node row's card offers a height it cannot have"
+
+
+def test_a_card_beside_the_nodes_is_as_tall_as_the_frames():
+    """Its height comes from the frames on its row and never adds to it: a tall
+    table beside the nodes would otherwise stretch every frame to match."""
+    app = without_comments(APP.read_text())
+    rule = app[app.index(".node-grid.compact > :global([data-slot]) {") :]
+    rule = rule[: rule.index("}")]
+    assert "height: 0" in rule, "the card sizes the row instead of filling it"
+    assert "min-height: max(100%," in rule, "the card does not fill the frames' height"

@@ -55,9 +55,19 @@ const NODE_ORDER_KEY = 'spark-dash.node-order.v1';
  * wide data tables; at three across the columns collide and the history plot
  * loses the time resolution that makes it worth having.
  */
-export type Zone = 'full' | 'left' | 'right';
+export type Zone = 'full' | 'left' | 'right' | 'nodes';
 
+/** The zones the keyboard steps through. `nodes` is not one of them: it is a
+ *  place you aim at with the page in front of you, beside the node frames,
+ *  and stepping "right" out of the right column into the top of the page
+ *  would be a surprise. */
 export const ZONES: Zone[] = ['full', 'left', 'right'];
+
+/* `nodes`: BESIDE THE NODE FRAMES (AQ, Brian 2026-10-12). Compact node cards
+   leave columns free on the node row; a card dragged there sits in them, as
+   tall as the frames, scrolling inside rather than stretching them. In the
+   full node view it is a full-width card under the nodes. It is not part of
+   any band: the node grid draws it. */
 
 /** Where a node/cluster card sits, when the reader has said.
  *
@@ -149,10 +159,11 @@ export const ZONE_LABEL: Record<Zone, string> = {
   full: 'full width',
   left: 'left column',
   right: 'right column',
+  nodes: 'beside the nodes',
 };
 
 function isZone(v: unknown): v is Zone {
-  return v === 'full' || v === 'left' || v === 'right';
+  return v === 'full' || v === 'left' || v === 'right' || v === 'nodes';
 }
 
 /** Placement, migrating a saved half/full width if that is all there is.
@@ -883,6 +894,8 @@ export class Layout {
     };
 
     for (const id of this.visible) {
+      // Drawn by the node grid, not in the page's bands.
+      if (this.zoneOf(id) === 'nodes') continue;
       if (this.zoneOf(id) === 'full') {
         flush();
         out.push({ kind: 'full', id });
@@ -928,7 +941,7 @@ export class Layout {
    * moved a section to the bottom of the column it started at the top of.
    */
   setZone(id: string, zone: Zone) {
-    if (zone !== 'full') this.#rememberColumn(id, zone);
+    if (zone === 'left' || zone === 'right') this.#rememberColumn(id, zone);
     this.placement = { ...this.placement, [id]: zone };
     this.#savePlacement();
   }
@@ -989,7 +1002,7 @@ export class Layout {
    * thing, and it is the thing the affordance drew.
    */
   placeAt(id: string, zone: Zone, anchorId: string | null, before: boolean) {
-    if (zone !== 'full') this.#rememberColumn(id, zone);
+    if (zone === 'left' || zone === 'right') this.#rememberColumn(id, zone);
     const next = this.order.filter((x) => x !== id);
 
     let at = next.length;
@@ -1006,7 +1019,7 @@ export class Layout {
   }
 
   place(id: string, zone: Zone, index: number) {
-    if (zone !== 'full') this.#rememberColumn(id, zone);
+    if (zone === 'left' || zone === 'right') this.#rememberColumn(id, zone);
     const others = this.inZone(zone).filter((x) => x !== id);
     const next = this.order.filter((x) => x !== id);
 

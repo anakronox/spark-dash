@@ -411,6 +411,12 @@
   const H1 = 'text-title-sm font-bold tracking-[0.02em]';
   const RIGHT = 'flex items-center gap-[14px]';
 
+  /** A drop aimed beside the nodes, narrowed to the line shape that carries
+   *  an anchor. Pairing only exists between full-width cards. */
+  const nodesDrop = $derived(
+    layout.drop?.kind === 'line' && layout.drop.zone === 'nodes' ? layout.drop : null,
+  );
+
   const MUTED = 'text-ink-muted';
   const NUM = 'tabular-nums';
 
@@ -768,7 +774,15 @@
          its own .nodes wrapper — without promoting those wrappers out of the
          way, each grid would contain exactly one card and the cards would span
          the full width no matter how small they got. -->
-    <div class="node-grid" class:compact={layout.compactCards}>
+    <!-- ALSO A ZONE (AQ): cards placed "beside the nodes" are its direct
+         children, after the groups, so Section's drag aims among them exactly
+         as it does in a column. -->
+    <div
+      class="node-grid"
+      class:compact={layout.compactCards}
+      data-zone="nodes"
+      data-band="-1"
+    >
     {#each clusters as cluster, gi (cluster.key)}
       <NodeGroup
         {layout}
@@ -860,6 +874,22 @@
       </NodeGroup>
     {/each}
 
+    {#each layout.inZone('nodes') as id (id)}
+      {#if nodesDrop?.anchorId === id && nodesDrop.before}
+        <div class="node-drop" aria-hidden="true">drop here</div>
+      {/if}
+      {@render card(id)}
+      {#if nodesDrop?.anchorId === id && !nodesDrop.before}
+        <div class="node-drop" aria-hidden="true">drop here</div>
+      {/if}
+    {/each}
+    <!-- The target cell when nothing is placed here yet, or the anchor is not
+         one of these cards. A cell rather than a line: the card will take a
+         column, and the free column is what to show. -->
+    {#if nodesDrop && !layout.inZone('nodes').includes(nodesDrop.anchorId ?? '')}
+      <div class="node-drop" aria-hidden="true">drop here</div>
+    {/if}
+
     <!-- Where a release would put the card being dragged. Inside the grid and
          absolutely positioned, like the sections' line — a placeholder taking
          up space would push the cards it is measured against. -->
@@ -923,17 +953,9 @@
      to position against, and without it such a drop would fall to the end of
      the page, which is the bug bands exist to fix showing up in the one case
      with nothing visible to aim at. -->
-{#snippet zone(z: Zone, band: number, ids: string[], bandLast: string | null)}
-  <div
-    class="zone"
-    data-zone={z}
-    data-band={band}
-    data-band-last={bandLast}
-    class:empty={ids.length === 0}
-  >
-    {#each ids as id (id)}
-      {@const kind = kindOf(id)}
-      <Section {layout} {id}>
+{#snippet card(id: string)}
+  {@const kind = kindOf(id)}
+  <Section {layout} {id}>
         {#if kind === 'models'}
           <ModelsTable {nodes} maxRows={layout.rowsFor(id)} />
         {:else if kind === 'clients'}
@@ -963,7 +985,19 @@
             instance={id}
           />
         {/if}
-      </Section>
+  </Section>
+{/snippet}
+
+{#snippet zone(z: Zone, band: number, ids: string[], bandLast: string | null)}
+  <div
+    class="zone"
+    data-zone={z}
+    data-band={band}
+    data-band-last={bandLast}
+    class:empty={ids.length === 0}
+  >
+    {#each ids as id (id)}
+      {@render card(id)}
     {/each}
 
     <!-- An empty zone is zero pixels tall, which would make it impossible to
@@ -1110,6 +1144,47 @@
   .node-grid.compact .cluster {
     grid-row: 1 / -1;
     grid-template-rows: subgrid;
+  }
+
+  /* A CARD BESIDE THE NODES (AQ). One column, and as tall as the frames on
+     its row, never taller: `height: 0` keeps it out of the row's sizing, so
+     the frames decide the height, and the min-height then fills what they
+     decided. Alone on a row it has no frames to match, so it keeps 160px.
+     Its content scrolls inside. :global because the slot is Section's. */
+  .node-grid.compact > :global([data-slot]),
+  .node-grid.compact > .node-drop {
+    grid-column: span 1;
+    grid-row: span 3;
+  }
+
+  .node-grid.compact > :global([data-slot]) {
+    height: 0;
+    min-height: max(100%, 160px);
+    margin-bottom: 0;
+  }
+
+  .node-grid.compact > :global([data-slot] > *:not(button)) {
+    overflow: auto;
+  }
+
+  /* In the full node view, a full-width card under the nodes. The column
+     zones' module rows do not exist here, so the span and the floor that
+     come with them are put back to plain. */
+  .node-grid:not(.compact) > :global([data-slot]) {
+    grid-row: auto;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+
+  .node-drop {
+    display: grid;
+    place-items: center;
+    min-height: 120px;
+    border: 2px dashed var(--accent, var(--ink-muted));
+    border-radius: var(--radius);
+    color: var(--ink-muted);
+    font-size: var(--text-label);
+    pointer-events: none;
   }
 
   .node-grid.compact .cluster > header {
