@@ -1009,13 +1009,14 @@ def test_a_copy_has_its_own_view_state():
     assert "export function instanceKey(key: string, id: string)" in src
     for path, keys in ((TRENDS, ("trend-metrics", "trend-events")),
                        (NETWORK, ("network-mode", "network-quiet", "network-events", "network-groups")),
-                       (CLIENTS, ("clients-range",))):
+                       (CLIENTS, ("clients-range",)),
+                       (FRONTEND / "components" / "ThermalPanel.svelte", ("thermal-hidden",))):
         c = without_comments(path.read_text())
         for k in keys:
             assert f"instanceKey('spark-dash.{k}.v1', instance)" in c, f"{path.name}: {k} is not keyed per instance"
         assert "instance?: string" in c, f"{path.name} takes no instance"
     app = without_comments(APP.read_text())
-    assert app.count("instance={id}") == 3, "App does not tell every per-instance card which instance it is"
+    assert app.count("instance={id}") == 4, "App does not tell every per-instance card which instance it is"
     assert "{@const kind = kindOf(id)}" in app and "{#if kind === '" in app, "App still dispatches on the raw id"
 
 
