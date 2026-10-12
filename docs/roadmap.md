@@ -7489,22 +7489,25 @@ and 365.5px wide.
 ### AQ — Cards beside the nodes — **shipped 2026-10-12**
 
 Brian, 2026-10-12: with compact frames spanning their members, the node row
-left a column free, "that could be used for another info card". Asked which
-card, he chose any: a place cards can be dragged to, not a fixed one.
+left space "that could be used for another info card", any card, placed by
+dragging. On his wide monitor the compact grid is eight columns and the three
+nodes take three, so the whole right half was empty.
 
-The node grid is a fourth zone, `nodes`, with the placed cards as its own
-children after the groups, so Section's drag aims among them unchanged. A
-release over it shows a "drop here" cell where the card will land, not a line.
-In compact view a placed card takes one column and the three rows the frames
-share, with `height: 0` so it never adds to the row and `min-height:
-max(100%, 160px)` so it fills what the frames decided; its content scrolls
-inside. Alone on a row it keeps 160px. In the full node view it is a
-full-width card under the nodes. No resize corner there: the row sets the
-height. The keyboard's column stepping skips the zone; a drag puts a card
-there and a drag or the full-width toggle takes it out.
+The first cut misread it: a single grid cell beside the frames, sized to
+their height. It was built and checked at 1681px, four columns, where only
+one column is free. Brian: "If the nodes span half the screen, the entire
+right half of the screen's column should be free to take a half-width card."
 
-Measured in a 1681px frame: Models, then Temperatures, dragged beside
-`danflashes` and `sparky`, each 392px wide, 225px tall from the frames' top.
+So the top of the page splits. When the compact frames need half the grid's
+columns or fewer (counted from the same breakpoints as the grid's CSS), the
+node grid takes the left half at half the column count, the same column width
+as before, and the right half is a fourth zone, `nodes`, rendered exactly like
+the page's columns: half-width cards stacked at their own heights, with the
+drop line, the empty-zone target during a drag, and the resize corner. Its
+edges match the page's right column (measured at 2560px: both 1160px wide from
+x=1281). Narrower, where the frames need more than half, cards already placed
+there show full width under the nodes. The bands leave the zone's cards out;
+the keyboard's column stepping skips it.
 
 ### J — Single-host profile (everything on one GB10)
 

@@ -308,27 +308,32 @@ def test_the_dashed_swatch_is_not_killed_by_the_inline_colour():
 
 
 def test_a_card_can_sit_beside_the_nodes():
-    """AQ (Brian, 2026-10-12): compact node frames leave columns free, and any
-    card can be dragged into them. The node grid is a zone whose cards are its
-    own children, so Section's aiming works unchanged; the bands leave those
-    cards out, or they would render twice."""
+    """AQ (Brian, 2026-10-12): when the compact node frames fit in half the
+    grid, as on a wide monitor at eight columns, the right half is a page
+    column, "beside the nodes", that takes half-width cards. The bands leave
+    those cards out, or they would render twice."""
     layout = without_comments(LAYOUT_SRC)
     assert "'nodes'" in layout[layout.index("export type Zone") :][:80], "no nodes zone"
     bands = layout[layout.index("get bands()") :]
     bands = bands[: bands.index("flush();\n    return out;")]
     assert "=== 'nodes') continue" in bands, "a card beside the nodes also renders in a band"
     app = without_comments(APP.read_text())
-    assert 'data-zone="nodes"' in app, "the node grid is not a drop zone"
-    assert "{#each layout.inZone('nodes') as id (id)}" in app
-    section = without_comments(SECTION.read_text())
-    assert "{#if zone !== 'nodes'}" in section, "the node row's card offers a height it cannot have"
+    assert "{@render zone('nodes', -1, layout.inZone('nodes'), null)}" in app, (
+        "the right half is not a zone like the page's columns"
+    )
 
 
-def test_a_card_beside_the_nodes_is_as_tall_as_the_frames():
-    """Its height comes from the frames on its row and never adds to it: a tall
-    table beside the nodes would otherwise stretch every frame to match."""
+def test_the_top_splits_only_when_the_nodes_fit_in_half():
+    """Splitting with the frames wider than half would squeeze them; the count
+    comes from the same breakpoints as the grid's CSS."""
     app = without_comments(APP.read_text())
-    rule = app[app.index(".node-grid.compact > :global([data-slot]) {") :]
-    rule = rule[: rule.index("}")]
-    assert "height: 0" in rule, "the card sizes the row instead of filling it"
-    assert "min-height: max(100%," in rule, "the card does not fill the frames' height"
+    assert "nodeSpan <= nodeCols / 2" in app
+    for bp in ("2320", "1160", "600"):
+        assert f"viewportWidth >= {bp}" in app and f"min-width: {bp}px" in app, (
+            f"the split and the grid disagree about the {bp}px breakpoint"
+        )
+    assert "style:--cols={splitTop ? nodeCols / 2 : undefined}" in app, (
+        "split nodes keep the full grid's column count and squeeze"
+    )
+    top = app[app.index("  .top.split {") :]
+    assert "repeat(2, minmax(0, 1fr))" in top[: top.index("}")]

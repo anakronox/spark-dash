@@ -995,9 +995,6 @@
       ></div>
     {/if}
 
-    <!-- No resize corner beside the nodes: the node row sets that card's
-         height, and its width is a column. -->
-    {#if zone !== 'nodes'}
     <CardGrip
       onstart={onResizeStart}
       onmove={onResizeMove}
@@ -1012,7 +1009,6 @@
       valuemax={MAX_ROWS}
       valuetext={resizeText}
     />
-    {/if}
 </div>
 
 <style>
