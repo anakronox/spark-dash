@@ -7392,7 +7392,7 @@ stored: `context_length`, speculative-decoding acceptance
 (`mtp_accepted`/`mtp_drafted`, 71% on the live server), and the latency and
 time-to-first-token histograms.
 
-### AO — Activity charts that can be read — **planned 2026-10-12**
+### AO — Activity charts that can be read — **shipped 2026-10-12**
 
 Brian, 2026-10-12: the System Activity and Network Activity charts are
 "cramped, small, and barely legible with y axes not showing much change".
@@ -7433,17 +7433,24 @@ network card: one chart per group, one line per node.
   30–80°C, GPU clock to 1800–2600MHz and flat, memory stalled to 0–20% with a
   3% stall visible; memory used stayed 0–100% because sparky sat at 10–35%
   while the pair sat at 93%.
-- [ ] **AO3. Network Activity, one chart per group.** RoCE, Management, WiFi
-  and Other each get one chart, one line per node, the node's interfaces in
-  that group added together. In is drawn above the zero line and out below it,
-  so direction is position, not dash. A linear / log switch, the log being
-  `asinh` so the mirrored negative side works: sparky's 12 Mb/s management
-  spike otherwise flattens every other line. The groups menu, events, ranges
-  and the table and ports views are unchanged.
-- [ ] **AO4. Per-interface detail stays one click away.** It already exists:
-  a row in the table view opens that interface's own chart. That becomes the
-  only per-interface chart. Errors and drops stay table columns, port state
-  stays in the ports view.
+- [x] **AO3. Network Activity, one chart per group.** Built 2026-10-12. Each
+  group shown (RoCE, Management, WiFi, Other) is one chart with one line per
+  node, the node's interfaces in that group added together (`summarise` in
+  `lib/network-history.ts`). In is drawn above the zero line and out below,
+  with the zero line marked and "in ↑ / out ↓" in the plot's corners; the axis
+  and tooltip print magnitudes. Each side reaches its own peak but keeps a
+  fifth of the height (`mirrorRange`). A linear / log switch, saved per card,
+  linear by default; log is uPlot's asinh, linear inside 1 kb/s, with
+  gridlines on decades only, thinned to 24px apart (`decadeSplits`). Fault and
+  port-state charts, which exist only when something happened, stay
+  per-interface under the group charts with the row budget the group charts
+  leave. On this cluster 11 charts became 2. On the live hour, log put all
+  three management ports in the 100 kb/s band with sparky's 10 Mb/s upload
+  below them; linear flattened them to the zero line.
+- [x] **AO4. Per-interface detail stays one click away.** Unchanged and
+  checked: a row in the table view opens that interface's own chart, in and
+  out by dash as before. Errors and drops stay table columns, port state stays
+  in the ports view.
 
 **Adding a group's interfaces together counts multicast twice, and nothing
 else.** In the hour sampled, `enp1s0f1np1` and `enP2p1s0f1np1` received the

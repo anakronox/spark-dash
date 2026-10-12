@@ -141,3 +141,31 @@ export function fitRange(
   const step = niceStep((hi - lo) / 4);
   return [Math.max(bottom, Math.floor(lo / step) * step), Math.min(top, Math.ceil(hi / step) * step)];
 }
+
+/** The y range of a mirrored chart: in above zero, out below.
+ *
+ * Each side reaches its own peak, so a link that mostly receives does not
+ * squash its incoming line to leave room for an outgoing one it never sends.
+ * But neither side shrinks below a fifth of the larger: a quiet direction is
+ * then still a line beside the zero, not a stroke on the frame. 10% headroom
+ * keeps a peak off the edge. */
+export function mirrorRange(min: number | null, max: number | null): [number, number] {
+  const up = Math.max(max ?? 0, 0);
+  const down = Math.max(-(min ?? 0), 0);
+  const big = Math.max(up, down);
+  if (!(big > 0)) return [-1, 1];
+  return [-Math.max(down, big * 0.2) * 1.1, Math.max(up, big * 0.2) * 1.1];
+}
+
+/** Gridlines for a mirrored log axis: zero, then each power of ten from
+ *  1 kb/s out to the range on both sides. uPlot's own asinh splits put a line
+ *  at every 1-9 of each decade, and their labels piled into one another. The
+ *  caller thins these to the room it has. */
+export function decadeSplits(min: number, max: number): number[] {
+  const out = [0];
+  for (let v = 1000; v <= Math.max(max, -min); v *= 10) {
+    if (v <= max) out.push(v);
+    if (-v >= min) out.unshift(-v);
+  }
+  return out;
+}

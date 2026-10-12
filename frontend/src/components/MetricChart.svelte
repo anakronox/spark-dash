@@ -23,7 +23,16 @@
   import { bitRate, siScale } from '../lib/format';
   import type { MetricSpec } from '../lib/history';
   import { DEFAULT_PLOT_PX } from '../lib/layout.svelte';
-  import { TIME_AXIS_PX, crossesDay, fitRange, stampOf, timeLabels } from '../lib/chart-grid';
+  import {
+    TIME_AXIS_PX,
+    crossesDay,
+    decadeSplits,
+    fitRange,
+    mirrorRange,
+    niceStep,
+    stampOf,
+    timeLabels,
+  } from '../lib/chart-grid';
 
   interface Props {
     metric: MetricSpec;
@@ -59,6 +68,15 @@
      *  `minSpan`. Off, or for a metric with no `minSpan`, the axis is the
      *  fixed one below. */
     fit?: boolean;
+    /** A log-like y axis (uPlot's asinh: linear near zero, logarithmic past
+     *  1 kb/s, so a mirrored chart keeps its negative side). Network Activity's
+     *  group charts only, where one 12 Mb/s spike otherwise flattens every
+     *  100 kb/s line beside it. */
+    log?: boolean;
+    /** The node each column belongs to, for its colour, when the lines are
+     *  not named after nodes. A group chart's lines are `sparky in` and
+     *  `sparky out`, two lines of one node. */
+    identities?: string[];
     /** The node this chart belongs to, named in the caption before the title,
      *  in its colour. Network Activity's interface names repeat across nodes:
      *  `enP7s7` exists on all three boxes. */
@@ -87,12 +105,15 @@
     height = DEFAULT_PLOT_PX,
     showTime = true,
     fit = false,
+    log = false,
+    identities,
     owner,
     identity,
   }: Props = $props();
 
   /** The line colour for a named column. */
-  const colourOf = (name: string) => nodeColor(slots.get(identity ?? name));
+  const colourOf = (name: string, i: number) =>
+    nodeColor(slots.get(identity ?? identities?.[i] ?? name));
 
   /** Dash pattern for a named column, empty for solid.
    *
@@ -165,7 +186,8 @@
         // nobody asks how many a port is.
         (metric.states[Math.round(v)] ?? String(v))
       : metric.si
-        ? bitRate(v)
+        ? // A mirrored chart's out side is negative only to sit below the line.
+          bitRate(metric.mirror ? Math.abs(v) : v)
         : `${Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)}${metric.unit}`;
 
   /* 11px, up from 10. These are eight small charts rather than one large one,
@@ -203,11 +225,21 @@
        Scaling each label on its own produces 0 / 500k / 1M / 1.5M / 2M, where
        the reader re-anchors at every gridline to see that the spacing is even.
        The prefix rides on the unit so the axis still says what it measures. */
+    /* A LOG AXIS IS THE EXCEPTION: its gridlines are 1k, 10k, 1M apart, and
+       one divisor would print 0.001M. Each label takes its own prefix. */
+    if (metric.si && log) {
+      return values.map((v) => {
+        const a = Math.abs(v);
+        const { div, prefix } = siScale(a);
+        const n = a / div;
+        return `${n < 10 && n % 1 ? n.toFixed(1) : n.toFixed(0)}${prefix}${metric.unit}`;
+      });
+    }
     if (metric.si) {
       const { div, prefix } = siScale(Math.max(...values.map(Math.abs), 1));
       const fine = div > 1 && values.some((v) => v !== 0 && Math.abs(v) / div < 10);
       return values.map(
-        (v) => `${(v / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`,
+        (v) => `${((metric.mirror ? Math.abs(v) : v) / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`,
       );
     }
     const d = decimalsFor(values);
@@ -273,10 +305,15 @@
     }
     // The auto-fitted case has no ceiling, so take the tallest sample instead —
     // a throughput axis reaching 1500 needs room for "1500tok/s".
-    const top =
-      ceiling ??
-      Math.max(1, ...columns.flat().filter((v): v is number => v != null && isFinite(v)));
+    const peak = Math.max(1, ...columns.flat().filter((v): v is number => v != null && isFinite(v)).map(Math.abs));
+    /* The axis runs PAST the peak: headroom, then rounded out to a step. A
+       90 kb/s peak draws a 100 kb/s gridline, and sizing the gutter for
+       "90kb/s" cut that label to "00kb/s". */
+    const headroom = log ? peak * 1.5 : peak * 1.15;
+    const top = ceiling ?? Math.ceil(headroom / niceStep(peak / 4)) * niceStep(peak / 4);
     const candidates = [0, top / 4, top / 2, (top * 3) / 4, top];
+    // A log axis labels decades, and "100kb/s" is wider than "45Mb/s".
+    if (log) candidates.push(...decadeSplits(-top, top));
     return Math.ceil(Math.max(...ticks(candidates).map(textWidth))) + AXIS_PAD;
   });
 
@@ -354,6 +391,46 @@
     ctx.restore();
   }
 
+  /** A mirrored chart's zero line, brighter than the grid: it is the divide
+   *  between the two directions. Beneath the series, like the annotations. */
+  function drawZero(u: uPlot) {
+    if (!metric.mirror) return;
+    const y = Math.round(u.valToPos(0, 'y', true)) + 0.5;
+    const ctx = u.ctx;
+    ctx.save();
+    ctx.strokeStyle = cssVar('--ink-muted');
+    ctx.globalAlpha = 0.6;
+    ctx.lineWidth = devicePixelRatio || 1;
+    ctx.beginPath();
+    ctx.moveTo(u.bbox.left, y);
+    ctx.lineTo(u.bbox.left + u.bbox.width, y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** "in" and "out" in the plot's right-hand corners, on a chip of the panel
+   *  colour so they stay readable over a line and clear of the tick labels. */
+  function drawSides(u: uPlot) {
+    if (!metric.mirror) return;
+    const ctx = u.ctx;
+    const r = devicePixelRatio || 1;
+    const right = u.bbox.left + u.bbox.width - 4 * r;
+    ctx.save();
+    ctx.font = `${10 * r}px ui-monospace, monospace`;
+    ctx.textAlign = 'right';
+    const chip = (text: string, y: number, base: CanvasTextBaseline) => {
+      const w = ctx.measureText(text).width;
+      ctx.fillStyle = cssVar('--panel');
+      ctx.fillRect(right - w - 3 * r, base === 'top' ? y - r : y - 12 * r, w + 6 * r, 13 * r);
+      ctx.fillStyle = cssVar('--ink-muted');
+      ctx.textBaseline = base;
+      ctx.fillText(text, right, y);
+    };
+    chip('in ↑', u.bbox.top + 2 * r, 'top');
+    chip('out ↓', u.bbox.top + u.bbox.height - 2 * r, 'bottom');
+    ctx.restore();
+  }
+
   function build() {
     if (!host) return;
     chart?.destroy();
@@ -394,7 +471,8 @@
         // BENEATH the series, not over them. `drawClear` fires after the canvas
         // is cleared and before anything is plotted, so the data always sits on
         // top of its own annotations.
-        drawClear: [drawAnnotations],
+        drawClear: [drawAnnotations, drawZero],
+        draw: [drawSides],
         setCursor: [
           (u: uPlot) => {
             const idx = u.cursor.idx;
@@ -413,6 +491,17 @@
                itself. The gridlines still land on 0 and 1 because the splits
                below say so — this only moves the frame outward. */
             { range: () => [-0.12, 1.12] as [number, number] }
+          : metric.mirror
+          ? log
+            ? /* asinh, not log: log has no zero and no negatives. Linear
+                 inside 1 kb/s, logarithmic past it. */
+              {
+                distr: 4,
+                asinh: 1000,
+                log: 10,
+                range: (_u, min, max) => mirrorRange(min, max).map((v) => v * 1.5) as [number, number],
+              }
+            : { range: (_u, min, max) => mirrorRange(min, max) }
           : fit && metric.minSpan
           ? /* Fitted to whatever is drawn: uPlot passes the min and max of the
                visible series, so hiding a node refits to the rest. */
@@ -458,6 +547,32 @@
              offer 0, 0.25, 0.5, 0.75, 1 — three gridlines for values a boolean
              cannot take. */
           ...(metric.states ? { splits: () => [0, 1] } : {}),
+          /* Decades only on a mirrored log axis, thinned outward from zero so
+             no two labels sit closer than 24px. */
+          ...(metric.mirror && log
+            ? {
+                splits: (u: uPlot, _i: number, min: number, max: number) => {
+                  const all = decadeSplits(min, max);
+                  const kept = [0];
+                  for (const side of [all.filter((v) => v > 0), all.filter((v) => v < 0).reverse()]) {
+                    let last = u.valToPos(0, 'y');
+                    for (const v of side) {
+                      const at = u.valToPos(v, 'y');
+                      if (Math.abs(at - last) >= 24) {
+                        kept.push(v);
+                        last = at;
+                      }
+                    }
+                  }
+                  return kept.sort((a, b) => a - b);
+                },
+                /* uPlot's default filter for a log axis blanks the splits it
+                   would not have labelled itself, as null, and a null
+                   formatted as "0b/s" on every decade but the top one. These
+                   splits are already the ones to label. */
+                filter: (_u: uPlot, splits: number[]) => splits,
+              }
+            : {}),
           /* The unit on the tick, since there is only one unit per chart now
              and it is what makes the number readable.
              DECIMALS ONLY WHEN THE SCALE IS SMALL. "50.0%" and "0.0°C" carry a
@@ -477,9 +592,9 @@
       series: [
         {},
         ...(names.length
-          ? names.map((name) => ({
+          ? names.map((name, i) => ({
               label: name,
-              stroke: colourOf(name),
+              stroke: colourOf(name, i),
               width: 2,
               dash: dashOf(name),
               points: { show: false },
@@ -517,6 +632,9 @@
       metric.key,
       names.join('|'),
       identity,
+      identities?.join('|'),
+      log,
+      metric.mirror,
       metric.dashed,
       metric.states?.join('|'),
       theme,
@@ -624,7 +742,7 @@
             <span
               class="swatch"
               class:dashed={metric.dashed === name}
-              style:background-color={colourOf(name)}
+              style:background-color={colourOf(name, i)}
             ></span>
             <span class="who">{name}</span>
             <span class="val num">{v == null ? '—' : fmt(v)}</span>

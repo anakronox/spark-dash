@@ -43,6 +43,7 @@ import {
   portIsNotable,
   pairPorts,
   ports,
+  summarise,
 } from '../../frontend/src/lib/network-history.ts';
 import { sparkPath } from '../../frontend/src/lib/sparkline.ts';
 
@@ -75,6 +76,79 @@ function dataset(spec) {
   }
   return { names, columns };
 }
+
+// ---------------------------------------------------------------- per group (AO3)
+
+/** Two nodes, two RoCE interfaces each, and one management port each. */
+function twoNodeGrid() {
+  const { names, columns } = dataset({
+    [`sparketa/enp1s0f0np0/${RX}`]: [100, 200],
+    [`sparketa/enp1s0f0np0/${TX}`]: [10, 20],
+    [`sparketa/enp1s0f1np1/${RX}`]: [1, null],
+    [`sparketa/enp1s0f1np1/${TX}`]: [2, null],
+    [`sparkjr/enp1s0f0np0/${RX}`]: [300, 400],
+    [`sparkjr/enp1s0f0np0/${TX}`]: [30, 40],
+    [`sparketa/enP7s7/${RX}`]: [5, 6],
+    [`sparketa/enP7s7/${TX}`]: [7, 8],
+  });
+  const fabric = new Set([
+    linkKey('sparketa', 'enp1s0f0np0'),
+    linkKey('sparketa', 'enp1s0f1np1'),
+    linkKey('sparkjr', 'enp1s0f0np0'),
+  ]);
+  return buildGrid(names, columns, ['sparketa', 'sparkjr'], null, true, [], fabric);
+}
+
+test('one chart per division, in division order', () => {
+  const { charts } = summarise(twoNodeGrid().groups, ['sparketa', 'sparkjr']);
+  assert.deepEqual(charts.map((c) => c.division), ['fabric', 'management']);
+  assert.deepEqual(charts.map((c) => c.metric.label), ['RoCE', 'Management']);
+  assert.deepEqual(charts.map((c) => c.links), [3, 1]);
+});
+
+test("a node's interfaces add up; in is positive and out negative", () => {
+  const [roce] = summarise(twoNodeGrid().groups, ['sparketa', 'sparkjr']).charts;
+  assert.deepEqual(roce.names, ['sparketa in', 'sparketa out', 'sparkjr in', 'sparkjr out']);
+  assert.deepEqual(roce.nodes, ['sparketa', 'sparketa', 'sparkjr', 'sparkjr']);
+  assert.deepEqual(roce.columns, [
+    [101, 200],
+    [-12, -20],
+    [300, 400],
+    [-30, -40],
+  ]);
+});
+
+test('a sample is missing only when every interface of that node is', () => {
+  const { names, columns } = dataset({
+    [`sparky/a/${RX}`]: [null, 1],
+    [`sparky/a/${TX}`]: [null, 1],
+    [`sparky/b/${RX}`]: [null, null],
+    [`sparky/b/${TX}`]: [null, null],
+  });
+  const grid = buildGrid(names, columns, ['sparky'], null, true);
+  const [chart] = summarise(grid.groups, ['sparky']).charts;
+  assert.deepEqual(chart.columns, [[null, 1], [null, -1]]);
+});
+
+test('the group chart is mirrored, in bits, and says so', () => {
+  const [roce] = summarise(twoNodeGrid().groups, ['sparketa', 'sparkjr']).charts;
+  assert.equal(roce.metric.mirror, true);
+  assert.equal(roce.metric.si, true);
+  assert.equal(roce.metric.unit, 'b/s');
+  assert.equal(roce.metric.dashed, undefined, 'direction is position now, not dash');
+});
+
+test('fault charts pass through as exceptions, never summed away', () => {
+  const { names, columns } = dataset({
+    [`sparky/enP7s7/${RX}`]: [1, 2],
+    [`sparky/enP7s7/${TX}`]: [1, 2],
+    [`sparky/enP7s7/${ERRORS}`]: [0, 3],
+  });
+  const grid = buildGrid(names, columns, ['sparky'], null, true);
+  const { charts, exceptions } = summarise(grid.groups, ['sparky']);
+  assert.equal(charts.length, 1);
+  assert.deepEqual(exceptions.map((c) => c.metric.label), ['enP7s7 faults']);
+});
 
 // ---------------------------------------------------------------- packing
 

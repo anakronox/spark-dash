@@ -51,6 +51,7 @@
     columnNode,
     pairPorts,
     ports,
+    summarise,
   } from '../lib/network-history';
   import { ColumnView } from '../lib/columns.svelte';
   import type { Port } from '../lib/network-history';
@@ -165,6 +166,9 @@
   const QUIET_KEY = instanceKey('spark-dash.network-quiet.v1', instance);
   // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
   // component: App keys each card by id, so a different instance is a different mount.
+  const LOG_KEY = instanceKey('spark-dash.network-log.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
   const EVENTS_KEY = instanceKey('spark-dash.network-events.v1', instance);
 
   const readFlag = (key: string, fallback: boolean) => {
@@ -200,6 +204,9 @@
    * wifi ports at a true zero drop out of it. */
   let includeQuiet = $state(readFlag(QUIET_KEY, false));
   let showEvents = $state(readFlag(EVENTS_KEY, true));
+  /* Linear by default: the axis then means what it says. Log is one click
+     away for the window where one spike flattens everything beside it. */
+  let logScale = $state(readFlag(LOG_KEY, false));
 
   /* Not persisted, same reasoning as the History panel: scoping to one node is
      a question you ask, not a preference you hold. */
@@ -430,6 +437,14 @@
     gridCols(Math.max(0, ...groups.map((g) => g.charts.length)), gridWidth, GRID_GAP_PX),
   );
 
+  /* CHARTS MODE IS ONE CHART PER GROUP (AO3): one line per node, in above the
+     zero line and out below. Fault and port-state charts exist only when
+     something happened, and are about one interface, so they stay
+     per-interface, under the group charts. */
+  const summary = $derived(summarise(groups, nodeIds));
+  const groupCols = $derived(gridCols(summary.charts.length, gridWidth, GRID_GAP_PX));
+  const groupRows = $derived(Math.ceil(summary.charts.length / groupCols));
+
   /* One page view per division grid, the way ThermalPanel keeps one per
      domain. `pageSize` is set from the effect below, never inside `pagesFor`,
      for the reason ThermalPanel spells out: this is called from the template.
@@ -454,13 +469,10 @@
      pager, and the reader could not page to what it holds. The floor is one
      row per division. Infinity flows through as "all". */
   $effect.pre(() => {
-    let remaining = plotRows;
-    groups.forEach((g, i) => {
-      const after = groups.length - i - 1;
-      const rows = Math.min(rowsTotal(g.charts.length), Math.max(1, remaining - after));
-      pagesFor(g.key).pageSize = rows * cols;
-      remaining -= rows;
-    });
+    /* The group charts are never paged, there are at most four. Whatever rows
+       they leave go to the exceptions under them, at least one so they keep
+       a pager. */
+    pagesFor('exceptions').pageSize = Math.max(1, plotRows - groupRows) * cols;
   });
   const rowsTotal = (n: number) => Math.ceil(n / cols);
 
@@ -624,15 +636,34 @@
            Dash rather than a second hue because colour is already carrying the
            node here, and keeping that constant is what lets one box's charts
            read as a group across the grid. -->
-      <span class="key" aria-hidden="true">
-        <span class="line solid"></span>in
-        <span class="line dash"></span>out
-      </span>
+      {#if mode === 'charts'}
+        <span class="key" aria-hidden="true">↑ in&nbsp;&nbsp;↓ out</span>
+      {:else}
+        <span class="key" aria-hidden="true">
+          <span class="line solid"></span>in
+          <span class="line dash"></span>out
+        </span>
+      {/if}
     </div>
 
     <div class="controls">
       <!-- Two words rather than an icon pair: this switches what the card IS,
            and a glyph would have to be learned. -->
+      {#if mode === 'charts'}
+        <div class="segmented" role="group" aria-label="Y axis scale">
+          {#each [false, true] as on (on)}
+            <button
+              class:active={logScale === on}
+              aria-pressed={logScale === on}
+              title={on
+                ? 'Logarithmic past 1 kb/s, so a spike does not flatten the rest'
+                : 'Linear: the height of a line is its rate'}
+              onclick={() => writeFlag(LOG_KEY, (logScale = on))}
+            >{on ? 'log' : 'linear'}</button>
+          {/each}
+        </div>
+      {/if}
+
       <div class="modes segmented" role="group" aria-label="View">
         {#each MODES as m (m)}
           <button
@@ -643,7 +674,7 @@
               ? 'One row per link — the whole cluster at once'
               : m === 'ports'
                 ? 'One row per RDMA port — state, negotiated rate and errors'
-                : 'One chart per link, on its own axis'}
+                : 'One chart per group, one line per node'}
             onclick={() => setMode(m)}
           >{m}</button>
         {/each}
@@ -755,8 +786,76 @@
            single group it still says WHICH one, and "Fabric" over four charts
            is the difference between "this is the interconnect" and "these are
            four of the interfaces". -->
-      {#each mode === 'table' ? divisions : groups as g (g.key)}
-        {@const n = 'rows' in g ? g.rows.length : g.charts.length}
+      {#if mode === 'charts'}
+        <div
+          class="charts"
+          style:--cols={groupCols}
+          data-rows-total={groupRows}
+        >
+          {#each summary.charts as c, i (c.key)}
+            {@const note = DIVISIONS.find((d) => d.key === c.division)?.note}
+            <div class="cell" title={note}>
+              <MetricChart
+                showTime={!summary.exceptions.length && onLastRow(i, summary.charts.length, groupCols)}
+                metric={{ ...c.metric, label: `${c.metric.label} · ${c.links} interface${c.links === 1 ? '' : 's'}` }}
+                {x}
+                columns={c.columns}
+                names={c.names}
+                identities={c.nodes}
+                {slots}
+                theme={themeKey}
+                syncKey="spark-dash-network"
+                annotations={showEvents ? annotations : []}
+                height={plotHeight}
+                log={logScale}
+              />
+            </div>
+          {/each}
+        </div>
+        <p class="note dim sum-note">
+          Each node's interfaces in a group are added together. A ConnectX port is two
+          interfaces, and multicast reaching it counts on both. Open the table for one
+          interface's own chart.
+        </p>
+        {#if summary.exceptions.length}
+          {@const pages = pagesFor('exceptions')}
+          <section class="division" data-division="exceptions">
+            <h3 class="division-head">
+              Faults and port changes
+              <span class="count">{summary.exceptions.length}</span>
+              <span class="note dim">interfaces with errors or drops, and RDMA ports that changed state</span>
+            </h3>
+            <div
+              class="charts"
+              style:--cols={cols}
+              data-rows-total={rowsTotal(summary.exceptions.length)}
+            >
+              {#each pages.slice(summary.exceptions) as c, i (c.key)}
+                {@const shown = pages.slice(summary.exceptions).length}
+                <div class="cell">
+                  <MetricChart
+                    owner={c.link.node}
+                    showTime={onLastRow(i, shown, cols)}
+                    metric={c.metric}
+                    {x}
+                    columns={c.columns}
+                    names={c.names}
+                    {slots}
+                    identity={c.link.node}
+                    theme={themeKey}
+                    syncKey="spark-dash-network"
+                    annotations={showEvents ? annotations : []}
+                    height={plotHeight}
+                  />
+                </div>
+              {/each}
+            </div>
+            <Pager view={pages} total={summary.exceptions.length} label="Fault and port chart pages" />
+          </section>
+        {/if}
+      {:else}
+      {#each divisions as g (g.key)}
+        {@const n = g.rows.length}
         <section class="division" data-division={g.key}>
           <h3 class="division-head">
             {g.label}
@@ -766,7 +865,7 @@
               <ColumnMenu of="Network Activity" groups={[{ label: 'Links', view: linkCols }]} />
             {/if}
           </h3>
-          {#if mode === 'table' && 'rows' in g}
+          {#if 'rows' in g}
             <NetworkTable
               label={g.label}
               rows={g.rows}
@@ -776,37 +875,10 @@
               open={openSet}
               ontoggle={toggleOpen}
             />
-          {:else if 'charts' in g}
-          {@const pages = pagesFor(g.key)}
-          <div
-            class="charts"
-            style:--cols={cols}
-            data-rows-total={rowsTotal(g.charts.length)}
-          >
-            {#each pages.slice(g.charts) as c, i (c.key)}
-              {@const shown = pages.slice(g.charts).length}
-              <div class="cell">
-                <MetricChart
-                  owner={c.link.node}
-                  showTime={onLastRow(i, shown, cols)}
-                  metric={c.metric}
-                  {x}
-                  columns={c.columns}
-                  names={c.names}
-                  {slots}
-                  identity={c.link.node}
-                  theme={themeKey}
-                  syncKey="spark-dash-network"
-                  annotations={showEvents ? annotations : []}
-                  height={plotHeight}
-                />
-              </div>
-            {/each}
-          </div>
-          <Pager view={pages} total={g.charts.length} label="{g.label} chart pages" />
           {/if}
         </section>
       {/each}
+      {/if}
     </div>
     {/if}
   {/if}
@@ -991,6 +1063,14 @@
 
   .cell {
     min-width: 0;
+  }
+
+  /* Under the group charts: what was added up, and where the per-interface
+     view went. */
+  .sum-note {
+    margin: 6px 0 0;
+    font-size: var(--text-micro);
+    max-width: 90ch;
   }
 
   .empty,

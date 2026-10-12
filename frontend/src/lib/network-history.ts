@@ -752,3 +752,93 @@ export function buildRows(
     rows: rows.filter((r) => r.division === d.key),
   }));
 }
+
+
+/* --------------------------------------------------------------- per group
+ *
+ * AO3: one chart per division, one line per node, instead of one per
+ * interface. Eleven charts on this cluster became two, and the card stops
+ * growing with the interface count. Per-interface detail is a row away in
+ * the table view, which opens that interface's own chart.
+ *
+ * ADDING A NODE'S INTERFACES COUNTS MULTICAST ONCE PER FUNCTION. Each GB10
+ * ConnectX port is two netdevs on two PCI domains, and a multicast frame
+ * reaching the port is delivered to both — checked on sparketa and sparkjr,
+ * 2026-10-12: 99% of what `enp1s0f1np1` received was multicast, and all of
+ * what `enP2p1s0f1np1` received. Unicast is not duplicated. On this cluster
+ * that is ~40 kb/s against 200 Gb/s links; the chart's note says so rather
+ * than this guessing which frames to subtract.
+ */
+
+/** One division's traffic as a single chart. */
+export interface GroupChart {
+  key: string;
+  division: Division;
+  metric: MetricSpec;
+  /** `{node} in` and `{node} out`, node by node. */
+  names: string[];
+  /** The node each column belongs to, for its colour. */
+  nodes: string[];
+  /** In as positive bits/s, out as negative. Null where no interface of that
+   *  node reported at that sample. */
+  columns: (number | null)[][];
+  /** Interfaces summed, for the caption. */
+  links: number;
+}
+
+/** Sum columns sample by sample. A sample is null only when every input is. */
+function sumColumns(cols: (number | null)[][], sign: 1 | -1): (number | null)[] {
+  const len = Math.max(0, ...cols.map((c) => c.length));
+  const out: (number | null)[] = new Array(len).fill(null);
+  for (const c of cols) {
+    c.forEach((v, i) => {
+      if (v != null) out[i] = (out[i] ?? 0) + sign * v;
+    });
+  }
+  return out;
+}
+
+/** Each division's throughput charts folded into one chart, and everything
+ *  else (fault and port-state charts, which only exist when something
+ *  happened) passed through as it was. */
+export function summarise(
+  groups: ChartGroup[],
+  nodeOrder: string[],
+): { charts: GroupChart[]; exceptions: LinkChart[] } {
+  const charts: GroupChart[] = [];
+  const exceptions: LinkChart[] = [];
+  for (const g of groups) {
+    const throughput = g.charts.filter((c) => c.key.endsWith(`${SEP}throughput`));
+    exceptions.push(...g.charts.filter((c) => !c.key.endsWith(`${SEP}throughput`)));
+    if (!throughput.length) continue;
+    const names: string[] = [];
+    const nodes: string[] = [];
+    const columns: (number | null)[][] = [];
+    const order = [...nodeOrder, ...throughput.map((c) => c.link.node).filter((n) => !nodeOrder.includes(n))];
+    for (const node of order) {
+      const mine = throughput.filter((c) => c.link.node === node);
+      if (!mine.length) continue;
+      const dir = (d: string) =>
+        mine.map((c) => c.columns[c.names.indexOf(d)]).filter((col): col is (number | null)[] => col != null);
+      names.push(`${node} in`, `${node} out`);
+      nodes.push(node, node);
+      columns.push(sumColumns(dir(DIRECTIONS.rx), 1), sumColumns(dir(DIRECTIONS.tx), -1));
+    }
+    charts.push({
+      key: `${g.key}${SEP}group`,
+      division: g.key,
+      metric: {
+        key: `${g.key}${SEP}group`,
+        label: g.label,
+        unit: 'b/s',
+        si: true,
+        mirror: true,
+      },
+      names,
+      nodes,
+      columns,
+      links: throughput.length,
+    });
+  }
+  return { charts, exceptions };
+}

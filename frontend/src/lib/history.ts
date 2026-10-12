@@ -77,6 +77,11 @@ export interface MetricSpec {
    * through the same wire, and giving them separate charts would double the
    * grid to say nothing. */
   dashed?: string;
+  /** Draw as IN above the zero line and OUT below it (AO3). The columns named
+   *  `… out` arrive negative; the axis and the tooltip print magnitudes, and
+   *  the chart marks the zero line and which side is which. Direction is then
+   *  position, which reads at any size, where a dash did not. */
+  mirror?: boolean;
 }
 
 export const METRICS: MetricSpec[] = [

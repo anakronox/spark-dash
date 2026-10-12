@@ -10,6 +10,8 @@ import {
   MIN_CHART_PX,
   crossesDay,
   fitRange,
+  mirrorRange,
+  decadeSplits,
   niceStep,
   gridCols,
   maxColsFor,
@@ -141,6 +143,26 @@ test('gridlines land on whole steps', () => {
 test('no data falls back to the full range', () => {
   assert.deepEqual(fitRange(null, null, { ceil: 300, minSpan: 50 }), [0, 300]);
   assert.deepEqual(fitRange(null, null, { minSpan: 50 }), [0, 50]);
+});
+
+test("a mirrored range reaches each side's own peak", () => {
+  assert.deepEqual(mirrorRange(-500, 1000).map((v) => Math.round(v)), [-550, 1100]);
+});
+
+test('a quiet direction keeps a fifth of the height', () => {
+  const [lo, hi] = mirrorRange(-1, 1000);
+  assert.equal(Math.round(lo), -220);
+  assert.equal(Math.round(hi), 1100);
+});
+
+test('no traffic at all is a small symmetric range, not a collapsed one', () => {
+  assert.deepEqual(mirrorRange(0, 0), [-1, 1]);
+  assert.deepEqual(mirrorRange(null, null), [-1, 1]);
+});
+
+test('decade gridlines on both sides of zero, from 1 kb/s', () => {
+  assert.deepEqual(decadeSplits(-25000, 3e6), [-10000, -1000, 0, 1000, 10000, 100000, 1000000]);
+  assert.deepEqual(decadeSplits(-500, 800), [0]);
 });
 
 console.log(`${passed}/${passed + failed} passed`);

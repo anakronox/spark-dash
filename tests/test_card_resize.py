@@ -697,18 +697,21 @@ def test_growing_restores_rows_before_it_grows_plots():
     assert "resetPlotRows(" in grow, "a fully restored grid still carries a cap"
 
 
-def test_the_row_budget_is_shared_across_a_card_s_divisions():
-    """MEASURED: a per-grid cap did not shrink the card. Fabric has exactly two
-    rows, so a cap of two cut nothing, Management's single row kept itself, and
-    the card sat at three rows however far it was dragged. Divisions take rows
-    from one budget, each reserving a row for every division after it so none
-    loses its pager."""
+def test_the_row_budget_goes_to_the_exceptions_under_the_group_charts():
+    """Network Activity draws one chart per group (AO3), at most four, and they
+    are never paged. The row budget a drag sets is spent on what is under
+    them, the fault and port-state charts, which keep at least one row so they
+    keep their pager.
+
+    It replaced a shared budget across per-interface divisions, which existed
+    because a per-grid cap did not shrink the card: Fabric had exactly two
+    rows, so a cap of two cut nothing."""
     src = without_comments(NETWORK.read_text())
-    effect = src[src.index("let remaining = plotRows") :]
-    effect = effect[: effect.index("});")]
-    assert "remaining - after" in effect, "divisions do not reserve rows for those after them"
-    assert "Math.max(1," in effect, "a division can be left with no rows and no pager"
-    assert "remaining -= rows" in effect, "the budget is not consumed as divisions take from it"
+    effect = src[src.index("pagesFor('exceptions').pageSize") :]
+    effect = effect[: effect.index(";")]
+    assert "plotRows - groupRows" in effect, "the group charts' rows are not taken off the budget"
+    assert "Math.max(1," in effect, "the exceptions can be left with no rows and no pager"
+    assert "data-rows-total={groupRows}" in src, "Section cannot count the group charts' rows"
 
     section = section_fn("measure")
     assert ".reduce(" in section and "rowsTotal" in section, (
