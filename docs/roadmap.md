@@ -7392,6 +7392,59 @@ stored: `context_length`, speculative-decoding acceptance
 (`mtp_accepted`/`mtp_drafted`, 71% on the live server), and the latency and
 time-to-first-token histograms.
 
+### AO — Activity charts that can be read — **planned 2026-10-12**
+
+Brian, 2026-10-12: the System Activity and Network Activity charts are
+"cramped, small, and barely legible with y axes not showing much change".
+
+Measured on the live dashboard at 1680px wide: each chart is 132px tall and
+65px of that is plot. The time axis takes uPlot's default 50px band and repeats
+the date on every chart, though all of them share one window and one synced
+cursor. Fixed scales flatten what is left: 45–70°C fills a third of a 0–100°C
+axis, and memory at 93% is a line along the top. Network Activity draws 11
+charts, each with a two-line caption, and tells in from out by dash alone.
+
+Mockups of every phase, drawn with uPlot from one real hour of this cluster,
+were compared side by side before choosing. Brian picked option B for the
+network card: one chart per group, one line per node.
+
+- [ ] **AO1. Reclaim the space.** One-line time axis, about 20px, with the date
+  only when the window crosses a day (24h, 7d) and in the tooltip. Time labels
+  on the bottom row of a grid only. Default height 180px, up from 132px; the
+  resize corner keeps its 80–480px range. Y ticks every ~26px, so a taller
+  chart gets more labels. Column count from a minimum chart width rather than
+  a fixed four. In the mockup this took the plot from 62% of the chart to 84%.
+- [ ] **AO2. Fitted scales with a minimum span.** Each chart fits its data
+  but never spans less than its metric's minimum (25 points for utilization,
+  20 for memory, 15°C, 50W), and never goes below zero or past the physical
+  ceiling. A climb fills the chart and a flat line stays flat. A Fit / Full
+  switch on the card; Full is today's fixed scales. Default: Fit, unless Brian
+  says otherwise.
+- [ ] **AO3. Network Activity, one chart per group.** RoCE, Management, WiFi
+  and Other each get one chart, one line per node, the node's interfaces in
+  that group added together. In is drawn above the zero line and out below it,
+  so direction is position, not dash. A linear / log switch, the log being
+  `asinh` so the mirrored negative side works: sparky's 12 Mb/s management
+  spike otherwise flattens every other line. The groups menu, events, ranges
+  and the table and ports views are unchanged.
+- [ ] **AO4. Per-interface detail stays one click away.** It already exists:
+  a row in the table view opens that interface's own chart. That becomes the
+  only per-interface chart. Errors and drops stay table columns, port state
+  stays in the ports view.
+
+**Adding a group's interfaces together counts multicast twice, and nothing
+else.** In the hour sampled, `enp1s0f1np1` and `enP2p1s0f1np1` received the
+same traffic within 3% at every sample on both nodes, which looked like one
+ConnectX port seen twice. Checked on sparketa and sparkjr, 2026-10-12: the
+four interfaces are four netdevs on two PCI domains (`0000:01:00.x`,
+`0002:01:00.x`), each with its own MAC, RDMA device and address. Each port
+delivers a multicast frame to both of its functions: 2,428,624 of the 2,446,380
+packets `enp1s0f1np1` received on sparketa were multicast, and every packet
+`enP2p1s0f1np1` received was. Unicast is not duplicated. So AO3 adds the
+interfaces as they are and says in the chart's note that multicast reaching a
+port is counted once per function; on this cluster that is about 40 kb/s
+against 200 Gb/s links.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
