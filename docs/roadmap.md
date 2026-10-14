@@ -7666,8 +7666,12 @@ need LiteLLM's virtual keys, which need a database the gateway does not have.
 So this builds on AS's callback, which can count tokens per harness and client
 as it labels them.
 
-- [ ] **AX1. Tokens in and out per harness and client,** per day, as columns on
-  the Clients card.
+- [x] **AX1. Tokens in and out per harness and client,** as columns on the
+  Clients card, over the card's own window. Built 2026-10-14: the harness
+  callback counts `gateway_harness_tokens_total` from LiteLLM's prompt and
+  completion counts on each successful request (litellm-gateway `0a530dc`),
+  and the card joins it to each row. Without the callback the columns read
+  "—", never zero.
 - [ ] **AX2. Optional budgets:** an alert when one client's tokens in a window
   pass a set figure, for the agent loop that runs all night.
 

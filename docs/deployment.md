@@ -332,7 +332,11 @@ requested_model, api_base}` and `gateway_harness_failures_total{harness,
 user_agent, client_ip, requested_model, exception_status, route}`, counting
 the same events as LiteLLM's `litellm_deployment_total_requests_total` and
 `litellm_proxy_failed_requests_metric_total`, the card counts from those
-instead, one row per harness. It knows `hermes` (Hermes Agent), `hermes-aux`
+instead, one row per harness. If it also publishes
+`gateway_harness_tokens_total` (the same labels plus `direction`, `in` or
+`out`), the card's **tokens in** and **tokens out** columns fill in; LiteLLM's
+own token counters are labelled by API key, not by client, so without it they
+read "—". It knows `hermes` (Hermes Agent), `hermes-aux`
 (its side calls, tagged and marked inferred), `opencode` and `open-webui`,
 and shows any other key as itself. An empty `harness` falls back to the
 User-Agent. If the counters started inside the card's window, the card says

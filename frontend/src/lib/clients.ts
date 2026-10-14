@@ -110,6 +110,10 @@ export interface ClientRow {
   listed?: boolean | null;
   /** What that engine does serve, when `listed` is false. */
   served?: string[] | null;
+  /** Prompt and completion tokens in the window (roadmap AX). Null without
+   *  the gateway's harness counters: LiteLLM's own cannot say which client. */
+  tokens_in?: number | null;
+  tokens_out?: number | null;
   /** Null for a request that reached no engine. `node` is null for an
    *  endpoint the gateway fronts that this dashboard does not monitor. */
   engine: { server: string; node: string | null; runtime: string | null } | null;

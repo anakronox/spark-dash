@@ -151,6 +151,9 @@ UP = 'up{job="litellm"}'
 #: cannot be split after the fact. Used whole when present, never mixed.
 HARNESS_REQUESTS = "gateway_harness_requests_total"
 HARNESS_FAILURES = "gateway_harness_failures_total"
+#: Prompt and completion tokens by client (roadmap AX). Only from the gateway's
+#: callback: LiteLLM's own token counters are labelled by API key, not client.
+HARNESS_TOKENS = "gateway_harness_tokens_total"
 
 #: What one row of the card is. `api_base` is not in it: a model's prefix
 #: names one endpoint, and the failure metric does not carry `api_base` at all.
@@ -342,6 +345,7 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
         prom.query(f"{UP} offset {window}"),
         prom.query(f"min_over_time(timestamp({UP})[{window}:15s])"),
     )
+    tokens = await prom.query(counted(HARNESS_TOKENS, f"{by_request}, direction", window)) if fingerprinted else []
     # The callback's counters start when it is switched on, so a window
     # reaching back before that counts only from then, and says so.
     began = None
@@ -363,6 +367,7 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
                 "api_base": None,
                 "requests": 0.0,
                 "per_min": 0.0,
+                "tokens": {"in": 0.0, "out": 0.0} if tokens else None,
                 "failed": 0.0,
                 "statuses": {},
                 "routes": set(),
@@ -377,6 +382,10 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
         r = row(s.labels)
         r["per_min"] += (s.points[-1][1] if s.points else 0.0) * 60
         r["api_base"] = r["api_base"] or s.labels.get("api_base") or None
+    for s in tokens:
+        r = row(s.labels)
+        if r["tokens"] is not None and s.labels.get("direction") in ("in", "out"):
+            r["tokens"][s.labels["direction"]] += s.points[-1][1] if s.points else 0.0
     for s in failures:
         value = s.points[-1][1] if s.points else 0.0
         if value <= 0:
@@ -441,6 +450,8 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
             "statuses": r["statuses"],
             "routes": routes,
             "per_min": round(r["per_min"], 2),
+            "tokens_in": round(r["tokens"]["in"]) if r["tokens"] else None,
+            "tokens_out": round(r["tokens"]["out"]) if r["tokens"] else None,
             "active": r["per_min"] > 0,
         })
     out.sort(key=lambda x: (-x["requests"], -x["failed"], x["client"]["name"] or ""))

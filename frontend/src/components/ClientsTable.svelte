@@ -12,7 +12,7 @@
 -->
 <script lang="ts">
   import { fetchWithTimeout } from '../lib/request';
-  import { num } from '../lib/format';
+  import { compact, num } from '../lib/format';
   import Pager from './Pager.svelte';
   import ColumnMenu from './ColumnMenu.svelte';
   import ColumnGrip from './ColumnGrip.svelte';
@@ -108,6 +108,8 @@
     { key: 'requests', value: (r) => r.requests },
     { key: 'rate', value: (r) => r.per_min },
     { key: 'failed', value: (r) => r.failed },
+    { key: 'tokens_in', value: (r) => r.tokens_in ?? -1 },
+    { key: 'tokens_out', value: (r) => r.tokens_out ?? -1 },
     { key: 'active', value: (r) => (r.active ? 1 : 0) },
     { key: 'listed', value: (r) => (r.listed === false ? 0 : r.listed ? 2 : 1) },
   ]);
@@ -131,6 +133,10 @@
     { key: 'requests', label: 'requests', right: true, width: 12 },
     { key: 'rate', label: 'req/min', right: true, width: 11 },
     { key: 'failed', label: 'failed', right: true, width: 10 },
+    /* Tokens per client (roadmap AX): only the gateway's harness counters
+       know which client spent them, so without those these read "—". */
+    { key: 'tokens_in', label: 'tokens in', right: true, width: 11 },
+    { key: 'tokens_out', label: 'tokens out', right: true, width: 11 },
     { key: 'active', label: 'active', width: 10 },
     /* A STALE NAME (roadmap AW): the model is not in its engine's own list.
        Off by default, and on by itself while a row has one: Hermes asked for
@@ -200,6 +206,16 @@
   {:else if c.key === 'failed'}
     <td class="{NUM} {row.failed ? 'text-warning' : 'text-ink-muted'}" title={failedTitle(row)}>
       {row.failed || '—'}
+    </td>
+  {:else if c.key === 'tokens_in' || c.key === 'tokens_out'}
+    {@const n = c.key === 'tokens_in' ? row.tokens_in : row.tokens_out}
+    <td
+      class={NUM}
+      title={n == null
+        ? 'Needs the gateway to count tokens per client'
+        : `${n.toLocaleString()} ${c.key === 'tokens_in' ? 'prompt' : 'completion'} tokens`}
+    >
+      {n == null ? '—' : compact(n)}
     </td>
   {:else if c.key === 'listed'}
     <td

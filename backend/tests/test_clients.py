@@ -425,8 +425,9 @@ class RowsProm:
     """Answers each of `client_rows`' five queries from a table."""
 
     def __init__(self, requests=(), rates=(), failures=(), scraped=True, first=1000.0,
-                 fingerprinted=False, began=None):
+                 fingerprinted=False, began=None, tokens=()):
         self.requests, self.rates, self.failures = list(requests), list(rates), list(failures)
+        self.tokens = list(tokens)
         self.scraped, self.first = scraped, first
         self.fingerprinted, self.began = fingerprinted, began
         self.asked = []
@@ -437,6 +438,8 @@ class RowsProm:
         self.asked.append(expr)
         if expr.startswith("count(last_over_time("):
             return [s({}, 3)] if self.fingerprinted else []
+        if "gateway_harness_tokens_total" in expr:
+            return self.tokens
         if expr.startswith("min_over_time(timestamp(count("):
             return [s({}, self.began)] if self.began is not None else []
         if self.fingerprinted:
@@ -629,6 +632,26 @@ class TestFingerprintedRows:
         body = rows(RowsProm(fingerprinted=True, began=began,
                              requests=[s({**HERMES, **self.BASE, "harness": "hermes"}, 1)]))
         assert body["counting_since"] == began
+
+
+class TestTokens:
+    """Roadmap AX: tokens per client, from the gateway's callback."""
+
+    BASE = {"api_base": "http://10.0.0.2:8003/v1", "requested_model": "flash/glm", "harness": "hermes"}
+
+    def test_tokens_in_and_out_join_their_row(self):
+        (row,) = rows(RowsProm(
+            fingerprinted=True,
+            requests=[s({**HERMES, **self.BASE}, 40)],
+            tokens=[s({**HERMES, **self.BASE, "direction": "in"}, 1_200_000),
+                    s({**HERMES, **self.BASE, "direction": "out"}, 35_000)],
+        ))["rows"]
+        assert (row["tokens_in"], row["tokens_out"]) == (1_200_000, 35_000)
+
+    def test_without_the_callback_tokens_are_unknown_not_zero(self):
+        (row,) = rows(RowsProm(requests=[s({**HERMES, "api_base": "http://10.0.0.2:8003/v1",
+                                            "requested_model": "flash/glm"}, 5)]))["rows"]
+        assert (row["tokens_in"], row["tokens_out"]) == (None, None)
 
 
 class TestStaleModelNames:
