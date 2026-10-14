@@ -7503,6 +7503,14 @@ an empty frame beside a cluster's header and pooled band. No maintenance
 control in that header: on a cluster it covers every member, on one node it
 would repeat the card's own.
 
+Brian, same day: the frames stopped short of a taller card beside them. The
+split top now stretches its halves to one height, and the frames give the
+extra to their cards row, not the header or band. A card slot's 16px bottom
+margin sits inside the right half's height, so the node grid takes the same
+margin and the two visible edges meet. Measured at 2560px: frames and the
+Clients card both end at 457px; with the card shorter than the nodes, the
+frames keep their natural height.
+
 ### AQ — Cards beside the nodes — **shipped 2026-10-12**
 
 Brian, 2026-10-12: with compact frames spanning their members, the node row

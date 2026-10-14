@@ -355,3 +355,16 @@ def test_a_standalone_frame_carries_a_header_and_its_own_band():
     assert "memory not pooled" in solo and "<MemoryBand" in solo
     top = app[app.index("  .top.split {") :]
     assert "repeat(2, minmax(0, 1fr))" in top[: top.index("}")]
+
+
+def test_frames_end_level_with_the_card_beside_them():
+    """In the split top, a taller card on the right stretches the node frames
+    (the stretch goes to the cards row), and the node grid carries the same
+    16px bottom margin as a card slot, so both visible edges meet."""
+    app = without_comments(APP.read_text())
+    top = app[app.index("  .top.split {") :]
+    assert "align-items: stretch" in top[: top.index("}")]
+    compact = app[app.index("  .node-grid.compact {") :]
+    assert "grid-auto-rows: auto auto 1fr" in compact[: compact.index("}")]
+    grid = app[app.index("  .top.split > .node-grid {") :]
+    assert "margin-bottom: 16px" in grid[: grid.index("}")]

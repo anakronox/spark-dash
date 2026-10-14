@@ -1151,9 +1151,13 @@
      "as many as fit", which is 3 at this container width.
      The count is a variable, `--cols`, because a group's span is capped by it
      below and a span past the column count would add implicit columns. */
+  /* Rows come in threes, header, band and cards, the subgrid each frame
+     spans. When the grid is stretched taller than its frames, the space goes
+     to the cards' row; at its natural height `1fr` is just the cards. */
   .node-grid.compact {
     --cols: 1;
     grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    grid-auto-rows: auto auto 1fr;
   }
 
 
@@ -1219,9 +1223,22 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* STRETCH, so the node frames end level with the column beside them
+     (Brian, 2026-10-14): the Clients card there is taller than the frames,
+     and the frames stopped short of it. The extra height goes to the cards'
+     row (see `grid-auto-rows` on the compact grid), so headers and bands stay
+     where they are and only the frames grow. */
   .top.split {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
+    align-items: stretch;
+  }
+
+  /* The column beside the nodes is the page's module grid, where a card's
+     span includes the 16px below it. The node grid takes the same 16px, so
+     the frames end on the card's visible edge rather than 16px past it, and
+     the space below both halves is the same. */
+  .top.split > .node-grid {
+    margin-bottom: 16px;
   }
 
   /* An empty zone is invisible until a drag needs it, as in the page's
