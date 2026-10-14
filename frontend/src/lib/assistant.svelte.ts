@@ -20,7 +20,7 @@ export interface Answer {
   answer: string;
   model: string;
   seconds: number;
-  sent: { nodes: number; alerts_firing: number; alert_episodes: number; events: number; series: number };
+  sent: { nodes: number; alerts_firing: number; alert_episodes: number; events: number; series: number; clients?: number };
   context_chars: number;
 }
 

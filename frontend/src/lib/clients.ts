@@ -132,6 +132,9 @@ export interface ClientsResponse {
   /** Set when Prometheus began scraping the gateway inside the window, so
    *  nothing before this moment was counted. Epoch seconds. */
   counting_since: number | null;
+  /** Set when the gateway's token counter began inside the window, after a
+   *  restart, so the token columns cover less time than the requests. */
+  tokens_since?: number | null;
   rows: ClientRow[];
 }
 
@@ -206,6 +209,15 @@ export function summaryText(rows: ClientRow[]): string {
 
 /** "counting since 15:17", when the window reaches back before the scrape
  *  began; otherwise nothing. */
+/** "tokens since 15:07", only when that is later than the requests' own
+ *  counting: otherwise the token columns cover the same time and it says
+ *  nothing new. */
+export function tokensNote(tokensSince: number | null | undefined, countingSince: number | null, locale?: string): string {
+  if (tokensSince == null || (countingSince != null && tokensSince <= countingSince + 60)) return '';
+  const t = new Date(tokensSince * 1000);
+  return `tokens since ${t.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
+}
+
 export function countingNote(since: number | null, locale?: string): string {
   if (since == null) return '';
   const t = new Date(since * 1000);

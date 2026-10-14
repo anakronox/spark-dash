@@ -7688,7 +7688,9 @@ as it labels them.
   callback counts `gateway_harness_tokens_total` from LiteLLM's prompt and
   completion counts on each successful request (litellm-gateway `0a530dc`),
   and the card joins it to each row. Without the callback the columns read
-  "—", never zero.
+  "—", never zero. The token counter starts with the gateway process while
+  the request counts survive a restart, so a window reaching back past one
+  says *tokens since* in the card's header and the cells' hover.
 - [ ] **AX2. Optional budgets:** an alert when one client's tokens in a window
   pass a set figure, for the agent loop that runs all night.
 
@@ -7716,6 +7718,13 @@ annotations in the window, and the series that moved. Off until configured.
   GLM-5.3-Flash through the gateway: "which node ran hottest" in 5.6 s, naming
   sparkjr's 96.4 °C at 15:21 and the alert that matched it; "is anything
   under strain" in 23.8 s.
+- [x] **AY3. Who called.** Built 2026-10-14. With client stats on, the
+  context carries the Clients card's rows for the window (harness, machine,
+  model, engine, requests, failures, tokens) and says when token counting
+  began if inside it. Attributed by the gateway's fingerprints, so no
+  per-client keys. Live: "who has been using the cluster most" answered in
+  16.3 s with Hermes Agent's 33 requests and 5.28M prompt tokens, and noted
+  that processes run on the nodes directly are outside the gateway's view.
 
 ### AZ — Considered 2026-10-14, not scheduled
 

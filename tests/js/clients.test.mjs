@@ -18,6 +18,7 @@ import {
   modelText,
   probeLine,
   rowKey,
+  tokensNote,
   sameAddress,
   stateLine,
   summaryText,
@@ -152,6 +153,13 @@ test('row keys are stable and distinct', () => {
   const aux = row({ harness: { name: 'Hermes Agent', kind: 'harness', by: 'fingerprint', detail: 'side calls' } });
   assert.equal(new Set([rowKey(row()), rowKey(hermes), rowKey(aux)]).size, 3);
   assert.notEqual(rowKey(row({ rejected: true, model: null })), rowKey(row({ model: null })));
+});
+
+test('tokens since: only when later than the request counting', () => {
+  const at = Date.parse('2026-10-14T15:07:00Z') / 1000;
+  assert.match(tokensNote(at, null, 'en-GB'), /^tokens since \d\d:\d\d$/);
+  assert.equal(tokensNote(at, at, 'en-GB'), '', 'same start: nothing new to say');
+  assert.equal(tokensNote(null, null), '');
 });
 
 let failed = 0;

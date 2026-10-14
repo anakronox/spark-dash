@@ -425,9 +425,10 @@ class RowsProm:
     """Answers each of `client_rows`' five queries from a table."""
 
     def __init__(self, requests=(), rates=(), failures=(), scraped=True, first=1000.0,
-                 fingerprinted=False, began=None, tokens=()):
+                 fingerprinted=False, began=None, tokens=(), tokens_began=None):
         self.requests, self.rates, self.failures = list(requests), list(rates), list(failures)
         self.tokens = list(tokens)
+        self.tokens_began = tokens_began
         self.scraped, self.first = scraped, first
         self.fingerprinted, self.began = fingerprinted, began
         self.asked = []
@@ -438,6 +439,8 @@ class RowsProm:
         self.asked.append(expr)
         if expr.startswith("count(last_over_time("):
             return [s({}, 3)] if self.fingerprinted else []
+        if expr.startswith("min_over_time(timestamp(count(gateway_harness_tokens_total"):
+            return [s({}, self.tokens_began)] if self.tokens_began is not None else []
         if "gateway_harness_tokens_total" in expr:
             return self.tokens
         if expr.startswith("min_over_time(timestamp(count("):
@@ -647,6 +650,17 @@ class TestTokens:
                     s({**HERMES, **self.BASE, "direction": "out"}, 35_000)],
         ))["rows"]
         assert (row["tokens_in"], row["tokens_out"]) == (1_200_000, 35_000)
+
+    def test_tokens_since_when_the_token_counter_began_inside_the_window(self):
+        import time as _t
+
+        began = _t.time() - 900
+        body = rows(RowsProm(
+            fingerprinted=True, tokens_began=began,
+            requests=[s({**HERMES, **self.BASE}, 40)],
+            tokens=[s({**HERMES, **self.BASE, "direction": "in"}, 100)],
+        ))
+        assert body["tokens_since"] == began
 
     def test_without_the_callback_tokens_are_unknown_not_zero(self):
         (row,) = rows(RowsProm(requests=[s({**HERMES, "api_base": "http://10.0.0.2:8003/v1",

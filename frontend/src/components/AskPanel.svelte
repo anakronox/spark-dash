@@ -67,7 +67,7 @@
 
   const sentText = (a: Answer) =>
     `${a.model} · ${a.seconds}s · from ${a.sent.alert_episodes} alert episodes, ${a.sent.events} events, ` +
-    `${a.sent.series} series and ${a.sent.nodes} nodes`;
+    `${a.sent.series} series, ${a.sent.clients ? `${a.sent.clients} client rows ` : ''}and ${a.sent.nodes} nodes`;
 </script>
 
 <dialog
@@ -114,8 +114,8 @@
         </button>
       </div>
       <p class="note dim">
-        {feed.status?.model ?? 'The model'} is sent this window's alerts, events and series, and the
-        cluster as it stands. It reads; it cannot act.
+        {feed.status?.model ?? 'The model'} is sent this window's alerts, events, series and clients,
+        and the cluster as it stands. It reads; it cannot act.
       </p>
       {#if busy}
         <p class="note dim">A reasoning model can take most of a minute and a half.</p>

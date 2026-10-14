@@ -132,3 +132,24 @@ def test_the_assistant_names_itself_to_the_endpoint():
     assert h["User-Agent"].startswith("spark-dash-assistant/")
     assert classify(h["User-Agent"]) == {"name": "spark-dash assistant", "kind": "harness"}
     assert "Authorization" not in assistant._headers(None)
+
+
+def test_the_context_says_who_called_and_when_tokens_began():
+    class Prom:
+        async def query(self, expr):
+            return []
+
+        async def query_range(self, expr, start, end, step):
+            return []
+
+    clients = {"tokens_since": 1e9, "rows": [{
+        "harness": {"name": "Hermes Agent", "kind": "harness", "detail": None},
+        "client": {"name": "hermes"}, "model": "danflashes/GLM", "listed": True,
+        "engine": {"node": "sparketa", "runtime": "tensorfold", "server": "x"},
+        "requests": 227, "per_min": 4.2, "failed": 0, "tokens_in": 3_200_000, "tokens_out": 9000,
+    }]}
+    text, counts = asyncio.run(assistant.gather_context(
+        Prom(), [], minutes=60, episodes=[], annotations=[], latency=None, clients=clients))
+    assert "CLIENTS through the gateway in window, busiest first (token counts only since 2001-09-09 01:46):" in text
+    assert "Hermes Agent from hermes: danflashes/GLM on sparketa tensorfold: 227 requests, 4.2/min, 0 failed, tokens 3200000 in / 9000 out" in text
+    assert counts["clients"] == 1

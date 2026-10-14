@@ -1518,11 +1518,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _latency(),
             return_exceptions=True,
         )
+        # Who called, when the gateway feature is on: the Clients card's rows
+        # for the same window. Attributed by the gateway's own fingerprints,
+        # so no per-client keys are involved.
+        clients = None
+        gateway, _ = inventory.gateway()
+        if gateway and gateway.enabled:
+            try:
+                served = await served_index(snapshot.nodes, client_names)
+                clients = await client_rows(prom, inventory.cluster_nodes(), client_names, body.minutes, served)
+            except Exception:  # noqa: BLE001 — a shorter context, not a failed answer
+                clients = None
         context, counts = await assistant.gather_context(
             prom, snapshot.nodes, minutes=body.minutes,
             episodes=[] if isinstance(episodes, BaseException) else episodes,
             annotations=[] if isinstance(notes, BaseException) else notes,
             latency=None if isinstance(lat, BaseException) else lat,
+            clients=clients,
         )
         try:
             answer = await assistant.ask(config, assistant.read_key(settings.cluster_config), body.question, context)

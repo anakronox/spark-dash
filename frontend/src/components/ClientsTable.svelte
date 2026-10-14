@@ -26,6 +26,7 @@
   import {
     clientTitle,
     countingNote,
+    tokensNote,
     engineText,
     failedTitle,
     harnessTitle,
@@ -69,6 +70,7 @@
 
   let rows = $state<ClientRow[]>([]);
   let countingSince = $state<number | null>(null);
+  let tokensSince = $state<number | null>(null);
   let error = $state<string | null>(null);
   let loaded = $state(false);
 
@@ -80,6 +82,7 @@
       const data = body as ClientsResponse;
       rows = data.rows;
       countingSince = data.counting_since;
+      tokensSince = data.tokens_since ?? null;
       error = null;
     } catch (err) {
       // Keep the last rows: a Prometheus blip should not empty the table.
@@ -151,7 +154,9 @@
   $effect(() => cols.force(rows.some((r) => r.listed === false) ? ['listed'] : []));
 
   const summary = $derived(summaryText(rows));
-  const note = $derived(countingNote(countingSince));
+  const note = $derived(
+    [countingNote(countingSince), tokensNote(tokensSince, countingSince)].filter(Boolean).join(' · '),
+  );
 
   const headers = new Map<string, HTMLElement>();
   const gripWidth = (key: string) => headers.get(key)?.getBoundingClientRect().width ?? 0;
@@ -213,7 +218,7 @@
       class={NUM}
       title={n == null
         ? 'Needs the gateway to count tokens per client'
-        : `${n.toLocaleString()} ${c.key === 'tokens_in' ? 'prompt' : 'completion'} tokens`}
+        : `${n.toLocaleString()} ${c.key === 'tokens_in' ? 'prompt' : 'completion'} tokens${tokensNote(tokensSince, countingSince) ? `, ${tokensNote(tokensSince, countingSince)}` : ''}`}
     >
       {n == null ? '—' : compact(n)}
     </td>

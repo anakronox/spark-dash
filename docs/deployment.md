@@ -304,8 +304,10 @@ Save. An **ask** button appears in the header.
 **What a question sends.** The question, and as text: every node as it stands
 (health, GPU, memory, CPU, pressure, its largest GPU processes, the models
 loaded), the alerts firing now, the alert episodes and events in the chosen
-window (1h, 6h or 24h), time to first token per model, and min/avg/max with
-the time of the peak for ten series per node. About 3.5 KB for this
+window (1h, 6h or 24h), time to first token per model, min/avg/max with the
+time of the peak for ten series per node, and, with client stats on, the
+Clients card's rows for the window: who called which model on which engine,
+how often, how many failed, and their tokens. About 3.5 KB for this
 three-node cluster over an hour. The model is sent text and returns text; it
 has no tools and nothing acts on what it says.
 
@@ -363,7 +365,9 @@ instead, one row per harness. If it also publishes
 `gateway_harness_tokens_total` (the same labels plus `direction`, `in` or
 `out`), the card's **tokens in** and **tokens out** columns fill in; LiteLLM's
 own token counters are labelled by API key, not by client, so without it they
-read "—". It knows `hermes` (Hermes Agent), `hermes-aux`
+read "—". That counter starts with the gateway process, so for a window
+reaching back past a gateway restart the header says *tokens since* the
+restart, where the request counts carry on across it. It knows `hermes` (Hermes Agent), `hermes-aux`
 (its side calls, tagged and marked inferred), `opencode`, `open-webui` and
 `spark-dash-assistant`,
 and shows any other key as itself. An empty `harness` falls back to the

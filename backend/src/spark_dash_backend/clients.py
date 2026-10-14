@@ -349,6 +349,14 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
         prom.query(f"min_over_time(timestamp({UP})[{window}:15s])"),
     )
     tokens = await prom.query(counted(HARNESS_TOKENS, f"{by_request}, direction", window)) if fingerprinted else []
+    # The token counter starts with the gateway process, so after a restart
+    # it covers less of the window than the request counts beside it, which
+    # survive a restart in `counted`. Said, rather than left to read low.
+    tokens_began = None
+    if tokens:
+        first = await prom.query(f"min_over_time(timestamp(count({HARNESS_TOKENS}))[{window}:15s])")
+        if first and first[0].points:
+            tokens_began = first[0].points[-1][1]
     # The callback's counters start when it is switched on, so a window
     # reaching back before that counts only from then, and says so.
     began = None
@@ -464,4 +472,7 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
         counting_since = first_scrape[0].points[-1][1]
     if began is not None and began > time.time() - minutes * 60 + 60:
         counting_since = max(counting_since or 0, began)
-    return {"window_minutes": minutes, "counting_since": counting_since, "rows": out}
+    tokens_since = None
+    if tokens_began is not None and tokens_began > time.time() - minutes * 60 + 60:
+        tokens_since = tokens_began
+    return {"window_minutes": minutes, "counting_since": counting_since, "tokens_since": tokens_since, "rows": out}

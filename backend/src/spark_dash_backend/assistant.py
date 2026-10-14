@@ -290,8 +290,25 @@ async def _series_summary(prom: PrometheusClient, start: float, end: float) -> l
     return sorted(lines)
 
 
+def _client_lines(clients: dict) -> list[str]:
+    """The Clients card's rows, one line each, busiest first."""
+    lines = []
+    for r in clients.get("rows", [])[:15]:
+        h = r["harness"]
+        who = h["name"] + (f" ({h['detail']})" if h.get("detail") else "")
+        engine = r.get("engine") or {}
+        where = f"{engine.get('node')} {engine.get('runtime')}" if engine.get("node") else (engine.get("server") or "no engine")
+        tokens = (f", tokens {r['tokens_in']} in / {r['tokens_out']} out"
+                  if r.get("tokens_in") is not None else "")
+        stale = ", model NOT in its engine's list" if r.get("listed") is False else ""
+        lines.append(f"{who} from {r['client']['name']}: {r.get('model') or 'no such model'} on {where}: "
+                     f"{r['requests']} requests, {r['per_min']}/min, {r['failed']} failed{tokens}{stale}")
+    return lines
+
+
 async def gather_context(prom: PrometheusClient, snapshot_nodes, *, minutes: int,
-                         episodes, annotations, latency: dict | None) -> tuple[str, dict]:
+                         episodes, annotations, latency: dict | None,
+                         clients: dict | None = None) -> tuple[str, dict]:
     """The text sent with the question, and how much of each kind went in."""
     end = time.time()
     start = end - minutes * 60
@@ -322,11 +339,19 @@ async def gather_context(prom: PrometheusClient, snapshot_nodes, *, minutes: int
             f"{m['model']}: p50 {m['p50_s']}s, p95 {m['p95_s']}s, {m['per_min']} req/min"
             for m in latency["models"] if m.get("p50_s") is not None) or "TIME TO FIRST TOKEN: no requests")
 
+    client_lines = _client_lines(clients) if clients else []
+    if clients is not None:
+        since = clients.get("tokens_since")
+        head = "CLIENTS through the gateway in window, busiest first"
+        if since:
+            head += f" (token counts only since {_clock(since)})"
+        sections.append(f"{head}:\n  " + ("\n  ".join(client_lines) or "no requests"))
+
     series = await _series_summary(prom, start, end)
     sections.append("SERIES IN WINDOW, per node min/avg/max:\n  " + ("\n  ".join(series) or "none"))
 
     counts = {"nodes": len(snapshot_nodes), "alerts_firing": len(firing), "alert_episodes": len(ep_lines),
-              "events": len(ev_lines), "series": len(series)}
+              "events": len(ev_lines), "series": len(series), "clients": len(client_lines)}
     return "\n\n".join(sections), counts
 
 
