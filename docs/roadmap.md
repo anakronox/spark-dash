@@ -7535,11 +7535,22 @@ the shape of every request since 2026-10-06, the header names, body keys and
 tool names, never content; 6,988 lines by 2026-10-10, kept in
 `/root/request-shapes/` on the gateway VM.
 
-- [ ] **AS1. The report.** Which fields tell the harnesses apart, from the
-  logged requests, with how many requests each fingerprint covers.
+- [x] **AS1. The report.** Done 2026-10-14, in litellm-gateway's
+  `docs/harness-fingerprints.md`, from 9,255 requests over two weeks. 99%
+  shared one User-Agent, `OpenAI/Python 2.24.0`. The OpenAI SDK's
+  `x-stainless-read-timeout` split them: every one of the 8,582 at 1800s
+  carried the same six tools (`tool_describe`, `tool_search`,
+  `browser_vault_list`, `terminal`, `read_file`, `patch`) and no other request
+  did, which is Hermes Agent. The 586 at 30s carried no tools and two
+  messages, from the same two machines on the same SDK build: Hermes's side
+  calls, inferred. opencode names itself. 51 requests stayed unidentified.
 - [ ] **AS2. A fingerprint table and a callback** in the gateway that labels
   each request with its harness, as a metric of its own (LiteLLM's labels
-  are fixed).
+  are fixed). Counted from the success and failure hooks, not the pre-call
+  one: those hooks also know the engine and the outcome. One machine and
+  User-Agent pair can be two harnesses (Hermes and its side calls), so
+  LiteLLM's own counters cannot be relabelled after the fact; the callback's
+  counter has to carry everything the card shows.
 - [ ] **AS3. The Clients card reads that label** when it exists and falls back
   to the User-Agent when it does not.
 
