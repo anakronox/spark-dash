@@ -111,6 +111,9 @@ test('a rejected request says so instead of naming a model', () => {
 test('harness tooltips explain the name', () => {
   assert.match(harnessTitle(row()), /^OpenAI\/Python 2\.24\.0\. A library's default/);
   assert.match(harnessTitle(row({ harness: { name: 'Anthropic-API client', kind: 'unattributed' }, user_agent: 'None' })), /drops the User-Agent/);
+  // Roadmap AS: named by the gateway from the requests, and the one inferred rule says so.
+  assert.match(harnessTitle(row({ harness: { name: 'Hermes Agent', kind: 'harness', by: 'fingerprint', detail: null, inferred: false } })), /^Recognised by the gateway from its requests' tools and headers\. User-Agent: OpenAI\/Python 2\.24\.0\.$/);
+  assert.match(harnessTitle(row({ harness: { name: 'Hermes Agent', kind: 'harness', by: 'fingerprint', detail: 'side calls', inferred: true } })), /^Inferred: requests with no tools from a machine that sent Hermes Agent requests in the last day\./);
   assert.match(harnessTitle(row({ harness: { name: 'opencode', kind: 'unknown' }, user_agent: 'opencode/1.2' })), /^opencode\/1\.2\. Not a harness/);
   assert.equal(harnessTitle(row({ harness: { name: 'Claude Code', kind: 'harness' }, user_agent: 'claude-cli/2.1.0' })), 'claude-cli/2.1.0');
 });

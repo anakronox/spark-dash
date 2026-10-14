@@ -323,6 +323,21 @@ from it:
 The engines are scraped directly either way. The gateway adds who called; it
 replaces nothing.
 
+**Naming programs that send an SDK's User-Agent.** Many agents send their
+library's default User-Agent unchanged, so the card can say "OpenAI SDK
+(Python)" but not which program. A gateway can do better from the request
+itself, its headers and tool names. If it publishes two counters,
+`gateway_harness_requests_total{harness, user_agent, client_ip,
+requested_model, api_base}` and `gateway_harness_failures_total{harness,
+user_agent, client_ip, requested_model, exception_status, route}`, counting
+the same events as LiteLLM's `litellm_deployment_total_requests_total` and
+`litellm_proxy_failed_requests_metric_total`, the card counts from those
+instead, one row per harness. It knows `hermes` (Hermes Agent), `hermes-aux`
+(its side calls, tagged and marked inferred), `opencode` and `open-webui`,
+and shows any other key as itself. An empty `harness` falls back to the
+User-Agent. If the counters started inside the card's window, the card says
+when it began counting. Without them, nothing changes.
+
 **Turning it on.** In Settings, under Clients: paste the gateway's address
 (the `…/v1` URL clients use is accepted), press Test, save, and switch it on.
 That writes a `gateway:` block to `cluster.yml`, so it needs one: a

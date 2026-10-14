@@ -89,7 +89,17 @@ export function sameAddress(draft: string, saved: string | null): boolean {
 /** One row of GET /api/clients: a client, speaking as one harness, to one
  *  model. */
 export interface ClientRow {
-  harness: { name: string; kind: 'harness' | 'sdk' | 'tool' | 'unknown' | 'unattributed' };
+  harness: {
+    name: string;
+    kind: 'harness' | 'sdk' | 'tool' | 'unknown' | 'unattributed';
+    /** `fingerprint` when the gateway recognised the program from its
+     *  requests (roadmap AS); absent when named from the User-Agent. */
+    by?: 'fingerprint';
+    /** Which part of the program: "side calls" for Hermes's untooled tasks. */
+    detail?: string | null;
+    /** Attributed by what the same machine sent recently, not by the request. */
+    inferred?: boolean;
+  };
   user_agent: string | null;
   client: { ip: string | null; node: string | null; name: string | null; fqdn: string | null };
   /** Null when `rejected`: the request named a model no gateway route matched. */
@@ -133,6 +143,11 @@ export function modelText(r: ClientRow): string {
 /** Why a harness name reads the way it does. */
 export function harnessTitle(r: ClientRow): string {
   const raw = r.user_agent && r.user_agent !== 'None' ? r.user_agent : 'no User-Agent';
+  if (r.harness.by === 'fingerprint') {
+    return r.harness.inferred
+      ? `Inferred: requests with no tools from a machine that sent ${r.harness.name} requests in the last day. User-Agent: ${raw}.`
+      : `Recognised by the gateway from its requests' tools and headers. User-Agent: ${raw}.`;
+  }
   switch (r.harness.kind) {
     case 'sdk':
       return `${raw}. A library's default User-Agent, which many programs send unchanged, so it cannot say which one; the Client column usually can.`;

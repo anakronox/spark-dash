@@ -145,9 +145,26 @@ REQUESTS = "litellm_deployment_total_requests_total"
 FAILURES = "litellm_proxy_failed_requests_metric_total"
 UP = 'up{job="litellm"}'
 
+#: The gateway's own counters, when its harness callback is on (roadmap AS2):
+#: the same events as the two above, with a `harness` label, because one
+#: machine and User-Agent pair can be two programs and LiteLLM's counters
+#: cannot be split after the fact. Used whole when present, never mixed.
+HARNESS_REQUESTS = "gateway_harness_requests_total"
+HARNESS_FAILURES = "gateway_harness_failures_total"
+
 #: What one row of the card is. `api_base` is not in it: a model's prefix
 #: names one endpoint, and the failure metric does not carry `api_base` at all.
-ROW_KEY = ("user_agent", "client_ip", "requested_model")
+ROW_KEY = ("harness", "user_agent", "client_ip", "requested_model")
+
+#: The gateway's fingerprint keys (litellm-gateway `config/harness.py`) ->
+#: (name, detail, inferred). `inferred` is a rule that attributes a request by
+#: what the same machine sent recently rather than by the request itself.
+FINGERPRINTS: dict[str, tuple[str, str | None, bool]] = {
+    "hermes": ("Hermes Agent", None, False),
+    "hermes-aux": ("Hermes Agent", "side calls", True),
+    "opencode": ("opencode", None, False),
+    "open-webui": ("Open WebUI", None, False),
+}
 
 
 def counted(metric: str, by: str, window: str) -> str:
@@ -200,6 +217,13 @@ HARNESSES: tuple[tuple[str, str, str], ...] = (
     ("python-httpx/", "httpx", "tool"),
     ("python-requests/", "requests", "tool"),
 )
+
+
+def by_fingerprint(key: str) -> dict:
+    """A harness the gateway recognised from its requests. A key this table
+    does not know yet is shown as itself rather than dropped."""
+    name, detail, inferred = FINGERPRINTS.get(key, (key, None, False))
+    return {"name": name, "kind": "harness", "by": "fingerprint", "detail": detail, "inferred": inferred}
 
 
 def classify(user_agent: str | None, route: str | None = None) -> dict:
@@ -280,15 +304,27 @@ async def endpoint_index(cluster_nodes, names: Names) -> dict[str, dict]:
 async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minutes: int) -> dict:
     """The Clients card: who called what, in the last `minutes`."""
     window = f"{minutes}m"
-    by_request = "user_agent, client_ip, api_base, requested_model"
-    by_failure = "user_agent, client_ip, requested_model, exception_status, route"
+    # The gateway's harness counters if it has published them in the window,
+    # else LiteLLM's. One source for the whole card: mixing them would count
+    # every request twice.
+    fingerprinted = bool(await prom.query(f"count(last_over_time({HARNESS_REQUESTS}[{window}]))"))
+    req_metric, fail_metric = (HARNESS_REQUESTS, HARNESS_FAILURES) if fingerprinted else (REQUESTS, FAILURES)
+    by_request = "harness, user_agent, client_ip, api_base, requested_model"
+    by_failure = "harness, user_agent, client_ip, requested_model, exception_status, route"
     requests, rates, failures, scraped_then, first_scrape = await asyncio.gather(
-        prom.query(counted(REQUESTS, by_request, window)),
-        prom.query(f"sum by ({by_request}) (rate({REQUESTS}[5m]))"),
-        prom.query(counted(FAILURES, by_failure, window)),
+        prom.query(counted(req_metric, by_request, window)),
+        prom.query(f"sum by ({by_request}) (rate({req_metric}[5m]))"),
+        prom.query(counted(fail_metric, by_failure, window)),
         prom.query(f"{UP} offset {window}"),
         prom.query(f"min_over_time(timestamp({UP})[{window}:15s])"),
     )
+    # The callback's counters start when it is switched on, so a window
+    # reaching back before that counts only from then, and says so.
+    began = None
+    if fingerprinted:
+        first = await prom.query(f"min_over_time(timestamp(count({HARNESS_REQUESTS}))[{window}:15s])")
+        if first and first[0].points:
+            began = first[0].points[-1][1]
 
     rows: dict[tuple, dict] = {}
 
@@ -296,6 +332,7 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
         key = tuple(labels.get(k, "") for k in ROW_KEY)
         if key not in rows:
             rows[key] = {
+                "harness": labels.get("harness") or None,
                 "user_agent": labels.get("user_agent") or None,
                 "client_ip": labels.get("client_ip") or None,
                 "requested_model": labels.get("requested_model") or None,
@@ -349,7 +386,8 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
         routes = sorted(r["routes"])
         rejected = r["requested_model"] == "other"
         out.append({
-            "harness": classify(r["user_agent"], routes[0] if len(routes) == 1 else None),
+            "harness": by_fingerprint(r["harness"]) if r["harness"]
+            else classify(r["user_agent"], routes[0] if len(routes) == 1 else None),
             "user_agent": r["user_agent"],
             "client": {
                 "ip": ip,
@@ -374,4 +412,6 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
     counting_since = None
     if not scraped_then and first_scrape and first_scrape[0].points:
         counting_since = first_scrape[0].points[-1][1]
+    if began is not None and began > time.time() - minutes * 60 + 60:
+        counting_since = max(counting_since or 0, began)
     return {"window_minutes": minutes, "counting_since": counting_since, "rows": out}

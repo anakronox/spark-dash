@@ -176,6 +176,7 @@
     <td class={NAME} title={harnessTitle(row)}>
       <span class:text-ink-muted={row.harness.kind === 'unattributed'}>{row.harness.name}</span>
       {#if row.harness.kind === 'sdk'}<span class={TAG}>sdk</span>{/if}
+      {#if row.harness.detail}<span class={TAG}>{row.harness.detail}</span>{/if}
     </td>
   {:else if c.key === 'client'}
     <td class={TD} title={clientTitle(row)}>{row.client.name ?? '—'}</td>

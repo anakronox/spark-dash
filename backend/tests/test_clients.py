@@ -424,13 +424,23 @@ def s(labels, value):
 class RowsProm:
     """Answers each of `client_rows`' five queries from a table."""
 
-    def __init__(self, requests=(), rates=(), failures=(), scraped=True, first=1000.0):
+    def __init__(self, requests=(), rates=(), failures=(), scraped=True, first=1000.0,
+                 fingerprinted=False, began=None):
         self.requests, self.rates, self.failures = list(requests), list(rates), list(failures)
         self.scraped, self.first = scraped, first
+        self.fingerprinted, self.began = fingerprinted, began
+        self.asked = []
 
     async def query(self, expr):
-        from spark_dash_backend.clients import FAILURES, REQUESTS
+        from spark_dash_backend.clients import FAILURES, HARNESS_FAILURES, HARNESS_REQUESTS, REQUESTS
 
+        self.asked.append(expr)
+        if expr.startswith("count(last_over_time("):
+            return [s({}, 3)] if self.fingerprinted else []
+        if expr.startswith("min_over_time(timestamp(count("):
+            return [s({}, self.began)] if self.began is not None else []
+        if self.fingerprinted:
+            REQUESTS, FAILURES = HARNESS_REQUESTS, HARNESS_FAILURES  # noqa: N806
         if expr.startswith("up{") and "offset" in expr:
             return [s({"job": "litellm"}, 1)] if self.scraped else []
         if expr.startswith("min_over_time(timestamp("):
@@ -574,6 +584,51 @@ class TestRows:
     def test_counting_since_when_the_scrape_began_inside_the_window(self):
         assert rows(RowsProm(scraped=False, first=1790685442.0))["counting_since"] == 1790685442.0
         assert rows(RowsProm(scraped=True))["counting_since"] is None
+
+
+class TestFingerprintedRows:
+    """Roadmap AS3: the gateway's harness counters, when its callback is on."""
+
+    BASE = {"api_base": "http://10.0.0.2:8003/v1", "requested_model": "flash/glm"}
+
+    def test_one_machine_and_user_agent_split_into_two_harnesses(self):
+        """Hermes and its side calls share a machine and a User-Agent; only
+        the harness label tells them apart, and each gets its own row."""
+        prom = RowsProm(
+            fingerprinted=True,
+            requests=[s({**HERMES, **self.BASE, "harness": "hermes"}, 40),
+                      s({**HERMES, **self.BASE, "harness": "hermes-aux"}, 6)],
+        )
+        body = rows(prom)
+        got = {(r["harness"]["name"], r["harness"]["detail"]): r["requests"] for r in body["rows"]}
+        assert got == {("Hermes Agent", None): 40, ("Hermes Agent", "side calls"): 6}
+        aux = next(r for r in body["rows"] if r["harness"]["detail"])
+        assert (aux["harness"]["kind"], aux["harness"]["by"], aux["harness"]["inferred"]) == ("harness", "fingerprint", True)
+        assert all("litellm_" not in q for q in prom.asked if "total" in q), "fell back to LiteLLM's counters"
+
+    def test_an_unrecognised_request_still_names_its_user_agent(self):
+        (row,) = rows(RowsProm(fingerprinted=True,
+                               requests=[s({**CLAUDE, **self.BASE, "harness": ""}, 2)]))["rows"]
+        assert row["harness"] == {"name": "Claude Code", "kind": "harness"}
+
+    def test_a_key_the_dashboard_does_not_know_is_shown_as_itself(self):
+        (row,) = rows(RowsProm(fingerprinted=True,
+                               requests=[s({**HERMES, **self.BASE, "harness": "new-agent"}, 2)]))["rows"]
+        assert row["harness"]["name"] == "new-agent"
+
+    def test_without_the_callback_it_is_litellms_counters_as_before(self):
+        prom = RowsProm(requests=[s({**HERMES, **self.BASE}, 5)])
+        (row,) = rows(prom)["rows"]
+        assert row["harness"]["name"] == "OpenAI SDK (Python)"
+        assert any("litellm_deployment_total_requests_total" in q for q in prom.asked)
+
+    def test_counting_since_when_the_callback_was_switched_on_inside_the_window(self):
+        import time as _t
+
+        began = _t.time() - 600
+        body = rows(RowsProm(fingerprinted=True, began=began,
+                             requests=[s({**HERMES, **self.BASE, "harness": "hermes"}, 1)]))
+        assert body["counting_since"] == began
 
 
 def test_the_counting_query_has_its_three_cases():

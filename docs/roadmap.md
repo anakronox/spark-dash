@@ -7523,7 +7523,7 @@ rather than withheld by a list saved before it existed; the last group cannot
 be hidden. The headline, hottest and closest to limit, still ranks every
 sensor, so a hidden group heating up names itself there before an alert does.
 
-### AS — Harness fingerprinting — **planned 2026-10-14**
+### AS — Harness fingerprinting — **built 2026-10-14**
 
 Optional, and on only where client stats (AM) are: everything here runs in the
 LiteLLM gateway, so a dashboard without one shows exactly what it shows now.
@@ -7544,15 +7544,29 @@ tool names, never content; 6,988 lines by 2026-10-10, kept in
   did, which is Hermes Agent. The 586 at 30s carried no tools and two
   messages, from the same two machines on the same SDK build: Hermes's side
   calls, inferred. opencode names itself. 51 requests stayed unidentified.
-- [ ] **AS2. A fingerprint table and a callback** in the gateway that labels
+- [x] **AS2. A fingerprint table and a callback** in the gateway that labels
   each request with its harness, as a metric of its own (LiteLLM's labels
   are fixed). Counted from the success and failure hooks, not the pre-call
   one: those hooks also know the engine and the outcome. One machine and
   User-Agent pair can be two harnesses (Hermes and its side calls), so
   LiteLLM's own counters cannot be relabelled after the fact; the callback's
-  counter has to carry everything the card shows.
-- [ ] **AS3. The Clients card reads that label** when it exists and falls back
-  to the User-Agent when it does not.
+  counter has to carry everything the card shows. Built 2026-10-14 in
+  litellm-gateway (`config/harness.py`): two counters,
+  `gateway_harness_requests_total` and `gateway_harness_failures_total`,
+  counting the events LiteLLM's request and failure counters count, with
+  LiteLLM's own labels for model (an unrecognised name is `other`), route,
+  User-Agent and client address. A request that reached no engine is not
+  counted as a request, as LiteLLM's per-engine counter does not count it.
+  Replaying the logged requests through it reproduces the report's counts;
+  the gateway's proxy test checks it in the real LiteLLM image.
+- [x] **AS3. The Clients card reads that label.** Built 2026-10-14. When the
+  gateway publishes the harness counters in the window, the card counts
+  from them, one row per harness; otherwise it uses LiteLLM's counters as
+  before, never a mix of the two. A fingerprinted name wins over the
+  User-Agent's, Hermes's side calls get a row tagged *side calls* and a hover
+  that says the attribution is inferred, and an unknown key is shown as
+  itself. If the counters began inside the window, the card says when it
+  started counting.
 
 ### AT — Latency at the top of the page — **planned 2026-10-14**
 

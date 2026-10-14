@@ -288,7 +288,11 @@ feature back on returns it to where it was. The Clients card is the first:
 - **Harness** — named from the User-Agent. An `sdk` tag means it is a
   library's default, which says which SDK and not which program; the hover
   shows the raw string. *Anthropic-API client* is a failed `/v1/messages`
-  request, which LiteLLM passes on without its User-Agent.
+  request, which LiteLLM passes on without its User-Agent. When the gateway
+  recognises the program from its requests (see
+  [client stats](deployment.md#client-stats--optional)), that name wins:
+  Hermes Agent rather than "OpenAI SDK (Python)", with its side calls on a
+  row of their own, tagged *side calls*.
 - **Client** — the machine: a node's id if it is one, else its reverse-DNS
   name, else its address. Hover for the full name and the IP. For an agent
   sending an SDK default, this is the column that says who it was, which is
