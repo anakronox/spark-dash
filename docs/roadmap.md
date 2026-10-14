@@ -7616,9 +7616,15 @@ gives energy per day, and dividing by tokens gives joules per token for a
 model on an engine, which makes "TensorFold or vLLM" a comparison with a
 number in it.
 
-- [ ] **AU1. Measure first what the power reading covers.** NVML's figure on
-  GB10 may be the GPU alone or the whole SoC; energy per token means the
-  latter, and a figure that silently meant the former would understate it.
+- [x] **AU1. Measure first what the power reading covers.** Measured on
+  sparketa 2026-10-14: NVML reports "GPU Power Readings" only, 9.65 W at
+  idle; "Module Power Readings" and every power limit read N/A, and the host
+  has no power sensors under `hwmon` or `powercap`. So no software figure here
+  covers the whole node: CPU cores, memory, NICs, storage and fans are
+  outside it. Energy per token from it is GPU energy per token, which compares
+  engines on the same hardware fairly and understates a power bill. Open:
+  label it as GPU energy, or read a wall meter (smart plug, PDU, UPS) through
+  Prometheus if one exists.
 - [ ] **AU2. kWh today and J per token** in the header beside latency, per node
   and per model on hover.
 
