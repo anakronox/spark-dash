@@ -7523,6 +7523,134 @@ rather than withheld by a list saved before it existed; the last group cannot
 be hidden. The headline, hottest and closest to limit, still ranks every
 sensor, so a hidden group heating up names itself there before an alert does.
 
+### AS — Harness fingerprinting — **planned 2026-10-14**
+
+Optional, and on only where client stats (AM) are: everything here runs in the
+LiteLLM gateway, so a dashboard without one shows exactly what it shows now.
+
+The Clients card names a harness from its User-Agent, and an agent sending an
+SDK's default reads as "OpenAI SDK (Python)" on a machine: Hermes does. A
+logger in the gateway (`request_shapes.py`, in litellm-gateway) has recorded
+the shape of every request since 2026-10-06, the header names, body keys and
+tool names, never content; 6,988 lines by 2026-10-10, kept in
+`/root/request-shapes/` on the gateway VM.
+
+- [ ] **AS1. The report.** Which fields tell the harnesses apart, from the
+  logged requests, with how many requests each fingerprint covers.
+- [ ] **AS2. A fingerprint table and a callback** in the gateway that labels
+  each request with its harness, as a metric of its own (LiteLLM's labels
+  are fixed).
+- [ ] **AS3. The Clients card reads that label** when it exists and falls back
+  to the User-Agent when it does not.
+
+### AT — Latency at the top of the page — **planned 2026-10-14**
+
+Throughput is drawn everywhere and latency nowhere, though most of it is
+already stored. Brian: possibly not a card, but a figure along the top beside
+decode tok/s.
+
+What exists, checked on the monitoring VM 2026-10-14:
+
+| source | series |
+|---|---|
+| TensorFold | `tensorfold:time_to_first_token_seconds`, `tensorfold:request_latency_seconds` (histograms) |
+| vLLM | `vllm:time_to_first_token_seconds`, `vllm:e2e_request_latency_seconds` |
+| LiteLLM, when AM is on | `litellm_llm_api_time_to_first_token_metric`, `litellm_request_total_latency_metric`, `litellm_deployment_latency_per_output_token` |
+| llama.cpp router | none: cumulative timing counters only, so an average and no percentile |
+
+- [ ] **AT1. Time to first token, p50 and p95, over the last five minutes,** in
+  the header beside decode and prefill. Per model on hover. llama.cpp traffic
+  is covered only through the gateway, and its absence says so rather than
+  reading as zero.
+- [ ] **AT2. Speculative decoding acceptance** where an engine reports it:
+  TensorFold's `mtp_accepted_total` over `mtp_drafted_total`, 71% when last
+  read.
+
+### AU — Energy per token — **planned 2026-10-14**
+
+Beside latency (AT). Power is already sampled per node, so integrating it
+gives energy per day, and dividing by tokens gives joules per token for a
+model on an engine, which makes "TensorFold or vLLM" a comparison with a
+number in it.
+
+- [ ] **AU1. Measure first what the power reading covers.** NVML's figure on
+  GB10 may be the GPU alone or the whole SoC; energy per token means the
+  latter, and a figure that silently meant the former would understate it.
+- [ ] **AU2. kWh today and J per token** in the header beside latency, per node
+  and per model on hover.
+
+### AV — Firmware from fwupdmgr alone — **planned 2026-10-14**
+
+Found 2026-10-10 while confirming the ASUS GX10 firmware updates. Two parts of
+the fleet view disagreed with what `fwupdmgr` offered:
+
+- The firmware gap compares an OEM board against NVIDIA's targets for its own
+  board (System firmware 2.155.11, Embedded controller 3.5.8). ASUS numbers
+  its firmware differently, so on a GX10 that gap never closes.
+- The platform-firmware panel reads a hand-copied table of ASUS's newest
+  bundles (`fleet/vendors.py`, checked 2026-09-07), which listed SoC firmware
+  3.0.7 while LVFS already offered 3.0.8.
+
+Brian: yes, so long as it relies only on `fwupdmgr`, no web searches or
+scrapes.
+
+- [ ] **AV1. An OEM board's firmware state is what `fwupdmgr get-devices` and
+  `get-updates` report**, and nothing else. `vendors.py` goes. NVIDIA-built
+  boards keep the OTA scoring, which is NVIDIA's own recipe for its own board.
+
+### AW — A stale model name on the Clients card — **planned 2026-10-14**
+
+Hermes asked for `danflashes/glm5.3.nvfp4` for days after the model became
+`GLM-5.3-Flash-EXL3`. TensorFold answers whatever name it is sent, so chat
+worked and nothing failed, while Hermes's context-window lookup 404'd and it
+fell back to a default window. *No such model* on the card covers the requests
+that fail; this covers the ones that succeed under an old name.
+
+- [ ] **AW1. An optional column** in the Clients card's existing column menu,
+  off by default, marking a row whose model is not in the gateway's current
+  list. The list needs `GET /v1/models` on the gateway, which takes a key, so
+  this either stores one or reads the catalog's own listing.
+
+### AX — Tokens per client — **planned 2026-10-14**
+
+Optional with AM. LiteLLM counts tokens by API key, `end_user` and model, not
+by client address or User-Agent, checked 2026-10-14. One key per harness would
+need LiteLLM's virtual keys, which need a database the gateway does not have.
+So this builds on AS's callback, which can count tokens per harness and client
+as it labels them.
+
+- [ ] **AX1. Tokens in and out per harness and client,** per day, as columns on
+  the Clients card.
+- [ ] **AX2. Optional budgets:** an alert when one client's tokens in a window
+  pass a set figure, for the agent loop that runs all night.
+
+### AY — Ask the dashboard — **planned 2026-10-14**
+
+A question box, "why was sparky slow at 9pm?", answered by a model of the
+user's choosing from what the dashboard already has: the alerts, events and
+annotations in the window, and the series that moved. Off until configured.
+
+- [ ] **AY1. Settings:** an OpenAI-compatible endpoint (an engine or the
+  gateway), port, API key, model with an auto-detect button that reads
+  `/v1/models`, and a test button. Stored server-side like the gateway's
+  address; the key never reaches the browser.
+- [ ] **AY2. The question goes through the backend,** which gathers the
+  window's context and sends it with the question. Read-only like everything
+  else: the model can be told about the cluster, never act on it.
+
+### AZ — Considered 2026-10-14, not scheduled
+
+- **Will this model fit.** Belongs to the orchestration layer. Most engines and
+  recipes stop before filling memory, vLLM included, so the dashboard would be
+  predicting a failure that announces itself.
+- **A benchmark runner.** Not needed in this app.
+- **A model inventory across nodes.** Where weights live is each user's
+  choice, so the agent alone cannot find them. Possible beside the disk stats,
+  read over SSH through the update manager (AK/AL), which already reaches
+  every node.
+- **Operator actions** (load, unload, sleep a model from the Models table).
+  Not wanted now; the dashboard stays read-only. Possible if a user asks.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
