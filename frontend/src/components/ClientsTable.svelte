@@ -109,6 +109,7 @@
     { key: 'rate', value: (r) => r.per_min },
     { key: 'failed', value: (r) => r.failed },
     { key: 'active', value: (r) => (r.active ? 1 : 0) },
+    { key: 'listed', value: (r) => (r.listed === false ? 0 : r.listed ? 2 : 1) },
   ]);
 
   $effect.pre(() => {
@@ -131,11 +132,17 @@
     { key: 'rate', label: 'req/min', right: true, width: 11 },
     { key: 'failed', label: 'failed', right: true, width: 10 },
     { key: 'active', label: 'active', width: 10 },
+    /* A STALE NAME (roadmap AW): the model is not in its engine's own list.
+       Off by default, and on by itself while a row has one: Hermes asked for
+       a retired name for days, every request answered, its context-window
+       lookup quietly failing. */
+    { key: 'listed', label: 'listed', width: 12, optional: true, signal: true },
   ];
 
   const cols = new ColumnView('clients', COLUMNS);
 
   $effect(() => dropSortWhenHidden(view, (k) => cols.isVisible(k)));
+  $effect(() => cols.force(rows.some((r) => r.listed === false) ? ['listed'] : []));
 
   const summary = $derived(summaryText(rows));
   const note = $derived(countingNote(countingSince));
@@ -193,6 +200,17 @@
   {:else if c.key === 'failed'}
     <td class="{NUM} {row.failed ? 'text-warning' : 'text-ink-muted'}" title={failedTitle(row)}>
       {row.failed || '—'}
+    </td>
+  {:else if c.key === 'listed'}
+    <td
+      class={TD}
+      title={row.listed === false
+        ? `Not in ${row.engine?.server ?? 'its engine'}'s model list. It serves: ${(row.served ?? []).join(', ')}`
+        : row.listed
+          ? 'In its engine’s model list'
+          : 'Not an engine the dashboard watches, so its list is unknown'}
+    >
+      {#if row.listed === false}<span class="text-warning"><span aria-hidden="true">▲</span> not listed</span>{:else if row.listed}<span class="text-ink-muted">listed</span>{:else}<span class="text-ink-muted">—</span>{/if}
     </td>
   {:else if c.key === 'active'}
     <!-- A glyph AND a word, like every status here: meaning never rides on

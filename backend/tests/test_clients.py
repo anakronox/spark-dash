@@ -631,6 +631,45 @@ class TestFingerprintedRows:
         assert body["counting_since"] == began
 
 
+class TestStaleModelNames:
+    """Roadmap AW: a request under a name its engine no longer lists."""
+
+    TF = {"api_base": "http://10.0.0.2:8003/v1"}
+
+    def rows(self, model, served):
+        return rows_with(RowsProm(requests=[s({**HERMES, **self.TF, "requested_model": model}, 9)]), served)
+
+    def test_a_retired_name_is_marked_and_the_served_names_come_with_it(self):
+        (row,) = self.rows("flash/glm5.3.nvfp4", {"10.0.0.2:8003": {"GLM-5.3-Flash-EXL3"}})["rows"]
+        assert (row["listed"], row["served"]) == (False, ["GLM-5.3-Flash-EXL3"])
+
+    def test_a_current_name_is_listed(self):
+        (row,) = self.rows("flash/GLM-5.3-Flash-EXL3", {"10.0.0.2:8003": {"GLM-5.3-Flash-EXL3"}})["rows"]
+        assert (row["listed"], row["served"]) == (True, None)
+
+    def test_an_engine_the_dashboard_does_not_watch_is_unknown_not_stale(self):
+        (row,) = self.rows("flash/whatever", {})["rows"]
+        assert row["listed"] is None
+
+
+def rows_with(prom, served, minutes=60):
+    return asyncio.run(client_rows(prom, parse_cluster(CLUSTER_RT), names(), minutes, served))
+
+
+def test_the_served_index_reads_routers_and_engines_and_skips_the_unnamed():
+    from types import SimpleNamespace as NS
+
+    from spark_dash_backend.clients import served_index
+
+    router = NS(endpoint="http://sparky.invalid:8001", reachable=True,
+                models=[NS(name="qwen36-35b"), NS(name="gemma4-26b")])
+    named = NS(server="10.0.0.2:8003", model="GLM-5.3-Flash-EXL3", reachable=True)
+    unnamed = NS(server="10.0.0.2:8004", model="10.0.0.2:8004", reachable=True)
+    node = NS(runtimes=NS(llama_cpp=[router], engines={"tensorfold": [named, unnamed]}))
+    got = asyncio.run(served_index([node], names()))
+    assert got == {"10.0.0.1:8001": {"qwen36-35b", "gemma4-26b"}, "10.0.0.2:8003": {"GLM-5.3-Flash-EXL3"}}
+
+
 def test_the_counting_query_has_its_three_cases():
     """The PromQL itself: existing series by increase(), new ones whole when
     the scrape was already running, and only what was seen otherwise. Its

@@ -303,6 +303,9 @@ feature back on returns it to where it was. The Clients card is the first:
 - **Engine** — *node · runtime*, joined from the gateway's `api_base` to
   `cluster.yml`, or the bare address for an endpoint this dashboard does not
   monitor.
+- **Listed** — off by default, and on by itself while a row has a model its
+  engine no longer lists: a request under a retired name that still succeeds,
+  because some engines answer any name. Hover for what the engine serves.
 - **Requests**, **req/min**, **failed**, **active** — over the window picked
   in the card's header (1h to 7d). Requests include failed attempts; failed
   breaks down by status on hover; active means something was sent in the last

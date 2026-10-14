@@ -105,6 +105,11 @@ export interface ClientRow {
   /** Null when `rejected`: the request named a model no gateway route matched. */
   model: string | null;
   rejected: boolean;
+  /** Is the model, the part after the gateway's prefix, in its engine's own
+   *  list (roadmap AW)? Null when the engine is not one the dashboard watches. */
+  listed?: boolean | null;
+  /** What that engine does serve, when `listed` is false. */
+  served?: string[] | null;
   /** Null for a request that reached no engine. `node` is null for an
    *  endpoint the gateway fronts that this dashboard does not monitor. */
   engine: { server: string; node: string | null; runtime: string | null } | null;

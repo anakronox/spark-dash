@@ -190,7 +190,12 @@ export class ColumnView {
    *  back into view. This is what the menu's checkbox reflects — a switch that
    *  flipped itself because of an alert would be a switch you cannot trust. */
   isOff(key: string): boolean {
-    return columnStore.get(this.#table).includes(key);
+    const stored = columnStore.get(this.#table);
+    return this.#optional(key) ? !stored.includes(`+${key}`) : stored.includes(key);
+  }
+
+  #optional(key: string): boolean {
+    return this.#columns.find((c) => c.key === key)?.optional ?? false;
   }
 
   /** Shown despite being switched off. The menu says so, because a column
@@ -215,9 +220,10 @@ export class ColumnView {
     // picker invites. Refused here rather than only hidden from the UI.
     if (!col || col.required) return;
     const current = columnStore.get(this.#table);
+    const stored = col.optional ? `+${key}` : key;
     columnStore.set(
       this.#table,
-      current.includes(key) ? current.filter((k) => k !== key) : [...current, key],
+      current.includes(stored) ? current.filter((k) => k !== stored) : [...current, stored],
     );
   }
 

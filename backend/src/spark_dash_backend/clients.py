@@ -301,7 +301,31 @@ async def endpoint_index(cluster_nodes, names: Names) -> dict[str, dict]:
     return index
 
 
-async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minutes: int) -> dict:
+async def served_index(snapshot_nodes, names: Names) -> dict[str, set[str]]:
+    """`ip:port` -> the model names an engine serves, from the live snapshot
+    (roadmap AW). A llama.cpp router lists every model it has a preset for,
+    loaded or not; a vLLM, SGLang or TensorFold instance reports its one model.
+    An instance that could not name its model reports its address instead,
+    and is left out rather than marking every request to it unlisted."""
+    out: dict[str, set[str]] = {}
+
+    async def add(server: str, models: set[str]) -> None:
+        host, port = _split(server)
+        out.setdefault(f"{await names.address(host)}:{port}", set()).update(models)
+
+    for node in snapshot_nodes:
+        for router in node.runtimes.llama_cpp:
+            if router.reachable and router.models:
+                await add(authority(router.endpoint), {m.name for m in router.models})
+        for instances in node.runtimes.engines.values():
+            for e in instances:
+                if e.reachable and e.server and e.model and e.model != e.server:
+                    await add(e.server, {e.model})
+    return out
+
+
+async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minutes: int,
+                      served: dict[str, set[str]] | None = None) -> dict:
     """The Clients card: who called what, in the last `minutes`."""
     window = f"{minutes}m"
     # The gateway's harness counters if it has published them in the window,
@@ -375,6 +399,7 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
         ip = r["client_ip"]
         fqdn = await names.hostname(ip) if ip else None
         engine = None
+        served_here: set[str] | None = None
         if r["api_base"]:
             host, port = _split(authority(r["api_base"]))
             key = f"{await names.address(host)}:{port}"
@@ -383,8 +408,16 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
                 "node": None,
                 "runtime": None,
             }
+            served_here = (served or {}).get(key)
         routes = sorted(r["routes"])
         rejected = r["requested_model"] == "other"
+        # IS THE NAME STILL SERVED (roadmap AW)? Asked of the engine's own list,
+        # not of whether the requests worked: TensorFold answers any name, so
+        # Hermes asked for a retired name for days with every request a 200.
+        # The part after the gateway's prefix is the engine's name for it.
+        listed = None
+        if served_here and not rejected and r["requested_model"]:
+            listed = r["requested_model"].split("/", 1)[-1] in served_here
         out.append({
             "harness": by_fingerprint(r["harness"]) if r["harness"]
             else classify(r["user_agent"], routes[0] if len(routes) == 1 else None),
@@ -399,6 +432,9 @@ async def client_rows(prom: PrometheusClient, cluster_nodes, names: Names, minut
             # was refused at the gateway and reached no engine.
             "model": None if rejected else r["requested_model"],
             "rejected": rejected,
+            "listed": listed,
+            # What the engine does serve, for the hover, only when it matters.
+            "served": sorted(served_here)[:12] if listed is False else None,
             "engine": engine,
             "requests": requests_n,
             "failed": failed_n,

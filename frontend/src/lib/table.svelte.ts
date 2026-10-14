@@ -63,6 +63,10 @@ export interface ColumnDef {
   /** Carries an alert. Switched off it comes back on its own the moment it has
    *  something to say — see ColumnView.force. */
   signal?: boolean;
+  /** Off until the reader switches it on. Stored as an explicit "+key" rather
+   *  than by absence, because absence already means on for every other
+   *  column. With `signal` it also shows itself when it has something to say. */
+  optional?: boolean;
   /** Default width, in `ch`. The starting point a reader sees before touching
    *  anything, and what double-clicking a drag handle restores.
    *

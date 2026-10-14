@@ -42,6 +42,7 @@ from spark_dash_backend.clients import (
     gateway_health,
     gateway_status,
     probe_gateway,
+    served_index,
 )
 from spark_dash_backend.cluster import (
     ClusterConfigError,
@@ -1337,7 +1338,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "rows": [],
             }
         try:
-            body = await client_rows(prom, inventory.cluster_nodes(), client_names, minutes)
+            snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+            served = await served_index(snapshot.nodes, client_names)
+            body = await client_rows(prom, inventory.cluster_nodes(), client_names, minutes, served)
         except PrometheusError as exc:
             raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
         return {"configured": True, **body}

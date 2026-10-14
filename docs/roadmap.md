@@ -7655,7 +7655,7 @@ scrapes.
   boards keep the OTA scoring, which is NVIDIA's own recipe for its own
   board.
 
-### AW — A stale model name on the Clients card — **planned 2026-10-14**
+### AW — A stale model name on the Clients card — **shipped 2026-10-14**
 
 Hermes asked for `danflashes/glm5.3.nvfp4` for days after the model became
 `GLM-5.3-Flash-EXL3`. TensorFold answers whatever name it is sent, so chat
@@ -7663,10 +7663,19 @@ worked and nothing failed, while Hermes's context-window lookup 404'd and it
 fell back to a default window. *No such model* on the card covers the requests
 that fail; this covers the ones that succeed under an old name.
 
-- [ ] **AW1. An optional column** in the Clients card's existing column menu,
-  off by default, marking a row whose model is not in the gateway's current
-  list. The list needs `GET /v1/models` on the gateway, which takes a key, so
-  this either stores one or reads the catalog's own listing.
+- [x] **AW1. An optional column** in the Clients card's column menu, off by
+  default. Built 2026-10-14, with no gateway key after all: the question is
+  asked of the ENGINE's own list, which the live snapshot already carries (a
+  llama.cpp router's presets, loaded or not; an engine instance's model). A
+  row whose model, the part after the gateway's prefix, is not in its
+  engine's list reads "not listed", with what the engine does serve on hover;
+  an engine the dashboard does not watch reads unknown, never stale. The
+  column switches itself on while any row is unlisted, as the network
+  table's fault columns do, and the menu says so. Columns could not start
+  hidden before; `optional` on a ColumnDef stores an explicit "+key" for one
+  switched on. Checked on 14 days of live traffic: Hermes's 1,506 requests
+  for `danflashes/glm5.3.nvfp4` and four from Open WebUI on the web server
+  read "not listed", every current name listed.
 
 ### AX — Tokens per client — **planned 2026-10-14**
 
