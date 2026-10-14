@@ -314,6 +314,8 @@ has no tools and nothing acts on what it says.
 the key is not in it: it is `assistant.key` beside it, owner-only, and
 Settings only ever shows whether one is set and its last four characters.
 Saving with the key field empty keeps the stored key; **Remove** deletes both.
+Its requests carry the User-Agent `spark-dash-assistant/<version>`, so through
+the gateway they show on the Clients card as "spark-dash assistant".
 
 A reasoning model can take a while: on this cluster GLM-5.3-Flash answered a
 one-hour question in 6 to 24 seconds. The backend waits up to 90.
@@ -362,7 +364,8 @@ instead, one row per harness. If it also publishes
 `out`), the card's **tokens in** and **tokens out** columns fill in; LiteLLM's
 own token counters are labelled by API key, not by client, so without it they
 read "—". It knows `hermes` (Hermes Agent), `hermes-aux`
-(its side calls, tagged and marked inferred), `opencode` and `open-webui`,
+(its side calls, tagged and marked inferred), `opencode`, `open-webui` and
+`spark-dash-assistant`,
 and shows any other key as itself. An empty `harness` falls back to the
 User-Agent. If the counters started inside the card's window, the card says
 when it began counting. Without them, nothing changes.

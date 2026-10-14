@@ -164,8 +164,16 @@ def key_hint(key: str | None) -> str | None:
 
 # --- talking to the endpoint ---------------------------------------------------
 
+#: Names the assistant on the gateway's Clients card, where it would
+#: otherwise read as httpx from the monitoring host.
+USER_AGENT = f"spark-dash-assistant/{os.environ.get('BACKEND_VERSION', 'dev')}"
+
+
 def _headers(key: str | None) -> dict:
-    return {"Authorization": f"Bearer {key}"} if key else {}
+    headers = {"User-Agent": USER_AGENT}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
 
 
 async def list_models(url: str, key: str | None) -> list[str]:

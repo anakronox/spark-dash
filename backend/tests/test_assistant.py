@@ -121,3 +121,14 @@ def test_the_context_names_what_moved_and_when():
     assert "cold-start: qwen loaded (sparky)" in text
     assert "gpu_temperature: sparky 50.0/63.7/81.0 (peak" in text
     assert counts["alert_episodes"] == 1 and counts["events"] == 1
+
+
+def test_the_assistant_names_itself_to_the_endpoint():
+    """Otherwise its requests read as httpx from the monitoring host on the
+    Clients card."""
+    from spark_dash_backend.clients import classify
+
+    h = assistant._headers("sk-1234")
+    assert h["User-Agent"].startswith("spark-dash-assistant/")
+    assert classify(h["User-Agent"]) == {"name": "spark-dash assistant", "kind": "harness"}
+    assert "Authorization" not in assistant._headers(None)

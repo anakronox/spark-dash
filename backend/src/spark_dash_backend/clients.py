@@ -167,6 +167,7 @@ FINGERPRINTS: dict[str, tuple[str, str | None, bool]] = {
     "hermes-aux": ("Hermes Agent", "side calls", True),
     "opencode": ("opencode", None, False),
     "open-webui": ("Open WebUI", None, False),
+    "spark-dash-assistant": ("spark-dash assistant", None, False),
 }
 
 
@@ -209,6 +210,8 @@ def counted(metric: str, by: str, window: str) -> str:
 #: Client column usually can); `tool` is a command-line or bare HTTP client.
 HARNESSES: tuple[tuple[str, str, str], ...] = (
     ("claude-cli/", "Claude Code", "harness"),
+    # This dashboard's own assistant (roadmap AY), asking the gateway's model.
+    ("spark-dash-assistant/", "spark-dash assistant", "harness"),
     ("AsyncOpenAI/Python", "OpenAI SDK (Python)", "sdk"),
     ("OpenAI/Python", "OpenAI SDK (Python)", "sdk"),
     ("OpenAI/JS", "OpenAI SDK (JS)", "sdk"),
