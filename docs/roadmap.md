@@ -7523,7 +7523,7 @@ rather than withheld by a list saved before it existed; the last group cannot
 be hidden. The headline, hottest and closest to limit, still ranks every
 sensor, so a hidden group heating up names itself there before an alert does.
 
-### AS — Harness fingerprinting — **built 2026-10-14** (AS4 open)
+### AS — Harness fingerprinting — **built 2026-10-14**
 
 Optional, and on only where client stats (AM) are: everything here runs in the
 LiteLLM gateway, so a dashboard without one shows exactly what it shows now.
@@ -7567,7 +7567,8 @@ tool names, never content; 6,988 lines by 2026-10-10, kept in
   that says the attribution is inferred, and an unknown key is shown as
   itself. If the counters began inside the window, the card says when it
   started counting.
-- [ ] **AS4. Log only what no rule recognised.** In the gateway, not here:
+- [x] **AS4. Log only what no rule recognised.** Built 2026-10-14
+  (litellm-gateway `4fd900f`). In the gateway, not here:
   the logger is a LiteLLM callback and only the gateway sees a request's
   headers and tools, and its lines (client address, header values, tool
   names, a system-prompt hash) are a log for the gateway's host, not data for
