@@ -47,6 +47,7 @@
     needsPassword,
     nextCheckText,
     pinnedOf,
+    PLATFORM_DEVICES,
     runProgress,
     shortFirmware,
     statusOf,
@@ -578,24 +579,26 @@
           <span class={VALUE}>
             {#if pf.state === 'nvidia-release'}
               NVIDIA-built · firmware arrives with NVIDIA's release
-            {:else if pf.newest}
-              {pf.vendor} {pf.model} bundle <span class="text-ink-2">{pf.installed || 'unknown'}</span>{pf.bios_date ? ` (BIOS ${pf.bios_date})` : ''}
-              · vendor's newest is {pf.newest.bundle}, published {pf.newest.published} ·
-              {#if pf.state === 'current'}
-                <span class="text-good">current per {pf.vendor}</span>
-              {:else if pf.state === 'behind'}
-                <span class="text-warning">newer bundle available from {pf.vendor}</span>
-              {:else if pf.state === 'newer'}
-                newer than the vendor table knows
-              {:else}
-                bundle not recognised
-              {/if}
-              <span class={DIM}>(table checked {pf.newest.checked})</span>
             {:else}
-              {pf.vendor || 'unknown vendor'}{pf.bios_version ? ` · BIOS ${pf.bios_version}` : ''} · no vendor table entry for this board
+              <!-- FROM fwupd AND THE BOARD ALONE (roadmap AV): the BIOS the
+                   board reports, its own firmware as fwupd reads it, and
+                   whether fwupd offers anything newer. -->
+              {pf.vendor || 'unknown vendor'} {pf.model}{pf.bios_version ? ` · BIOS ${pf.bios_version}` : ''}
+              {#each (pf.devices ?? []).filter((d) => PLATFORM_DEVICES.includes(d.name)) as d (d.name + d.version)}
+                · {d.name} <span class="text-ink-2">{d.version}</span>
+              {/each}
+              ·
+              {#if pf.state === 'installable'}
+                <span class="text-warning">firmware updates offered</span>
+              {:else}
+                <span class="text-good">current per fwupd</span>
+              {/if}
             {/if}
           </span>
         </div>
+        <!-- NVIDIA's baseline is its own board's: a partner numbers its
+             firmware differently, so the line is for NVIDIA-built boards. -->
+        {#if pf.state === 'nvidia-release'}
         <div class={LI}>
           <span class="text-ink-muted">NVIDIA {r.latest_name} baseline</span>
           <span class={VALUE}>
@@ -603,15 +606,13 @@
               <span class="text-good">met</span>
             {:else if fg.state === 'installable'}
               firmware updates offered — press Update
-            {:else if fg.state === 'pending-vendor'}
-              <span class="text-warning">pending {fg.vendor || 'vendor'} firmware</span>
-              · outstanding: {behindFw.map((o) => o.label).join(', ')}
             {:else}
               <span class="text-warning">pending NVIDIA firmware</span>
               · outstanding: {behindFw.map((o) => o.label).join(', ')}
             {/if}
           </span>
         </div>
+        {/if}
         {#if notReported.length}
           <div class="{DIM} mt-1">
             {notReported.map((o) => `${o.label}: not reported by this board (${shortFirmware(o.installed)})`).join(' · ')}
@@ -619,7 +620,9 @@
         {/if}
       </div>
       <p class="{DIM} mt-[10px] mb-0">
-        {#if r.available}
+        {#if pf.state !== 'nvidia-release'}
+          Release judged on software; firmware is what fwupd offers this board.
+        {:else if r.available}
           {n.name} scores as the {r.on_name} release ({r.checks_passed} of {r.checks_total} checks pass for {r.latest_name}).
         {:else}
           {r.checks_passed} of {r.checks_total} checks pass.

@@ -7628,7 +7628,7 @@ number in it.
 - [ ] **AU2. kWh today and J per token** in the header beside latency, per node
   and per model on hover.
 
-### AV — Firmware from fwupdmgr alone — **planned 2026-10-14**
+### AV — Firmware from fwupdmgr alone — **shipped 2026-10-14**
 
 Found 2026-10-10 while confirming the ASUS GX10 firmware updates. Two parts of
 the fleet view disagreed with what `fwupdmgr` offered:
@@ -7643,9 +7643,17 @@ the fleet view disagreed with what `fwupdmgr` offered:
 Brian: yes, so long as it relies only on `fwupdmgr`, no web searches or
 scrapes.
 
-- [ ] **AV1. An OEM board's firmware state is what `fwupdmgr get-devices` and
-  `get-updates` report**, and nothing else. `vendors.py` goes. NVIDIA-built
-  boards keep the OTA scoring, which is NVIDIA's own recipe for its own board.
+- [x] **AV1. An OEM board's firmware state is what `fwupdmgr get-devices` and
+  `get-updates` report**, and nothing else. Built 2026-10-14. `vendors.py` is
+  gone. On a partner board the platform line is the BIOS the board reports
+  and its own firmware as fwupd reads it (Embedded Controller, UEFI Device
+  Firmware), with "firmware updates offered" or "current per fwupd"; the
+  firmware gap is fwupd's offer; NVIDIA's firmware targets are not listed
+  against it; and the release it is on comes from its software, since the
+  scorer's detection weighs firmware checks that never pass there. The
+  "waiting on vendor firmware" state is gone with the table. NVIDIA-built
+  boards keep the OTA scoring, which is NVIDIA's own recipe for its own
+  board.
 
 ### AW — A stale model name on the Clients card — **planned 2026-10-14**
 

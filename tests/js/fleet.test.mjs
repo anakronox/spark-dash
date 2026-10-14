@@ -82,21 +82,13 @@ test('anything apt or fwupd can install is "update available"', () => {
   assert.equal(installable(spark({ reachable: false, updates: { total: 3, security: 0 } })), false);
 });
 
-test('the partner-board cases: waiting on the vendor is not neglect, a newer bundle is', () => {
-  const pending = behind({
-    firmware_gap: { state: 'pending-vendor', vendor: 'ASUS', outstanding: [{ label: 'SBIOS' }] },
-    platform_firmware: { state: 'current', vendor: 'ASUS', installed: '1.05', newest: { bundle: '1.05' } },
-  });
-  assert.deepEqual(statusOf(pending), { tone: 'warning', text: 'waiting on ASUS firmware' });
-
-  const vendorHasNewer = behind({
-    firmware_gap: { state: 'pending-vendor', vendor: 'ASUS', outstanding: [{ label: 'SBIOS' }] },
-    platform_firmware: { state: 'behind', vendor: 'ASUS', installed: '1.05', newest: { bundle: '1.07' } },
-  });
-  assert.deepEqual(statusOf(vendorHasNewer), { tone: 'warning', text: 'ASUS firmware 1.07 available' });
-
+test('only an NVIDIA-built board waits on NVIDIA firmware; a partner board is judged on fwupd (AV)', () => {
   const nvidia = behind({ firmware_gap: { state: 'pending-nvidia', outstanding: [] } });
   assert.deepEqual(statusOf(nvidia), { tone: 'warning', text: 'waiting on NVIDIA firmware' });
+  // A partner board with fwupd offering nothing and current software is not
+  // "waiting" on anyone: the vendor's numbering is not NVIDIA's.
+  const partner = spark({ firmware_gap: { state: 'current', outstanding: [] }, platform_firmware: { state: 'current', vendor: 'Asus' } });
+  assert.equal(statusOf(partner).text.includes('waiting'), false);
 });
 
 test('behind with nothing to install and no firmware excuse is held back, counted', () => {
@@ -139,17 +131,9 @@ test('current with routine updates is Ubuntu, not NVIDIA', () => {
   assert.equal(lineOf(spark()), 'no updates');
 });
 
-test('the vendor sentence changes with what the vendor has published', () => {
-  const base = {
-    firmware_gap: { state: 'pending-vendor', vendor: 'ASUS' },
-    software: { state: 'current' },
-  };
-  const current = behind({ ...base, platform_firmware: { state: 'current', vendor: 'ASUS', installed: '1.05', newest: { bundle: '1.05' } } });
-  assert.equal(lineOf(current), "software current for July 2026 · ASUS firmware 1.05 is the vendor's newest · NVIDIA July 2026 firmware pending from ASUS");
-  const newer = behind({ ...base, platform_firmware: { state: 'behind', vendor: 'ASUS', installed: '1.05', newest: { bundle: '1.07' } } });
-  assert.equal(lineOf(newer), 'software current for July 2026 · ASUS firmware 1.05, vendor has 1.07 — apply it their way · NVIDIA July 2026 firmware pending from ASUS');
-  const noTable = behind({ ...base, software: { state: 'installable' } });
-  assert.equal(lineOf(noTable), 'on March 2026 · NVIDIA July 2026 firmware pending from ASUS · nothing to install');
+test('nothing to install and behind NVIDIA on its own board says NVIDIA has not offered it', () => {
+  const pending = behind({ firmware_gap: { state: 'pending-nvidia' }, software: { state: 'current' } });
+  assert.equal(lineOf(pending), 'software current for July 2026 · NVIDIA July 2026 firmware not offered to this board yet · nothing to install');
 });
 
 // ---- AL6.1 / AL6.2: saying so when we do not actually know -------------------
@@ -327,16 +311,16 @@ test('the last-run line: passed, rehearsed, failed, back on a new boot, stopped'
 
 // ---- the header ----------------------------------------------------------------
 
-test('the summary counts what needs doing and says who is waiting on a vendor', () => {
+test('the summary counts what needs doing', () => {
   const f = {
     nodes: [
       behind({ name: 'sparky', updates: { total: 210, security: 133 } }),
-      behind({ name: 'sparkjr', firmware_gap: { state: 'pending-vendor', vendor: 'ASUS' } }),
+      spark({ name: 'sparkjr' }),
       spark({ name: 'sparketa' }),
     ],
     clusters: [], last_sweep: null, next_sweep: null,
   };
-  assert.equal(summaryOf(f), '3 Sparks · 1 has updates · 1 waiting on vendor firmware · last checked —');
+  assert.equal(summaryOf(f), '3 Sparks · 1 has updates · last checked —');
   assert.equal(summaryOf({ nodes: [] }), 'no Sparks yet');
 });
 

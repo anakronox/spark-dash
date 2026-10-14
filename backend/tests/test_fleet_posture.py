@@ -12,7 +12,6 @@ import unittest
 from pathlib import Path
 
 from spark_dash_backend.fleet import posture
-from spark_dash_backend.fleet.vendors import platform_firmware
 
 HERE = Path(__file__).resolve().parent
 INPUTS = HERE / "fleet-collector-inputs"
@@ -43,31 +42,48 @@ def build(node: str) -> dict:
 
 @unittest.skipUnless(INPUTS.exists(), "fixtures not present")
 class PartnerBoards(unittest.TestCase):
-    """ASUS GX10 on the vendor's newest bundle, which is NVIDIA's April baseline."""
+    """ASUS GX10s, judged on what fwupd offers them (roadmap AV)."""
 
-    def test_asus_boards_wait_on_the_vendor_not_on_themselves(self):
+    def test_partner_firmware_comes_from_fwupd_alone(self):
+        for node in ("sparky", "sparkjr"):
+            p = build(node)
+            pf = p["platform_firmware"]
+            with self.subTest(node=node):
+                self.assertEqual(pf["vendor"], "Asus")
+                self.assertEqual(pf["state"], "current", "fwupd offered nothing in these captures")
+                self.assertEqual(p["firmware_gap"]["state"], "current")
+                self.assertEqual(p["firmware_gap"]["outstanding"], [])
+                self.assertIn("Embedded Controller", {d["name"] for d in pf["devices"]})
+                self.assertNotIn("newest", pf, "no vendor table: nothing from outside the board")
+
+    def test_nvidia_targets_are_not_listed_against_a_partner_board(self):
+        """ASUS numbers its firmware differently; NVIDIA's 2.155.11 against
+        the GX10's 2.152.15 was a gap that never closed."""
+        for node in ("sparky", "sparkjr"):
+            with self.subTest(node=node):
+                self.assertNotIn("firmware", {b["kind"] for b in build(node)["release"]["behind"]})
+
+    def test_a_partner_board_is_on_the_release_its_software_matches(self):
         for node in ("sparky", "sparkjr"):
             p = build(node)
             with self.subTest(node=node):
-                self.assertEqual(p["platform_firmware"]["vendor"], "ASUS")
-                self.assertEqual(p["platform_firmware"]["installed"], "0105")
-                self.assertEqual(p["platform_firmware"]["state"], "current")
-                self.assertEqual(p["firmware_gap"]["state"], "pending-vendor")
-                names = {o["name"] for o in p["firmware_gap"]["outstanding"]}
-                self.assertTrue({"SOCFW", "EC"} <= names, names)
+                self.assertEqual(p["release"]["on"], p["software"]["on"])
 
-    def test_tpm_is_not_reported_rather_than_behind(self):
-        p = build("sparkjr")
-        not_reported = {o["name"]: o for o in p["firmware_gap"]["not_reported"]}
-        self.assertIn("TPM", not_reported)
-        self.assertEqual(not_reported["TPM"]["installed"], "SOCTS")
-        self.assertNotIn("TPM", {o["name"] for o in p["firmware_gap"]["outstanding"]})
+    def test_firmware_fwupd_offers_is_installable(self):
+        offer = (
+            '{"Devices": [{"Name": "UEFI Device Firmware", "Vendor": "Asus", "Version": "0x03000007",'
+            ' "Flags": ["updatable", "needs-reboot"], "Releases": [{"Version": "0x03000008", "Size": 30411545}]}]}'
+        )
+        p = posture.build({"name": "sparky", "host": "sparky"}, {**facts_for("sparky"), "fwupd_updates": offer}, RECIPES)
+        self.assertEqual(p["platform_firmware"]["state"], "installable")
+        self.assertEqual(p["firmware_gap"]["state"], "installable")
+        self.assertEqual(p["firmware_updates"][0]["after"], "3.0.8")
 
-    def test_nvidia_board_is_never_vendor_blocked(self):
+    def test_nvidia_board_keeps_nvidias_release_check(self):
         p = build("sparketa")
         self.assertEqual(p["platform_firmware"]["vendor"], "NVIDIA")
         self.assertEqual(p["platform_firmware"]["state"], "nvidia-release")
-        self.assertNotEqual(p["firmware_gap"]["state"], "pending-vendor")
+        self.assertIn(p["firmware_gap"]["state"], ("current", "installable", "pending-nvidia"))
 
     def test_software_line_is_judged_without_firmware(self):
         for node in ("sparky", "sparkjr", "sparketa"):
@@ -87,33 +103,6 @@ class PartnerBoards(unittest.TestCase):
         missing = {f["name"] for f in sw["missing"]}
         if missing:
             self.assertNotEqual(sw["on"], "OTA1.1")
-
-    def test_old_fact_files_without_product_still_match_the_vendor(self):
-        p = platform_firmware("ASUSTeK COMPUTER INC.", "", "", "")
-        self.assertEqual((p["vendor"], p["state"], p["installed"]), ("ASUS", "unknown", None))
-
-
-class VendorTable(unittest.TestCase):
-    def test_asus_current_behind_newer(self):
-        cur = platform_firmware("ASUSTeK COMPUTER INC.", "GX10", "GX10DGX.0105.2026.0505.1153", "05/05/2026")
-        self.assertEqual((cur["vendor"], cur["installed"], cur["state"]), ("ASUS", "0105", "current"))
-        old = platform_firmware("ASUSTeK COMPUTER INC.", "GX10", "GX10DGX.0104.2026.0401.0900", "04/01/2026")
-        self.assertEqual(old["state"], "behind")
-        new = platform_firmware("ASUSTeK COMPUTER INC.", "GX10", "GX10DGX.0106.2026.1001.0900", "10/01/2026")
-        self.assertEqual(new["state"], "newer")
-
-    def test_unparseable_bios_is_unknown_not_behind(self):
-        p = platform_firmware("ASUSTeK COMPUTER INC.", "GX10", "", "")
-        self.assertEqual(p["state"], "unknown")
-        self.assertEqual(p["vendor"], "ASUS")
-
-    def test_nvidia_and_unlisted_partner(self):
-        fe = platform_firmware("NVIDIA", "NVIDIA_DGX_Spark", "5.36_0ACUM027", "08/06/2025")
-        self.assertEqual(fe["state"], "nvidia-release")
-        other = platform_firmware("Dell Inc.", "Pro Max with GB10", "1.2.3", "01/01/2026")
-        self.assertEqual(other["state"], "unknown")
-        self.assertEqual(other["vendor"], "Dell")
-        self.assertIsNone(other["newest"])
 
 
 class HeldPackages(unittest.TestCase):

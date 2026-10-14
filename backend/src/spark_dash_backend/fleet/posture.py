@@ -22,7 +22,6 @@ from .otascore import (
     parse_fwupd_devices,
     summary,
 )
-from .vendors import platform_firmware
 
 _INST = re.compile(r"^Inst (\S+)(?: \[([^\]]*)\])? \(([^ )]+) ([^)]*)\)")
 _SUMMARY = re.compile(r"(\d+) upgraded, (\d+) newly installed, (\d+) to remove")
@@ -100,16 +99,71 @@ _FW_NAMES = {"SOCFW": "System firmware", "EC": "Embedded controller", "EC Unfuse
 _VERSIONISH = re.compile(r"\d+\.\d+")
 
 
+def parse_fwupd_device_list(text: str) -> list[dict]:
+    """`fwupdmgr get-devices --json` -> the devices fwupd can update, with the
+    version each reports. What a partner board's firmware line shows."""
+    try:
+        data = json.loads(text) if text.strip() else {}
+    except json.JSONDecodeError:
+        return []
+    out = []
+    for dev in data.get("Devices", []):
+        if "updatable" not in (dev.get("Flags") or []) or not dev.get("Version"):
+            continue
+        out.append({"name": dev.get("Name", "device"), "version": _hexver(dev["Version"]),
+                    "vendor": dev.get("Vendor", "")})
+    return out
+
+
+#: fwupd's names for the board's own firmware, as GX10 and DGX Spark report it.
+PLATFORM_DEVICES = ("Embedded Controller", "UEFI Device Firmware")
+
+
+def _platform(facts: dict, is_fe: bool, devices: list[dict], fw_updates: list[dict]) -> dict:
+    """The board, its BIOS as it reports it, and its firmware as fwupd sees it.
+
+    FROM fwupdmgr AND THE BOARD ALONE (roadmap AV, Brian 2026-10-14: "so long
+    as it relies only on data from fwupdmgr and not any outside web searches or
+    scrapes"). A partner board's state was once read against a hand-copied
+    table of the vendor's newest bundles, which lagged: it listed ASUS SoC
+    firmware 3.0.7 while LVFS already offered 3.0.8. fwupd's own offer is the
+    current answer for the board it runs on.
+
+    `state`: nvidia-release (an NVIDIA-built board, whose firmware is NVIDIA's
+    release), installable (fwupd offers firmware) or current."""
+    base = {"board_vendor": (facts.get("board_vendor") or "").strip(),
+            "product": (facts.get("product_name") or "").strip(),
+            "bios_version": (facts.get("bios_version") or "").strip(),
+            "bios_date": (facts.get("bios_date") or "").strip(),
+            "devices": devices}
+    if is_fe:
+        return {**base, "vendor": "NVIDIA", "model": "DGX Spark Founders Edition", "state": "nvidia-release"}
+    # The board's own firmware names its vendor. fwupd also lists Microsoft's
+    # Secure Boot databases, the SSD and the ConnectX card, none of which say
+    # who built the board.
+    vendor = next((d["vendor"] for d in devices if d["vendor"] and d["name"] in PLATFORM_DEVICES), "") \
+        or (base["board_vendor"].split() or ["unknown"])[0].title()
+    return {**base, "vendor": vendor, "model": base["product"],
+            "state": "installable" if fw_updates else "current"}
+
+
 def _firmware_gap(latest_score, fw_updates: list[dict], is_fe: bool, platform: dict) -> dict:
     """NVIDIA's firmware baseline against this board, and who can close the gap.
 
-    The three states that matter to a person, kept apart on purpose:
+    ONLY ON AN NVIDIA-BUILT BOARD. NVIDIA's targets are its own board's
+    versions; a partner numbers its firmware differently (the ASUS GX10's
+    system firmware read 2.152.15 against NVIDIA's 2.155.11 while fwupd had
+    nothing older to offer), so on a partner board the gap never closed and
+    read as "waiting on the vendor" for ever. There, firmware is what fwupd
+    offers: installable or current.
+
+    On an NVIDIA-built board:
       installable     fwupd is offering firmware — press Update
-      pending-vendor  a partner board with nothing offered: the vendor has not
-                      published NVIDIA's newer firmware yet. Not "outdated".
-      pending-nvidia  an NVIDIA-built board with nothing offered — NVIDIA has
-                      not pushed it to this board yet
-    plus `current` when every firmware check passes."""
+      pending-nvidia  nothing offered — NVIDIA has not pushed it to this board
+      current         every firmware check passes"""
+    if not is_fe:
+        return {"state": "installable" if fw_updates else "current", "vendor": platform.get("vendor"),
+                "outstanding": [], "not_reported": []}
     outstanding, not_reported = [], []
     for r in latest_score.firmware_results:
         if r.passed:
@@ -125,8 +179,6 @@ def _firmware_gap(latest_score, fw_updates: list[dict], is_fe: bool, platform: d
         state = "current"
     elif fw_updates:
         state = "installable"
-    elif not is_fe:
-        state = "pending-vendor"
     else:
         state = "pending-nvidia"
     return {"state": state, "vendor": platform.get("vendor"), "outstanding": outstanding,
@@ -186,6 +238,9 @@ def build(node: dict, facts: dict, recipes_dir: Path) -> dict:
         if r.passed:
             continue
         kind = "firmware" if r in latest_score.firmware_results else "software" if r in latest_score.software_results else "package"
+        # NVIDIA's firmware targets are its own board's; see _firmware_gap.
+        if kind == "firmware" and not nf.is_nvidia_fe:
+            continue
         behind.append({"kind": kind, "name": r.name, "label": _FW_NAMES.get(r.name, r.name),
                        "installed": r.found or None, "target": r.expected})
 
@@ -206,10 +261,19 @@ def build(node: dict, facts: dict, recipes_dir: Path) -> dict:
     inhibitors_block = [l for l in facts.get("inhibitors", "").splitlines() if l.strip().endswith("block")]
 
     fw_updates = parse_fwupd_updates(facts.get("fwupd_updates", ""))
-    platform = platform_firmware(facts.get("board_vendor", ""), facts.get("product_name", ""),
-                                 facts.get("bios_version", ""), facts.get("bios_date", ""))
+    platform = _platform(facts, nf.is_nvidia_fe, parse_fwupd_device_list(facts.get("fwupd_devices", "")), fw_updates)
     gap = _firmware_gap(latest_score, fw_updates, nf.is_nvidia_fe, platform)
     software = _software(scores, latest_score, total)
+
+    # WHICH RELEASE A PARTNER BOARD IS ON comes from its software alone. The
+    # scorer weighs NVIDIA's firmware checks into detection, and those never
+    # pass on a partner board, so it read sparky as April's release with its
+    # packages already July's. On an NVIDIA-built board the scorer's answer
+    # stands: its firmware is part of the release.
+    on_recipe, available = detected.recipe, bool(avail["available"])
+    if not nf.is_nvidia_fe:
+        on_recipe = next((r for r in recipes if r.name == software["on"]), detected.recipe)
+        available = on_recipe.name != latest.name
 
     return {
         "name": node["name"], "host": node["host"], "reachable": True,
@@ -223,10 +287,10 @@ def build(node: dict, facts: dict, recipes_dir: Path) -> dict:
         "firmware_gap": gap,
         "kernel": facts.get("kernel"), "driver": facts.get("driver"), "boot_id": facts.get("boot_id"),
         "release": {
-            "on": detected.recipe.name, "on_name": detected.recipe.external_name,
-            "on_date": detected.recipe.release_date_str[:10],
+            "on": on_recipe.name, "on_name": on_recipe.external_name,
+            "on_date": on_recipe.release_date_str[:10],
             "latest": latest.name, "latest_name": latest.external_name, "latest_date": latest.release_date_str[:10],
-            "available": bool(avail["available"]),
+            "available": available,
             "description": latest.description, "release_notes_url": latest.release_notes_url,
             "checks_passed": latest_score.passed_checks, "checks_total": latest_score.total_checks,
             "behind": behind,

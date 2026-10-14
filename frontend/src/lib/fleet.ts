@@ -70,18 +70,24 @@ export interface FleetSoftware {
   missing?: { name: string }[];
 }
 
+/** The board and its firmware as fwupd reports it, and nothing from outside
+ *  the board (roadmap AV). `installable`: fwupd offers firmware for it. */
 export interface PlatformFirmware {
-  state: 'current' | 'behind' | 'newer' | 'unknown' | 'nvidia-release' | string;
+  state: 'current' | 'installable' | 'nvidia-release' | string;
   vendor?: string;
   model?: string;
-  installed?: string | null;
   bios_version?: string;
   bios_date?: string;
-  newest?: { bundle: string; published: string; checked: string } | null;
+  devices?: { name: string; version: string; vendor: string }[];
 }
 
+/** fwupd's names for the board's own firmware, the ones its line shows. */
+export const PLATFORM_DEVICES = ['Embedded Controller', 'UEFI Device Firmware'];
+
 export interface FirmwareGap {
-  state: 'current' | 'installable' | 'pending-vendor' | 'pending-nvidia' | string;
+  /** `pending-nvidia` only on an NVIDIA-built board: NVIDIA's baseline is
+   *  that board's, and a partner board is judged on fwupd's offer instead. */
+  state: 'current' | 'installable' | 'pending-nvidia' | string;
   vendor?: string | null;
   outstanding?: FirmwareGapItem[];
   not_reported?: FirmwareGapItem[];
@@ -279,18 +285,9 @@ export function statusOf(n: FleetNode, now: number = Date.now()): FleetStatus {
   if (n.reachable == null) return { tone: '', text: 'not checked yet' };
   if (n.firmware_readable === false) return { tone: 'warning', text: "can't check firmware" };
   const fg = n.firmware_gap;
-  const pf = n.platform_firmware;
   if (installable(n)) return { tone: 'warning', text: 'update available' };
   if (n.release?.available) {
-    // Nothing to install, yet not on the latest: say WHO is holding it up,
-    // so a partner board that is as current as its vendor allows is not read
-    // as neglected.
-    if (fg?.state === 'pending-vendor' && pf?.state === 'behind' && pf.newest) {
-      return { tone: 'warning', text: `${pf.vendor} firmware ${pf.newest.bundle} available` };
-    }
-    if (fg?.state === 'pending-vendor') {
-      return { tone: 'warning', text: `waiting on ${fg.vendor} firmware` };
-    }
+    // Nothing to install, yet not on the latest: say what is holding it up.
     if (fg?.state === 'pending-nvidia') {
       return { tone: 'warning', text: 'waiting on NVIDIA firmware' };
     }
@@ -363,24 +360,11 @@ export function lineOf(n: FleetNode, now: number = Date.now()): string {
   const cnt = u.total != null ? `${u.total} updates, ${u.security} security` : 'counting…';
   if (n.release.available && !u.total && !(n.firmware_updates ?? []).length) {
     const fg = n.firmware_gap ?? { state: 'current' };
-    const pf = n.platform_firmware ?? { state: 'unknown' };
     const sw = n.software ?? { state: 'unknown' };
     const swTxt =
       sw.state === 'current'
         ? `software current for ${n.release.latest_name}`
         : `on ${n.release.on_name}`;
-    if (fg.state === 'pending-vendor' && pf.newest) {
-      const vend =
-        pf.state === 'current'
-          ? `${pf.vendor} firmware ${pf.installed} is the vendor's newest`
-          : pf.state === 'behind'
-            ? `${pf.vendor} firmware ${pf.installed}, vendor has ${pf.newest.bundle} — apply it their way`
-            : `${pf.vendor} firmware ${pf.installed || 'unknown'}`;
-      return `${swTxt} · ${vend} · NVIDIA ${n.release.latest_name} firmware pending from ${pf.vendor}${age}`;
-    }
-    if (fg.state === 'pending-vendor') {
-      return `${swTxt} · NVIDIA ${n.release.latest_name} firmware pending from ${fg.vendor || 'the board vendor'} · nothing to install${age}`;
-    }
     if (fg.state === 'pending-nvidia') {
       return `${swTxt} · NVIDIA ${n.release.latest_name} firmware not offered to this board yet · nothing to install${age}`;
     }
@@ -578,19 +562,11 @@ export function summaryOf(f: Fleet): string {
   const nodes = f.nodes;
   if (!nodes.length) return 'no Sparks yet';
   const withUpd = nodes.filter(installable).length;
-  const waitingFw = nodes.filter(
-    (n) =>
-      n.reachable &&
-      n.release?.available &&
-      !installable(n) &&
-      n.firmware_gap?.state === 'pending-vendor',
-  ).length;
   const updating = nodes.filter((n) => n.run).length;
   return [
     plural(nodes.length, 'Spark'),
     updating ? `${updating} updating` : '',
     `${withUpd} ${withUpd === 1 ? 'has' : 'have'} updates`,
-    waitingFw ? `${waitingFw} waiting on vendor firmware` : '',
     `last checked ${clockOf(f.last_sweep)}`,
   ]
     .filter(Boolean)
