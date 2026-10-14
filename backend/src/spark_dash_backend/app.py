@@ -62,6 +62,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
+from spark_dash_backend.latency import latency
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
     MaintenanceService,
@@ -1306,6 +1307,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await gateway_status(inventory, prom)
 
     client_names = Names()
+
+    @app.get("/api/latency")
+    async def api_latency() -> dict:
+        """Time to first token per model, for the header (roadmap AT)."""
+        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+        engines: dict[str, dict] = {}
+        for node in snapshot.nodes:
+            for runtime, instances in node.runtimes.engines.items():
+                for e in instances:
+                    if e.server:
+                        engines[e.server] = {"model": e.model, "node": node.node_id, "runtime": runtime}
+        gateway, _ = inventory.gateway()
+        try:
+            return await latency(prom, engines, bool(gateway and gateway.enabled))
+        except PrometheusError as exc:
+            raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
 
     @app.get("/api/clients")
     async def api_clients(minutes: int = Query(60, ge=5, le=60 * 24 * 30)) -> dict:

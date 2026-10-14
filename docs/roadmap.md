@@ -7578,7 +7578,7 @@ tool names, never content; 6,988 lines by 2026-10-10, kept in
   callback instead of two, and nothing to switch on when a new program
   appears; the Clients card already shows it, named by its User-Agent.
 
-### AT — Latency at the top of the page — **planned 2026-10-14**
+### AT — Latency at the top of the page — **shipped 2026-10-14**
 
 Throughput is drawn everywhere and latency nowhere, though most of it is
 already stored. Brian: possibly not a card, but a figure along the top beside
@@ -7593,13 +7593,21 @@ What exists, checked on the monitoring VM 2026-10-14:
 | LiteLLM, when AM is on | `litellm_llm_api_time_to_first_token_metric`, `litellm_request_total_latency_metric`, `litellm_deployment_latency_per_output_token` |
 | llama.cpp router | none: cumulative timing counters only, so an average and no percentile |
 
-- [ ] **AT1. Time to first token, p50 and p95, over the last five minutes,** in
-  the header beside decode and prefill. Per model on hover. llama.cpp traffic
-  is covered only through the gateway, and its absence says so rather than
-  reading as zero.
-- [ ] **AT2. Speculative decoding acceptance** where an engine reports it:
-  TensorFold's `mtp_accepted_total` over `mtp_drafted_total`, 71% when last
-  read.
+- [x] **AT1. Time to first token, p50 and p95,** in the header beside decode
+  tok/s. Built 2026-10-14. Over 15 minutes, not five: agent traffic here
+  comes in bursts, and at five the header read "idle" through most of a
+  working session. Each engine instance gets its own quantiles from its own
+  histogram, never pooled, since the engines' bucket boundaries differ; the
+  instance is named by its model from the live snapshot, which TensorFold's
+  series do not carry. The gateway's histogram fills in only for a model no
+  engine measures (llama.cpp), so no request is measured twice. The header
+  shows the busiest model, a fixed width so "idle" and a figure do not shift
+  the facts after it, and every model in the hover. `GET /api/latency`.
+  First reading, live: GLM-5.3-Flash-EXL3 on TensorFold, p50 1.58s, p95
+  2.41s, at 1.08 requests a minute.
+- [x] **AT2. Speculative decoding acceptance** in the same hover, accepted
+  draft tokens over drafted, from TensorFold's `mtp_*` and vLLM's
+  `spec_decode_*` counters: 58% over the same 15 minutes.
 
 ### AU — Energy per token — **planned 2026-10-14**
 

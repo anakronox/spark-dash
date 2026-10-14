@@ -25,6 +25,8 @@
   import { pageFocus } from './lib/focus.svelte';
   import { AlertFeed, endMaintenance, timeLeft } from './lib/alerts.svelte';
   import { FleetFeed } from './lib/fleet.svelte';
+  import { LatencyFeed } from './lib/latency.svelte';
+  import { latencyTitle, seconds } from './lib/latency';
   import { ClientsFeed } from './lib/clients.svelte';
   import ClientsTable from './components/ClientsTable.svelte';
   import type { MaintenanceWindow } from './lib/alerts.svelte';
@@ -43,6 +45,8 @@
   /* Client stats (roadmap AM). Polled from the start: whether the Clients
      card is on the page depends on it. */
   const clientsFeed = new ClientsFeed();
+  /* Time to first token for the header (roadmap AT). */
+  const latencyFeed = new LatencyFeed();
   let historyOpen = $state(false);
   let settingsOpen = $state(false);
   let fleetOpen = $state(false);
@@ -81,11 +85,13 @@
     alertFeed.start();
     fleetFeed.start();
     clientsFeed.start();
+    latencyFeed.start();
     return () => {
       feed.close();
       alertFeed.stop();
       fleetFeed.stop();
       clientsFeed.stop();
+      latencyFeed.stop();
     };
   });
 
@@ -527,6 +533,21 @@
           <div class={FACT}>
             <dt class={DT}>decode tok/s</dt>
             <dd class="{DD} {VALUE}">{num(cluster.tokensPerSec, 1)}</dd>
+          </div>
+          <!-- TIME TO FIRST TOKEN beside decode (roadmap AT): the busiest
+               model's p50, its p95 after. Every model is in the hover. A
+               fixed minimum width, because "idle" and "1.5s p95 2.5s" differ
+               by nine characters and everything after would jump. -->
+          <div class={FACT} title={latencyTitle(latencyFeed.latest)}>
+            <dt class={DT}>first token</dt>
+            <dd class="{DD} min-w-[13ch]">
+              {#if latencyFeed.latest?.busiest}
+                <span class={NUM}>{seconds(latencyFeed.latest.busiest.p50_s)}</span>
+                <span class={MUTED}>p95</span> <span class={NUM}>{seconds(latencyFeed.latest.busiest.p95_s)}</span>
+              {:else}
+                <span class={MUTED}>idle</span>
+              {/if}
+            </dd>
           </div>
           <div class={FACT}>
             <dt class={DT}>largest free block</dt>

@@ -63,6 +63,7 @@ recorded series are written against. The collector is shared (one spec of metric
 names per engine); the wire is per-engine. `kv_cache_pct` is null for an engine
 that reports no occupancy — see [metrics](metrics.md#sglang-per-instance--same-shape-different-names).
 | `GET /api/history?metric=&node=&from=&to=&step=` | Time-series for trend charts; thin PromQL wrapper |
+| `GET /api/latency` | Time to first token per model, p50 and p95 over 15 minutes, with speculative-decoding acceptance; the header's busiest model |
 | `GET /health` | Liveness + self-assessment, for the external UptimeKuma check |
 
 `/health` is deliberately more than a bare `200 OK` — it reports **degraded**
@@ -238,7 +239,7 @@ node frames, then the cards, each full width or in one of two columns:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ spark-dash  decode tok/s · largest free block · nodes up · prefill   │
+│ spark-dash  decode tok/s · first token · free block · nodes · prefill│
 ├──────────────────────────────────────────────────────────────────────┤
 │ ┌ DANFLASHES · 2 nodes pooled ───────┐ ┌ STANDALONE ┐                │
 │ │ pooled memory band                 │ │            │   beside the   │

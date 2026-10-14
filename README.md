@@ -48,6 +48,10 @@ becomes "97 GiB held by these two vLLM shards".
   surface is stored whether or not this UI draws it.
 - **Decode and prefill counted separately.** Combined, they once read 47,672
   tok/s while the model was generating 48.
+- **Time to first token** in the header, p50 and p95 for the busiest model,
+  with every model and its speculative-decoding acceptance on hover. From the
+  engines' own histograms, and from the gateway's for llama.cpp, which keeps
+  none.
 
 **The cluster as one machine.** Nodes sharing a `cluster:` name pool their
 memory, so free space is summed within a cluster and never across one — a
