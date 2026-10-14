@@ -25,6 +25,8 @@
   import { pageFocus } from './lib/focus.svelte';
   import { AlertFeed, endMaintenance, timeLeft } from './lib/alerts.svelte';
   import { FleetFeed } from './lib/fleet.svelte';
+  import { AssistantFeed } from './lib/assistant.svelte';
+  import AskPanel from './components/AskPanel.svelte';
   import { LatencyFeed } from './lib/latency.svelte';
   import { latencyTitle, seconds } from './lib/latency';
   import { ClientsFeed } from './lib/clients.svelte';
@@ -47,6 +49,9 @@
   const clientsFeed = new ClientsFeed();
   /* Time to first token for the header (roadmap AT). */
   const latencyFeed = new LatencyFeed();
+  /* Ask the dashboard (roadmap AY): the header button shows while it is on. */
+  const assistantFeed = new AssistantFeed();
+  let askOpen = $state(false);
   let historyOpen = $state(false);
   let settingsOpen = $state(false);
   let fleetOpen = $state(false);
@@ -86,12 +91,14 @@
     fleetFeed.start();
     clientsFeed.start();
     latencyFeed.start();
+    assistantFeed.start();
     return () => {
       feed.close();
       alertFeed.stop();
       fleetFeed.stop();
       clientsFeed.stop();
       latencyFeed.stop();
+      assistantFeed.stop();
     };
   });
 
@@ -663,6 +670,13 @@
         align="end"
       />
 
+      {#if assistantFeed.configured}
+        <button class={SETTINGS_TRIGGER} aria-label="Ask the dashboard" onclick={() => (askOpen = true)}>
+          <span aria-hidden="true">?</span>
+          <span class={SETTINGS_LABEL}>ask</span>
+        </button>
+      {/if}
+
       <button
         class={SETTINGS_TRIGGER}
         aria-label="Open settings"
@@ -712,7 +726,8 @@
     </p>
   {/each}
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
-  <Settings {theme} {layout} fleet={fleetFeed} clients={clientsFeed} open={settingsOpen} onclose={() => (settingsOpen = false)} />
+  <Settings {theme} {layout} fleet={fleetFeed} clients={clientsFeed} assistant={assistantFeed} open={settingsOpen} onclose={() => (settingsOpen = false)} />
+  <AskPanel feed={assistantFeed} open={askOpen} onclose={() => (askOpen = false)} />
   <FleetUpdates feed={fleetFeed} open={fleetOpen} slots={slotOf} onclose={() => (fleetOpen = false)} />
 
   <!-- SCOPED, AND SAYING SO. Without this a filtered page is indistinguishable

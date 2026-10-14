@@ -7675,19 +7675,30 @@ as it labels them.
 - [ ] **AX2. Optional budgets:** an alert when one client's tokens in a window
   pass a set figure, for the agent loop that runs all night.
 
-### AY — Ask the dashboard — **planned 2026-10-14**
+### AY — Ask the dashboard — **shipped 2026-10-14**
 
 A question box, "why was sparky slow at 9pm?", answered by a model of the
 user's choosing from what the dashboard already has: the alerts, events and
 annotations in the window, and the series that moved. Off until configured.
 
-- [ ] **AY1. Settings:** an OpenAI-compatible endpoint (an engine or the
-  gateway), port, API key, model with an auto-detect button that reads
-  `/v1/models`, and a test button. Stored server-side like the gateway's
-  address; the key never reaches the browser.
-- [ ] **AY2. The question goes through the backend,** which gathers the
-  window's context and sends it with the question. Read-only like everything
-  else: the model can be told about the cluster, never act on it.
+- [x] **AY1. Settings.** Built 2026-10-14. An OpenAI-compatible address (a
+  bare `host:port` gets `/v1`), a key, the model from a **Detect** button that
+  reads `/models`, a **Test** that sends one tiny request and shows the reply
+  and its time, and a switch. The address, model and switch are an
+  `assistant:` block in `cluster.yml`; the key is `assistant.key` beside it,
+  mode 0600, because that file is served to the browser. Settings sees only
+  whether a key is set and its last four characters.
+- [x] **AY2. The question goes through the backend.** Built 2026-10-14.
+  `POST /api/assistant/ask` sends the question with the window's context as
+  text: each node as it stands (health, GPU, memory, CPU, pressure, largest
+  GPU processes, loaded models), alerts firing, alert episodes and events in
+  the window, time to first token, and min/avg/max with the peak's time for
+  ten series per node. About 3.5 KB for an hour of this cluster. No tools: it
+  can be told about the cluster, never act on it. Answers render as text with
+  bold and line breaks kept, escaped first. First live answers, from
+  GLM-5.3-Flash through the gateway: "which node ran hottest" in 5.6 s, naming
+  sparkjr's 96.4 °C at 15:21 and the alert that matched it; "is anything
+  under strain" in 23.8 s.
 
 ### AZ — Considered 2026-10-14, not scheduled
 

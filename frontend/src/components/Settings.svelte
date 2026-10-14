@@ -33,6 +33,7 @@
   import { ENGINE_RUNTIMES } from '../lib/types';
   import type { FleetFeed } from '../lib/fleet.svelte';
   import type { ClientsFeed } from '../lib/clients.svelte';
+  import type { AssistantFeed } from '../lib/assistant.svelte';
   import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
   import type { ProbeResult } from '../lib/clients';
 
@@ -47,8 +48,61 @@
     fleet?: FleetFeed;
     /** Client stats from a LiteLLM gateway (roadmap AM5). */
     clients?: ClientsFeed;
+    assistant?: AssistantFeed;
   }
-  const { theme, layout, open, onclose, fleet, clients }: Props = $props();
+  const { theme, layout, open, onclose, fleet, clients, assistant }: Props = $props();
+
+  /* ASSISTANT (roadmap AY). An OpenAI-compatible endpoint, its key and a
+     model. The key goes to the backend once and is never sent back: the field
+     starts empty, and saving with it empty keeps the stored key. */
+  let aUrl = $state('');
+  let aKey = $state('');
+  let aModel = $state('');
+  let aModels = $state<string[]>([]);
+  let aBusy = $state(false);
+  let aError = $state<string | null>(null);
+  let aNote = $state<string | null>(null);
+
+  async function assistantAction(fn: () => Promise<void>) {
+    if (!assistant || aBusy) return;
+    aBusy = true;
+    aError = null;
+    aNote = null;
+    try {
+      await fn();
+    } catch (err) {
+      aError = (err as Error).message;
+    } finally {
+      aBusy = false;
+    }
+  }
+  const detectModels = () =>
+    assistantAction(async () => {
+      aModels = await assistant!.detect(aUrl, aKey);
+      if (!aModel && aModels.length) aModel = aModels[0];
+      aNote = `${aModels.length} model${aModels.length === 1 ? '' : 's'} found`;
+    });
+  const testAssistant = () =>
+    assistantAction(async () => {
+      const r = await assistant!.test(aUrl, aModel, aKey);
+      aNote = `answered in ${r.seconds}s: “${r.reply}”`;
+    });
+  const saveAssistant = () =>
+    assistantAction(async () => {
+      await assistant!.save({ url: aUrl, model: aModel, key: aKey || undefined });
+      aKey = '';
+      aNote = 'saved';
+    });
+  const removeAssistant = () =>
+    assistantAction(async () => {
+      await assistant!.remove();
+      aUrl = aModel = aKey = '';
+      aModels = [];
+    });
+  const setAssistantEnabled = (on: boolean) =>
+    assistantAction(async () => {
+      await assistant!.save({ url: aUrl, model: aModel, enabled: on });
+    });
 
   /* CLIENTS — a gateway address and a switch, AL5's two levels (roadmap AM).
    *
@@ -507,6 +561,13 @@
       probe = null;
       clientsError = null;
       clients?.load().then(() => (clientsDraft = clients?.status?.url ?? ''));
+      aError = aNote = null;
+      aKey = '';
+      assistant?.load().then(() => {
+        aUrl = assistant?.status?.url ?? '';
+        aModel = assistant?.status?.model ?? '';
+        aModels = aModel ? [aModel] : [];
+      });
     } else if (!open && dialog.open) dialog.close();
   });
 </script>
@@ -976,6 +1037,69 @@
              none of them render. -->
         {#if clientsError}
           <p class="note" data-tone="warning">{clientsError}</p>
+        {/if}
+      </section>
+    {/if}
+
+    {#if assistant}
+      <section class="stack">
+        <h3 class="eyebrow dim">Assistant</h3>
+        <p class="note dim">
+          Ask questions about the cluster from the header. The model is sent the window's alerts,
+          events and series as text; it cannot act on anything. Any OpenAI-compatible endpoint: an
+          engine, or the gateway.
+        </p>
+        {#if assistant.status?.url}
+          <label class="check">
+            <input
+              type="checkbox"
+              checked={assistant.status?.enabled ?? false}
+              disabled={aBusy}
+              onchange={(e) => setAssistantEnabled((e.currentTarget as HTMLInputElement).checked)}
+            />
+            <span>show the ask button</span>
+          </label>
+        {/if}
+        <div class="rt-row">
+          <input
+            id="assistant-url"
+            class="in"
+            placeholder="http://host:4000/v1"
+            aria-label="OpenAI-compatible endpoint"
+            bind:value={aUrl}
+          />
+        </div>
+        <div class="rt-row">
+          <input
+            id="assistant-key"
+            class="in"
+            type="password"
+            autocomplete="off"
+            placeholder={assistant.status?.key_set ? `key set (${assistant.status.key_hint}); leave empty to keep` : 'API key, if it needs one'}
+            aria-label="API key"
+            bind:value={aKey}
+          />
+        </div>
+        <div class="rt-row">
+          <select id="assistant-model" class="in" aria-label="Model" bind:value={aModel} disabled={!aModels.length}>
+            {#if !aModels.length}<option value="">press Detect</option>{/if}
+            {#each aModels as m (m)}<option value={m}>{m}</option>{/each}
+          </select>
+          <button class="mini" disabled={aBusy || !aUrl.trim()} onclick={detectModels}>Detect</button>
+          <button class="mini" disabled={aBusy || !aUrl.trim() || !aModel} onclick={testAssistant}>Test</button>
+          <button class="mini save" disabled={aBusy || !aUrl.trim() || !aModel} onclick={saveAssistant}>Save</button>
+          {#if assistant.status?.url}
+            <button class="mini" disabled={aBusy} onclick={removeAssistant}>Remove</button>
+          {/if}
+        </div>
+        {#if aBusy}<p class="note dim">working…</p>{/if}
+        {#if aNote}<p class="note">{aNote}</p>{/if}
+        {#if aError}<p class="note" data-tone="warning">{aError}</p>{/if}
+        {#if assistant.status?.error}
+          <p class="note" data-tone="warning">
+            The <code>assistant:</code> block in <code>cluster.yml</code> has a mistake:
+            {assistant.status.error} Saving here replaces it.
+          </p>
         {/if}
       </section>
     {/if}

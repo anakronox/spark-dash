@@ -63,6 +63,7 @@ recorded series are written against. The collector is shared (one spec of metric
 names per engine); the wire is per-engine. `kv_cache_pct` is null for an engine
 that reports no occupancy — see [metrics](metrics.md#sglang-per-instance--same-shape-different-names).
 | `GET /api/history?metric=&node=&from=&to=&step=` | Time-series for trend charts; thin PromQL wrapper |
+| `POST /api/assistant/ask` | A question answered from the window's alerts, events and series by the configured model (roadmap AY); `GET /api/assistant/status`, `PUT`/`DELETE /api/assistant/config`, `POST /api/assistant/models`, `POST /api/assistant/test` set it up |
 | `GET /api/latency` | Time to first token per model, p50 and p95 over 15 minutes, with speculative-decoding acceptance; the header's busiest model |
 | `GET /health` | Liveness + self-assessment, for the external UptimeKuma check |
 

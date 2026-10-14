@@ -322,6 +322,15 @@ address, press **Test**, and save. The Clients card appears once Prometheus is
 reading it. Details and troubleshooting:
 **[Client stats](docs/deployment.md#client-stats--optional)**.
 
+### 7. Optional: ask the dashboard
+
+Point it at any OpenAI-compatible endpoint, one of your own engines or the
+gateway, in **Settings → Assistant**: the address, a key if it needs one,
+**Detect** for its models, **Test**, save. An **ask** button appears in the
+header. A question is answered from the window's alerts, events and series and
+the cluster as it stands, sent to the model as text; it cannot act on anything.
+Details: **[Asking the dashboard](docs/deployment.md#asking-the-dashboard--optional)**.
+
 ## Docs
 
 - [Requirements](docs/requirements.md) — goals, current stack, functional/

@@ -47,6 +47,17 @@
 #     url: http://litellm.invalid:4000
 #     enabled: true
 
+# ASK THE DASHBOARD — OPTIONAL. Any OpenAI-compatible endpoint and a model,
+# for the header's ask button. Usually set from Settings. The API key is not
+# kept here, since this file is shown to the browser: Settings writes it to
+# `assistant.key` beside this file, owner-only. See docs/deployment.md,
+# "Asking the dashboard".
+#
+# assistant:
+#   url: http://litellm.invalid:4000/v1
+#   model: some-prefix/some-model
+#   enabled: true
+
 nodes:
   - id: CHANGE-ME
     # The id becomes the `node` label on every metric. Choose it once and keep

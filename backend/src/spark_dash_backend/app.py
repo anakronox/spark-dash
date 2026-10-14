@@ -30,6 +30,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 from pydantic import BaseModel, Field
 from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
 
@@ -63,6 +64,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
+from spark_dash_backend import assistant
 from spark_dash_backend.latency import latency
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
@@ -166,6 +168,29 @@ class GatewayEnabled(BaseModel):
 
 class GatewayTest(BaseModel):
     url: str
+
+
+class AssistantWrite(BaseModel):
+    """AY1. `key` omitted keeps the stored one; `clear_key` removes it."""
+
+    url: str
+    model: str
+    enabled: bool | None = None
+    key: str | None = None
+    clear_key: bool = False
+
+
+class AssistantProbe(BaseModel):
+    """Detect and Test, before or after saving. With no `key`, the stored one."""
+
+    url: str
+    model: str | None = None
+    key: str | None = None
+
+
+class AssistantQuestion(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    minutes: int = Field(60, ge=5, le=60 * 24 * 7)
 
 
 class FleetEnrol(BaseModel):
@@ -1309,9 +1334,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     client_names = Names()
 
-    @app.get("/api/latency")
-    async def api_latency() -> dict:
-        """Time to first token per model, for the header (roadmap AT)."""
+    async def _latency() -> dict:
         snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
         engines: dict[str, dict] = {}
         for node in snapshot.nodes:
@@ -1320,8 +1343,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if e.server:
                         engines[e.server] = {"model": e.model, "node": node.node_id, "runtime": runtime}
         gateway, _ = inventory.gateway()
+        return await latency(prom, engines, bool(gateway and gateway.enabled))
+
+    @app.get("/api/latency")
+    async def api_latency() -> dict:
+        """Time to first token per model, for the header (roadmap AT)."""
         try:
-            return await latency(prom, engines, bool(gateway and gateway.enabled))
+            return await _latency()
         except PrometheusError as exc:
             raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
 
@@ -1383,6 +1411,126 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return await probe_gateway(body.url)
         except ClusterConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # --- ask the dashboard (roadmap AY) ---------------------------------------
+
+    def _assistant() -> tuple[assistant.AssistantConfig | None, str | None]:
+        try:
+            return assistant.load_assistant(settings.cluster_config), None
+        except ClusterConfigError as exc:
+            return None, str(exc)
+
+    def _assistant_status() -> dict:
+        config, error = _assistant()
+        key = assistant.read_key(settings.cluster_config)
+        return {
+            "configured": bool(config and config.enabled),
+            "enabled": bool(config and config.enabled),
+            "url": config.url if config else None,
+            "model": config.model if config else None,
+            "key_set": key is not None,
+            "key_hint": assistant.key_hint(key),
+            "error": error,
+        }
+
+    @app.get("/api/assistant/status")
+    async def api_assistant_status() -> dict:
+        """What Settings shows. Never the key: whether one is set, and its end."""
+        return _assistant_status()
+
+    @app.put("/api/assistant/config")
+    async def api_assistant_config(body: AssistantWrite) -> dict:
+        try:
+            url = assistant.normalize_url(body.url)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not body.model.strip():
+            raise HTTPException(status_code=400, detail="choose a model; Detect lists the endpoint's")
+        current, _ = _assistant()
+        enabled = body.enabled if body.enabled is not None else (current.enabled if current else True)
+        try:
+            await asyncio.to_thread(assistant.write_assistant, settings.cluster_config,
+                                    assistant.AssistantConfig(url=url, model=body.model.strip(), enabled=enabled))
+            if body.clear_key:
+                await asyncio.to_thread(assistant.write_key, settings.cluster_config, None)
+            elif body.key:
+                await asyncio.to_thread(assistant.write_key, settings.cluster_config, body.key)
+        except NoClusterFileError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (ClusterConfigError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _assistant_status()
+
+    @app.delete("/api/assistant/config")
+    async def api_assistant_remove() -> dict:
+        try:
+            await asyncio.to_thread(assistant.write_assistant, settings.cluster_config, None)
+            await asyncio.to_thread(assistant.write_key, settings.cluster_config, None)
+        except NoClusterFileError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _assistant_status()
+
+    def _probe_target(body: AssistantProbe) -> tuple[str, str | None]:
+        try:
+            url = assistant.normalize_url(body.url)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return url, body.key or assistant.read_key(settings.cluster_config)
+
+    @app.post("/api/assistant/models")
+    async def api_assistant_models(body: AssistantProbe) -> dict:
+        """Detect: the endpoint's `GET /models`."""
+        url, key = _probe_target(body)
+        try:
+            return {"models": await assistant.list_models(url, key)}
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"could not reach {url}: {exc}") from exc
+
+    @app.post("/api/assistant/test")
+    async def api_assistant_test(body: AssistantProbe) -> dict:
+        """Test: one tiny completion, and how long it took."""
+        url, key = _probe_target(body)
+        if not body.model:
+            raise HTTPException(status_code=400, detail="choose a model to test")
+        try:
+            return await assistant.test(url, key, body.model)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"could not reach {url}: {exc}") from exc
+
+    @app.post("/api/assistant/ask")
+    async def api_assistant_ask(body: AssistantQuestion) -> dict:
+        """The question, answered from the window's alerts, events and series.
+        Read-only: the model is sent text and returns text."""
+        config, error = _assistant()
+        if error or not config or not config.enabled:
+            raise HTTPException(status_code=409, detail=error or "the assistant is not set up; see Settings")
+        end = time.time()
+        start = end - body.minutes * 60
+        step = f"{max(60, body.minutes)}s"
+        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+        episodes, notes, lat = await asyncio.gather(
+            fetch_episodes(prom, start=start, end=end, step=step),
+            fetch_annotations(prom, start=start, end=end, step=step),
+            _latency(),
+            return_exceptions=True,
+        )
+        context, counts = await assistant.gather_context(
+            prom, snapshot.nodes, minutes=body.minutes,
+            episodes=[] if isinstance(episodes, BaseException) else episodes,
+            annotations=[] if isinstance(notes, BaseException) else notes,
+            latency=None if isinstance(lat, BaseException) else lat,
+        )
+        try:
+            answer = await assistant.ask(config, assistant.read_key(settings.cluster_config), body.question, context)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"could not reach {config.url}: {exc}") from exc
+        return {**answer, "sent": counts, "context_chars": len(context)}
 
     @app.post("/api/fleet/runs/{run_id}/{action}")
     async def api_fleet_run_action(

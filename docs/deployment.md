@@ -293,6 +293,31 @@ you are upgrading from that layout: drop `COMPOSE_PROFILES=fleet` and
 `fleet/data/fleet.json` to `central/fleet-state/` — your enrolment list is
 migrated in place, so nothing needs re-ticking.
 
+### Asking the dashboard — optional
+
+**Off until you give it a model.** In Settings → Assistant: an
+OpenAI-compatible address (`http://host:4000/v1`; a bare `host:port` gets
+`/v1`), an API key if the endpoint needs one, **Detect** to list its models,
+**Test** to send one tiny request and see the reply and how long it took, and
+Save. An **ask** button appears in the header.
+
+**What a question sends.** The question, and as text: every node as it stands
+(health, GPU, memory, CPU, pressure, its largest GPU processes, the models
+loaded), the alerts firing now, the alert episodes and events in the chosen
+window (1h, 6h or 24h), time to first token per model, and min/avg/max with
+the time of the peak for ten series per node. About 3.5 KB for this
+three-node cluster over an hour. The model is sent text and returns text; it
+has no tools and nothing acts on what it says.
+
+**Where it is kept.** The address, the model and the switch are an
+`assistant:` block in `cluster.yml`. That file is served to the browser, so
+the key is not in it: it is `assistant.key` beside it, owner-only, and
+Settings only ever shows whether one is set and its last four characters.
+Saving with the key field empty keeps the stored key; **Remove** deletes both.
+
+A reasoning model can take a while: on this cluster GLM-5.3-Flash answered a
+one-hour question in 6 to 24 seconds. The backend waits up to 90.
+
 ### Client stats — optional
 
 **This is optional, and off until you give it a gateway.** It shows which
