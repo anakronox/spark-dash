@@ -135,9 +135,23 @@ export interface ClientsResponse {
   rows: ClientRow[];
 }
 
-/** Stable across polls, so a sorted table does not reshuffle its keys. */
+/** Stable across polls, so a sorted table does not reshuffle its keys.
+ *
+ * THE HARNESS IS PART OF IT. Since the gateway's fingerprints (roadmap AS),
+ * one machine, User-Agent and model can be several rows: Hermes Agent, its
+ * side calls, and requests no rule recognised all send `OpenAI/Python` from
+ * the same host. Without the harness two rows shared a key, Svelte threw on
+ * the duplicate, and the whole card rendered empty. */
 export function rowKey(r: ClientRow): string {
-  return [r.user_agent ?? '', r.client.ip ?? '', r.model ?? '', r.rejected ? 'x' : ''].join('|');
+  return [
+    r.harness.name,
+    r.harness.detail ?? '',
+    r.harness.by ?? '',
+    r.user_agent ?? '',
+    r.client.ip ?? '',
+    r.model ?? '',
+    r.rejected ? 'x' : '',
+  ].join('|');
 }
 
 export function engineText(r: ClientRow): string {

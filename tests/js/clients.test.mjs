@@ -146,6 +146,11 @@ test('counting since, only when the scrape began inside the window', () => {
 test('row keys are stable and distinct', () => {
   assert.equal(rowKey(row()), rowKey(row({ requests: 5 })), 'counts are not identity');
   assert.notEqual(rowKey(row()), rowKey(row({ model: 'other/m' })));
+  // One machine, User-Agent and model, three harness rows: Hermes, its side
+  // calls, and an unrecognised request. A shared key emptied the whole card.
+  const hermes = row({ harness: { name: 'Hermes Agent', kind: 'harness', by: 'fingerprint', detail: null } });
+  const aux = row({ harness: { name: 'Hermes Agent', kind: 'harness', by: 'fingerprint', detail: 'side calls' } });
+  assert.equal(new Set([rowKey(row()), rowKey(hermes), rowKey(aux)]).size, 3);
   assert.notEqual(rowKey(row({ rejected: true, model: null })), rowKey(row({ model: null })));
 });
 
