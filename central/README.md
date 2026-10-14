@@ -98,6 +98,14 @@ The `.env` lines are in `.env.example` and the steps in
 [deployment.md](../docs/deployment.md#dgx-os-updates--optional). Leave them out
 and there is no mount, no key and no button.
 
+Two more are turned on from Settings, with nothing in `.env`:
+
+- **Client stats**, which callers sent what to which model, need a LiteLLM
+  proxy in front of the engines:
+  [deployment.md](../docs/deployment.md#client-stats--optional).
+- **Asking the dashboard** needs any OpenAI-compatible model to answer:
+  [deployment.md](../docs/deployment.md#asking-the-dashboard--optional).
+
 ## Updating
 
 **Check for new settings after every pull.** `.env` is untracked, so a pull

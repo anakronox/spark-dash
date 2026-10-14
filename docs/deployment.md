@@ -350,7 +350,9 @@ from it:
   still calls an engine directly does not appear.
 
 The engines are scraped directly either way. The gateway adds who called; it
-replaces nothing.
+replaces nothing. It also gives llama.cpp models a time to first token in the
+header: llama.cpp keeps no latency histogram, so without the gateway only
+TensorFold and vLLM models have one.
 
 **Naming programs that send an SDK's User-Agent.** Many agents send their
 library's default User-Agent unchanged, so the card can say "OpenAI SDK
