@@ -6,7 +6,7 @@ running on them (llama.cpp router, vLLM, SGLang, TensorFold).
 
 Works with one node or many.
 
-![The spark-dash dashboard in compact view: a pooled two-node cluster and a standalone node in their own frames, with the Clients card beside them; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic with each node's received traffic above the line and sent below; the GPU process and model tables; and two Temperatures cards, each showing different sensor groups](Screenshot.jpg)
+![The spark-dash dashboard in compact view: a pooled two-node cluster and a standalone node in their own frames, ending level with the Clients card beside them, which lists seven callers with their requests and tokens; an ask button in the header; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic with each node's received traffic above the line and sent below; the GPU process and model tables; and two Temperatures cards, each showing different sensor groups](Screenshot.jpg)
 
 Three GB10s: two pooled into a tensor-parallel cluster, one standalone. Every
 threshold is measured for this hardware, not guessed, and the layout is
@@ -108,8 +108,18 @@ somebody pressed.
 **Optionally, who is calling.** The engines count requests and never record the
 caller. Put a [LiteLLM](https://docs.litellm.ai/docs/simple_proxy) proxy in
 front of them and a Clients card shows which harness, on which machine, sent
-how many requests to which model on which node, and how many failed. An agent
-that sends an SDK's default User-Agent is still named, by its machine.
+how many requests to which model on which node, how many failed, and the
+tokens in and out. An agent that sends an SDK's default User-Agent is still
+named, by its machine.
+
+**Optionally, ask it.** Connect any model you run, or one behind the gateway,
+and an **ask** button takes questions about the cluster's history: "why was
+sparky slow at 9pm?", "which node ran hottest?", "who has been using the
+cluster most?". It answers from what the dashboard already holds for the
+window you pick: alerts, events, how each chart moved and when it peaked, and
+who called. Asked which node ran hottest, GLM-5.3-Flash named sparkjr's
+96.4°C at 15:21 and the alert that caught it, in under six seconds. The model
+is told about the cluster and can't act on it.
 
 ## The page is yours
 
@@ -132,7 +142,8 @@ nothing is configured on the server.
   on one grid at the same width, each cluster and each standalone node in its
   own frame. When the frames fit in half the page, as on a wide monitor, the
   right half becomes a column like the ones below: drag a half-width card into
-  it.
+  it. A single row of frames spreads to fill its half, and stretches to end
+  level with a taller card beside it.
 - **Seven themes**, dark instrument panel through to paper and high contrast.
   **Reset layout** puts it all back.
 
