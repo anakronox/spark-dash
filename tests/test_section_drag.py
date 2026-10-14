@@ -332,8 +332,26 @@ def test_the_top_splits_only_when_the_nodes_fit_in_half():
         assert f"viewportWidth >= {bp}" in app and f"min-width: {bp}px" in app, (
             f"the split and the grid disagree about the {bp}px breakpoint"
         )
-    assert "style:--cols={splitTop ? nodeCols / 2 : undefined}" in app, (
+    assert "const availCols = $derived(splitTop ? nodeCols / 2 : nodeCols);" in app, (
         "split nodes keep the full grid's column count and squeeze"
     )
+
+
+def test_one_row_of_frames_fills_the_width():
+    """Brian, 2026-10-14: three nodes in a four-column grid left a quarter of
+    the node area empty. A single row uses exactly the columns its frames
+    need; frames that wrap keep the power-of-two count."""
+    app = without_comments(APP.read_text())
+    assert "nodeSpan > 0 && nodeSpan <= availCols ? nodeSpan : availCols" in app
+    assert "style:--cols={layout.compactCards ? gridCols : undefined}" in app
+
+
+def test_a_standalone_frame_carries_a_header_and_its_own_band():
+    """So it does not sit as an empty frame beside a cluster's header and
+    pooled band. Its band is the node's own memory."""
+    app = without_comments(APP.read_text())
+    solo = app[app.index('<section class="cluster solo">') :]
+    solo = solo[: solo.index("</section>")]
+    assert "memory not pooled" in solo and "<MemoryBand" in solo
     top = app[app.index("  .top.split {") :]
     assert "repeat(2, minmax(0, 1fr))" in top[: top.index("}")]

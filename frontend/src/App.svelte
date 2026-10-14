@@ -438,6 +438,16 @@
   );
   const splitTop = $derived(layout.compactCards && nodeCols >= 4 && nodeSpan <= nodeCols / 2);
 
+  /* ONE ROW, NO GAP (Brian, 2026-10-14). The power-of-two counts exist for
+     frames that wrap: four nodes in three columns is 3 + 1, a second row
+     mostly empty. When every frame fits on one row there is nothing to wrap,
+     and rounding three up to four left a quarter of the node area empty. So
+     a single row uses exactly the columns its frames need, and they share
+     the width equally. The equal-width rule between members and standalone
+     cards holds at any column count. */
+  const availCols = $derived(splitTop ? nodeCols / 2 : nodeCols);
+  const gridCols = $derived(nodeSpan > 0 && nodeSpan <= availCols ? nodeSpan : availCols);
+
   const MUTED = 'text-ink-muted';
   const NUM = 'tabular-nums';
 
@@ -829,7 +839,7 @@
     <div
       class="node-grid"
       class:compact={layout.compactCards}
-      style:--cols={splitTop ? nodeCols / 2 : undefined}
+      style:--cols={layout.compactCards ? gridCols : undefined}
     >
     {#each clusters as cluster, gi (cluster.key)}
       <NodeGroup
@@ -844,8 +854,9 @@
       {#if cluster.name}
         <!-- A frame only where clustering is real. Clustered nodes pool memory,
              so their combined free space is a capacity number in its own
-             right; standalone nodes get no frame because there's nothing to
-             combine. -->
+             right. In the full view a standalone node gets no frame, since there
+             is nothing to combine; in compact view it gets a frame of its own
+             below, so the frames on a row line up. -->
         <section class="cluster">
           <header class={CLUSTER_HEAD}>
             <h2 class={CLUSTER_H2}>{cluster.name}</h2>
@@ -891,9 +902,23 @@
              theirs: the header shares the cluster header's row and the band
              row is left empty (see the subgrid rules). -->
         <section class="cluster solo">
+          <!-- The cluster frame's header and band, so a standalone node does
+               not sit under empty rows beside a cluster. The band is the
+               node's own memory: honest here, since a cluster of one pools
+               nothing it does not have. No maintenance control in the header:
+               on a cluster it covers every member, on one node it would repeat
+               the card's own. -->
           <header class={CLUSTER_HEAD}>
             <h2 class={CLUSTER_H2}>standalone</h2>
+            <span class={MUTED}>1 node · memory not pooled</span>
           </header>
+          {#if cluster.totalBytes > 0}
+            <MemoryBand
+              totalBytes={cluster.totalBytes}
+              usedBytes={cluster.usedBytes}
+              processes={cluster.processes}
+            />
+          {/if}
           <div class="nodes">
             {#each cluster.nodes as node (node.node_id)}
               <NodeCard

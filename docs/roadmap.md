@@ -7486,6 +7486,23 @@ cluster, a "standalone" header and no band. Measured in a 1681px frame: both
 frames 225px tall from the same top, all three cards starting at the same y
 and 365.5px wide.
 
+### AP2 — One row of node frames fills its width — **shipped 2026-10-14**
+
+Brian, 2026-10-14: with an odd number of nodes the compact grid left a gap.
+At eight columns, split, the left half had four and the three nodes used
+three, a quarter of the node area empty. The power-of-two counts are for
+frames that wrap (four nodes in three columns is 3 + 1); one row has nothing
+to wrap, so it now uses exactly the columns its frames need, and frames that
+wrap keep the power-of-two count. Measured: at 2560px three columns of
+378.7px fill the left half, cards 353px each; at 1681px, unsplit, three of
+526px fill the row, cards 500px each.
+
+The standalone frame also gets the cluster frame's header line ("1 node ·
+memory not pooled") and the node's own memory band, so it no longer sits as
+an empty frame beside a cluster's header and pooled band. No maintenance
+control in that header: on a cluster it covers every member, on one node it
+would repeat the card's own.
+
 ### AQ — Cards beside the nodes — **shipped 2026-10-12**
 
 Brian, 2026-10-12: with compact frames spanning their members, the node row
