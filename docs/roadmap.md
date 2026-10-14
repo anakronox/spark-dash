@@ -7609,25 +7609,6 @@ What exists, checked on the monitoring VM 2026-10-14:
   draft tokens over drafted, from TensorFold's `mtp_*` and vLLM's
   `spec_decode_*` counters: 58% over the same 15 minutes.
 
-### AU — Energy per token — **planned 2026-10-14**
-
-Beside latency (AT). Power is already sampled per node, so integrating it
-gives energy per day, and dividing by tokens gives joules per token for a
-model on an engine, which makes "TensorFold or vLLM" a comparison with a
-number in it.
-
-- [x] **AU1. Measure first what the power reading covers.** Measured on
-  sparketa 2026-10-14: NVML reports "GPU Power Readings" only, 9.65 W at
-  idle; "Module Power Readings" and every power limit read N/A, and the host
-  has no power sensors under `hwmon` or `powercap`. So no software figure here
-  covers the whole node: CPU cores, memory, NICs, storage and fans are
-  outside it. Energy per token from it is GPU energy per token, which compares
-  engines on the same hardware fairly and understates a power bill. Open:
-  label it as GPU energy, or read a wall meter (smart plug, PDU, UPS) through
-  Prometheus if one exists.
-- [ ] **AU2. kWh today and J per token** in the header beside latency, per node
-  and per model on hover.
-
 ### AV — Firmware from fwupdmgr alone — **shipped 2026-10-14**
 
 Found 2026-10-10 while confirming the ASUS GX10 firmware updates. Two parts of
@@ -7714,6 +7695,12 @@ annotations in the window, and the series that moved. Off until configured.
   choice, so the agent alone cannot find them. Possible beside the disk stats,
   read over SSH through the update manager (AK/AL), which already reaches
   every node.
+- **Energy per token** (was AU). Measured 2026-10-14: on GB10, NVML reports
+  the GPU's power alone ("Module Power Readings" N/A, no `hwmon` or
+  `powercap` power sensors), so no software figure covers the whole node.
+  The honest version needs a wall meter per node (a metering smart plug, a
+  per-outlet PDU) read through Prometheus, and this cluster has none. Dropped
+  2026-10-14; a GPU-only figure was not wanted.
 - **Operator actions** (load, unload, sleep a model from the Models table).
   Not wanted now; the dashboard stays read-only. Possible if a user asks.
 
