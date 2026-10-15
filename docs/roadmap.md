@@ -7782,7 +7782,10 @@ against `frontend/src/lib/types.ts`:
   `scaleMax` the full-axis charts use for the rest (GPU temperature 100 °C,
   power 300 W, clock 3003 MHz). Temperatures carry the node's own warning
   and critical bands as marks on the dial, from the same hardware limits the
-  alerts use, so "close to its limit" reads off the dial, not the number.
+  alerts use. Past a band the whole dial turns amber or red and names the
+  state, "▲ warn" or "■ crit", since status is never colour alone; back under,
+  it returns to the node's colour. That cannot be misread as a node: node
+  colours are kept ≥12 ΔE from the status colours (`scripts/palette_check.py`).
   A metric with no natural ceiling (throughput, prefill, swap I/O) gets a
   number tile instead of a dial: a needle against a made-up maximum would
   look precise and say nothing.
