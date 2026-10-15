@@ -86,6 +86,14 @@ prefill. Each axis fits its data but never spans less than a set minimum, so a
 45–70°C climb fills the chart and memory holding at 93% stays a flat line.
 **Full** puts the fixed 0–100% and 0–100°C axes back.
 
+**Or as gauges, live.** Switch System Activity to **gauges** and each metric
+becomes a dial per node, updating every second or two from the live feed
+rather than Prometheus's 15-second scrape. GPU and package temperature dials
+mark the node's own warning and critical limits, and past one the whole dial
+turns amber or red and says so. Rates with no ceiling, like throughput, are
+plain numbers. Keep a copy of the card on each view: trends in one, the
+present in the other.
+
 **Network traffic, a chart per group.** RoCE, management, Wi-Fi and the rest
 each get one chart with a line per node, received above the zero line and sent
 below it. The links span six orders of magnitude, so a **log** switch keeps a

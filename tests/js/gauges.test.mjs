@@ -1,0 +1,141 @@
+/* System Activity's gauges (roadmap BA), actually executed.
+ *
+ * Run from tests/test_gauges_js.py, which transpiles this with the esbuild
+ * Vite already brings and runs it under node.
+ */
+
+import assert from 'node:assert/strict';
+
+import {
+  PROMETHEUS_ONLY,
+  STATE_WORD,
+  arcPath,
+  bandsOf,
+  ceilingOf,
+  dialFit,
+  formatReading,
+  kindOf,
+  liveValue,
+  stateOf,
+} from '../../frontend/src/lib/gauges.ts';
+import { METRICS } from '../../frontend/src/lib/history.ts';
+
+let passed = 0;
+let failed = 0;
+const test = (name, fn) => { try { fn(); passed++; } catch (e) { failed++; console.error(`FAIL ${name}\n${e.message}\n`); } };
+
+const spec = (key) => METRICS.find((m) => m.key === key);
+
+const node = (over = {}) => ({
+  node_id: 'sparky',
+  up: true,
+  gpu: { util_pct: 42, temp_c: 84.5, power_w: 38, clock_mhz: 2411, clock_state: 'PASS' },
+  memory: { total_bytes: 200, available_bytes: 110, used_bytes: 90, swap_used_bytes: 0, unified: true },
+  cpu: { util_pct: 7, temp_c: 70, load_avg_1m: 1, active_cores: 20 },
+  psi: { some_avg10: 3, some_avg60: 2, full_avg10: 0.5, full_avg60: 0, state: 'LOW' },
+  temp_bands: { gpu_warning_c: 82, gpu_critical_c: 86, gpu_source: 'nvml-slowdown', cpu_warning_c: 92.8, cpu_critical_c: 98.8, cpu_source: 'acpi-critical-trip' },
+  temperatures: [
+    { domain: 'package', sensor: 'zone0', celsius: 87.1, limit_c: 104.8 },
+    { domain: 'package', sensor: 'zone5', celsius: 80, limit_c: 104.8 },
+    { domain: 'gpu', sensor: 'gpu', celsius: 84.5, limit_c: 90 },
+    { domain: 'storage', sensor: 'nvme0', celsius: 58.9, limit_c: 84.85 },
+    { domain: 'network', sensor: 'mlx5 asic', celsius: 56, limit_c: 105 },
+    { domain: 'wireless', sensor: 'phy0', celsius: 44, limit_c: null },
+  ],
+  runtimes: {
+    llama_cpp: [{ generation_tokens_per_sec: 12, models: [{ prompt_tokens_per_sec: 100 }, { prompt_tokens_per_sec: null }] }],
+    vllm: [],
+    sglang: [],
+    tensorfold: [{ generation_tokens_per_sec: 31, prompt_tokens_per_sec: 400 }],
+  },
+  ...over,
+});
+
+test('every charted metric is either live or served by /api/latest', () => {
+  const n = node();
+  for (const m of METRICS) {
+    if (PROMETHEUS_ONLY.has(m.key)) continue;
+    assert.notEqual(liveValue(m.key, n), null, `${m.key} has no live reading`);
+  }
+});
+
+test('live readings are the quantities the charts plot', () => {
+  const n = node();
+  assert.equal(liveValue('memory_used_percent', n), 45);
+  assert.equal(liveValue('tokens_per_second', n), 43); // routers + engines, decode only
+  assert.equal(liveValue('prompt_tokens_per_second', n), 500);
+  assert.equal(liveValue('system_temperature', n), 87.1); // the hottest, GPU included
+  assert.equal(liveValue('package_temperature', n), 87.1);
+  assert.equal(liveValue('storage_temperature', n), 58.9);
+  // least margin to a sensor's OWN limit: the GPU's 5.5, not the package's 17.7
+  assert.equal(liveValue('temperature_headroom', n), 90 - 84.5);
+});
+
+test('a down node and a missing sensor read as nothing, never zero', () => {
+  assert.equal(liveValue('gpu_utilization', node({ up: false })), null);
+  const noNic = node();
+  noNic.temperatures = noNic.temperatures.filter((t) => t.domain !== 'network');
+  assert.equal(liveValue('network_temperature', noNic), null);
+  assert.equal(liveValue('gpu_power', node({ gpu: null })), null);
+});
+
+test('dials use the full-axis scale; metrics with no ceiling are tiles', () => {
+  assert.equal(ceilingOf(spec('gpu_utilization')), 100);
+  assert.equal(ceilingOf(spec('gpu_temperature')), 100);
+  assert.equal(ceilingOf(spec('gpu_power')), 300);
+  assert.equal(ceilingOf(spec('cpu_clock')), 3500);
+  for (const k of ['tokens_per_second', 'prompt_tokens_per_second', 'swap_io', 'temperature_headroom']) {
+    assert.equal(kindOf(spec(k)), 'tile', k);
+  }
+});
+
+test('bands only where the hardware states a warning and a critical', () => {
+  const n = node();
+  assert.deepEqual(bandsOf('gpu_temperature', n), [82, 86]);
+  assert.deepEqual(bandsOf('package_temperature', n), [92.8, 98.8]);
+  assert.equal(bandsOf('storage_temperature', n), null);
+  assert.equal(bandsOf('gpu_temperature', node({ temp_bands: null })), null);
+});
+
+test('state is strictly above the band, as the node card judges it', () => {
+  const b = [82, 86];
+  assert.equal(stateOf(82, b), 'ok');
+  assert.equal(stateOf(82.1, b), 'warning');
+  assert.equal(stateOf(86, b), 'warning');
+  assert.equal(stateOf(86.1, b), 'critical');
+  assert.equal(stateOf(99, null), 'ok');
+  assert.equal(stateOf(null, b), 'ok');
+});
+
+test('a status always comes with a word', () => {
+  assert.ok(STATE_WORD.warning && STATE_WORD.critical);
+});
+
+test('arcs are clamped and an empty one is still a valid path', () => {
+  assert.match(arcPath(0, 0, 38), /^M[\d. -]+$/);
+  assert.equal(arcPath(0, 1.5, 38), arcPath(0, 1, 38));
+  // 240 degrees is more than half a turn; 0.25 of it is not
+  assert.match(arcPath(0, 1, 38), / 0 1 1 /);
+  assert.match(arcPath(0, 0.25, 38), / 0 0 1 /);
+});
+
+test('dials wrap onto a second line when that makes them bigger', () => {
+  // three in a wide, short box: one line
+  assert.equal(dialFit(3, 600, 120, 6, 14).perLine, 3);
+  // eight in a narrow, tall box: more than one line
+  const tall = dialFit(8, 300, 400, 6, 14);
+  assert.ok(tall.perLine < 8, JSON.stringify(tall));
+  assert.ok(tall.size > dialFit(8, 300, 400, 6, 14).size - 1);
+  // nothing measured yet
+  assert.equal(dialFit(3, 0, 120, 6, 14).size, 0);
+});
+
+test('readings: whole numbers, one decimal for temperatures and rates', () => {
+  assert.equal(formatReading(spec('gpu_utilization'), 41.6), '42');
+  assert.equal(formatReading(spec('gpu_temperature'), 84.46), '84.5');
+  assert.equal(formatReading(spec('tokens_per_second'), 31.04), '31.0');
+  assert.equal(formatReading(spec('gpu_power'), null), '—');
+});
+
+console.log(`${passed}/${passed + failed} passed`);
+if (failed) process.exit(1);

@@ -7753,7 +7753,7 @@ annotations in the window, and the series that moved. Off until configured.
 - **Operator actions** (load, unload, sleep a model from the Models table).
   Not wanted now; the dashboard stays read-only. Possible if a user asks.
 
-### BA — Gauges on the activity cards — **planned 2026-10-15**
+### BA — Gauges on the activity cards — **System Activity built 2026-10-15**
 
 Brian: an option on the graph cards to show gauges instead of charts, so one
 copy of System Activity can show trends and another what is happening now.
@@ -7777,7 +7777,7 @@ against `frontend/src/lib/types.ts`:
 | Hottest, package, storage and NIC temperature, headroom | derivable from `temperatures`, the way the Temperatures card does it |
 | CPU clock, swap I/O, CPU and I/O pressure, disk busy | no: Prometheus only |
 
-- [ ] **BA1. System Activity gauges.** A dial per metric per node, in the
+- [x] **BA1. System Activity gauges.** A dial per metric per node, in the
   node's colour, on a fixed scale: 0–100% for percentages, and the same
   `scaleMax` the full-axis charts use for the rest (GPU temperature 100 °C,
   power 300 W, clock 3003 MHz). Temperatures carry the node's own warning
@@ -7789,17 +7789,36 @@ against `frontend/src/lib/types.ts`:
   A metric with no natural ceiling (throughput, prefill, swap I/O) gets a
   number tile instead of a dial: a needle against a made-up maximum would
   look precise and say nothing.
-- [ ] **BA2. The four metrics the snapshot lacks.** Either the agent adds
-  them to the snapshot (it already reads the sources for its exporter), or
-  the gauge takes Prometheus's latest sample and marks its age. The agent is
-  the better fix; to decide when this is built.
+- [x] **BA2. The five metrics the snapshot lacks** (CPU clock, swap I/O, CPU
+  and I/O pressure, disk busy). Built 2026-10-15 from Prometheus rather than
+  the agent, so it needs no agent redeploy: `GET /api/latest` runs the
+  charts' own expressions as instant queries (rate window 1m), with
+  `timestamp(up{job="node-exporter"})` per node, and the gauge's caption says
+  how old the reading is, "· 9s ago". Polled every 15s, and only while a
+  gauges view shows one of the five. Checked against the live Prometheus:
+  every node answers for all five. Moving them into the snapshot stays
+  possible if 15s turns out too slow.
 - [ ] **BA3. Network Activity gauges.** One per interface group per node,
   received and sent, against the link's negotiated rate (`speed_mbps`), so a
   ConnectX port reads as a share of 200 Gb/s. A link with no reported speed
   gets a tile, like BA1's throughput.
-- [ ] **BA4. Layout and size.** Gauges fill the card's box the way charts do
-  (AO1), wrapping by node or by metric as the width allows. To be measured
-  at 2560 px in the 8-column compact layout as well as at 1681 px.
+- [x] **BA4. Layout and size.** Built 2026-10-15. One panel per chosen
+  metric on the charts' own grid (1/2/4 across), each box the card's plot
+  height, marked `data-plot` so Section sizes and pages it as it does a
+  chart. Dials fill the box, wrapping to a second line when that makes them
+  larger. Measured at 2560px in a half-width column: two 556px columns,
+  three 181px dials at the default 180px. Shrinking from the corner took the
+  dials to 77px at the 80px floor and then paged ("1–8 of 10", "1–6 of 10");
+  growing restored every row. The value and unit are sized in pixels inside
+  the drawing, so they stay legible at the floor.
+
+  Bands are drawn for the GPU and the package zones only, the two
+  temperatures the node card and the alerts judge with a warning and a
+  critical; other sensors state a single limit, and a mark invented for
+  them would claim a threshold nothing enforces. Thermal headroom is a tile,
+  like throughput: it has no ceiling. The state is strictly above the band,
+  as the node card judges it. The gauges view asks Prometheus for no
+  history at all.
 
 ### J — Single-host profile (everything on one GB10)
 

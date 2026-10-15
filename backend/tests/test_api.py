@@ -869,3 +869,14 @@ def test_silences_carry_their_window(maint):
     assert len(silences) == 2
     assert {s["maintenance"]["peers"] for s in silences} == {False, True}
     assert {s["maintenance"]["name"] for s in silences} == {"gx10-1"}
+
+
+def test_latest_rejects_metrics_off_its_menu(client):
+    """Only the five the snapshot lacks; the rest are read live."""
+    resp = client.get("/api/latest", params={"metric": ["cpu_clock", "gpu_utilization"]})
+    assert resp.status_code == 400
+    assert "gpu_utilization" in resp.json()["detail"]
+
+
+def test_latest_requires_a_metric(client):
+    assert client.get("/api/latest").status_code == 422

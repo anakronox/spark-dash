@@ -1031,6 +1031,7 @@
         {:else if kind === 'history'}
           <Trends
             nodeIds={nodes.map((n) => n.node_id)}
+            {nodes}
             themeKey={theme.resolved}
             plotHeight={layout.plotHeight(id)}
             plotRows={layout.plotRowsFor(id)}

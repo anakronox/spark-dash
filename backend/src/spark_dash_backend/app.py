@@ -75,6 +75,7 @@ from spark_dash_backend.maintenance import (
     render_metrics,
     tag_episodes,
 )
+from spark_dash_backend.latest import LATEST_METRICS, latest
 from spark_dash_backend.poller import LivePoller
 from spark_dash_backend.prometheus import (
     ABSENT_AFTER_S,
@@ -490,6 +491,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"node": s.node, "labels": s.labels, "points": s.points} for s in series
             ],
         }
+
+    @app.get("/api/latest")
+    async def api_latest(
+        metric: list[str] = Query(..., description=f"Any of: {', '.join(sorted(LATEST_METRICS))}"),
+    ) -> dict:
+        """Prometheus's latest reading of the metrics the snapshot lacks, with
+        when each node was sampled, for System Activity's gauges (roadmap BA2).
+
+        A fixed menu, like /api/history: an unknown name is a 400, not a query.
+        """
+        unknown = sorted(set(metric) - LATEST_METRICS)
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown metric {unknown}; valid: {sorted(LATEST_METRICS)}",
+            )
+        return await latest(prom, metric)
 
     @app.get("/api/targets/absent")
     async def api_absent_targets() -> dict:

@@ -368,3 +368,17 @@ def test_frames_end_level_with_the_card_beside_them():
     assert "grid-auto-rows: auto auto 1fr" in compact[: compact.index("}")]
     grid = app[app.index("  .top.split > .node-grid {") :]
     assert "margin-bottom: 16px" in grid[: grid.index("}")]
+
+
+def test_gauge_panels_size_and_page_like_charts():
+    """System Activity's gauges (roadmap BA) are plots to the card's corner.
+
+    Section finds a chart card's plots by selector. Without the gauge panel
+    in it, a gauges copy fell back to table mode: the corner stepped by a
+    table row and never paged, and nothing errored.
+    """
+    src = without_comments(SECTION.read_text())
+    assert "[data-plot]" in src, "Section does not count gauge panels as plots"
+    panel = without_comments((FRONTEND / "components" / "GaugePanel.svelte").read_text())
+    assert re.search(r"data-plot\b", panel), "GaugePanel's box is not marked data-plot"
+    assert "{height}px" in panel, "the gauge box does not take the card's plot height"

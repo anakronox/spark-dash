@@ -414,7 +414,9 @@
     }
     slotEl.style.setProperty('--sticky-top', `${header?.offsetHeight ?? 0}px`);
 
-    const plots = slotEl.querySelectorAll<HTMLElement>('.uplot');
+    /* A chart's canvas, or a gauge panel's box (`data-plot`): both are a
+       plot `plotHeight` tall in a grid of rows, and size and page alike. */
+    const plots = slotEl.querySelectorAll<HTMLElement>('.uplot, [data-plot]');
     if (plots.length) {
       mode = 'plot';
       // Rows of the chart GRID, counted by distinct vertical offset. The grid

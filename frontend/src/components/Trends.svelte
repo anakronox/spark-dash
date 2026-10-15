@@ -5,6 +5,7 @@
    * here". Both are needed: a GPU at 84°C means something different when it's
    * been climbing for an hour than when it just spiked.
    */
+  import GaugePanel from './GaugePanel.svelte';
   import MetricChart from './MetricChart.svelte';
   import Pager from './Pager.svelte';
   import PickMenu from './PickMenu.svelte';
@@ -12,13 +13,18 @@
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
   import { gridCols, onLastRow } from '../lib/chart-grid';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
-  import type { Annotation } from '../lib/history';
+  import type { Annotation, MetricSpec } from '../lib/history';
+  import { PROMETHEUS_ONLY } from '../lib/gauges';
+  import { fetchWithTimeout } from '../lib/request';
   import { nodeColor } from '../lib/theme';
+  import type { NodeSnapshot } from '../lib/types';
   import { poll } from '../lib/visibility.svelte';
 
   interface Props {
     /** Ordered node ids, so chart colours match the cards. */
     nodeIds: string[];
+    /** The live snapshot, which the gauges view reads. */
+    nodes?: NodeSnapshot[];
     /** Changes whenever the theme does, so charts rebuild with the new
      *  canvas colours. */
     themeKey: string;
@@ -37,6 +43,7 @@
   }
   const {
     nodeIds,
+    nodes = [],
     themeKey,
     plotHeight = DEFAULT_PLOT_PX,
     plotRows = Infinity,
@@ -69,6 +76,9 @@
   // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
   // component: App keys each card by id, so a different instance is a different mount.
   const SCALE_KEY = instanceKey('spark-dash.trend-scale.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const VIEW_KEY = instanceKey('spark-dash.trend-view.v1', instance);
 
   /* WHAT A NEWCOMER SEES. The first cut defaulted to the first metric alone,
      which on a full-width card is one GPU-utilization line stretched across
@@ -134,6 +144,29 @@
     scaleMode = mode;
     try {
       localStorage.setItem(SCALE_KEY, mode);
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  /* CHARTS OR GAUGES (roadmap BA). One card, two views, kept per copy like
+     its metrics: `+ element` gives a second copy, so trends sit in one and
+     the present in the other. The gauges read the live snapshot, so they
+     need no window and query nothing while the snapshot carries the metric. */
+  let view = $state<'charts' | 'gauges'>(readView());
+
+  function readView(): 'charts' | 'gauges' {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'gauges' ? 'gauges' : 'charts';
+    } catch {
+      return 'charts';
+    }
+  }
+
+  function setView(v: 'charts' | 'gauges') {
+    view = v;
+    try {
+      localStorage.setItem(VIEW_KEY, v);
     } catch {
       // Still applied for this session.
     }
@@ -235,7 +268,10 @@
    * with no history instead of quietly dropping it. */
   const legendNodes = $derived([...new Set([...nodeIds, ...plotted])]);
 
-  const hasHistory = (id: string) => plotted.includes(id);
+  /* What the node filter chooses from. The charts can only draw nodes with
+     history; the gauges draw every node the live snapshot has. */
+  const pool = $derived(view === 'gauges' ? nodeIds : plotted);
+  const selectable = (id: string) => pool.includes(id);
 
   /** The selection, self-healing.
    *
@@ -246,12 +282,12 @@
    * collapses back to "all". */
   const active = $derived.by(() => {
     if (!activeNodes) return null;
-    const kept = activeNodes.filter((n) => plotted.includes(n));
+    const kept = activeNodes.filter((n) => pool.includes(n));
     return kept.length ? kept : null;
   });
 
   const isActive = (id: string) => active === null || active.includes(id);
-  const shownNodes = $derived(plotted.filter(isActive));
+  const shownNodes = $derived(pool.filter(isActive));
 
   /** The time axis of whichever metric did return data.
    *
@@ -294,7 +330,11 @@
      half-width column on a wide screen used to draw four 190px charts. */
   const GRID_GAP_PX = 14;
   let gridWidth = $state(0);
-  const cols = $derived(gridCols(charts.length, gridWidth, GRID_GAP_PX));
+  /* The gauges view lays out one panel per CHOSEN metric, loaded or not: it
+     reads the snapshot, so nothing is waiting on a fetch. Paged and sized by
+     the same grid as the charts, so the card's corner works the same way. */
+  const panelCount = $derived(view === 'gauges' ? chosen.length : charts.length);
+  const cols = $derived(gridCols(panelCount, gridWidth, GRID_GAP_PX));
 
   /* PAGED BY CHART ROW, with the machinery tables use. A grid of charts was
      the one thing on the page that could not paginate, so a card of eight
@@ -305,7 +345,71 @@
     pages.pageSize = plotRows * cols;
   });
   const shownCharts = $derived(pages.slice(charts));
-  const rowsTotal = $derived(Math.ceil(charts.length / cols));
+  const gaugePages = new TableView<MetricSpec>([], Infinity);
+  $effect.pre(() => {
+    gaugePages.pageSize = plotRows * cols;
+  });
+  const shownGauges = $derived(gaugePages.slice(chosen));
+  const rowsTotal = $derived(Math.ceil(panelCount / cols));
+
+  /** The live nodes the gauges draw, in inventory order, filtered like the
+   *  charts. */
+  const gaugeNodes = $derived(
+    nodeIds
+      .filter((id) => isActive(id))
+      .map((id) => nodes.find((n) => n.node_id === id))
+      .filter((n): n is NodeSnapshot => !!n),
+  );
+
+  /* THE FIVE THE SNAPSHOT LACKS (BA2) come from Prometheus's latest sample,
+     polled at its scrape interval, and only while a gauge needs one. */
+  const promKeys = $derived(
+    view === 'gauges' ? chosen.filter((m) => PROMETHEUS_ONLY.has(m.key)).map((m) => m.key) : [],
+  );
+  let latest = $state<{ values: Record<string, Record<string, number>>; sampledAt: Record<string, number> }>({
+    values: {},
+    sampledAt: {},
+  });
+  let nowS = $state(Date.now() / 1000);
+
+  async function loadLatest(keys: string[]) {
+    if (!keys.length) return;
+    const params = new URLSearchParams();
+    for (const k of keys) params.append('metric', k);
+    try {
+      const resp = await fetchWithTimeout(`/api/latest?${params}`);
+      if (!resp.ok) return;
+      const body = await resp.json();
+      latest = { values: body.values ?? {}, sampledAt: body.sampled_at ?? {} };
+    } catch {
+      // The gauge keeps its last reading, and its age keeps counting.
+    }
+  }
+
+  $effect(() => {
+    const keys = promKeys;
+    if (!keys.length) return;
+    // poll() never runs on creation, so the first reading is fetched here
+    // rather than fifteen seconds after the gauge appears.
+    loadLatest(keys);
+    return poll(() => loadLatest(keys), 15_000);
+  });
+
+  // The age ticks once a second, so "9s ago" does not sit still for fifteen.
+  $effect(() => {
+    if (!promKeys.length) return;
+    const t = setInterval(() => (nowS = Date.now() / 1000), 1000);
+    return () => clearInterval(t);
+  });
+
+  function latestFor(key: string) {
+    if (!PROMETHEUS_ONLY.has(key)) return undefined;
+    const stamps = gaugeNodes.map((n) => latest.sampledAt[n.node_id]).filter((t) => t != null);
+    return {
+      values: latest.values[key] ?? {},
+      ageS: stamps.length ? nowS - Math.min(...stamps) : null,
+    };
+  }
 
   /** Click solos, click the soloed node again to restore. Shift adds.
    *
@@ -315,14 +419,14 @@
    * choice — the same rule the metric chips already have. */
   function pickNode(id: string, additive: boolean) {
     if (additive) {
-      const current = active ?? [...plotted];
+      const current = active ?? [...pool];
       const next = current.includes(id)
         ? current.filter((n) => n !== id)
         : [...current, id];
       activeNodes = next.length ? next : null;
       // Everything selected IS "all" — kept as null so the count and the
       // "show all" control do not linger over a selection of everything.
-      if (activeNodes && activeNodes.length === plotted.length) activeNodes = null;
+      if (activeNodes && activeNodes.length === pool.length) activeNodes = null;
       return;
     }
     const soloed = active?.length === 1 && active[0] === id;
@@ -416,9 +520,11 @@
   }
 
   $effect(() => {
-    // Re-runs when the selection or the range changes.
+    // Re-runs when the selection, the range or the view changes. The gauges
+    // read the snapshot, so a gauges copy asks Prometheus for no history.
     void selected.join(',');
     void range.key;
+    if (view === 'gauges') return;
     load();
   });
 
@@ -435,6 +541,7 @@
   const MAX_REFRESH_MS = 5 * 60_000;
 
   $effect(() => {
+    if (view === 'gauges') return;
     const period = Math.min(MAX_REFRESH_MS, Math.max(30_000, (range.minutes * 60_000) / 120));
     return poll(load, period);
   });
@@ -470,7 +577,7 @@
       {#if legendNodes.length > 1}
         <span class="legend" role="group" aria-label="Nodes">
           {#each legendNodes as id (id)}
-            {@const plottable = hasHistory(id)}
+            {@const plottable = selectable(id)}
             {@const on = plottable && isActive(id)}
             <button
               class="item"
@@ -480,7 +587,9 @@
               aria-pressed={on}
               title={plottable
                 ? `Show only ${id} — shift-click to add`
-                : `${id} has no samples in this range — live, but nothing to plot yet`}
+                : view === 'gauges'
+                  ? `${id} is not in the live feed`
+                  : `${id} has no samples in this range — live, but nothing to plot yet`}
               onclick={(e) => pickNode(id, e.shiftKey)}
             >
               <span class="swatch" style:background={nodeColor(slots.get(id))}></span>
@@ -489,7 +598,7 @@
           {/each}
           {#if active}
             <button class="clear" onclick={() => (activeNodes = null)}>
-              {shownNodes.length} of {plotted.length} · show all
+              {shownNodes.length} of {pool.length} · show all
             </button>
           {/if}
         </span>
@@ -497,6 +606,20 @@
     </div>
 
     <div class="controls">
+      <div class="segmented" role="group" aria-label="View">
+        {#each ['charts', 'gauges'] as const as v (v)}
+          <button
+            class:active={view === v}
+            aria-pressed={view === v}
+            title={v === 'charts' ? 'How each metric moved over the window' : 'Each metric now, live'}
+            onclick={() => setView(v)}
+          >
+            {v}
+          </button>
+        {/each}
+      </div>
+
+      {#if view === 'charts'}
       <!-- Beside the range, because the two together decide what the charts
            are showing. The count is on the control: an events layer with
            nothing in the window otherwise reads as broken rather than quiet. -->
@@ -535,11 +658,19 @@
           </button>
         {/each}
       </div>
+      {/if}
     </div>
   </header>
 
 
-  {#if error}
+  {#if view === 'gauges'}
+    <div class="charts" style:--cols={cols} data-rows-total={rowsTotal} bind:clientWidth={gridWidth}>
+      {#each shownGauges as m (m.key)}
+        <GaugePanel metric={m} nodes={gaugeNodes} {slots} height={plotHeight} latest={latestFor(m.key)} />
+      {/each}
+    </div>
+    <Pager view={gaugePages} total={chosen.length} label="System Activity gauge pages" />
+  {:else if error}
     <p class="error">Couldn't load history: {error}</p>
   {:else if !charts.length || !anyData}
     <!-- The card's OWN plot height, not a fixed one. This placeholder exists so
