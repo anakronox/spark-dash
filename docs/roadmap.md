@@ -7750,6 +7750,16 @@ annotations in the window, and the series that moved. Off until configured.
   The honest version needs a wall meter per node (a metering smart plug, a
   per-outlet PDU) read through Prometheus, and this cluster has none. Dropped
   2026-10-14; a GPU-only figure was not wanted.
+- **ComfyUI's model in GPU Processes** (considered 2026-10-15, tabled). Two
+  routes, both checked on sparky. `/proc/<pid>/maps` lists the model files
+  a ComfyUI process has loaded right now, exactly, but the agent runs as
+  uid 10001 and the kernel only lets the same user or `CAP_SYS_PTRACE` read
+  it, so it would need an opt-in overlay running the agent as root with
+  that capability. ComfyUI's `/history?max_items=1` (22 KB) names the last
+  job's models with no new privilege, but both instances run in Docker with
+  `--port 8188` inside and 8188 and 8189 on the host, so nothing ties a GPU
+  process to its instance. Too much privilege or too little certainty for
+  the gain.
 - **Operator actions** (load, unload, sleep a model from the Models table).
   Not wanted now; the dashboard stays read-only. Possible if a user asks.
 
