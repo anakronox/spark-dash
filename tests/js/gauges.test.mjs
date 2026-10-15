@@ -17,6 +17,10 @@ import {
   kindOf,
   liveValue,
   stateOf,
+  capacityLabel,
+  linkItems,
+  linkLoads,
+  systemItems,
 } from '../../frontend/src/lib/gauges.ts';
 import { METRICS } from '../../frontend/src/lib/history.ts';
 
@@ -135,6 +139,75 @@ test('readings: whole numbers, one decimal for temperatures and rates', () => {
   assert.equal(formatReading(spec('gpu_temperature'), 84.46), '84.5');
   assert.equal(formatReading(spec('tokens_per_second'), 31.04), '31.0');
   assert.equal(formatReading(spec('gpu_power'), null), '—');
+});
+
+
+/* --- Network (BA3), with sparketa's real interfaces, read 2026-10-15 --- */
+
+const iface = (name, speed, rxBytes, txBytes, extra = {}) => ({
+  name, up: true, monitored: true, wireless: false, driver: 'mlx5_core', bus: 'pci',
+  speed_mbps: speed, rx_bytes_per_sec: rxBytes, tx_bytes_per_sec: txBytes, ...extra,
+});
+const sparketa = {
+  node_id: 'sparketa', up: true,
+  rdma: ['enP2p1s0f0np0', 'enP2p1s0f1np1', 'enp1s0f0np0', 'enp1s0f1np1'].map((i, k) => ({ device: `rocep${k}`, port: 1, interface: i })),
+  network: [
+    iface('enP2p1s0f0np0', 200000, 1e9, 1e9),
+    iface('enP2p1s0f1np1', 100000, 0, 0),
+    iface('enp1s0f0np0', 200000, 2e9, 0),
+    iface('enp1s0f1np1', 100000, 0, 0),
+    iface('enP7s7', 10000, 62e6, 1e6, { driver: 'r8127' }),
+    iface('wlP9s9', null, 0, 0, { up: false, driver: 'mt7925e', wireless: true }),
+  ],
+};
+const sparky = {
+  node_id: 'sparky', up: true, rdma: [],
+  network: [iface('enP7s7', 10000, 1e6, 1e6, { driver: 'r8127' })],
+};
+
+test('a group adds its interfaces, and its capacity over the same ones', () => {
+  const [roce, mgmt] = linkLoads([sparky, sparketa], ['fabric', 'management']);
+  assert.equal(roce.label, 'RoCE');
+  // sparky has no RoCE interface, so no dial there
+  assert.deepEqual(roce.loads.map((l) => l.node), ['sparketa']);
+  const l = roce.loads[0];
+  assert.equal(l.links, 4);
+  assert.equal(l.rxBits, 24e9);
+  assert.equal(l.capacityBits, 600e9);
+  assert.deepEqual(mgmt.loads.map((x) => x.node), ['sparky', 'sparketa']);
+});
+
+test('hidden groups and down nodes are left out', () => {
+  assert.deepEqual(linkLoads([sparketa], ['management']).map((g) => g.key), ['management']);
+  assert.equal(linkLoads([{ ...sparketa, up: false }], ['fabric']).length, 0);
+});
+
+test('a link with no reported speed makes its group tiles', () => {
+  const [wifi] = linkLoads([sparketa], ['wifi']);
+  assert.equal(wifi.loads[0].capacityBits, null);
+  assert.equal(linkItems(wifi, 'rx', () => 'c').tiles, true);
+});
+
+test('network dials read as a share of the negotiated rate', () => {
+  const [roce] = linkLoads([sparketa], ['fabric']);
+  const { items, tiles } = linkItems(roce, 'rx', () => 'c');
+  assert.equal(tiles, false);
+  assert.equal(items[0].fraction, 24e9 / 600e9);
+  assert.equal(items[0].value, '24.00');
+  assert.equal(items[0].unit, 'Gb/s in');
+  assert.deepEqual(items[0].scale, ['0', '600G']);
+  assert.equal(capacityLabel(10e9), '10G');
+});
+
+test('system items carry state, bands as fractions, and idle', () => {
+  const hot = node({ gpu: { util_pct: 1, temp_c: 87, power_w: 1, clock_mhz: 1, clock_state: 'PASS' } });
+  const [it] = systemItems(spec('gpu_temperature'), [hot], () => 'c');
+  assert.equal(it.state, 'critical');
+  assert.deepEqual(it.bands, [0.82, 0.86]);
+  const idle = node({ runtimes: { llama_cpp: [], vllm: [], sglang: [], tensorfold: [] } });
+  assert.equal(systemItems(spec('tokens_per_second'), [idle], () => 'c')[0].value, 'idle');
+  // from Prometheus: a node it did not answer for reads "—", never zero
+  assert.equal(systemItems(spec('cpu_clock'), [node()], () => 'c', {})[0].value, '—');
 });
 
 console.log(`${passed}/${passed + failed} passed`);

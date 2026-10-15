@@ -7,7 +7,10 @@
  * Plain TypeScript with no runes and no DOM, so tests/js runs it for real.
  */
 
+import { bitRate } from './format';
 import type { MetricSpec } from './history';
+import { DIVISIONS, divide, linkKey } from './network-history';
+import type { Division } from './network-history';
 import type { NodeSnapshot } from './types';
 import { ENGINE_RUNTIMES } from './types';
 
@@ -214,4 +217,152 @@ export function ageLabel(seconds: number | null): string {
   if (seconds == null || !Number.isFinite(seconds)) return '';
   const s = Math.max(0, Math.round(seconds));
   return s < 120 ? `${s}s ago` : `${Math.round(s / 60)}m ago`;
+}
+
+/** The node's name under each dial, and the space between dials, in px. */
+export const DIAL_LABEL_PX = 14;
+export const DIAL_GAP_PX = 6;
+
+/** One dial or tile, ready to draw. */
+export interface GaugeItem {
+  id: string;
+  /** Identity colour, already resolved to a CSS value. */
+  colour: string;
+  /** 0-1 along the sweep; ignored for a tile. */
+  fraction: number;
+  value: string;
+  unit: string;
+  state: GaugeState;
+  /** [warning, critical] as fractions of the sweep. */
+  bands: [number, number] | null;
+  /** The two ends of the dial's scale. */
+  scale: [string, string];
+  title: string;
+}
+
+/** System Activity's items for one metric: a reading per node, live or from
+ *  `latest` for the five the snapshot lacks. */
+export function systemItems(
+  m: MetricSpec,
+  nodes: NodeSnapshot[],
+  colourOf: (id: string) => string,
+  latest?: Record<string, number>,
+): GaugeItem[] {
+  const ceiling = ceilingOf(m);
+  return nodes.map((n) => {
+    const v = latest ? (n.up ? (latest[n.node_id] ?? null) : null) : liveValue(m.key, n);
+    const b = bandsOf(m.key, n);
+    const idle = v === 0 && m.unit === 'tok/s';
+    return {
+      id: n.node_id,
+      colour: colourOf(n.node_id),
+      fraction: v == null || ceiling == null ? 0 : v / ceiling,
+      value: idle ? 'idle' : formatReading(m, v),
+      unit: m.key === 'temperature_headroom' ? '°C left' : m.unit,
+      state: stateOf(v, b),
+      bands: b && ceiling ? [b[0] / ceiling, b[1] / ceiling] : null,
+      scale: ['0', String(ceiling ?? '')],
+      title: b ? `${n.node_id}: warns above ${b[0]}°C, critical above ${b[1]}°C` : n.node_id,
+    };
+  });
+}
+
+/* --- Network Activity (BA3) ---------------------------------------- */
+
+/** One node's traffic in one interface group, now. */
+export interface LinkLoad {
+  node: string;
+  rxBits: number;
+  txBits: number;
+  /** The negotiated rates of the group's UP links, added together; null when
+   *  none of them reports a speed. */
+  capacityBits: number | null;
+  links: number;
+}
+
+export interface LinkGaugeGroup {
+  key: Division;
+  label: string;
+  loads: LinkLoad[];
+}
+
+/** Each node's traffic per interface group, from the live snapshot.
+ *
+ * ADDED TOGETHER THE WAY THE GROUP CHART ADDS THEM: every interface in the
+ * group, so a ConnectX port's two functions both count. The capacity is
+ * added over the same interfaces, so the dial's share is traffic over the
+ * rate those same interfaces negotiated. A node with no interface in a group
+ * has no dial there, as it has no line on the chart. */
+export function linkLoads(nodes: NodeSnapshot[], groups: Division[]): LinkGaugeGroup[] {
+  const fabric = new Set<string>();
+  for (const n of nodes) {
+    for (const p of n.rdma ?? []) if (p.interface) fabric.add(linkKey(n.node_id, p.interface));
+  }
+  const out: LinkGaugeGroup[] = [];
+  for (const d of DIVISIONS) {
+    if (!groups.includes(d.key)) continue;
+    const loads: LinkLoad[] = [];
+    for (const n of nodes) {
+      if (!n.up) continue;
+      const mine = (n.network ?? []).filter((i) => {
+        const key = linkKey(n.node_id, i.name);
+        return (
+          divide(key, false, fabric, {
+            speedMbps: i.speed_mbps,
+            monitored: i.monitored,
+            wireless: i.wireless,
+            driver: i.driver,
+            bus: i.bus,
+          }) === d.key
+        );
+      });
+      if (!mine.length) continue;
+      const speeds = mine.filter((i) => i.up && i.speed_mbps != null && i.speed_mbps > 0);
+      loads.push({
+        node: n.node_id,
+        rxBits: mine.reduce((a, i) => a + 8 * (i.rx_bytes_per_sec ?? 0), 0),
+        txBits: mine.reduce((a, i) => a + 8 * (i.tx_bytes_per_sec ?? 0), 0),
+        capacityBits: speeds.length
+          ? speeds.reduce((a, i) => a + (i.speed_mbps as number) * 1e6, 0)
+          : null,
+        links: mine.length,
+      });
+    }
+    if (loads.length) out.push({ key: d.key, label: d.label, loads });
+  }
+  return out;
+}
+
+/** A link rate as the dial's scale prints it: 600G, 10G, 100M. */
+export function capacityLabel(bits: number | null): string {
+  if (bits == null) return '';
+  if (bits >= 1e9) return `${+(bits / 1e9).toFixed(1)}G`;
+  return `${+(bits / 1e6).toFixed(1)}M`;
+}
+
+/** One direction of one group as dials, or tiles when any node in it has no
+ *  reported speed: a share of an unknown rate is not a reading. */
+export function linkItems(
+  g: LinkGaugeGroup,
+  dir: 'rx' | 'tx',
+  colourOf: (id: string) => string,
+): { items: GaugeItem[]; tiles: boolean } {
+  const tiles = g.loads.some((l) => l.capacityBits == null);
+  const items = g.loads.map((l) => {
+    const bits = dir === 'rx' ? l.rxBits : l.txBits;
+    const [value, unit] = bitRate(bits).split(' ');
+    return {
+      id: l.node,
+      colour: colourOf(l.node),
+      fraction: l.capacityBits ? bits / l.capacityBits : 0,
+      value,
+      unit: `${unit} ${dir === 'rx' ? 'in' : 'out'}`,
+      state: 'ok' as GaugeState,
+      bands: null,
+      scale: ['0', capacityLabel(l.capacityBits)] as [string, string],
+      title: `${l.node}: ${l.links} interface${l.links === 1 ? '' : 's'}` +
+        (l.capacityBits ? `, ${capacityLabel(l.capacityBits)}b/s negotiated in all` : ', no reported speed'),
+    };
+  });
+  return { items, tiles };
 }

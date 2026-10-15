@@ -14,9 +14,9 @@
   import { gridCols, onLastRow } from '../lib/chart-grid';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation, MetricSpec } from '../lib/history';
-  import { PROMETHEUS_ONLY } from '../lib/gauges';
+  import { PROMETHEUS_ONLY, ageLabel, kindOf, systemItems } from '../lib/gauges';
   import { fetchWithTimeout } from '../lib/request';
-  import { nodeColor } from '../lib/theme';
+  import { nodeColor, nodeColorVar } from '../lib/theme';
   import type { NodeSnapshot } from '../lib/types';
   import { poll } from '../lib/visibility.svelte';
 
@@ -402,13 +402,20 @@
     return () => clearInterval(t);
   });
 
-  function latestFor(key: string) {
-    if (!PROMETHEUS_ONLY.has(key)) return undefined;
+  /** How old the oldest Prometheus reading on the card is, in seconds. */
+  const latestAge = $derived.by(() => {
     const stamps = gaugeNodes.map((n) => latest.sampledAt[n.node_id]).filter((t) => t != null);
-    return {
-      values: latest.values[key] ?? {},
-      ageS: stamps.length ? nowS - Math.min(...stamps) : null,
-    };
+    return stamps.length ? nowS - Math.min(...stamps) : null;
+  });
+
+  const gaugeColour = (id: string) => {
+    const slot = slots.get(id);
+    return slot === undefined ? 'var(--rule)' : nodeColorVar(slot);
+  };
+
+  function gaugeItems(m: MetricSpec) {
+    const fromProm = PROMETHEUS_ONLY.has(m.key);
+    return systemItems(m, gaugeNodes, gaugeColour, fromProm ? (latest.values[m.key] ?? {}) : undefined);
   }
 
   /** Click solos, click the soloed node again to restore. Shift adds.
@@ -666,7 +673,18 @@
   {#if view === 'gauges'}
     <div class="charts" style:--cols={cols} data-rows-total={rowsTotal} bind:clientWidth={gridWidth}>
       {#each shownGauges as m (m.key)}
-        <GaugePanel metric={m} nodes={gaugeNodes} {slots} height={plotHeight} latest={latestFor(m.key)} />
+        {@const fromProm = PROMETHEUS_ONLY.has(m.key)}
+        <!-- Not live, for the five from Prometheus: the age is what makes
+             the reading honest. -->
+        <GaugePanel
+          title={m.label}
+          verbatim={m.verbatim}
+          note={fromProm && latestAge != null ? ageLabel(latestAge) : undefined}
+          noteTitle="From Prometheus's latest scrape; not in the live feed"
+          height={plotHeight}
+          items={gaugeItems(m)}
+          tiles={kindOf(m) === 'tile'}
+        />
       {/each}
     </div>
     <Pager view={gaugePages} total={chosen.length} label="System Activity gauge pages" />

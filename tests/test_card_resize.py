@@ -976,7 +976,7 @@ def test_rdma_ports_is_a_view_of_network_activity_not_a_card():
     assert not (FRONTEND / "components" / "NetworkPanel.svelte").exists(), "NetworkPanel survives"
     assert (FRONTEND / "components" / "RdmaTable.svelte").exists()
     card = without_comments(NETWORK.read_text())
-    assert "const MODES: Mode[] = ['charts', 'table', 'ports']" in card
+    assert "const MODES: Mode[] = ['charts', 'gauges', 'table', 'ports']" in card
     assert "<RdmaTable" in card and "new ColumnView('network.rdma'" in card, (
         "the ports view does not reuse the RDMA table, or lost its column choices"
     )
@@ -1152,7 +1152,11 @@ def test_the_chart_card_controls_hold_their_place_across_views():
     card = without_comments(NETWORK.read_text())
     for gone in ("{#if mode !== 'ports'}",):
         assert gone not in card, f"a control still comes and goes: {gone}"
-    assert card.count("disabled={mode === 'ports'}") >= 3, "events, the range and the groups menu are not all disabled on ports"
+    # Ports and gauges are both live: no window, so events and the range are
+    # disabled in both. The groups menu applies to gauges, so only ports.
+    assert "const live = $derived(mode === 'ports' || mode === 'gauges')" in card
+    assert card.count("disabled={live}") >= 2, "events and the range are not both disabled on the live views"
+    assert card.count("disabled={mode === 'ports'}") >= 1, "the groups menu is not disabled on ports"
     css = APP_CSS.read_text()
     assert "--fill: color-mix(in srgb, var(--rule) 72%, var(--ink))" in css, "the selected fill is not a step up from the rule"
     for sel in (".segmented > button.active {", ".toggle.on {"):

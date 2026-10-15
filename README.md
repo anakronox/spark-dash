@@ -99,7 +99,8 @@ each get one chart with a line per node, received above the zero line and sent
 below it. The links span six orders of magnitude, so a **log** switch keeps a
 12 Mb/s management spike from flattening the 100 kb/s lines beside it. Errors,
 drops and an RDMA port changing state get a chart of their own when they
-happen. The table lists every interface, worst first, and opens any one's own
+happen. A **gauges** view shows each node's traffic in each group now, as a
+share of the rate its links negotiated. The table lists every interface, worst first, and opens any one's own
 chart; past a dozen links the card opens as the table.
 
 **Optionally, NVIDIA release updates.** The dashboard can check every Spark

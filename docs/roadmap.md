@@ -7753,7 +7753,7 @@ annotations in the window, and the series that moved. Off until configured.
 - **Operator actions** (load, unload, sleep a model from the Models table).
   Not wanted now; the dashboard stays read-only. Possible if a user asks.
 
-### BA — Gauges on the activity cards — **System Activity built 2026-10-15**
+### BA — Gauges on the activity cards — **built 2026-10-15**
 
 Brian: an option on the graph cards to show gauges instead of charts, so one
 copy of System Activity can show trends and another what is happening now.
@@ -7798,10 +7798,20 @@ against `frontend/src/lib/types.ts`:
   gauges view shows one of the five. Checked against the live Prometheus:
   every node answers for all five. Moving them into the snapshot stays
   possible if 15s turns out too slow.
-- [ ] **BA3. Network Activity gauges.** One per interface group per node,
-  received and sent, against the link's negotiated rate (`speed_mbps`), so a
-  ConnectX port reads as a share of 200 Gb/s. A link with no reported speed
-  gets a tile, like BA1's throughput.
+- [x] **BA3. Network Activity gauges.** Built 2026-10-15, a fourth view
+  beside charts, table and ports. Per shown group, an "in" panel and an
+  "out" panel, a dial per node: the group's traffic over the rate its UP
+  links negotiated, both added over the same interfaces the group chart
+  adds, so a ConnectX port's two functions count on both sides. Live from
+  the snapshot, so events and the window are disabled, as in ports. A node
+  with no interface in a group has no dial there; a group where any node's
+  link reports no speed is tiles. Read live on 2026-10-15: sparketa's and
+  sparkjr's RoCE groups are two 200 Gb/s and two 100 Gb/s functions each,
+  600G on the dial; sparky has none; management is 10G on all three. At
+  idle a RoCE dial is empty, which is true; the figure under it says how
+  much. Every panel on a card sizes its dials for the fullest panel, so a
+  two-node RoCE panel does not draw them larger than a three-node one beside
+  it.
 - [x] **BA4. Layout and size.** Built 2026-10-15. One panel per chosen
   metric on the charts' own grid (1/2/4 across), each box the card's plot
   height, marked `data-plot` so Section sizes and pages it as it does a

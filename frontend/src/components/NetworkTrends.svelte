@@ -29,6 +29,7 @@
    * and a 32-node install is hypothetical while a flat-lined 200Gb link is not.
    */
   import ColumnMenu from './ColumnMenu.svelte';
+  import GaugePanel from './GaugePanel.svelte';
   import MetricChart from './MetricChart.svelte';
   import Pager from './Pager.svelte';
   import PickMenu from './PickMenu.svelte';
@@ -56,7 +57,8 @@
   import { ColumnView } from '../lib/columns.svelte';
   import type { Port } from '../lib/network-history';
   import { linkKey } from '../lib/network-history';
-  import { nodeColor } from '../lib/theme';
+  import { linkItems, linkLoads } from '../lib/gauges';
+  import { nodeColor, nodeColorVar } from '../lib/theme';
   import type { NodeSnapshot } from '../lib/types';
   import { poll } from '../lib/visibility.svelte';
 
@@ -231,8 +233,8 @@
      the ReferenceError is swallowed by readMode's own try/catch, and every
      card comes back on its automatic view with its stored choice ignored --
      which is exactly what happened, silently, until a copy made it visible. */
-  type Mode = 'charts' | 'table' | 'ports';
-  const MODES: Mode[] = ['charts', 'table', 'ports'];
+  type Mode = 'charts' | 'gauges' | 'table' | 'ports';
+  const MODES: Mode[] = ['charts', 'gauges', 'table', 'ports'];
   let chosenMode = $state<Mode | null>(readMode());
 
   function readMode(): Mode | null {
@@ -382,6 +384,9 @@
   const portCount = $derived(nodes.reduce((n, x) => n + (x.rdma?.length ?? 0), 0));
 
   const mode = $derived(chosenMode ?? (linkCount > TABLE_ABOVE ? 'table' : 'charts'));
+  /** The views that read the live snapshot and so have no window. */
+  const live = $derived(mode === 'ports' || mode === 'gauges');
+
 
 
   /* The ports view's columns, owned here so the card's one column menu can
@@ -445,6 +450,7 @@
   const groupCols = $derived(gridCols(summary.charts.length, gridWidth, GRID_GAP_PX));
   const groupRows = $derived(Math.ceil(summary.charts.length / groupCols));
 
+
   /* One page view per division grid, the way ThermalPanel keeps one per
      domain. `pageSize` is set from the effect below, never inside `pagesFor`,
      for the reason ThermalPanel spells out: this is called from the template.
@@ -477,6 +483,38 @@
   const rowsTotal = (n: number) => Math.ceil(n / cols);
 
   const isActive = (id: string) => active === null || active.includes(id);
+
+  /* GAUGES (roadmap BA3): each node's traffic per shown group, received and
+     sent, as a share of the rate its links negotiated. From the live
+     snapshot, like the ports view, so it moves every second or two. */
+  const gaugeGroups = $derived(
+    linkLoads(
+      nodes.filter((n) => isActive(n.node_id)),
+      shownGroups,
+    ),
+  );
+  const gaugeColour = (id: string) => {
+    const slot = slots.get(id);
+    return slot === undefined ? 'var(--rule)' : nodeColorVar(slot);
+  };
+  const gaugePanels = $derived(
+    gaugeGroups.flatMap((g) =>
+      (['rx', 'tx'] as const).map((dir) => ({
+        key: `${g.key}-${dir}`,
+        title: `${g.label} ${dir === 'rx' ? 'in' : 'out'}`,
+        note: `${g.loads.reduce((n, l) => n + l.links, 0)} interfaces`,
+        ...linkItems(g, dir, gaugeColour),
+      })),
+    ),
+  );
+
+  /* The gauges' panels on the same grid rule, paged by row like the charts. */
+  const gaugeCols = $derived(gridCols(gaugePanels.length, gridWidth, GRID_GAP_PX));
+  const gaugePages = new TableView<(typeof gaugePanels)[number]>([], Infinity);
+  $effect.pre(() => {
+    gaugePages.pageSize = plotRows * gaugeCols;
+  });
+  const shownGaugePanels = $derived(gaugePages.slice(gaugePanels));
 
   function pickNode(id: string, additive: boolean) {
     if (additive) {
@@ -638,7 +676,7 @@
            read as a group across the grid. -->
       {#if mode === 'charts'}
         <span class="key" aria-hidden="true">↑ in&nbsp;&nbsp;↓ out</span>
-      {:else}
+      {:else if mode !== 'gauges'}
         <span class="key" aria-hidden="true">
           <span class="line solid"></span>in
           <span class="line dash"></span>out
@@ -672,7 +710,9 @@
             aria-pressed={mode === m}
             title={m === 'table'
               ? 'One row per link — the whole cluster at once'
-              : m === 'ports'
+              : m === 'gauges'
+                ? 'Each group now, live, as a share of its links\' negotiated rate'
+                : m === 'ports'
                 ? 'One row per RDMA port — state, negotiated rate and errors'
                 : 'One chart per group, one line per node'}
             onclick={() => setMode(m)}
@@ -688,11 +728,11 @@
            the title saying why. -->
       <button
         class="events toggle"
-        class:on={showEvents && mode !== 'ports'}
+        class:on={showEvents && !live}
         aria-pressed={showEvents}
-        disabled={mode === 'ports'}
-        title={mode === 'ports'
-          ? 'The ports view is live; it has no window to mark events on'
+        disabled={live}
+        title={live
+          ? `The ${mode} view is live; it has no window to mark events on`
           : 'Mark alerts, cold starts and agent deploys on the charts'}
         onclick={() => writeFlag(EVENTS_KEY, (showEvents = !showEvents))}
       >events{annotations.length ? ` · ${annotations.length}` : ''}</button>
@@ -703,8 +743,8 @@
             class="range"
             class:active={r.key === rangeKey}
             aria-pressed={r.key === rangeKey}
-            disabled={mode === 'ports'}
-            title={mode === 'ports' ? 'The ports view is live; it has no time range' : undefined}
+            disabled={live}
+            title={live ? `The ${mode} view is live; it has no time range` : undefined}
             onclick={() => (rangeKey = r.key)}
           >
             {r.label}
@@ -714,7 +754,26 @@
     </div>
   </header>
 
-  {#if error}
+  {#if mode === 'gauges'}
+    <!-- Before the history checks: the gauges read the snapshot, so a
+         Prometheus outage must not take them with it. -->
+    <div class="charts" style:--cols={gaugeCols} data-rows-total={Math.ceil(gaugePanels.length / gaugeCols)} bind:clientWidth={gridWidth}>
+      {#each shownGaugePanels as p (p.key)}
+        <GaugePanel
+          title={p.title}
+          note={p.note}
+          height={plotHeight}
+          items={p.items}
+          tiles={p.tiles}
+          sizeFor={Math.max(...gaugePanels.map((q) => q.items.length))}
+        />
+      {/each}
+    </div>
+    {#if !gaugePanels.length}
+      <p class="empty dim">No interfaces in the groups shown.</p>
+    {/if}
+    <Pager view={gaugePages} total={gaugePanels.length} label="Network Activity gauge pages" />
+  {:else if error}
     <p class="error">Couldn't load network history: {error}</p>
   {:else if !x.length}
     <p class="empty dim">{loading ? 'Loading…' : 'No data in this range.'}</p>
