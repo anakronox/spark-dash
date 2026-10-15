@@ -7753,6 +7753,51 @@ annotations in the window, and the series that moved. Off until configured.
 - **Operator actions** (load, unload, sleep a model from the Models table).
   Not wanted now; the dashboard stays read-only. Possible if a user asks.
 
+### BA — Gauges on the activity cards — **planned 2026-10-15**
+
+Brian: an option on the graph cards to show gauges instead of charts, so one
+copy of System Activity can show trends and another what is happening now.
+Charts answer "how did it get here"; a gauge answers "is it fine" at a glance.
+
+A view, not a new card: **charts | gauges** beside the window picker, kept
+per copy like the other menus, and showing the metrics the copy already
+has selected. `+ element` gives the second copy.
+
+**Feasible, and mostly from data the page already has.** The WebSocket
+snapshot, every 1–2 s, carries most of what System Activity charts, so the
+gauges move faster than Prometheus's 15 s scrape. Checked 2026-10-15
+against `frontend/src/lib/types.ts`:
+
+| metric | live in the snapshot |
+|---|---|
+| GPU utilization, temperature, power, clock | yes (`gpu`) |
+| Memory used, CPU utilization | yes (`memory`, `cpu`) |
+| Throughput, prefill | yes, per node |
+| Memory pressure and stalled (10 s) | yes (`psi`) |
+| Hottest, package, storage and NIC temperature, headroom | derivable from `temperatures`, the way the Temperatures card does it |
+| CPU clock, swap I/O, CPU and I/O pressure, disk busy | no: Prometheus only |
+
+- [ ] **BA1. System Activity gauges.** A dial per metric per node, in the
+  node's colour, on a fixed scale: 0–100% for percentages, and the same
+  `scaleMax` the full-axis charts use for the rest (GPU temperature 100 °C,
+  power 300 W, clock 3003 MHz). Temperatures carry the node's own warning
+  and critical bands as marks on the dial, from the same hardware limits the
+  alerts use, so "close to its limit" reads off the dial, not the number.
+  A metric with no natural ceiling (throughput, prefill, swap I/O) gets a
+  number tile instead of a dial: a needle against a made-up maximum would
+  look precise and say nothing.
+- [ ] **BA2. The four metrics the snapshot lacks.** Either the agent adds
+  them to the snapshot (it already reads the sources for its exporter), or
+  the gauge takes Prometheus's latest sample and marks its age. The agent is
+  the better fix; to decide when this is built.
+- [ ] **BA3. Network Activity gauges.** One per interface group per node,
+  received and sent, against the link's negotiated rate (`speed_mbps`), so a
+  ConnectX port reads as a share of 200 Gb/s. A link with no reported speed
+  gets a tile, like BA1's throughput.
+- [ ] **BA4. Layout and size.** Gauges fill the card's box the way charts do
+  (AO1), wrapping by node or by metric as the width allows. To be measured
+  at 2560 px in the 8-column compact layout as well as at 1681 px.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
