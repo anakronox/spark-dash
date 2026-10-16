@@ -253,6 +253,25 @@ def test_renderings():
     assert z.read("01-overview-per-node.csv").decode().startswith("Node,GPU % avg")
 
 
+def test_a_pdf_in_either_orientation_with_characters_outside_latin_1():
+    """Made by the backend: a Mac whose only printer is an Instax could not
+    print to PDF from the browser (2026-10-17)."""
+    doc = built(sections=["overview", "workloads"])
+    doc["narrative"] = {"text": "A quiet day — nothing “unusual” → fine…", "model": "qwen"}
+    land = reports.render_pdf(doc)
+    port = reports.render_pdf(doc, "portrait")
+    assert land.startswith(b"%PDF") and port.startswith(b"%PDF") and land != port
+    with pytest.raises(ValueError):
+        reports.render_pdf(doc, "sideways")
+
+
+def test_column_widths_follow_their_content():
+    t = {"columns": [{"key": "n", "label": "Node"}, {"key": "m", "label": "Model"}],
+         "rows": [{"n": "sparky", "m": "Qwen_Qwen3.5-4B-Q4_K_M.gguf"}]}
+    w = reports._col_widths(t)
+    assert w[1] > w[0]
+
+
 def test_html_escapes_what_it_shows():
     doc = built(sections=["overview"], title="<script>x</script>")
     assert "<script>x</script>" not in reports.render_html(doc)
@@ -328,6 +347,12 @@ def test_build_keep_list_download_delete(api):
         d = api.get(f"/api/reports/{rid}/download", params={"format": fmt})
         assert d.status_code == 200 and d.headers["content-type"].startswith(kind)
     assert "print()" in api.get(f"/api/reports/{rid}/download", params={"format": "html", "print": 1}).text
+    pdf = api.get(f"/api/reports/{rid}/download", params={"format": "pdf"})
+    assert pdf.content.startswith(b"%PDF") and pdf.headers["content-disposition"].startswith("attachment")
+    assert "landscape" in pdf.headers["content-disposition"]
+    preview = api.get(f"/api/reports/{rid}/download", params={"format": "pdf", "orientation": "portrait", "inline": 1})
+    assert preview.headers["content-disposition"].startswith("inline") and "portrait" in preview.headers["content-disposition"]
+    assert api.get(f"/api/reports/{rid}/download", params={"format": "pdf", "orientation": "x"}).status_code == 400
     assert api.delete(f"/api/reports/{rid}").status_code == 200
     assert api.get(f"/api/reports/{rid}").status_code == 404
 

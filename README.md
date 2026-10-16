@@ -144,8 +144,9 @@ hours, a report of the period: each node's load, temperature and memory, what
 used the GPU, model loads and latency, alerts, the network, gaps in the data,
 and what moved against the period before. Every figure is computed, so a
 report is right with no model involved; the assistant can add a short summary
-on top, marked as its own. Kept on a **Reports** page, printable to PDF, and
-downloadable as Markdown, HTML, CSV or JSON. Or pick the period, the nodes and
+on top, marked as its own. Kept on a **Reports** page, as a PDF (A4,
+portrait or landscape, previewed before you download it, no print dialog
+involved), or as Markdown, HTML, CSV or JSON. Or pick the period, the nodes and
 the sections and build one on the spot. A notification says when a scheduled
 one is ready, with its headline figures and a link.
 

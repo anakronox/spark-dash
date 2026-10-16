@@ -14,7 +14,9 @@
     getReport,
     keepReport,
     listReports,
+    pdfUrl,
     printUrl,
+    type Orientation,
     reportsMeta,
     type Report,
     type ReportSummary,
@@ -157,6 +159,30 @@
     }
   }
 
+  /* THE PDF, made by the backend (A4), previewed in a frame before it is
+     downloaded: the browser's print dialog lays a page out for the default
+     printer's paper, which on a Mac whose only printer is an Instax is a
+     photo-sized page. The orientation is remembered in this browser. */
+  const ORIENT_KEY = 'spark-dash.report-pdf-orientation.v1';
+  let pdfFor = $state<string | null>(null);
+  let orientation = $state<Orientation>(
+    (() => {
+      try {
+        return localStorage.getItem(ORIENT_KEY) === 'portrait' ? 'portrait' : 'landscape';
+      } catch {
+        return 'landscape';
+      }
+    })(),
+  );
+  function setOrientation(o: Orientation) {
+    orientation = o;
+    try {
+      localStorage.setItem(ORIENT_KEY, o);
+    } catch {
+      // Kept for this visit.
+    }
+  }
+
   const cell = (v: unknown) => (v === null || v === undefined || v === '' ? '—' : String(v));
   const numeric = (v: unknown) => typeof v === 'number';
 </script>
@@ -172,7 +198,10 @@
       </p>
       <div class="actions">
         {#if kept}
-          <a class="btn primary" href={printUrl(r.id)} target="_blank" rel="noopener">print / PDF</a>
+          <button class="btn primary" onclick={() => (pdfFor = pdfFor === r.id ? null : r.id)}
+            aria-expanded={pdfFor === r.id}>PDF</button
+          >
+          <a class="btn" href={printUrl(r.id)} target="_blank" rel="noopener">print</a>
           <a class="btn" href={downloadUrl(r.id, 'md')} download>Markdown</a>
           <a class="btn" href={downloadUrl(r.id, 'html')} download>HTML</a>
           <a class="btn" href={downloadUrl(r.id, 'csv')} download>CSV</a>
@@ -186,6 +215,31 @@
         {/if}
       </div>
     </header>
+    {#if kept && pdfFor === r.id}
+      <div class="pdf">
+        <div class="pdf-bar">
+          <span class="hint">A4</span>
+          <div class="segmented" role="group" aria-label="PDF orientation">
+            {#each ['portrait', 'landscape'] as const as o (o)}
+              <button class:active={orientation === o} aria-pressed={orientation === o}
+                onclick={() => setOrientation(o)}>{o}</button
+              >
+            {/each}
+          </div>
+          <a class="btn primary" href={pdfUrl(r.id, orientation)} download>download PDF</a>
+          <button class="btn quiet" onclick={() => (pdfFor = null)}>close</button>
+        </div>
+        <!-- Keyed on the orientation, so switching reloads the preview. -->
+        {#key orientation}
+          <iframe
+            class="pdf-frame"
+            class:portrait={orientation === 'portrait'}
+            title="PDF preview, {orientation}"
+            src={pdfUrl(r.id, orientation, true)}
+          ></iframe>
+        {/key}
+      </div>
+    {/if}
     {#if r.narrative?.text}
       <div class="narrative">
         <b>Summary, written by {r.narrative.model ?? 'the assistant'}:</b>
@@ -481,6 +535,37 @@
     gap: 6px;
     align-items: center;
     margin: 8px 0 4px;
+  }
+  .pdf {
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 8px;
+    background: var(--panel-raised);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pdf-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  /* The page's own proportions, A4: 297 x 210 landscape, 210 x 297
+     portrait, as tall as the window allows. */
+  .pdf-frame {
+    width: 100%;
+    aspect-ratio: 297 / 210;
+    max-height: 75vh;
+    border: 1px solid var(--rule);
+    background: #fff;
+  }
+  .pdf-frame.portrait {
+    aspect-ratio: 210 / 297;
+    width: auto;
+    height: 75vh;
+    max-width: 100%;
+    align-self: center;
   }
   .narrative {
     border-left: 3px solid var(--series-1);

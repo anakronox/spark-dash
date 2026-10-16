@@ -118,6 +118,15 @@ export const buildReport = (b: {
 
 export const downloadUrl = (id: string, format: 'md' | 'html' | 'csv' | 'json') =>
   `/api/reports/${encodeURIComponent(id)}/download?format=${format}`;
+
+export type Orientation = 'landscape' | 'portrait';
+/** The PDF the backend makes, A4: shown in a frame for the preview, or
+ *  downloaded. */
+export const pdfUrl = (id: string, orientation: Orientation, inline = false) =>
+  `/api/reports/${encodeURIComponent(id)}/download?format=pdf&orientation=${orientation}` +
+  // The viewer's own open parameters: no thumbnail rail, a page to the
+  // frame's width (Chrome opened it at 39% beside the thumbnails).
+  (inline ? '&inline=1#navpanes=0&view=FitH' : '');
 export const printUrl = (id: string) => `/api/reports/${encodeURIComponent(id)}/download?format=html&print=1`;
 
 export function newSchedule(defaults: string[]): Schedule {

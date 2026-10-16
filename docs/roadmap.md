@@ -8223,6 +8223,15 @@ BB), so a report is a composition of them, not a new query layer.
   otherwise have deleted the state file; a report is only saved under that
   pattern; the page loads its two parts separately. The kept report was on
   disk throughout and lists again.
+- **A PDF made by the backend, 2026-10-17.** Brian: on a Mac whose only
+  printer is an Instax Wide, the print dialog lays the page out on Instax
+  paper and print-to-PDF is unusable. So **PDF** now comes from the backend
+  (`fpdf2`, pure Python, Latin-1 core fonts with the few other characters
+  mapped), A4 in **portrait or landscape**, with a **preview** in the page
+  before the download (Chrome's viewer, opened without its thumbnail rail
+  and fitted to width). Columns are sized to their content, smaller type on
+  the narrower page, and a section heading with no room under it starts the
+  next page.
 
 ### BJ — More notification channels: Slack, Telegram, Discord — **planned 2026-10-16**
 

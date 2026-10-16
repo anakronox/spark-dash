@@ -284,9 +284,12 @@ schedule does not fire at once; a run missed while the backend was down runs
 once on start, for the latest period. **run now** builds one immediately.
 
 **Kept** under `cluster/reports/` as JSON, the newest 200 and none older than
-180 days by default. The **reports** page in the header lists them; each can
-be printed (a self-contained HTML page opens and asks to print, which is the
-PDF) or downloaded as Markdown, HTML, a zip with one CSV per table, or JSON.
+180 days by default. The **reports** page in the header lists them. **PDF** shows
+the report as an A4 PDF, portrait or landscape (remembered in the browser),
+made by the backend and previewed before it is downloaded, so it does not
+depend on the browser's print dialog, which lays a page out for the default
+printer's paper. **print** still opens a self-contained HTML page and asks
+to print. Downloads: Markdown, HTML, a zip with one CSV per table, JSON.
 **build** makes one now from a preset or a from-to period (at most 31 days),
 the nodes and the sections, kept only when asked.
 

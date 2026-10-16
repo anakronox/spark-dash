@@ -502,6 +502,116 @@ def render_html(doc: dict, *, auto_print: bool = False) -> str:
     return "".join(parts)
 
 
+#: The PDF's built-in fonts cover Latin-1; the few characters a report uses
+#: outside it are mapped to plain ones rather than a font being shipped.
+_PDF_PLAIN = str.maketrans({"—": "-", "–": "-", "’": "'", "‘": "'", "“": '"', "”": '"', "…": "...",
+                            "→": "->", "•": "-", "≥": ">=", "≤": "<=", "\u00a0": " "})
+
+
+def _pdf_text(v: Any) -> str:
+    return _cell(v).translate(_PDF_PLAIN).encode("latin-1", "replace").decode("latin-1")
+
+
+def _col_widths(t: dict) -> tuple[float, ...]:
+    """Each column's share of the table width, from the longest text it
+    holds, within bounds: equal columns wrapped a model's name while number
+    columns sat half empty."""
+    lens = []
+    for c in t["columns"]:
+        longest = max([len(_cell(c["label"]))] + [len(_cell(r.get(c["key"]))) for r in t["rows"]])
+        lens.append(min(max(longest, 4), 34))
+    return tuple(float(x) for x in lens)
+
+
+ORIENTATIONS = ("landscape", "portrait")
+
+
+def render_pdf(doc: dict, orientation: str = "landscape") -> bytes:
+    """A4, landscape by default so the per-node tables fit, or portrait,
+    made here without a print dialog: the browser lays a printed page out
+    for the default printer's paper, which on a Mac whose only printer is
+    an Instax made print-to-PDF unusable (2026-10-17)."""
+    from fpdf import FPDF
+    from fpdf.fonts import FontFace
+
+    if orientation not in ORIENTATIONS:
+        raise ValueError(f"orientation is one of {ORIENTATIONS}")
+    portrait = orientation == "portrait"
+    pdf = FPDF(orientation="P" if portrait else "L", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=12)
+    pdf.set_margins(12, 12, 12)
+    pdf.set_title(_pdf_text(doc["title"]))
+    pdf.set_creator("spark-dash")
+    pdf.add_page()
+    width = pdf.w - pdf.l_margin - pdf.r_margin
+    w = doc["window"]
+
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.multi_cell(width, 7, _pdf_text(doc["title"]), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 8.5)
+    pdf.set_text_color(90, 90, 90)
+    pdf.multi_cell(width, 4.5, _pdf_text(
+        f"{w['start_local']} to {w['end_local']}, times in {w['tz']}  ·  nodes: "
+        f"{', '.join(doc['nodes']) if doc.get('nodes') else 'all'}  ·  generated {doc['created']}"),
+        new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    n = doc.get("narrative") or {}
+    if n.get("text"):
+        pdf.ln(2)
+        pdf.set_fill_color(240, 240, 236)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.multi_cell(width, 5, _pdf_text(f"Summary, written by {n.get('model', 'the assistant')}:"),
+                       fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(width, 4.8, _pdf_text(n["text"]), fill=True, new_x="LMARGIN", new_y="NEXT")
+
+    head = FontFace(emphasis="BOLD", fill_color=(236, 236, 230))
+    for sec in doc["sections"]:
+        # A heading with no room for anything under it starts the next page
+        # instead of sitting alone at the foot of this one.
+        if pdf.get_y() > pdf.h - pdf.b_margin - 35:
+            pdf.add_page()
+        else:
+            pdf.ln(4)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(width, 6, _pdf_text(sec["title"].upper()), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_draw_color(0, 0, 0)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.l_margin + width, pdf.get_y())
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.set_text_color(90, 90, 90)
+        pdf.multi_cell(width, 4, _pdf_text(sec.get("about", "")), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("Helvetica", "", 9)
+        for line in sec.get("lines", []):
+            pdf.multi_cell(width, 4.6, _pdf_text(f"- {line}"), new_x="LMARGIN", new_y="NEXT")
+        for t in sec.get("tables", []):
+            pdf.ln(1.5)
+            pdf.set_font("Helvetica", "B", 8.5)
+            pdf.cell(width, 5, _pdf_text(t["title"]), new_x="LMARGIN", new_y="NEXT")
+            if not t["rows"]:
+                pdf.set_font("Helvetica", "I", 8)
+                pdf.cell(width, 4.5, "Nothing in this period.", new_x="LMARGIN", new_y="NEXT")
+                continue
+            # Smaller type on a narrower page and for wider tables.
+            cols = len(t["columns"])
+            size = 7.5 if cols <= 8 else 6.5
+            if portrait:
+                size = 7 if cols <= 6 else 6 if cols <= 9 else 5.2
+            pdf.set_font("Helvetica", "", size)
+            with pdf.table(headings_style=head, line_height=size * 0.55, padding=0.8, width=width,
+                           col_widths=_col_widths(t), first_row_as_headings=True) as table:
+                row = table.row()
+                for c in t["columns"]:
+                    row.cell(_pdf_text(c["label"]))
+                for r in t["rows"]:
+                    row = table.row()
+                    for c in t["columns"]:
+                        v = r.get(c["key"])
+                        row.cell(_pdf_text(v), align="R" if isinstance(v, (int, float)) else "L")
+    return bytes(pdf.output())
+
+
 def _slug(s: str) -> str:
     return "".join(c if c.isalnum() else "-" for c in s.lower()).strip("-")[:40] or "table"
 

@@ -1910,9 +1910,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"deleted": rid}
 
     @app.get("/api/reports/{rid}/download", response_model=None)
-    async def api_reports_download(rid: str, format: str = Query("html"), print: bool = False) -> Response:
-        """BI4: md, html (self-contained; `print=1` opens the print dialog,
-        which is the PDF), csv (a zip, a file per table) or json."""
+    async def api_reports_download(rid: str, format: str = Query("html"), print: bool = False,
+                                   orientation: str = Query("landscape"), inline: bool = False) -> Response:
+        """BI4: pdf (A4 landscape, made here, no print dialog), md, html
+        (self-contained; `print=1` opens the print dialog), csv (a zip, a file
+        per table) or json."""
         try:
             doc = await asyncio.to_thread(report_store.get, rid)
         except KeyError as exc:
@@ -1928,10 +1930,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if format == "csv":
             return Response(await asyncio.to_thread(reports.render_csv_zip, doc), media_type="application/zip",
                             headers={"Content-Disposition": f'attachment; filename="{name}-csv.zip"'})
+        if format == "pdf":
+            try:
+                body = await asyncio.to_thread(reports.render_pdf, doc, orientation)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            # `inline` for the page's preview, which shows it in a frame.
+            disposition = "inline" if inline else "attachment"
+            return Response(body, media_type="application/pdf",
+                            headers={"Content-Disposition": f'{disposition}; filename="{name}-{orientation}.pdf"'})
         if format == "json":
             return Response(json.dumps(doc, ensure_ascii=False, indent=1), media_type="application/json",
                             headers={"Content-Disposition": f'attachment; filename="{name}.json"'})
-        raise HTTPException(status_code=400, detail="format is md, html, csv or json")
+        raise HTTPException(status_code=400, detail="format is pdf, md, html, csv or json")
 
     tool_sources = agent_tools.Sources(
         prom=prom, nodes=_mcp_nodes, latency=_latency, clients=_mcp_clients,
