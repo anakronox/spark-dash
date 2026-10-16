@@ -81,6 +81,28 @@ class TestInferRuntime:
         cmd = "/usr/local/bin/tensorfold serve /models/Llama-3.1-70B"
         assert infer_runtime("python3", cmd) == "tensorfold"
 
+    def test_tdarr_by_executable_name(self):
+        """sparky, 2026-10-16: Tdarr's ffmpeg build, CUDA decode and NVENC
+        encode, which read as unrecognised GPU work."""
+        cmd = "tdarr-ffmpeg -y -hwaccel cuda -i /media/in.mkv -c:0 hevc_nvenc /temp/out.mkv"
+        assert infer_runtime("tdarr-ffmpeg", cmd) == "tdarr"
+
+    def test_a_transcoder_is_not_named_by_the_files_it_reads(self):
+        """A transcoder's argv is file paths; a film called "llama" or "vllm"
+        must not make it an LLM runtime."""
+        cmd = "ffmpeg -i '/media/Llama Drama (vllm cut).mkv' -c:v h264_nvenc /out/llama.cpp.mkv"
+        assert infer_runtime("ffmpeg", cmd) == "ffmpeg"
+        assert infer_runtime("tdarr-ffmpeg", "tdarr-ffmpeg -i /m/comfy.mkv") == "tdarr"
+
+    def test_media_servers_own_ffmpeg_names_the_server(self):
+        assert infer_runtime("jellyfin-ffmpeg") == "jellyfin"
+        assert infer_runtime("Plex Transcoder") == "plex"
+        assert infer_runtime("HandBrakeCLI") == "handbrake"
+
+    def test_a_path_with_ffmpeg_in_it_does_not_make_python_a_transcoder(self):
+        """Matched on the executable name only."""
+        assert infer_runtime("python", "python main.py --listen 0.0.0.0 --out /tmp/ffmpeg") is None
+
     def test_llama_server_by_name(self):
         assert infer_runtime("llama-server") == "llama.cpp"
 

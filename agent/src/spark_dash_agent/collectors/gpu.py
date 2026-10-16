@@ -120,6 +120,16 @@ def infer_runtime(name: str, command: str = "", cwd: str = "") -> str | None:
     """
     haystack = f"{name} {command} {cwd}".lower()
 
+    # --- media transcoders, by EXECUTABLE NAME, before anything reads argv ---
+    # A transcoder's argv is its input and output paths: a film whose file
+    # name holds "llama" or "vllm" would otherwise be read as that runtime by
+    # the substring checks below. Measured 2026-10-16 on sparky: Tdarr's
+    # `tdarr-ffmpeg` decoding with CUDA and encoding with NVENC, up to 20% of
+    # SM and 1.1 GiB, reported as unrecognised GPU work.
+    transcoder = _transcoder(name)
+    if transcoder:
+        return transcoder
+
     # --- LLM inference runtimes ---
     # Atlas is matched on the executable name alone rather than the haystack —
     # see `_looks_like_atlas` — so it is checked first without risk of stealing
@@ -152,6 +162,26 @@ def infer_runtime(name: str, command: str = "", cwd: str = "") -> str | None:
         return "stable-diffusion"
     if "jupyter" in haystack or "ipykernel" in haystack:
         return "jupyter"
+    return None
+
+
+#: Executable-name fragment -> runtime, most specific first: a media server's
+#: own ffmpeg build names the server, a bare ffmpeg names itself. Matched on
+#: the process name (comm) alone, never argv, which is file paths.
+_TRANSCODERS: tuple[tuple[str, str], ...] = (
+    ("tdarr", "tdarr"),
+    ("jellyfin-ffmpeg", "jellyfin"),
+    ("plex transcoder", "plex"),
+    ("handbrake", "handbrake"),
+    ("ffmpeg", "ffmpeg"),
+)
+
+
+def _transcoder(name: str) -> str | None:
+    n = name.lower()
+    for fragment, runtime in _TRANSCODERS:
+        if fragment in n:
+            return runtime
     return None
 
 

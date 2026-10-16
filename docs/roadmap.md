@@ -8100,6 +8100,17 @@ features with tips on what to configure, required first, optional last.
   is not on the page (Ask until it is set up). Reset layout keeps both
   "seen" flags.
 
+### BH — "Unrecognised" GPU work was Tdarr — **fixed 2026-10-16**
+
+9% of sparky's GPU between 12:00 and 16:00 on Oct 15 (peak 20% of SM,
+1.1 GiB) carried no runtime. The live snapshot named it: `tdarr-ffmpeg`,
+Tdarr's own ffmpeg, decoding with CUDA and encoding with NVENC. The agent now
+recognises media transcoders by **executable name** (`tdarr`, `jellyfin`,
+`plex`, `handbrake`, a bare `ffmpeg`), checked before every rule that reads
+argv: a transcoder's argv is file paths, and a film whose name held "llama"
+or "vllm" would otherwise have been read as that runtime. The command line is
+never exported, and is not quoted in the tests either.
+
 ### BG — The page at phone width — **fixed 2026-10-16**
 
 Found while checking Settings at 400px: the dashboard itself was 571px wide in
