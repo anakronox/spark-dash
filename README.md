@@ -6,13 +6,13 @@ running on them (llama.cpp router, vLLM, SGLang, TensorFold).
 
 Works with one node or many.
 
-![The spark-dash dashboard in compact view: a pooled two-node cluster and a standalone node in their own frames, ending level with the Clients card beside them, which lists seven callers with their requests and tokens; an ask button in the header; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic with each node's received traffic above the line and sent below; the GPU process and model tables; and two Temperatures cards, each showing different sensor groups](Screenshot.jpg)
+![The spark-dash dashboard in compact view: a pooled two-node cluster and a standalone node in their own frames, beside the Clients card listing five callers with their requests and tokens; Temperatures as gauges, a dial per node for the package zones, GPU and storage averaged and the network chips at their hottest, each dial marked where it would turn amber and red; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic, received above the line and sent below; and the GPU process and model tables](Screenshot.jpg)
 
 Three GB10s: two pooled into a tensor-parallel cluster, one standalone. Every
 threshold is measured for this hardware, not guessed, and the layout is
 [yours to arrange](#the-page-is-yours).
 
-![DGX OS updates open over the dashboard: three Sparks listed with their release and update counts, sparkjr expanded to show what the July 2026 release changes, the firmware each device would move to, and the package list with security updates marked](Screenshot-dgx-os-updates.jpg)
+![DGX OS updates open over the dashboard: the pooled pair sparketa and sparkjr shown together with the two 200 GbE links between them, each with routine and security Ubuntu updates waiting, and the standalone sparky with its own updates and the record of its last one, the July 2026 release with 204 package updates applied](Screenshot-dgx-os-updates.jpg)](Screenshot-dgx-os-updates.jpg)
 
 [DGX OS updates](#5-optional-dgx-os-updates) on the same three machines, with
 `sparkjr` expanded to show what the release would change.
