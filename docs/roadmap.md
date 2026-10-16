@@ -8148,6 +8148,80 @@ to `secrets/ntfy-url` by hand, which Alertmanager posts every alert to.
   carries it, only an explicit reveal does.
 - The setup guide's "Alerts reach someone" goes straight to this pane.
 
+### BI — Reports: scheduled, on demand, kept and downloadable — **planned 2026-10-16**
+
+Brian: scheduled reports at a frequency of the user's choosing, a Reports
+page, downloadable files as well as print to PDF, delivery that tees into
+the notification channels (BJ), and a report built on the spot from the
+sections a reader picks.
+
+How people usually report from Prometheus, for reference: Grafana panels
+read live, exported to CSV, or rendered to PDF (scheduled PDF reports are a
+Grafana Enterprise and Cloud feature); or a script against the HTTP API on
+a cron, writing CSV or HTML. Here the reads already exist (the agent tools,
+BB), so a report is a composition of them, not a new query layer.
+
+- [ ] **BI1. The report engine.** A report is a window, a set of nodes and
+  an ordered list of sections, built in the backend from the same functions
+  the agent tools call, into one structured document. Sections: overview
+  (per node: GPU use, temperature, memory, power, average and peak with
+  when); what used the GPU (per workload, `gpu_workload_sm` and memory);
+  models (loads and how long, throughput, time to first token); alerts and
+  events; temperatures and headroom; network (traffic per group, errors,
+  drops, link changes); clients (when client stats are on); monitoring
+  health (gaps, so a report says when its own numbers have holes); DGX OS
+  updates (when set up); and a comparison with the previous period of the
+  same length. **The figures are computed, never generated:** a report is
+  correct with the assistant off. With the assistant on, an optional
+  written summary heads it, marked as the model's.
+- [ ] **BI2. Kept.** Each report saved under the cluster directory as its
+  document plus its rendered forms; kept for a configurable count or age.
+- [ ] **BI3. Scheduled, at any frequency.** Several schedules, each with
+  its frequency (daily at a time, weekly on a day, monthly on a date, or
+  every N hours), its window (the period since the last run by default),
+  its nodes and its sections. Times in a configured time zone, shown in
+  the reader's. A run missed while the backend was down runs once on
+  start.
+- [ ] **BI4. The Reports page.** A fly-out like the update manager's:
+  every kept report, newest first, read in place, with **print** (a print
+  stylesheet, so the browser's print to PDF gives a clean document) and
+  downloads: **Markdown**, **HTML** (self-contained), **CSV** (one file
+  per table, zipped) and **JSON** (the document itself).
+- [ ] **BI5. A report on demand.** Pick the window (a preset or from and
+  to), the nodes and the sections, and build it now; read it, download it,
+  or keep it. The same builder edits a schedule.
+- [ ] **BI6. Delivery.** A schedule may notify when its report is ready:
+  a short line with the period's headline figures and a link to the
+  report, sent through ntfy today and through the BJ channels when they
+  exist. Needs the dashboard's own address for the link, a setting.
+- [ ] **BI7. For agents.** MCP tools `list_reports`, `get_report` (any
+  format) and `build_report` (sections and window), so an agent can fetch
+  last week's report or assemble its own from the same engine.
+- [ ] **BI8. Documented.**
+
+### BJ — More notification channels: Slack, Telegram, Discord — **planned 2026-10-16**
+
+Brian: notifications to Slack, Telegram and Discord as well as ntfy, for
+alerts and for reports (BI6).
+
+- [ ] **BJ1. Alerts.** Alertmanager speaks all three natively
+  (`slack_configs`, `telegram_configs`, `discord_configs`), and each takes
+  its secret from a file (`api_url_file`, `bot_token_file`,
+  `webhook_url_file`), as ntfy's topic already is. So a channel is a
+  receiver in `alertmanager.yml` plus a secret file in `secrets/`, set
+  from Settings → Notifications. Unlike the ntfy topic, which Alertmanager
+  re-reads on every send, a new receiver is configuration: the backend
+  writes the config and asks Alertmanager to reload it (`POST /-/reload`),
+  which needs the config mount writable by the backend, the same
+  capability pattern as BF. To check before building: whether Alertmanager
+  re-reads these secret files per send, as it does `url_file`.
+- [ ] **BJ2. Which alerts go where.** Per channel: every alert, or
+  critical only; recoveries on or off.
+- [ ] **BJ3. Reports.** The backend posts a report's notification to the
+  channels a schedule names, directly, since reports do not pass through
+  Alertmanager.
+- [ ] **BJ4. A test per channel**, as ntfy's.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
