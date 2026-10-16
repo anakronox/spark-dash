@@ -127,8 +127,19 @@ sparky slow at 9pm?", "which node ran hottest?", "who has been using the
 cluster most?". It answers from what the dashboard already holds for the
 window you pick: alerts, events, how each chart moved and when it peaked, and
 who called. Asked which node ran hottest, GLM-5.3-Flash named sparkjr's
-96.4°C at 15:21 and the alert that caught it, in under six seconds. The model
-is told about the cluster and can't act on it.
+96.4°C at 15:21 and the alert that caught it, in under six seconds. A model
+that can use tools may also look further on its own: asked why sparky had been
+slow, Qwen 3.6 35B checked what moved around 15:44 and named swap thrashing,
+with the memory pressure and swap traffic behind it. The model can read about
+the cluster and can't act on it.
+
+**Or let your own agent look.** The same read-only tools are offered to agents
+over MCP, so Claude Code, or any agent that speaks MCP, can query the
+dashboard directly: the cluster now, any chart's series over any window,
+alerts, events, latency, who called, and what moved around a given moment. It
+can pull a report together, or chase down a slowdown across the metrics,
+without you copying numbers out of charts. Off until you switch it on in
+Settings, which makes the key and the command to connect.
 
 ## The page is yours
 

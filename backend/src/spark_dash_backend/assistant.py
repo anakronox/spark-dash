@@ -5,9 +5,10 @@ reader's choosing from what the dashboard already has: the alerts and events
 in the window, the series that moved, the cluster as it stands. Off until it
 is configured.
 
-WHAT THE MODEL CAN DO: read. It is sent text and returns text. It has no
-tools and nothing here acts on what it says, so it can be told about the
-cluster and never act on it.
+WHAT THE MODEL CAN DO: read. It is sent text and returns text. With tools
+on (roadmap BB4) it may also call the dashboard's read-only tools, the same
+ones `/mcp` serves, to look further than the bundle it is sent. Nothing here
+acts on what it says, so it can be told about the cluster and never act on it.
 
 WHERE THINGS LIVE. The endpoint, the model and the switch are an
 `assistant:` block in the cluster file, beside `gateway:`. That file is
@@ -19,9 +20,11 @@ whether one is set and its last four characters.
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import os
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,11 +60,39 @@ SYSTEM_PROMPT = (
 )
 
 
+#: BB4. The whole of a question with tools: rounds and the answer. Longer
+#: than a one-shot, and safe behind a proxy because the answer is streamed
+#: (see the ask route). Measured 2026-10-16 with ComfyUI holding sparky's GPU
+#: at 96%: Qwen 3.6 35B took over a minute for its first round alone.
+TOOLS_TIMEOUT_S = 180.0
+
+#: BB4. How many times the model may call tools before it must answer, and
+#: how many calls one turn may make. Measured 2026-10-16 with Qwen 3.6 35B
+#: through the gateway: 2-4 s a round once loaded and the node otherwise idle.
+MAX_ROUNDS = 6
+MAX_CALLS_PER_ROUND = 4
+#: A tool's answer, cut to this many characters before the model sees it.
+MAX_TOOL_CHARS = 12_000
+#: Kept back from every tool round for the final answer, so a slow round
+#: (the model's node busy with other work) ends in an answer from what was
+#: gathered rather than in a timeout.
+FINAL_RESERVE_S = 25.0
+
+TOOL_NOTE = (
+    " You can call tools to look further than the data below: a finer step around a moment, "
+    "a series it leaves out, another window to compare. For a slowdown or a spike, try "
+    "correlate first. Call only what the question needs, then answer."
+)
+
+
 @dataclass(frozen=True)
 class AssistantConfig:
     url: str
     model: str
     enabled: bool = True
+    #: BB4: let the model call the read-only tools. On unless switched off;
+    #: an endpoint that refuses tools gets the one-shot form instead.
+    tools: bool = True
 
 
 def normalize_url(raw: object) -> str:
@@ -95,10 +126,13 @@ def parse_assistant(payload: object) -> AssistantConfig | None:
     model = block.get("model")
     if not isinstance(model, str) or not model.strip():
         raise ClusterConfigError("assistant.model is missing")
-    enabled = block.get("enabled", True)
-    if not isinstance(enabled, bool):
-        raise ClusterConfigError(f"assistant.enabled must be true or false, not {enabled!r}")
-    return AssistantConfig(url=normalize_url(block.get("url")), model=model.strip(), enabled=enabled)
+    flags = {}
+    for name in ("enabled", "tools"):
+        value = block.get(name, True)
+        if not isinstance(value, bool):
+            raise ClusterConfigError(f"assistant.{name} must be true or false, not {value!r}")
+        flags[name] = value
+    return AssistantConfig(url=normalize_url(block.get("url")), model=model.strip(), **flags)
 
 
 def load_assistant(path: Path) -> AssistantConfig | None:
@@ -126,6 +160,8 @@ def write_assistant(path: Path, config: AssistantConfig | None) -> None:
         updated.pop("assistant", None)
     else:
         updated["assistant"] = {"url": config.url, "model": config.model, "enabled": config.enabled}
+        if not config.tools:
+            updated["assistant"]["tools"] = False
     text = dump_cluster(nodes, preserve=updated)
     parse_assistant(yaml.safe_load(text))
     _atomic_write(path, text)
@@ -186,25 +222,35 @@ async def list_models(url: str, key: str | None) -> list[str]:
     return sorted({str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")})
 
 
+class EndpointRefused(ClusterConfigError):
+    """The endpoint answered with an error status other than a refused key."""
+
+    def __init__(self, status: int, detail: str):
+        super().__init__(f"the endpoint answered {status}: {detail}")
+        self.status = status
+
+
+async def _chat(url: str, key: str | None, body: dict, timeout_s: float) -> dict:
+    """One chat completion; the first choice's message."""
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
+        resp = await client.post(f"{url}/chat/completions", headers=_headers(key),
+                                 json={**body, "stream": False})
+    if resp.status_code in (401, 403):
+        raise ClusterConfigError(f"the endpoint refused the key ({resp.status_code})")
+    if resp.status_code >= 400:
+        raise EndpointRefused(resp.status_code, resp.text[:300])
+    choice = (resp.json().get("choices") or [{}])[0]
+    return choice.get("message") or {}
+
+
 async def complete(url: str, key: str | None, model: str, messages: list[dict],
                    *, max_tokens: int, timeout_s: float) -> tuple[str, float]:
     """One chat completion; (text, seconds). Reasoning text, which some engines
     return in a field of its own, is not part of the answer."""
     started = time.monotonic()
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
-        resp = await client.post(
-            f"{url}/chat/completions",
-            headers=_headers(key),
-            json={"model": model, "messages": messages, "max_tokens": max_tokens, "stream": False},
-        )
-    if resp.status_code in (401, 403):
-        raise ClusterConfigError(f"the endpoint refused the key ({resp.status_code})")
-    if resp.status_code >= 400:
-        detail = resp.text[:300]
-        raise ClusterConfigError(f"the endpoint answered {resp.status_code}: {detail}")
-    choice = (resp.json().get("choices") or [{}])[0]
-    text = ((choice.get("message") or {}).get("content") or "").strip()
-    return text, time.monotonic() - started
+    message = await _chat(url, key, {"model": model, "messages": messages, "max_tokens": max_tokens},
+                          timeout_s)
+    return (message.get("content") or "").strip(), time.monotonic() - started
 
 
 async def test(url: str, key: str | None, model: str) -> dict:
@@ -355,11 +401,96 @@ async def gather_context(prom: PrometheusClient, snapshot_nodes, *, minutes: int
     return "\n\n".join(sections), counts
 
 
+def _question(question: str, context: str) -> str:
+    return f"{question.strip()}\n\n--- MONITORING DATA ---\n{context}"
+
+
 async def ask(config: AssistantConfig, key: str | None, question: str, context: str) -> dict:
     text, seconds = await complete(
         config.url, key, config.model,
         [{"role": "system", "content": SYSTEM_PROMPT},
-         {"role": "user", "content": f"{question.strip()}\n\n--- MONITORING DATA ---\n{context}"}],
+         {"role": "user", "content": _question(question, context)}],
         max_tokens=2048, timeout_s=ANSWER_TIMEOUT_S,
     )
-    return {"answer": text, "model": config.model, "seconds": round(seconds, 1)}
+    return {"answer": text, "model": config.model, "seconds": round(seconds, 1), "tools_used": []}
+
+
+#: (name, arguments) -> (text, is_error). The app passes the MCP server's own
+#: call, so Ask and an outside agent run one set of tools.
+CallTool = Callable[[str, dict], Awaitable[tuple[str, bool]]]
+
+
+def openai_tools(mcp_tools) -> list[dict]:
+    """The MCP server's tool list in the OpenAI `tools` shape."""
+    return [{"type": "function", "function": {
+        "name": t.name, "description": t.description or "",
+        "parameters": t.input_schema or {"type": "object", "properties": {}},
+    }} for t in mcp_tools]
+
+
+async def ask_with_tools(config: AssistantConfig, key: str | None, question: str, context: str,
+                         tools: list[dict], call: CallTool) -> dict:
+    """The bundle as before, plus tools. The model may call them for up to
+    MAX_ROUNDS turns inside TOOLS_TIMEOUT_S; then, or when time runs
+    short, it is asked for its answer with no tools offered. An endpoint that
+    refuses tools on the first turn gets the one-shot form instead."""
+    started = time.monotonic()
+    deadline = started + TOOLS_TIMEOUT_S
+    messages: list[dict] = [
+        {"role": "system", "content": SYSTEM_PROMPT + TOOL_NOTE},
+        {"role": "user", "content": _question(question, context)},
+    ]
+    used: list[dict] = []
+    for round_ in range(MAX_ROUNDS):
+        left = deadline - time.monotonic() - FINAL_RESERVE_S
+        if left < 5:
+            break
+        try:
+            message = await _chat(config.url, key, {"model": config.model, "messages": messages,
+                                                    "tools": tools, "max_tokens": 2048}, left)
+        except httpx.TimeoutException:
+            # Out of time for this round: answer from what is already in.
+            # On the first round there is nothing in yet, so it is a
+            # timeout like any other.
+            if round_ == 0:
+                raise
+            break
+        except EndpointRefused as exc:
+            # A 4xx, or a 5xx that names tools (llama.cpp without --jinja),
+            # on the first turn: the endpoint does not take tools.
+            if round_ == 0 and (exc.status < 500 or "tool" in str(exc).lower()):
+                answer = await ask(config, key, question, context)
+                return {**answer, "tools_note": f"the endpoint refused tools, so it was asked without: {exc}"}
+            raise
+        calls = message.get("tool_calls") or []
+        if not calls:
+            return {"answer": (message.get("content") or "").strip(), "model": config.model,
+                    "seconds": round(time.monotonic() - started, 1), "tools_used": used}
+        calls = [{"id": c.get("id") or f"call_{round_}_{i}", "type": "function",
+                  "function": c.get("function") or {}} for i, c in enumerate(calls[:MAX_CALLS_PER_ROUND])]
+        # Back as the model sent it, less any reasoning text, which some
+        # engines refuse to be sent.
+        messages.append({"role": "assistant", "content": message.get("content") or "",
+                         "tool_calls": calls})
+        for c in calls:
+            fn = c.get("function") or {}
+            name = fn.get("name") or ""
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+                if not isinstance(args, dict):
+                    raise ValueError("arguments must be an object")
+            except ValueError as exc:
+                text, error, args = f"could not read the arguments: {exc}", True, {}
+            else:
+                text, error = await call(name, args)
+            if len(text) > MAX_TOOL_CHARS:
+                text = text[:MAX_TOOL_CHARS] + f"\n[cut at {MAX_TOOL_CHARS} characters; ask for less]"
+            used.append({"tool": name, "args": args, "error": error, "chars": len(text)})
+            messages.append({"role": "tool", "tool_call_id": c["id"], "content": text})
+
+    left = max(10.0, deadline - time.monotonic())
+    messages.append({"role": "user", "content": "Answer the question now, from what you have."})
+    message = await _chat(config.url, key, {"model": config.model, "messages": messages,
+                                            "max_tokens": 2048}, left)
+    return {"answer": (message.get("content") or "").strip(), "model": config.model,
+            "seconds": round(time.monotonic() - started, 1), "tools_used": used}

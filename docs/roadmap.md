@@ -7840,7 +7840,7 @@ against `frontend/src/lib/types.ts`:
   as the node card judges it. The gauges view asks Prometheus for no
   history at all.
 
-### BB — Tools for agents: the dashboard as an MCP server — **planned 2026-10-16**
+### BB — Tools for agents: the dashboard as an MCP server — **built 2026-10-16**
 
 Brian: build on Ask (AY) with optional MCP tools, so an agent can query the
 dashboard and Prometheus itself, pull reports and structure them, and
@@ -7856,8 +7856,9 @@ Off until enabled, like AY. Read-only, like AY and the rest of the
 dashboard (see AZ, operator actions): no tool silences an alert, opens a
 maintenance window or touches the fleet.
 
-- [ ] **BB1. An MCP endpoint on the backend.** Streamable HTTP at `/mcp`,
-  from the official `mcp` Python SDK mounted in the FastAPI app, so it needs
+- [x] **BB1. An MCP endpoint on the backend.** Built 2026-10-16. Streamable
+  HTTP at `/mcp`, stateless with JSON answers, from the official `mcp`
+  Python SDK (2.3) mounted in the FastAPI app, so it needs
   no new container or port. Each tool wraps a function the backend already
   has:
 
@@ -7874,30 +7875,54 @@ maintenance window or touches the fleet.
   so a tool call cannot become an arbitrary expensive Prometheus query.
   Every result is capped (points per series, rows per list) and says when
   it was cut, so one call cannot fill a small model's context. Times in and
-  out are UTC, as AY's context is.
-- [ ] **BB2. A key.** The endpoint wants a bearer key, generated in
+  out are UTC, as AY's context is. Caps: 40 series, 60 rows, 240 points.
+  In `backend/src/spark_dash_backend/agent_tools.py`. Checked live against
+  this Prometheus, and with the SDK's own client.
+- [x] **BB2. A key.** Built 2026-10-16. Switching the tools on makes one,
+  `sdk-` and 43 random characters, shown once with the `claude mcp add`
+  command; **new key** replaces it. Off is a 404, a missing or wrong key a
+  401. The endpoint wants a bearer key, generated in
   Settings and kept like AY's: its own file beside `cluster.yml`, mode
   0600, the browser shown only its last four characters. The REST API on
   the LAN is open today; this is not, because an MCP client is usually a
   program left running.
-- [ ] **BB3. `correlate(node, at, minutes)`.** The tool for isolating a
+- [x] **BB3. `correlate(node, at, minutes)`.** Built 2026-10-16. The tool for isolating a
   problem: every named series on that node, and the same series on the
   other nodes, ranked by how far each moved around the given time against
   the window before it, with the events and alerts in the same span. The
   ranking runs in the backend, so the model gets twenty lines rather than
-  twenty-eight series to compare itself.
-- [ ] **BB4. Ask uses the tools.** AY's request loops over the same tools
+  twenty-eight series to compare itself. As built: the span is `minutes`
+  either side of `at`, the baseline the three spans' worth before it; a
+  series' score is its furthest point from the baseline average in baseline
+  standard deviations, floored at 5% of its level so a flat line does not
+  turn a wobble into a spike; 3 counts as moved. Every series on every node,
+  so each row says where else the same metric moved. Live, sparky at 15:05:
+  swap I/O first (0 to 1,036 pages/s), then management-link traffic, disk
+  busy and I/O pressure, about 3.7 KB in all.
+- [x] **BB4. Ask uses the tools.** Built 2026-10-16. AY's request loops over the same tools
   through the OpenAI-compatible `tools` field: the model starts with the
   current bundle, may call tools, and must answer within a set number of
   rounds (six) and the existing 90-second limit. Shown under the answer:
   which tools it called. Needs a model that calls tools reliably through
   the gateway; checked first, with the current model, before building. If
   it does not, Ask keeps its one-shot form and BB1 still serves outside
-  agents.
-- [ ] **BB5. Raw PromQL, opt-in.** A `promql(query, start, end, step)` tool
+  agents. Checked first: Qwen 3.6 35B through the gateway called
+  `metric_history` correctly, 36 s cold and 2.4 to 4.3 s warm. On by default,
+  `assistant.tools: false` to switch off; an endpoint that refuses tools on
+  the first turn is asked without. The calls go through the MCP server
+  itself, so Ask and an outside agent run one set of tools. Live: "sparky
+  has been slow over the last two hours" took one `correlate` call and 61 s,
+  and named the swap thrashing. Not inside the 90-second limit, as planned:
+  with ComfyUI holding sparky's GPU at 96%, the first round alone ran past
+  65 s and the question failed. So a question with tools gets 180 s, with
+  25 s of it kept for the answer (a round that runs out answers from what is
+  in), and is streamed, a space every 10 s and then the JSON, which keeps
+  Cloudflare's 100 s origin timeout from cutting it off. Retested under the
+  same load: 120 s, one `correlate`, answered.
+- [x] **BB5. Raw PromQL, opt-in.** Built 2026-10-16; unlisted while off. A `promql(query, start, end, step)` tool
   behind a second switch, for the question the named series do not cover.
   Read-only by nature, but with a capped range and step and a timeout.
-- [ ] **BB6. Documented.** README, a short "Ask it" mention of agents;
+- [x] **BB6. Documented.** 2026-10-16. README, a short "Ask it" mention of agents;
   `docs/deployment.md`, enabling it and connecting a client (Claude Code's
   `claude mcp add --transport http`, and any client that speaks streamable
   HTTP).

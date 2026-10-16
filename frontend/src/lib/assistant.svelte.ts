@@ -11,6 +11,8 @@ export interface AssistantStatus {
   enabled: boolean;
   url: string | null;
   model: string | null;
+  /** BB4: the model may call the read-only tools. */
+  tools: boolean;
   key_set: boolean;
   key_hint: string | null;
   error: string | null;
@@ -22,6 +24,22 @@ export interface Answer {
   seconds: number;
   sent: { nodes: number; alerts_firing: number; alert_episodes: number; events: number; series: number; clients?: number };
   context_chars: number;
+  /** BB4: what the model looked up, in order. */
+  tools_used?: { tool: string; args: Record<string, unknown>; error: boolean }[];
+  /** Set when the endpoint refused tools and was asked without. */
+  tools_note?: string;
+}
+
+/** Tools for agents (roadmap BB): the MCP endpoint's switches and key. */
+export interface McpStatus {
+  enabled: boolean;
+  promql: boolean;
+  key_set: boolean;
+  key_hint: string | null;
+  path: string;
+  error: string | null;
+  /** Only in the answer that made a key; never again. */
+  key?: string;
 }
 
 export interface Draft {
@@ -30,10 +48,12 @@ export interface Draft {
   key?: string;
   clear_key?: boolean;
   enabled?: boolean;
+  tools?: boolean;
 }
 
-/** A question can take a reasoning model most of a minute and a half. */
-const ASK_TIMEOUT_MS = 120_000;
+/** A question can take a reasoning model most of a minute and a half, and
+ *  three minutes with tools (the backend's limits, plus room). */
+const ASK_TIMEOUT_MS = 200_000;
 
 async function send<T>(method: string, path: string, body?: object, timeoutMs?: number): Promise<T> {
   const resp = await fetchWithTimeout(
@@ -43,6 +63,10 @@ async function send<T>(method: string, path: string, body?: object, timeoutMs?: 
   );
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new Error(payload?.detail || resp.statusText);
+  // A streamed answer (tools on) sends its status before it knows the
+  // outcome, so a failure arrives as {detail, status} under a 200.
+  if (typeof payload?.status === 'number' && payload.status >= 400 && payload.detail)
+    throw new Error(payload.detail);
   return payload as T;
 }
 
@@ -91,5 +115,17 @@ export class AssistantFeed {
 
   async ask(question: string, minutes: number): Promise<Answer> {
     return send('POST', '/api/assistant/ask', { question, minutes }, ASK_TIMEOUT_MS);
+  }
+
+  async mcpStatus(): Promise<McpStatus> {
+    return send('GET', '/api/mcp/status');
+  }
+
+  async mcpSave(d: { enabled?: boolean; promql?: boolean }): Promise<McpStatus> {
+    return send('PUT', '/api/mcp/config', d);
+  }
+
+  async mcpNewKey(): Promise<McpStatus> {
+    return send('POST', '/api/mcp/key');
   }
 }

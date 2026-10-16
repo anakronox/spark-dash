@@ -98,13 +98,16 @@ The `.env` lines are in `.env.example` and the steps in
 [deployment.md](../docs/deployment.md#dgx-os-updates--optional). Leave them out
 and there is no mount, no key and no button.
 
-Two more are turned on from Settings, with nothing in `.env`:
+Three more are turned on from Settings, with nothing in `.env`:
 
 - **Client stats**, which callers sent what to which model, need a LiteLLM
   proxy in front of the engines:
   [deployment.md](../docs/deployment.md#client-stats--optional).
 - **Asking the dashboard** needs any OpenAI-compatible model to answer:
   [deployment.md](../docs/deployment.md#asking-the-dashboard--optional).
+- **Tools for agents** let Claude Code or another MCP client query the
+  dashboard, with a key made in Settings:
+  [deployment.md](../docs/deployment.md#tools-for-agents-mcp--optional).
 
 ## Updating
 

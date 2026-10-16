@@ -50,9 +50,12 @@ class PrometheusClient:
             raise PrometheusError(str(payload.get("error", "unknown error")))
         return payload.get("data", {})
 
-    async def query(self, expr: str) -> list[Series]:
-        """Instant query — current value per series."""
-        data = await self._get("/api/v1/query", {"query": expr})
+    async def query(self, expr: str, *, at: float | None = None) -> list[Series]:
+        """Instant query — current value per series, or the value at `at`."""
+        params: dict = {"query": expr}
+        if at is not None:
+            params["time"] = at
+        data = await self._get("/api/v1/query", params)
         out: list[Series] = []
         for result in data.get("result", []):
             value = result.get("value")

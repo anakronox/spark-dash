@@ -308,8 +308,16 @@ window (1h, 6h or 24h), time to first token per model, min/avg/max with the
 time of the peak for ten series per node, and, with client stats on, the
 Clients card's rows for the window: who called which model on which engine,
 how often, how many failed, and their tokens. About 3.5 KB for this
-three-node cluster over an hour. The model is sent text and returns text; it
-has no tools and nothing acts on what it says.
+three-node cluster over an hour.
+
+**Tools.** On by default: the model may also call the read-only tools under
+[Tools for agents](#tools-for-agents-mcp--optional), for up to six rounds, then
+answers; the answer lists what it looked up. A model that does not call tools
+just answers, and an endpoint that refuses them (llama.cpp without `--jinja`)
+is asked again without. Switch it off in Settings to send the bundle alone.
+Measured 2026-10-16: Qwen 3.6 35B on llama.cpp took 2 to 4 seconds a round
+once loaded, and answered "why was sparky slow" in 61 seconds after one
+`correlate` call. Nothing acts on what the model says.
 
 **Where it is kept.** The address, the model and the switch are an
 `assistant:` block in `cluster.yml`. That file is served to the browser, so
@@ -320,7 +328,50 @@ Its requests carry the User-Agent `spark-dash-assistant/<version>`, so through
 the gateway they show on the Clients card as "spark-dash assistant".
 
 A reasoning model can take a while: on this cluster GLM-5.3-Flash answered a
-one-hour question in 6 to 24 seconds. The backend waits up to 90.
+one-hour question in 6 to 24 seconds. The backend waits up to 90 seconds for a
+question without tools, and 180 with them. A question with tools is streamed,
+a space every ten seconds and then the answer, so a proxy that gives up on a
+silent origin (Cloudflare's tunnel, at 100 seconds) does not cut it off.
+Measured 2026-10-16 with ComfyUI holding sparky's GPU at 96%: Qwen 3.6 35B
+took 120 seconds over one `correlate` call.
+
+### Tools for agents (MCP) — optional
+
+**Off until switched on** in Settings → Tools for agents. Switching it on
+makes a key and shows it once, with the command to connect Claude Code:
+
+```sh
+claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
+  --header "Authorization: Bearer <key>"
+```
+
+Any client that speaks MCP over streamable HTTP takes the same address and
+header. **new key** replaces the key; the old one stops working at once.
+
+**The tools.** All read-only, and each is a read the page already makes:
+
+| tool | answers |
+|---|---|
+| `cluster_now` | each node now: health, GPU, memory, CPU, pressure, temperature bands, GPU processes, engines and models; alerts firing |
+| `list_metrics` | the named series, with unit and meaning |
+| `metric_history` | one series over a window, per node: min, avg, max and when, first and last; the values on request, at most 240 |
+| `alerts`, `events` | alert episodes; deploys, model loads, cold starts, maintenance |
+| `latency` | time to first token per model, last 15 minutes |
+| `clients` | who called through the gateway, when client stats are on |
+| `correlate` | every series on every node ranked by how far it moved around a moment, with the alerts and events beside it |
+| `promql` | raw PromQL, only with **also allow raw PromQL queries** on |
+
+Series are picked by name, as the charts pick them, so a call cannot become
+an arbitrary Prometheus query unless raw PromQL is switched on. Results are
+capped (40 series, 60 rows, 240 points) and say when they were cut. Times are
+UTC.
+
+**Where it is kept.** The two switches are an `mcp:` block in `cluster.yml`;
+the key is `mcp.key` beside it, owner-only, as the assistant's is.
+
+**Behind Cloudflare Access**, an agent cannot sign in with Google; give it a
+[service token](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/)
+and add its two headers to the client, or connect on the LAN address.
 
 ### Client stats — optional
 

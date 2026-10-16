@@ -33,7 +33,7 @@
   import { ENGINE_RUNTIMES } from '../lib/types';
   import type { FleetFeed } from '../lib/fleet.svelte';
   import type { ClientsFeed } from '../lib/clients.svelte';
-  import type { AssistantFeed } from '../lib/assistant.svelte';
+  import type { AssistantFeed, McpStatus } from '../lib/assistant.svelte';
   import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
   import type { ProbeResult } from '../lib/clients';
 
@@ -103,6 +103,40 @@
     assistantAction(async () => {
       await assistant!.save({ url: aUrl, model: aModel, enabled: on });
     });
+  const setAssistantTools = (on: boolean) =>
+    assistantAction(async () => {
+      await assistant!.save({ url: aUrl, model: aModel, tools: on });
+    });
+
+  /* TOOLS FOR AGENTS (roadmap BB). Two switches and a key. The key comes back
+     once, in the answer that made it, and is shown here until Settings
+     closes; after that only its last four are known to the browser. */
+  let mcp = $state<McpStatus | null>(null);
+  let mKey = $state<string | null>(null);
+  let mBusy = $state(false);
+  let mError = $state<string | null>(null);
+  let mBox = $state<HTMLTextAreaElement | null>(null);
+
+  async function mcpAction(fn: () => Promise<McpStatus>) {
+    if (!assistant || mBusy) return;
+    mBusy = true;
+    mError = null;
+    try {
+      mcp = await fn();
+      if (mcp.key) {
+        mKey = mcp.key;
+        await tick();
+        mBox?.select();
+      }
+    } catch (err) {
+      mError = (err as Error).message;
+    } finally {
+      mBusy = false;
+    }
+  }
+  const mcpUrl = () => `${location.origin}${mcp?.path ?? '/mcp'}`;
+  const mcpCommand = (key: string) =>
+    `claude mcp add --transport http spark-dash ${mcpUrl()} --header "Authorization: Bearer ${key}"`;
 
   /* CLIENTS — a gateway address and a switch, AL5's two levels (roadmap AM).
    *
@@ -563,6 +597,8 @@
       clients?.load().then(() => (clientsDraft = clients?.status?.url ?? ''));
       aError = aNote = null;
       aKey = '';
+      mKey = mError = null;
+      assistant?.mcpStatus().then((m) => (mcp = m)).catch(() => (mcp = null));
       assistant?.load().then(() => {
         aUrl = assistant?.status?.url ?? '';
         aModel = assistant?.status?.model ?? '';
@@ -1059,6 +1095,15 @@
             />
             <span>show the ask button</span>
           </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              checked={assistant.status?.tools ?? true}
+              disabled={aBusy}
+              onchange={(e) => setAssistantTools((e.currentTarget as HTMLInputElement).checked)}
+            />
+            <span>let it look further with the tools below (needs a model that calls tools)</span>
+          </label>
         {/if}
         <div class="rt-row">
           <input
@@ -1099,6 +1144,72 @@
           <p class="note" data-tone="warning">
             The <code>assistant:</code> block in <code>cluster.yml</code> has a mistake:
             {assistant.status.error} Saving here replaces it.
+          </p>
+        {/if}
+      </section>
+    {/if}
+
+    <!-- Tools for agents (roadmap BB). With the assistant, since Ask uses
+         the same tools; reachable whether or not Ask is set up. -->
+    {#if assistant}
+      <section class="stack">
+        <h3 class="eyebrow dim">Tools for agents (MCP)</h3>
+        <p class="note dim">
+          Lets an agent such as Claude Code query the dashboard itself: the cluster now, any series
+          over any window, alerts, events, latency, clients, and what moved around a moment.
+          Read-only. It needs a key, made here.
+        </p>
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={mcp?.enabled ?? false}
+            disabled={mBusy || !mcp}
+            onchange={(e) =>
+              mcpAction(() => assistant!.mcpSave({ enabled: (e.currentTarget as HTMLInputElement).checked }))}
+          />
+          <span>serve the tools at <code>{mcp?.path ?? '/mcp'}</code></span>
+        </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={mcp?.promql ?? false}
+            disabled={mBusy || !mcp}
+            onchange={(e) =>
+              mcpAction(() => assistant!.mcpSave({ promql: (e.currentTarget as HTMLInputElement).checked }))}
+          />
+          <span>also allow raw PromQL queries</span>
+        </label>
+        {#if mcp?.key_set}
+          <div class="rt-row">
+            <span class="note">key <span class="num">{mcp.key_hint}</span></span>
+            <button class="mini" disabled={mBusy} onclick={() => mcpAction(() => assistant!.mcpNewKey())}
+              >new key</button
+            >
+          </div>
+        {/if}
+        {#if mKey}
+          <p class="note">
+            The key, shown this once. To connect Claude Code, run this; other clients take the address
+            and the same header.
+          </p>
+          <textarea
+            class="yaml cmd"
+            readonly
+            rows="4"
+            bind:this={mBox}
+            aria-label="Command to connect Claude Code"
+            value={mcpCommand(mKey)}
+          ></textarea>
+        {:else if mcp?.enabled}
+          <p class="note dim">
+            Address <code>{mcpUrl()}</code>, with the header <code>Authorization: Bearer</code> and the
+            key. A lost key cannot be shown again; make a new one.
+          </p>
+        {/if}
+        {#if mError}<p class="note" data-tone="warning">{mError}</p>{/if}
+        {#if mcp?.error}
+          <p class="note" data-tone="warning">
+            The <code>mcp:</code> block in <code>cluster.yml</code> has a mistake: {mcp.error}
           </p>
         {/if}
       </section>
@@ -1323,6 +1434,12 @@
     border-radius: var(--radius);
     resize: vertical;
     white-space: pre;
+  }
+
+  /* One long command: wrapped, so the key is visible without scrolling. */
+  .yaml.cmd {
+    white-space: pre-wrap;
+    word-break: break-all;
   }
 
 

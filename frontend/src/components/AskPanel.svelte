@@ -65,6 +65,12 @@
     return escape(s).replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
   }
 
+  /** What the model looked up: `correlate(sparky, 2026-10-16T15:44Z)`. */
+  const lookedUp = (a: Answer) =>
+    (a.tools_used ?? [])
+      .map((t) => `${t.tool}(${Object.values(t.args).map(String).join(', ')})${t.error ? ' ✕' : ''}`)
+      .join(' · ');
+
   const sentText = (a: Answer) =>
     `${a.model} · ${a.seconds}s · from ${a.sent.alert_episodes} alert episodes, ${a.sent.events} events, ` +
     `${a.sent.series} series, ${a.sent.clients ? `${a.sent.clients} client rows ` : ''}and ${a.sent.nodes} nodes`;
@@ -115,10 +121,15 @@
       </div>
       <p class="note dim">
         {feed.status?.model ?? 'The model'} is sent this window's alerts, events, series and clients,
-        and the cluster as it stands. It reads; it cannot act.
+        and the cluster as it stands{feed.status?.tools ? ', and may look further with the dashboard’s tools' : ''}.
+        It reads; it cannot act.
       </p>
       {#if busy}
-        <p class="note dim">A reasoning model can take most of a minute and a half.</p>
+        <p class="note dim">
+          A reasoning model can take most of a minute and a half{feed.status?.tools
+            ? ', and up to three minutes when it looks things up'
+            : ''}.
+        </p>
       {/if}
       {#if error}
         <p class="note" data-tone="warning">{error}</p>
@@ -131,6 +142,10 @@
         <!-- eslint-disable-next-line svelte/no-at-html-tags -- escaped in render() -->
         <div class="a">{@html render(a.answer.answer)}</div>
         <p class="note dim">{sentText(a.answer)}</p>
+        {#if a.answer.tools_used?.length}
+          <p class="note dim">looked up: <span class="num">{lookedUp(a.answer)}</span></p>
+        {/if}
+        {#if a.answer.tools_note}<p class="note dim">{a.answer.tools_note}</p>{/if}
       </section>
     {/each}
   </div>

@@ -65,6 +65,7 @@ that reports no occupancy — see [metrics](metrics.md#sglang-per-instance--same
 | `GET /api/history?metric=&node=&from=&to=&step=` | Time-series for trend charts; thin PromQL wrapper |
 | `GET /api/latest?metric=` | Prometheus's latest reading of the five metrics the live snapshot lacks (CPU clock, swap I/O, CPU and I/O pressure, disk busy), with when each node was scraped, for System Activity's gauges (roadmap BA2) |
 | `POST /api/assistant/ask` | A question answered from the window's alerts, events and series by the configured model (roadmap AY); `GET /api/assistant/status`, `PUT`/`DELETE /api/assistant/config`, `POST /api/assistant/models`, `POST /api/assistant/test` set it up |
+| `POST /mcp` | Tools for agents over MCP, streamable HTTP, read-only, behind a bearer key (roadmap BB); `GET /api/mcp/status`, `PUT /api/mcp/config`, `POST /api/mcp/key` set it up |
 | `GET /api/latency` | Time to first token per model, p50 and p95 over 15 minutes, with speculative-decoding acceptance; the header's busiest model |
 | `GET /health` | Liveness + self-assessment, for the external UptimeKuma check |
 

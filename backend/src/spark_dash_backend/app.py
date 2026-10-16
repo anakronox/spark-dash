@@ -13,9 +13,11 @@ mixing them would make the live view as laggy as the scrape interval.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Literal
@@ -28,7 +30,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 from pydantic import BaseModel, Field
@@ -64,7 +66,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
-from spark_dash_backend import assistant
+from spark_dash_backend import agent_tools, assistant
 from spark_dash_backend.latency import latency
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
@@ -177,6 +179,8 @@ class AssistantWrite(BaseModel):
     url: str
     model: str
     enabled: bool | None = None
+    #: BB4: let the model call the read-only tools.
+    tools: bool | None = None
     key: str | None = None
     clear_key: bool = False
 
@@ -192,6 +196,13 @@ class AssistantProbe(BaseModel):
 class AssistantQuestion(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     minutes: int = Field(60, ge=5, le=60 * 24 * 7)
+
+
+class McpWrite(BaseModel):
+    """BB2. Either switch, the other kept."""
+
+    enabled: bool | None = None
+    promql: bool | None = None
 
 
 class FleetEnrol(BaseModel):
@@ -278,7 +289,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # died holding. A no-op when the feature is off or proxied.
         await asyncio.to_thread(fleet_updates.start)
         try:
-            yield
+            async with AsyncExitStack() as stack:
+                # The MCP transport's session manager runs once per instance,
+                # so each start builds a fresh one (BB1).
+                mcp_server.streamable_http_app(
+                    stateless_http=True, json_response=True,
+                    transport_security=agent_tools.TRANSPORT,
+                )
+                await stack.enter_async_context(mcp_server.session_manager.run())
+                yield
         finally:
             await asyncio.to_thread(fleet_updates.stop)
 
@@ -1446,6 +1465,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "enabled": bool(config and config.enabled),
             "url": config.url if config else None,
             "model": config.model if config else None,
+            "tools": config.tools if config else True,
             "key_set": key is not None,
             "key_hint": assistant.key_hint(key),
             "error": error,
@@ -1466,9 +1486,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="choose a model; Detect lists the endpoint's")
         current, _ = _assistant()
         enabled = body.enabled if body.enabled is not None else (current.enabled if current else True)
+        tools = body.tools if body.tools is not None else (current.tools if current else True)
         try:
             await asyncio.to_thread(assistant.write_assistant, settings.cluster_config,
-                                    assistant.AssistantConfig(url=url, model=body.model.strip(), enabled=enabled))
+                                    assistant.AssistantConfig(url=url, model=body.model.strip(),
+                                                              enabled=enabled, tools=tools))
             if body.clear_key:
                 await asyncio.to_thread(assistant.write_key, settings.cluster_config, None)
             elif body.key:
@@ -1519,13 +1541,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"could not reach {url}: {exc}") from exc
 
-    @app.post("/api/assistant/ask")
-    async def api_assistant_ask(body: AssistantQuestion) -> dict:
+    async def _call_tool(name: str, args: dict) -> tuple[str, bool]:
+        """BB4: one of the MCP server's own tools, for Ask's loop."""
+        try:
+            result = await mcp_server.call_tool(name, args)
+        except Exception as exc:  # noqa: BLE001 — the model is told, and may try again
+            return f"error: {exc}", True
+        text = "".join(getattr(c, "text", "") for c in getattr(result, "content", []))
+        return text, bool(getattr(result, "is_error", False))
+
+    @app.post("/api/assistant/ask", response_model=None)
+    async def api_assistant_ask(body: AssistantQuestion) -> dict | StreamingResponse:
         """The question, answered from the window's alerts, events and series.
-        Read-only: the model is sent text and returns text."""
+        Read-only: the model is sent text and returns text.
+
+        With tools on, the answer is streamed: a space every ten seconds
+        while the model works, then the JSON. Leading whitespace is still
+        JSON, and the trickle keeps a proxy that gives up on a silent origin
+        (Cloudflare's tunnel, at 100 s) from cutting a long tool loop off. A
+        failure after that point is the JSON `{"detail": ..., "status": ...}`
+        under a 200, since the status was sent with the first space."""
         config, error = _assistant()
         if error or not config or not config.enabled:
             raise HTTPException(status_code=409, detail=error or "the assistant is not set up; see Settings")
+        if not config.tools:
+            return await _answer(config, body)
+
+        async def trickle():
+            task = asyncio.create_task(_answer(config, body))
+            try:
+                while True:
+                    done, _ = await asyncio.wait({task}, timeout=10)
+                    if done:
+                        break
+                    yield b" "
+                try:
+                    yield json.dumps(task.result()).encode()
+                except HTTPException as exc:
+                    yield json.dumps({"detail": exc.detail, "status": exc.status_code}).encode()
+            finally:
+                # The reader left: stop asking the model.
+                if not task.done():
+                    task.cancel()
+
+        return StreamingResponse(trickle(), media_type="application/json")
+
+    async def _answer(config: assistant.AssistantConfig, body: AssistantQuestion) -> dict:
         end = time.time()
         start = end - body.minutes * 60
         step = f"{max(60, body.minutes)}s"
@@ -1554,13 +1615,108 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             latency=None if isinstance(lat, BaseException) else lat,
             clients=clients,
         )
+        key = assistant.read_key(settings.cluster_config)
         try:
-            answer = await assistant.ask(config, assistant.read_key(settings.cluster_config), body.question, context)
+            if config.tools:
+                tools = assistant.openai_tools(await mcp_server.list_tools())
+                answer = await assistant.ask_with_tools(config, key, body.question, context, tools, _call_tool)
+            else:
+                answer = await assistant.ask(config, key, body.question, context)
         except ClusterConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail=(
+                f"{config.model} did not answer within "
+                f"{assistant.TOOLS_TIMEOUT_S if config.tools else assistant.ANSWER_TIMEOUT_S:.0f} s; "
+                "it may be loading, or its node busy")) from exc
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"could not reach {config.url}: {exc}") from exc
         return {**answer, "sent": counts, "context_chars": len(context)}
+
+    # --- tools for agents (roadmap BB) ------------------------------------------
+
+    def _mcp() -> tuple[agent_tools.McpConfig, str | None]:
+        try:
+            return agent_tools.load_mcp(settings.cluster_config), None
+        except ClusterConfigError as exc:
+            return agent_tools.McpConfig(), str(exc)
+
+    async def _mcp_nodes() -> list:
+        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+        return snapshot.nodes
+
+    async def _mcp_clients(minutes: int) -> dict | None:
+        gateway, _ = inventory.gateway()
+        if gateway is None or not gateway.enabled:
+            return None
+        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+        served = await served_index(snapshot.nodes, client_names)
+        return await client_rows(prom, inventory.cluster_nodes(), client_names, minutes, served)
+
+    tool_sources = agent_tools.Sources(
+        prom=prom, nodes=_mcp_nodes, latency=_latency, clients=_mcp_clients,
+        promql_enabled=lambda: _mcp()[0].promql,
+    )
+    mcp_server = agent_tools.build_server(tool_sources, version=os.environ.get("BACKEND_VERSION", "dev"))
+    gate = agent_tools.KeyGate(
+        enabled=lambda: _mcp()[0].enabled,
+        key=lambda: agent_tools.read_key(settings.cluster_config),
+        inner=lambda: mcp_server.session_manager,
+    )
+    # Both spellings: a client is given one and should not meet a redirect.
+    app.add_route("/mcp", gate)
+    app.add_route("/mcp/", gate)
+
+    def _mcp_status(key: str | None = None) -> dict:
+        config, error = _mcp()
+        stored = agent_tools.read_key(settings.cluster_config)
+        return {
+            "enabled": config.enabled,
+            "promql": config.promql,
+            "key_set": stored is not None,
+            "key_hint": assistant.key_hint(stored),
+            "path": "/mcp",
+            "error": error,
+            # Only in the answer that made it: never stored where the
+            # browser can read it again.
+            **({"key": key} if key else {}),
+        }
+
+    @app.get("/api/mcp/status")
+    async def api_mcp_status() -> dict:
+        """What Settings shows. Never the key: whether one is set, and its end."""
+        return _mcp_status()
+
+    @app.put("/api/mcp/config")
+    async def api_mcp_config(body: McpWrite) -> dict:
+        """The two switches. Switching on with no key makes one, and this is
+        the one answer that carries it."""
+        current, _ = _mcp()
+        config = agent_tools.McpConfig(
+            enabled=current.enabled if body.enabled is None else body.enabled,
+            promql=current.promql if body.promql is None else body.promql,
+        )
+        made = None
+        try:
+            await asyncio.to_thread(agent_tools.write_mcp, settings.cluster_config, config)
+            if config.enabled and agent_tools.read_key(settings.cluster_config) is None:
+                made = await asyncio.to_thread(agent_tools.new_key, settings.cluster_config)
+        except NoClusterFileError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (ClusterConfigError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _mcp_status(made)
+
+    @app.post("/api/mcp/key")
+    async def api_mcp_key() -> dict:
+        """A new key, replacing the old one, which stops working at once."""
+        if not settings.cluster_config.exists():
+            raise HTTPException(status_code=409, detail="MCP tools need the cluster file; see Settings")
+        try:
+            made = await asyncio.to_thread(agent_tools.new_key, settings.cluster_config)
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _mcp_status(made)
 
     @app.post("/api/fleet/runs/{run_id}/{action}")
     async def api_fleet_run_action(
