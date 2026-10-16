@@ -622,9 +622,17 @@
       return;
     }
 
-    // Shrink the plots first; anything past the floor cuts rows.
+    /* THE EMPTY SPACE GOES FIRST. A card held taller than its charts (grown
+       past MAX_PLOT_PX, or stretched to a taller neighbour) has room below
+       them, and shrinking used to spend the gesture on the plots while that
+       room stayed: measured, grown to 31 rows and back to 19, the plots had
+       gone from 330px to 180 and the card kept a 177px gap. So the slack is
+       taken up first, and only what is left shrinks the plots. */
+    const slack = Math.max(0, (startSpan - naturalRows) * rowUnit());
+    const want = Math.max(0, -deltaPx - slack);
+    if (want === 0) return;
+    // Then the plots; anything past the floor cuts rows.
     const room = (plot0 - MIN_PLOT_PX) * rows0;
-    const want = -deltaPx;
     if (want <= room) {
       layout.setPlotHeight(id, plot0 - want / rows0);
       return;
@@ -928,6 +936,7 @@
   data-slot={id}
   class="slot"
   class:scrolling
+  class:plots={mode === 'plot'}
   class:landed={layout.landed === id}
   style:--card-rows={cardRows}
   class:grabbed
@@ -1079,6 +1088,23 @@
   .slot.scrolling {
     height: calc(var(--card-rows, 1) * var(--row-unit) - 16px);
     min-height: 0;
+  }
+
+  /* A CHART CARD TALLER THAN ITS CHARTS CENTRES THEM. Room a plot cannot
+     use (past MAX_PLOT_PX, or a taller neighbour holding the row) used to sit
+     in one band at the bottom; now it is split above and below the content,
+     the header staying at the top. Auto margins take only spare room, and
+     measure() reads the card with the fill lifted, when there is none, so
+     this cannot feed the height it centres in. */
+  .slot.plots:not(.scrolling) > :global(section.panel) {
+    display: flex;
+    flex-direction: column;
+  }
+  .slot.plots:not(.scrolling) > :global(section.panel > header + *) {
+    margin-top: auto;
+  }
+  .slot.plots:not(.scrolling) > :global(section.panel > :last-child) {
+    margin-bottom: auto;
   }
 
   .slot.scrolling > :global(section.panel) {

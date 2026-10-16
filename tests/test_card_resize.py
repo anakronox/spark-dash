@@ -1253,3 +1253,21 @@ def test_reset_layout_leaves_the_theme_alone():
     reset = src[src.index("  reset() {") :]
     reset = reset[: reset.index("\n  }")]
     assert "spark-dash.theme" not in reset and "THEME" not in reset, "reset touches the theme"
+
+
+def test_a_chart_card_taller_than_its_charts_centres_them_and_shrinks_the_gap_first():
+    """Network Activity, 2026-10-16: grown past the 480px plot ceiling the card
+    kept the extra height as one band under its charts, and shrinking spent
+    the gesture on the plots while the band stayed (31 rows and back to 19:
+    plots 330 -> 180px, gap 27 -> 177px). The slack goes first now, and what
+    a plot cannot use is split above and below the content."""
+    shrink = section_fn("resizePlots")
+    slack_at = shrink.index("const slack")
+    assert "naturalRows" in shrink[slack_at: slack_at + 200], "the slack is not the held height over the natural one"
+    assert slack_at < shrink.index("const room"), "the plots shrink before the empty space is taken up"
+
+    panel = css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel) {")
+    assert "flex-direction: column" in panel
+    assert "margin-top: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel > header + *) {")
+    assert "margin-bottom: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel > :last-child) {")
+    assert "class:plots={mode === 'plot'}" in SECTION.read_text()
