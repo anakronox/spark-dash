@@ -65,7 +65,11 @@ that reports no occupancy — see [metrics](metrics.md#sglang-per-instance--same
 | `GET /api/history?metric=&node=&from=&to=&step=` | Time-series for trend charts; thin PromQL wrapper |
 | `GET /api/latest?metric=` | Prometheus's latest reading of the five metrics the live snapshot lacks (CPU clock, swap I/O, CPU and I/O pressure, disk busy), with when each node was scraped, for System Activity's gauges (roadmap BA2) |
 | `POST /api/assistant/ask` | A question answered from the window's alerts, events and series by the configured model (roadmap AY); `GET /api/assistant/status`, `PUT`/`DELETE /api/assistant/config`, `POST /api/assistant/models`, `POST /api/assistant/test` set it up |
-| `POST /mcp` | Tools for agents over MCP, streamable HTTP, read-only, behind a bearer key (roadmap BB); `GET /api/mcp/status`, `PUT /api/mcp/config`, `POST /api/mcp/key` set it up |
+| `POST /mcp` | Tools for agents over MCP, streamable HTTP, behind a bearer key (roadmap BB): fourteen read-only tools, plus `promql` (read-only) and `add_note` (the one write) behind their own switches, three report prompts and three reference guides; `GET /api/mcp/status`, `PUT /api/mcp/config` (`enabled`, `promql`, `notes`), `POST /api/mcp/key` set it up |
+| `GET /api/setup` | The onboarding checklist (roadmap BE): each step's level, state (`done`, `attention`, `todo`, `info`), why it matters, and the Settings pane or guide for it, worked out from the system |
+| `GET /api/notifications/status` | Where alerts go: Alertmanager's default receiver and channels, the ntfy server and topic masked, whether the backend can write the topic file (roadmap BF). Never the topic |
+| `GET`/`PUT /api/notifications/topic` | The topic, asked for on purpose to subscribe; `PUT {server, topic?}` writes a new one, random unless given. `POST /api/notifications/test` sends an Alertmanager-shaped test |
+| `DELETE /api/notes` | Removes every note agents added to the timeline (roadmap BB17); notes arrive with `/api/annotations` as kind `note` |
 | `GET /api/latency` | Time to first token per model, p50 and p95 over 15 minutes, with speculative-decoding acceptance; the header's busiest model |
 | `GET /health` | Liveness + self-assessment, for the external UptimeKuma check |
 

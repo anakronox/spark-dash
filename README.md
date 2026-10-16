@@ -140,12 +140,17 @@ with the memory pressure and swap traffic behind it. The model can read about
 the cluster and can't act on it.
 
 **Or let your own agent look.** The same read-only tools are offered to agents
-over MCP, so Claude Code, or any agent that speaks MCP, can query the
-dashboard directly: the cluster now, any chart's series over any window,
-alerts, events, latency, who called, and what moved around a given moment. It
-can pull a report together, or chase down a slowdown across the metrics,
-without you copying numbers out of charts. Off until you switch it on in
-Settings, which makes the key and the command to connect
+over MCP, so Claude Code, Hermes, Codex, Cursor or any agent that speaks MCP
+can query the dashboard directly: the cluster now and how it is put together,
+any chart's series over any window, what moved around a given moment, this week
+against last, alerts and the rules behind them, model loads and latency, who
+called, and whether the monitoring itself had gaps. It can say what was using
+the GPU at any past time, by workload, not just now: asked what sparky was
+doing one afternoon, an agent found ComfyUI at 23% of the GPU, against 26% for
+the whole node. Ready-made prompts give a daily report, an incident report or a
+capacity check in the same shape from any agent, and agents can be allowed to
+note things on the timeline ("benchmark started"). Off until you switch it on
+in Settings, which makes the key and the setup for your agent
 ([step 8](#8-optional-tools-for-agents)).
 
 ## The page is yours
@@ -158,14 +163,16 @@ nothing is configured on the server.
 - **Size it.** Drag the bottom-right corner. Height moves one table row at a
   time so cards stay on a grid, and you can drag *past* the content to make two
   columns end level. Sideways flips between half and full width.
-- **Too short for its content?** It pages. Or pick **Scroll** in Settings and
-  cards scroll inside their box instead, headers staying put.
+- **Too short for its content?** It pages. Or pick **Scroll** in **Settings →
+  Appearance** and cards scroll inside their box instead, headers staying put.
+  A chart card held taller than its charts centres them, and shrinking it takes
+  up the empty space before the charts.
 - **More than one.** `+ element` adds another copy of any card — one Network
   Activity showing RDMA ports, another showing charts.
 - **Each card has its own menus.** Which metrics, which interface or sensor
   groups, fitted or full axes, linear or log, charts or table or RDMA ports,
   which columns. Column edges drag.
-- **Compact node cards.** **Settings → Node elements → Compact** puts every node
+- **Compact node cards.** **Settings → Appearance → Node elements → Compact** puts every node
   on one grid at the same width, each cluster and each standalone node in its
   own frame. When the frames fit in half the page, as on a wide monitor, the
   right half becomes a column like the ones below: drag a half-width card into
@@ -173,6 +180,9 @@ nothing is configured on the server.
   level with a taller card beside it.
 - **Seven themes**, dark instrument panel through to paper and high contrast.
   **Reset layout** puts it all back.
+- **Settings** opens as a wide panel with a section on each tab of its left
+  rail, each integration's state shown beside its name; drag the panel's left
+  edge to make it wider or narrower.
 
 ## Quickstart
 
@@ -206,8 +216,11 @@ $EDITOR cluster/cluster.yml     # your nodes: id, host, and what each one serves
 # Prometheus and the backend run as non-root, so these directories need to be
 # owned by them. Docker would otherwise create them as root and Prometheus
 # fails to start.
-sudo chown 65534:65534 prometheus alertmanager
+sudo chown 65534:65534 prometheus alertmanager secrets
 sudo chown 10002:10002 targets
+# secrets/ holds the ntfy topic Alertmanager notifies; setgid and
+# group-writable so Settings -> Notifications can set it too.
+sudo chmod 2770 secrets
 
 docker compose up -d
 ```
@@ -269,7 +282,9 @@ in `problems` with the reason.
 Then open the dashboard. The first time, **Get started** lists what to set up,
 required first and optional last, and marks each step done only once it is
 working: every node reporting, Prometheus scraping, an alert that would reach
-someone. While a required step is missing, a **setup** chip in the header says
+someone. For the last, **Settings → Notifications** makes an
+[ntfy](https://ntfy.sh) topic (no account needed), shows it to subscribe your
+phone, and sends a test. While a required step is missing, a **setup** chip in the header says
 how many. A short tour of the controls that are easy to miss follows; both are
 under **Settings → Appearance** afterwards.
 
@@ -282,7 +297,7 @@ it from the dashboard or by hand — both write the same file, and **neither nee
 a restart**. The backend re-reads it on a timer and generates Prometheus's
 scrape targets from it, so there's no second list to keep in sync.
 
-**From the dashboard.** ⚙ **settings** → **Cluster**:
+**From the dashboard.** ⚙ **settings** → **Nodes**:
 
 - **`+ node`** adds a row. Set its **host** — the node's LAN address — and
   optionally a **cluster** name.
@@ -293,9 +308,9 @@ scrape targets from it, so there's no second list to keep in sync.
 - **copy yaml** shows the YAML for that node if you would rather paste it
   somewhere than save from here.
 
-The panel also lists the interfaces each node is currently reporting, as tick
-boxes, so you can exclude an unplugged port from alerting without looking up its
-name.
+Each node is a card; its routers, engines and the interfaces it currently
+reports fold away behind their counts. The interfaces are tick boxes, so you can
+exclude an unplugged port from alerting without looking up its name.
 
 **Or edit the file.** Same result:
 
@@ -384,9 +399,11 @@ Hermes Agent, Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode, or Other) and
 Settings writes the command or config block to paste, key included. Every
 client needs the same two things: the address,
 `http://<monitoring-host>:8080/mcp`, and the header
-`Authorization: Bearer <key>`. The tools only read;
-raw PromQL is a second switch, off by default. Details and the list of tools:
-**[Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional)**.
+`Authorization: Bearer <key>`. The tools only read. Raw PromQL and letting
+agents add notes to the timeline are separate switches, both off by default.
+The endpoint also serves report prompts and reference an agent can read (what
+GB10's readings mean, every series, which tool answers what). Details and the
+list of tools: **[Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional)**.
 
 ## Docs
 
@@ -410,7 +427,14 @@ raw PromQL is a second switch, off by default. Details and the list of tools:
   nodes. The reference the feature is built on, and worth reading before
   trusting any tool that updates a Spark — including this one.
 - [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
-  stays untouched) and the per-node/central Compose service breakdown.
+  stays untouched) and the per-node/central Compose service breakdown; the
+  optional features (client stats, the assistant, tools for agents) in full.
+- [Working on spark-dash](AGENTS.md) — for agents (and people) changing the
+  code: where things live, the test guards, the rules the code depends on, and
+  where each kind of change is documented.
+- [Notifications (ntfy)](central/README.md#notifications-ntfy) — where alerts
+  go, the topic as a secret, setting it from Settings or by hand, and
+  self-hosting ntfy.
 
 ## Bring your own dashboard
 

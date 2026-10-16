@@ -238,10 +238,50 @@ the node stack's `.env`.
 | Service | Image | Notes |
 |---|---|---|
 | `prometheus` | official `prom/prometheus` | TSDB + scraping. Stock image, own lifecycle. |
-| `spark-dash-backend` | ours | FastAPI; also serves the built Svelte assets, so there's no separate web server. See [app-design.md](app-design.md). |
+| `alertmanager` | official `prom/alertmanager` | Routes alerts to ntfy; reads the topic from `secrets/ntfy-url` on every send. |
+| `spark-dash-backend` | ours | FastAPI; also serves the built Svelte assets, so there's no separate web server. Also serves the MCP endpoint at `/mcp`. See [app-design.md](app-design.md). |
+| `node-exporter` | official `prom/node-exporter` | The monitoring host's own disk, CPU and memory. |
 | `cloudflared` | already running | Reuse the existing tunnel — add a hostname/route + Access policy rather than standing up a second connector. |
 
 Two new containers, plus a route on infrastructure that already exists.
+
+### Getting started — the setup guide
+
+The first time the dashboard opens, **Get started** lists what to set up:
+*required* (every node reporting, Prometheus scraping with no target down, an
+alert route with a channel), *recommended* (thermal limits read from each
+node's hardware, nodes kept in `cluster.yml`, pooled nodes named as a cluster),
+then the *optional* integrations. `GET /api/setup` works each step out from
+the system itself, so a step reads done only when the thing works. Each step
+opens Settings on its pane. While a required step is missing, a **setup** chip
+in the header says how many. A short tour of the controls that are easy to miss
+follows the first time; both reopen from **Settings → Appearance**, and **Reset
+layout** does not bring them back.
+
+### Notifications — ntfy
+
+Alertmanager sends every alert, and every recovery, to an
+[ntfy](https://ntfy.sh) topic by its webhook. The topic's URL lives in
+`secrets/ntfy-url`, out of git, because on ntfy.sh the topic name is the only
+access control. **Settings → Notifications** shows where alerts go (read from
+Alertmanager's loaded config), the topic masked until you show it, how to
+subscribe, **Send a test** (shaped like a real alert, so it renders through
+ntfy's alert template), and **New topic** (random; two presses when one exists,
+since phones on the old topic stop receiving), or your own topic and server.
+
+Alertmanager reads the file on every send, so a change applies to the next alert
+with no restart. For the backend to write it, the compose file mounts `secrets/`
+into it at `/etc/spark-dash-secrets` and adds Alertmanager's group
+(`group_add: ${PGID:-65534}`), and the directory is setgid and group-writable:
+
+```bash
+sudo chmod 2770 secrets && sudo chmod 660 secrets/ntfy-url
+```
+
+Until then the pane names the missing piece. A hand-maintained compose copy (a
+deploy tool running compose from its own directory) needs the same mount and
+`group_add`. Setting the topic by hand, and self-hosting ntfy, are in
+[central/README.md](../central/README.md#notifications-ntfy).
 
 ### DGX OS updates — optional
 

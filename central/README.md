@@ -285,7 +285,9 @@ echo -n "https://ntfy.sh/$TOPIC?template=alertmanager" \
   | sudo tee secrets/ntfy-url > /dev/null
 
 sudo chown -R 65534:65534 secrets
-sudo chmod 600 secrets/ntfy-url
+# 2770 and 660, not 700 and 600: the backend shares Alertmanager's group so
+# Settings -> Notifications can read and change the topic.
+sudo chmod 2770 secrets && sudo chmod 660 secrets/ntfy-url
 ```
 
 Two details that are easy to miss:

@@ -248,7 +248,19 @@ nothing else. What follows is why, and it applies equally to a fourth:
   MCP client is usually a program left running, and the key also stops a
   page in a browser from using the endpoint, since it cannot attach the key.
   Off is a 404. Behind Cloudflare Access an agent authenticates with an
-  Access service token.
+  Access service token. One tool writes: `add_note` (BB17) adds a line to
+  the timeline, behind its own switch, off by default, each note marked as
+  an agent's and bounded in number and length.
+- **Notifications (roadmap BF)** write one file, the ntfy topic Alertmanager
+  posts to, from Settings. The topic is a secret on ntfy.sh, so the status
+  never carries it; `GET /api/notifications/topic` returns it on request, to
+  subscribe. **That route is as open as the rest of the REST API**: anyone
+  who can reach `:8080` on the LAN can read the topic, and with it send
+  notifications to it, not only receive them. Inside the trust boundary
+  stated above (Alertmanager on `:9093` already shows every alert to the
+  LAN), but a step past reading. Through the tunnel it sits behind Access.
+  Revisit with the `Cf-Access-Jwt-Assertion` check above if the LAN stops
+  being trusted.
 
 ## Storage / retention
 

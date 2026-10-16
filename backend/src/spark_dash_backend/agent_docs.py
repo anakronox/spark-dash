@@ -79,6 +79,31 @@ INVESTIGATING = """\
    first token per model; `clients` for who called through the gateway.
 6. **Alerting.** `alerting` for the rules, what is firing, what is silenced
    and why; `alerts` and `events` for what happened in a window.
+7. **Maintenance.** `updates` for each node's DGX OS release, pending
+   packages and firmware. `add_note` marks a moment on the timeline ("load
+   test started") when Settings allows it, so a later `correlate` or chart
+   explains the spike; notes come back from `events` as kind `note`.
+
+For a report, the prompts `daily_report`, `incident_report` and
+`capacity_check` give the shape.
+
+## Reading the answers
+
+- **GPU busy, no engine traffic.** If `gpu_utilization` is high while the
+  engines' `tokens_per_second` and `clients` are near zero, the work is not
+  going through a monitored engine or the gateway: an image generator
+  (ComfyUI), a training run, a notebook. `gpu_workload_sm` names it.
+- **Several ComfyUI instances aggregate as one** `comfyui` workload: their
+  command lines are identical, so nothing tells them apart.
+- **llama.cpp has no time-to-first-token histogram.** Its models have a
+  latency only through the gateway, when one is configured; the engines
+  (vLLM, SGLang, TensorFold) report their own.
+- **A p95 time to first token of exactly 300 s** is usually a client's own
+  timeout, not the engine taking that long.
+- **`unrecognised` in the workload series** is GPU work from a process the
+  agent could not put a runtime to.
+- **Load times** from `model_activity` are counted in scrape steps; each
+  carries its own plus-or-minus.
 
 Report the node, the time (UTC) and the figure behind every claim. Say when
 the data cannot answer a question, and what would.
