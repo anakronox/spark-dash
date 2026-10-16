@@ -8267,6 +8267,39 @@ alerts and for reports (BI6).
   so after saving a channel the page never took up what it had saved; it
   uses `$state.snapshot` now, guarded by a test.
 
+### BK — Layout presets — **built 2026-10-17**
+
+Brian: offer three layouts in the setup guide and in Settings → Appearance:
+his production layout (the README's key screenshot) as the default, the
+previous default, and one more.
+
+- [x] **BK1. Three presets.** **Side by side** (the default): compact
+  nodes with Clients beside them, Temperatures as gauges (package, GPU
+  and storage averaged, network at its hottest, wireless hidden), System
+  Activity and Network Activity as a pair of charts, GPU processes and
+  Models as a pair of tables, Model activity hidden, twelve System
+  Activity metrics. **Stacked**: the page with nothing saved, which was
+  the default until now. **Wall display**: gauges only, for a screen
+  across the room; no process, client or model activity tables.
+- [x] **BK2. A preset is saved keys.** Each is the `spark-dash.*` keys a
+  reader would have saved by arranging the page that way, so every store
+  reads it as its own state and there is no preset code path in the
+  cards. Applying one clears the layout (keeping the theme, the guide and
+  tour flags, and Settings' pane and width) and reloads.
+- [x] **BK3. First visit only.** A browser with no layout saved and the
+  guide never shown is seeded with Side by side before the app mounts. A
+  reader already using the page keeps what they had.
+- [x] **BK4. Reset goes back to the preset.** After a preset is applied,
+  the Layout records what it arranged on the next load; "reset layout"
+  appears while the page differs from that and restores the preset. On a
+  page arranged before presets, reset behaves as before.
+- Chosen in the setup guide (a Layout section at the top) or Settings →
+  Appearance → Layout, each with a sketch of the arrangement. On a page
+  the reader has changed, the first press arms and the second applies.
+- Not carried: node order. The screenshot shows the pooled pair first,
+  which is that install's own arrangement; a preset cannot name another
+  install's clusters, so the order stays cluster.yml's.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

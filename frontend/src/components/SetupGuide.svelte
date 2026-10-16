@@ -8,6 +8,7 @@
    * says why it matters and goes straight to where it is set.
    */
   import type { Level, SetupFeed, SetupItem } from '../lib/setup.svelte';
+  import PresetPicker from './PresetPicker.svelte';
 
   interface Props {
     feed: SetupFeed;
@@ -16,11 +17,13 @@
     /** Open Settings on this pane. */
     onsettings: (pane: string) => void;
     ontour: () => void;
+    /** The page differs from the preset it was set from. */
+    customised: boolean;
     /** Whether this opens with the dashboard. */
     showOnStart: boolean;
     onshowonstart: (on: boolean) => void;
   }
-  const { feed, open, onclose, onsettings, ontour, showOnStart, onshowonstart }: Props = $props();
+  const { feed, open, onclose, onsettings, ontour, customised, showOnStart, onshowonstart }: Props = $props();
 
   let dialog = $state<HTMLDialogElement | null>(null);
   $effect(() => {
@@ -74,6 +77,11 @@
         working. Start at the top: each step says why it matters and where it is set.
       {/if}
     </p>
+
+    <section class="level">
+      <h3 class="eyebrow dim">Layout <span class="why">· a starting arrangement; change it later in Settings → Appearance.</span></h3>
+      <PresetPicker {customised} />
+    </section>
 
     {#each LEVELS as level (level.id)}
       {#if items(level.id).length}

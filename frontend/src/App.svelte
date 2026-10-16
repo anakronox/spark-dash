@@ -849,6 +849,7 @@
     onclose={closeSetup}
     onsettings={openSettingsAt}
     ontour={startTour}
+    customised={!layout.isDefault}
     showOnStart={showSetupOnStart}
     onshowonstart={(on) => {
       showSetupOnStart = on;

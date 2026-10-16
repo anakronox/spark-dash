@@ -24,9 +24,7 @@ export interface SetupStatus {
   required_total: number;
 }
 
-/** Kept by Reset layout: these say what a reader has already seen. */
-export const SEEN_KEY = 'spark-dash.onboarding-seen.v1';
-export const TOUR_KEY = 'spark-dash.tour-done.v1';
+export { SEEN_KEY, TOUR_KEY } from './onboarding';
 
 export function flag(key: string): boolean {
   try {

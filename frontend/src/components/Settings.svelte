@@ -35,7 +35,8 @@
   import type { ClientsFeed } from '../lib/clients.svelte';
   import type { AssistantFeed, McpStatus } from '../lib/assistant.svelte';
   import { CLIENTS, clientOr, setupFor, type ClientId } from '../lib/mcpClients';
-  import { SEEN_KEY, TOUR_KEY } from '../lib/setup.svelte';
+  import { applyPreset, currentPreset } from '../lib/presets';
+  import PresetPicker from './PresetPicker.svelte';
   import { ntfySet, ntfyStatus, ntfyTest, ntfyTopic, type NtfyStatus } from '../lib/notifications';
   import {
     HOW as CHANNEL_HOW,
@@ -961,12 +962,10 @@
     setWidth(panelWidth + step, true);
   }
 
-  /* RESET LAYOUT: every view preference this page keeps, except the theme.
-     They all share one prefix, so a key added later is reset too without an
-     edit here. Reloads, since each store read its key once at start. */
-  /* And what the reader has already been shown: a reset of the layout is not
-     a reason to walk them through the page again. */
-  const KEEP = new Set(['spark-dash.theme.v1', SEEN_KEY, TOUR_KEY]);
+  /* RESET LAYOUT: back to the preset the page was set from (BK), or the
+     stacked one on a page arranged before presets. Keeps the theme and what
+     the reader has already been shown; reloads, since each store read its
+     key once at start. */
   let resetArmed = $state(false);
   let resetTimer: ReturnType<typeof setTimeout> | undefined;
   function resetLayout() {
@@ -976,13 +975,7 @@
       resetTimer = setTimeout(() => (resetArmed = false), 4000);
       return;
     }
-    try {
-      for (const k of Object.keys(localStorage)) {
-        if (k.startsWith('spark-dash.') && !KEEP.has(k)) localStorage.removeItem(k);
-      }
-    } catch {
-      // Nothing stored, so nothing to reset.
-    }
+    applyPreset(currentPreset() ?? 'stacked');
     location.reload();
   }
 
@@ -1100,6 +1093,9 @@
 
     <!-- Layout -->
     <section class="stack">
+      <h3 class="eyebrow dim">Layout</h3>
+      <PresetPicker customised={!layout.isDefault} />
+
       <h3 class="eyebrow dim">Elements</h3>
       <!-- What a card does when its content is taller than it is. Paging keeps
            the drag coupled to rows; scrolling makes the drag the height and
@@ -1168,7 +1164,7 @@
           {resetArmed ? 'press again to reset' : 'Reset layout'}
         </button>
         {#if resetArmed}
-          <span class="note dim">Puts every element back where it started; keeps the theme.</span>
+          <span class="note dim">Puts every element back as the layout above set it; keeps the theme.</span>
         {/if}
       </div>
       {#if onguide || ontour}

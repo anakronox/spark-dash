@@ -191,8 +191,13 @@ nothing is configured on the server.
   right half becomes a column like the ones below: drag a half-width card into
   it. A single row of frames spreads to fill its half, and stretches to end
   level with a taller card beside it.
+- **Three layouts to start from.** **Side by side** (the default, as in
+  the screenshot above), **Stacked** (every card full width) and **Wall
+  display** (gauges only, for a screen across the room). Pick one in the
+  setup guide or **Settings → Appearance → Layout**; anything you change
+  afterwards is kept on top of it.
 - **Seven themes**, dark instrument panel through to paper and high contrast.
-  **Reset layout** puts it all back.
+  **Reset layout** puts it back to the layout you picked.
 - **Settings** opens as a wide panel with a section on each tab of its left
   rail, each integration's state shown beside its name; drag the panel's left
   edge to make it wider or narrower.

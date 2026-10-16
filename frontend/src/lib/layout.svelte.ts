@@ -17,6 +17,7 @@
  */
 
 import { columnStore } from './columns.svelte';
+import { BASELINE_KEY, applyPreset, currentPreset } from './presets';
 
 const STORAGE_KEY = 'spark-dash.section-order.v1';
 const HIDDEN_KEY = 'spark-dash.section-hidden.v1';
@@ -646,6 +647,33 @@ export class Layout {
    *  inventory order, which is `cluster.yml`'s. */
   nodeOrder = $state<string[]>(readNodeOrder());
 
+  /** What a preset left on the page (BK), or null on a page no preset has
+   *  touched. Declared after every field it reads. */
+  #baseline: string | null = this.#readBaseline();
+
+  #readBaseline(): string | null {
+    try {
+      if (currentPreset() === null) return null;
+      const saved = localStorage.getItem(BASELINE_KEY);
+      if (saved !== null) return saved;
+      // The first load after a preset: this is what it arranged.
+      const sig = this.signature;
+      localStorage.setItem(BASELINE_KEY, sig);
+      return sig;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Everything `isDefault` compares, as one string. */
+  get signature(): string {
+    return JSON.stringify([
+      this.order, this.hidden, this.placement, this.rows, this.plotHeights, this.cardSpans,
+      this.plotRows, this.nodeOrder, this.compactCards, this.overflow,
+      columnStore.hidden, columnStore.widths,
+    ]);
+  }
+
   /** The group being dragged, and where a release would put it. Separate from
    *  the section drag state because the gestures differ: a node card has one
    *  axis and no half-width, so there is no zone, no band and no pairing. */
@@ -1168,6 +1196,15 @@ export class Layout {
   }
 
   reset() {
+    /* Back to the preset the page was set from, which is a reload: card
+       views (gauges, combine) are part of it and their components read them
+       once. */
+    const preset = currentPreset();
+    if (preset !== null) {
+      applyPreset(preset);
+      location.reload();
+      return;
+    }
     for (const id of this.order) if (isCopy(id)) purgeInstanceKeys(id);
     this.order = [...DEFAULT_ORDER];
     this.hidden = [];
@@ -1217,6 +1254,7 @@ export class Layout {
    *  all, so it has to account for all three or a customised dashboard has no
    *  way back. */
   get isDefault(): boolean {
+    if (this.#baseline !== null) return this.signature === this.#baseline;
     return (
       this.order.join(',') === DEFAULT_ORDER.join(',') &&
       this.hidden.length === 0 &&
