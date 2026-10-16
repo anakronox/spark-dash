@@ -182,6 +182,10 @@ services:
       # and a setgid directory: once, on the host,
       #   sudo chmod 2770 secrets && sudo chmod 660 secrets/ntfy-url
       - ./secrets:/etc/spark-dash-secrets
+      # The host's time zone, for scheduled reports' "daily at 08:00" (roadmap
+      # BI). Every Linux host has /etc/localtime; the backend matches its
+      # contents to a zone name. Read-only, and Settings can override it.
+      - /etc/localtime:/host/etc/localtime:ro
     ports:
       # The dashboard. THE ONLY PORT PUBLISHED THROUGH THE CLOUDFLARE TUNNEL —
       # Prometheus and Alertmanager stay LAN-only, so Google OAuth at the

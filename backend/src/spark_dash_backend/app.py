@@ -30,7 +30,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 from pydantic import BaseModel, Field
@@ -66,7 +66,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
-from spark_dash_backend import agent_tools, assistant, notifications, setup
+from spark_dash_backend import agent_tools, assistant, notifications, reports, setup
 from spark_dash_backend.latency import latency, latency_over
 from spark_dash_backend.notes import NoteStore
 from spark_dash_backend.maintenance import (
@@ -199,6 +199,20 @@ class AssistantQuestion(BaseModel):
     minutes: int = Field(60, ge=5, le=60 * 24 * 7)
 
 
+class ReportBuild(BaseModel):
+    """BI5: a report on demand. `start`/`end` (Unix seconds) or `minutes`
+    back from now."""
+
+    start: float | None = None
+    end: float | None = None
+    minutes: int | None = Field(None, ge=5, le=60 * 24 * 31)
+    nodes: list[str] | None = None
+    sections: list[str] = Field(default_factory=lambda: list(reports.DEFAULT_SECTIONS))
+    title: str | None = Field(None, max_length=120)
+    keep: bool = False
+    narrative: bool = False
+
+
 class NtfyWrite(BaseModel):
     """BF: a new random topic on `server`, or this exact topic."""
 
@@ -308,6 +322,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     transport_security=agent_tools.TRANSPORT,
                 )
                 await stack.enter_async_context(mcp_server.session_manager.run())
+                # BI3: scheduled reports, checked every minute.
+                scheduler = asyncio.create_task(_report_scheduler())
+                stack.callback(scheduler.cancel)
                 yield
         finally:
             await asyncio.to_thread(fleet_updates.stop)
@@ -1682,6 +1699,225 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except FleetError:
             return None
 
+    # --- reports (roadmap BI) -------------------------------------------------------
+
+    report_store = reports.ReportStore(settings.cluster_config)
+    report_state = reports.ScheduleState(report_store)
+
+    def _reports_config() -> tuple[reports.ReportsConfig, str | None]:
+        try:
+            return reports.load_reports(settings.cluster_config), None
+        except ClusterConfigError as exc:
+            return reports.ReportsConfig(), str(exc)
+
+    def _report_tz(config: reports.ReportsConfig) -> str:
+        return config.timezone or reports.host_timezone()
+
+    async def _narrate(markdown: str) -> dict | None:
+        """BI1: the assistant's summary, when it is set up. Marked as the
+        model's in every rendering."""
+        config, error = _assistant()
+        if error or not config or not config.enabled:
+            return None
+        text, _ = await assistant.complete(
+            config.url, assistant.read_key(settings.cluster_config), config.model,
+            [{"role": "system", "content": "You summarise a GB10 cluster's monitoring report for its operator. "
+              "Use only the report. Three to five plain sentences: what the period looked like, anything "
+              "that needs attention with its node, time and figure, and nothing else. No headings, no lists."},
+             {"role": "user", "content": markdown[:24000]}],
+            max_tokens=700, timeout_s=assistant.ANSWER_TIMEOUT_S,
+        )
+        return {"text": text, "model": config.model} if text else None
+
+    async def _build_report(*, start: float, end: float, sections: list[str] | None = None,
+                            nodes: list[str] | None = None, title: str | None = None,
+                            narrative: bool = False, schedule: dict | None = None) -> dict:
+        config, _ = _reports_config()
+        return await reports.build(
+            tool_sources, start=start, end=end, sections=sections or list(reports.DEFAULT_SECTIONS),
+            nodes=nodes, title=title, tz=_report_tz(config), schedule=schedule,
+            narrate=_narrate if narrative else None,
+        )
+
+    async def _notify_report(doc: dict, config: reports.ReportsConfig) -> dict | None:
+        """BI6: a short line and a link, through ntfy. BJ adds channels."""
+        url = ntfy.read() if ntfy.capability()["ok"] else None
+        if not url:
+            return None
+        link = f"{config.public_url}/?report={doc['id']}" if config.public_url else None
+        body = "\n".join(doc.get("headline") or ["Report ready."])
+        try:
+            return await notifications.send_plain(url, title=doc["title"], message=body, click=link)
+        except httpx.HTTPError as exc:
+            return {"ok": False, "detail": str(exc)}
+
+    async def _run_schedule(s: reports.Schedule, due) -> dict:
+        config, _ = _reports_config()
+        tz = reports.ZoneInfo(_report_tz(config))
+        start = reports.period_start(s, due.astimezone(tz))
+        doc = await _build_report(start=start.timestamp(), end=due.timestamp(), sections=list(s.sections),
+                                  nodes=list(s.nodes) or None, title=f"{s.name}, {start.strftime('%Y-%m-%d %H:%M')}"
+                                  f" to {due.astimezone(tz).strftime('%Y-%m-%d %H:%M')}",
+                                  narrative=s.narrative, schedule={"id": s.id, "name": s.name})
+        await asyncio.to_thread(report_store.save, doc)
+        await asyncio.to_thread(report_store.prune, config.keep_count, config.keep_days)
+        sent = await _notify_report(doc, config) if s.notify else None
+        return {"id": doc["id"], "notified": sent}
+
+    async def _report_scheduler() -> None:
+        """Every minute: which schedules are due. A schedule seen for the
+        first time starts counting from then; one that missed runs while the
+        backend was down runs once, for the latest."""
+        while True:
+            try:
+                config, error = _reports_config()
+                if not error and config.schedules:
+                    tz = reports.ZoneInfo(_report_tz(config))
+                    now = datetime.now(UTC)
+                    state = await asyncio.to_thread(report_state.read)
+                    changed = False
+                    for s in config.schedules:
+                        if s.id not in state:
+                            state[s.id] = {"since": now.isoformat()}
+                            changed = True
+                    for s, due in reports.due_runs(config, state, now, tz):
+                        try:
+                            r = await _run_schedule(s, due)
+                            state[s.id] = {"last_due": due.isoformat(), "last_report": r["id"],
+                                           "last_run": now.isoformat(), "error": None}
+                        except Exception as exc:  # noqa: BLE001 — one schedule failing must not stop the rest
+                            log.warning("report schedule %s failed", s.name, exc_info=True)
+                            state[s.id] = {**state.get(s.id, {}), "last_due": due.isoformat(),
+                                           "error": f"{type(exc).__name__}: {exc}"}
+                        changed = True
+                    if changed:
+                        await asyncio.to_thread(report_state.write, state)
+            except Exception:  # noqa: BLE001
+                log.warning("report scheduler pass failed", exc_info=True)
+            await asyncio.sleep(60)
+
+    def _reports_meta() -> dict:
+        config, error = _reports_config()
+        a_config, _ = _assistant()
+        gateway, _ = inventory.gateway()
+        state = report_state.read()
+        return {
+            "sections": [{"id": k, "title": t, "about": a,
+                          "available": not ((k == "clients" and not (gateway and gateway.enabled))
+                                            or (k == "updates" and not fleet_updates.configured))}
+                         for k, (t, a) in reports.SECTIONS.items()],
+            "default_sections": reports.DEFAULT_SECTIONS,
+            "nodes": [n.node_id for n in inventory.nodes()],
+            "config": config.as_dict(),
+            "error": error,
+            "timezone": _report_tz(config),
+            "host_timezone": reports.host_timezone(),
+            "assistant": bool(a_config and a_config.enabled),
+            "ntfy": ntfy.capability()["ok"] and ntfy.read() is not None,
+            "schedule_state": {k: v for k, v in state.items()},
+        }
+
+    @app.get("/api/reports/meta")
+    async def api_reports_meta() -> dict:
+        """What the Reports page and Settings need: the sections, the nodes,
+        the configuration, the zone in use and the host's."""
+        return await asyncio.to_thread(_reports_meta)
+
+    @app.put("/api/reports/config")
+    async def api_reports_config(body: dict) -> dict:
+        """The whole `reports:` block: timezone (null for the host's),
+        keep_count, keep_days, public_url and schedules."""
+        try:
+            config = reports.parse_reports({"reports": body})
+            await asyncio.to_thread(reports.write_reports, settings.cluster_config, config)
+        except NoClusterFileError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (ClusterConfigError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return await asyncio.to_thread(_reports_meta)
+
+    @app.get("/api/reports")
+    async def api_reports_list() -> dict:
+        return {"reports": await asyncio.to_thread(report_store.list)}
+
+    @app.post("/api/reports/build")
+    async def api_reports_build(body: ReportBuild) -> dict:
+        """BI5: a report now. Kept only when asked."""
+        end = body.end or time.time()
+        start = body.start if body.start is not None else end - (body.minutes or 1440) * 60
+        try:
+            doc = await _build_report(start=start, end=min(end, time.time()), sections=body.sections,
+                                      nodes=body.nodes, title=body.title, narrative=body.narrative)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if body.keep:
+            config, _ = _reports_config()
+            await asyncio.to_thread(report_store.save, doc)
+            await asyncio.to_thread(report_store.prune, config.keep_count, config.keep_days)
+        return {**doc, "kept": body.keep}
+
+    @app.post("/api/reports/keep")
+    async def api_reports_keep(doc: dict) -> dict:
+        """Keep a report built on demand, as it was built."""
+        if not isinstance(doc.get("id"), str) or not isinstance(doc.get("sections"), list):
+            raise HTTPException(status_code=400, detail="not a report")
+        try:
+            await asyncio.to_thread(report_store.save, doc)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail="not a report id") from exc
+        return {"kept": doc["id"]}
+
+    @app.post("/api/reports/schedules/{sid}/run")
+    async def api_reports_run(sid: str) -> dict:
+        """Run a schedule now, for the period ending now."""
+        config, _ = _reports_config()
+        s = next((x for x in config.schedules if x.id == sid), None)
+        if s is None:
+            raise HTTPException(status_code=404, detail="no such schedule")
+        try:
+            return await _run_schedule(s, datetime.now(UTC))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/reports/{rid}")
+    async def api_reports_get(rid: str) -> dict:
+        try:
+            return await asyncio.to_thread(report_store.get, rid)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such report") from exc
+
+    @app.delete("/api/reports/{rid}")
+    async def api_reports_delete(rid: str) -> dict:
+        try:
+            await asyncio.to_thread(report_store.delete, rid)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such report") from exc
+        return {"deleted": rid}
+
+    @app.get("/api/reports/{rid}/download", response_model=None)
+    async def api_reports_download(rid: str, format: str = Query("html"), print: bool = False) -> Response:
+        """BI4: md, html (self-contained; `print=1` opens the print dialog,
+        which is the PDF), csv (a zip, a file per table) or json."""
+        try:
+            doc = await asyncio.to_thread(report_store.get, rid)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="no such report") from exc
+        name = f"spark-dash-report-{rid}"
+        if format == "html":
+            body = reports.render_html(doc, auto_print=print)
+            headers = {} if print else {"Content-Disposition": f'inline; filename="{name}.html"'}
+            return HTMLResponse(body, headers=headers)
+        if format == "md":
+            return Response(reports.render_markdown(doc), media_type="text/markdown; charset=utf-8",
+                            headers={"Content-Disposition": f'attachment; filename="{name}.md"'})
+        if format == "csv":
+            return Response(await asyncio.to_thread(reports.render_csv_zip, doc), media_type="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="{name}-csv.zip"'})
+        if format == "json":
+            return Response(json.dumps(doc, ensure_ascii=False, indent=1), media_type="application/json",
+                            headers={"Content-Disposition": f'attachment; filename="{name}.json"'})
+        raise HTTPException(status_code=400, detail="format is md, html, csv or json")
+
     tool_sources = agent_tools.Sources(
         prom=prom, nodes=_mcp_nodes, latency=_latency, clients=_mcp_clients,
         promql_enabled=lambda: _mcp()[0].promql,
@@ -1694,6 +1930,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         notes=note_store.between,
         notes_enabled=lambda: _mcp()[0].notes,
         add_note=note_store.add,
+        report_list=report_store.list,
+        report_get=report_store.get,
+        report_build=lambda **kw: _build_report(**kw),
     )
     mcp_server = agent_tools.build_server(tool_sources, version=os.environ.get("BACKEND_VERSION", "dev"))
     gate = agent_tools.KeyGate(

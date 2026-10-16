@@ -137,3 +137,22 @@ async def send_test(url: str) -> dict:
     return {"ok": resp.status_code < 300, "status": resp.status_code,
             "seconds": round(time.monotonic() - started, 2),
             "detail": None if resp.status_code < 300 else resp.text[:200]}
+
+
+async def send_plain(url: str, *, title: str, message: str, click: str | None = None,
+                     tags: str = "bar_chart") -> dict:
+    """A plain notification to the same topic, for things that are not
+    alerts (a report being ready, BI6). The stored URL carries ntfy's
+    Alertmanager template, which a plain message must not go through, so the
+    query is dropped; title, link and tag ride in ntfy's headers."""
+    p = urlparse(url)
+    topic_url = urlunparse((p.scheme, p.netloc, p.path, "", "", ""))
+    # Header values are Latin-1; anything outside it becomes "?" rather than
+    # failing the send.
+    headers = {"Title": title.encode("latin-1", "replace").decode("latin-1"), "Tags": tags,
+               "User-Agent": "spark-dash"}
+    if click:
+        headers["Click"] = click
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(topic_url, content=message.encode("utf-8"), headers=headers)
+    return {"ok": resp.status_code < 300, "status": resp.status_code}

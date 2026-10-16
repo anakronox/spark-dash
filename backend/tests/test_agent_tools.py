@@ -81,7 +81,7 @@ class TestTheEndpoint:
         names = [t["name"] for t in tools]
         assert names == ["cluster_now", "topology", "list_metrics", "metric_history", "compare", "correlate",
                          "alerts", "alerting", "events", "latency", "model_activity", "clients",
-                         "monitoring_health", "updates"]
+                         "monitoring_health", "updates", "list_reports", "get_report", "build_report"]
 
     def test_every_tool_says_it_only_reads(self, api):
         switch_on(api, promql=True)

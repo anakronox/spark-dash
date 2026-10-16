@@ -196,6 +196,10 @@ class Sources:
     notes: Callable[[float, float], list] | None = None
     notes_enabled: Callable[[], bool] = lambda: False
     add_note: Callable[..., dict] | None = None
+    #: BI7: kept reports, and building one from the same engine.
+    report_list: Callable[[], list] | None = None
+    report_get: Callable[[str], dict] | None = None
+    report_build: Callable[..., Awaitable[dict]] | None = None
 
 
 def _dump(payload: Any) -> str:
@@ -839,6 +843,38 @@ def add_note(src: Sources, text: str, node: str | None = None, at: str | None = 
     return {"added": {**note, "ts": iso(note["ts"]), "added": iso(note["added"])}}
 
 
+def list_reports(src: Sources, limit: int = 20) -> dict:
+    if src.report_list is None:
+        raise ToolError("reports are not available here")
+    rows = src.report_list()
+    return {"reports": rows[: max(1, min(limit, MAX_ROWS))], "total": len(rows)}
+
+
+def get_report(src: Sources, report_id: str, fmt: str = "markdown") -> str | dict:
+    if src.report_get is None:
+        raise ToolError("reports are not available here")
+    try:
+        doc = src.report_get(report_id)
+    except KeyError as exc:
+        raise ToolError(f"no report {report_id!r}; list_reports names them") from exc
+    if fmt == "json":
+        return doc
+    from .reports import render_markdown
+
+    return render_markdown(doc)
+
+
+async def build_report(src: Sources, sections: list[str] | None = None, minutes: int = 1440,
+                       end: str | None = None, nodes: list[str] | None = None) -> dict:
+    if src.report_build is None:
+        raise ToolError("reports are not available here")
+    start, stop = _window(minutes, end)
+    try:
+        return await src.report_build(start=start, end=stop, sections=sections, nodes=nodes)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+
+
 async def promql(src: Sources, query: str, minutes: int = 0, end: str | None = None) -> dict:
     if not src.promql_enabled():
         raise ToolError("raw PromQL is switched off in Settings; use metric_history")
@@ -968,6 +1004,31 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
     async def t_updates() -> str:
         return _dump(await updates(src))
 
+    async def t_list_reports(
+        limit: Annotated[int, Field(description="how many, newest first")] = 20,
+    ) -> str:
+        return _dump(list_reports(src, limit))
+
+    async def t_get_report(
+        report_id: Annotated[str, Field(description="an id from list_reports")],
+        format: Annotated[str, Field(description="'markdown' (default) or 'json'")] = "markdown",
+    ) -> str:
+        r = get_report(src, report_id, format)
+        return r if isinstance(r, str) else _dump(r)
+
+    async def t_build_report(
+        sections: Annotated[list[str] | None, Field(description="sections in order: overview, workloads, "
+                                                                "models, alerts, events, temperatures, network, "
+                                                                "clients, health, updates, comparison; default "
+                                                                "the standard set")] = None,
+        minutes: Annotated[int, Field(description="the period, in minutes back from `end` (max 31 days)")] = 1440,
+        end: End = None,
+        nodes: Annotated[list[str] | None, Field(description="only these nodes; default all")] = None,
+    ) -> str:
+        from .reports import render_markdown
+
+        return render_markdown(await build_report(src, sections, minutes, end, nodes))
+
     async def t_compare(
         a_end: Annotated[str, Field(description="end of window A, ISO 8601 UTC, e.g. last week's same hour")],
         b_end: Annotated[str, Field(description="end of window B, ISO 8601 UTC; 'now' for the present")],
@@ -1029,6 +1090,13 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
          "long each load took, decode and prefill throughput, and time to first token."),
         (t_updates, "updates", "DGX OS updates per node, as the updater last saw them: release, "
          "pending packages, firmware. Read-only."),
+        (t_list_reports, "list_reports", "The dashboard's kept reports, newest first: id, title, period, "
+         "schedule and headline figures."),
+        (t_get_report, "get_report", "One kept report, as Markdown (tables included) or as its JSON "
+         "document."),
+        (t_build_report, "build_report", "Build a report now for any period and nodes from chosen sections "
+         "(overview, what used the GPU, models, alerts, events, temperatures, network, clients, monitoring "
+         "health, updates, comparison with the period before). Returned as Markdown; not kept."),
         (t_compare, "compare", "Two windows of equal length side by side (this week against last, "
          "before and after a change): every named series per node ranked by how far B moved from A, "
          "with the alerts in each."),
@@ -1044,7 +1112,7 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
     # what happened, why, then the alerting and serving detail.
     order = ["cluster_now", "topology", "list_metrics", "metric_history", "compare", "correlate",
              "alerts", "alerting", "events", "latency", "model_activity", "clients",
-             "monitoring_health", "updates", "promql"]
+             "monitoring_health", "updates", "list_reports", "get_report", "build_report", "promql"]
     tools.sort(key=lambda t: order.index(t[1]) if t[1] in order else len(order))
     # Each returns compact JSON as one text block.
     for fn, name, desc in tools:
