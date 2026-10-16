@@ -180,6 +180,17 @@ class Sources:
     clients: Callable[[int], Awaitable[dict | None]]
     #: Whether the raw PromQL tool is switched on, read per call.
     promql_enabled: Callable[[], bool]
+    #: BB8: time to first token over a window, (start, end, step_s).
+    latency_over: Callable[[float, float, int], Awaitable[dict]] | None = None
+    #: BB9: scrape targets down for a day or more, as /api/targets/absent.
+    absent_targets: Callable[[], Awaitable[dict]] | None = None
+    #: BB11: the cluster file's nodes (ClusterNode), empty under SPARK_NODES.
+    cluster_nodes: Callable[[], list] | None = None
+    #: BB12: active silences and maintenance windows, as their routes return.
+    silences: Callable[[], Awaitable[dict]] | None = None
+    maintenance: Callable[[], Awaitable[dict]] | None = None
+    #: BB14: the DGX OS updater's view, or None when it is not set up.
+    fleet: Callable[[], Awaitable[dict | None]] | None = None
 
 
 def _dump(payload: Any) -> str:
@@ -355,12 +366,353 @@ async def events(src: Sources, minutes: int = 60, end: str | None = None, node: 
     return result
 
 
-async def latency(src: Sources) -> dict:
+async def latency(src: Sources, minutes: int | None = None, end: str | None = None,
+                  points: bool = False) -> dict:
+    """The last 15 minutes, or with `minutes` a window: p50 and p95 per model
+    with when each peaked, and the requests in it (BB8)."""
     try:
-        body = await src.latency()
+        if not minutes:
+            return await src.latency()
+        if src.latency_over is None:
+            raise ToolError("time to first token over a window is not available here")
+        start, stop = _window(minutes, end)
+        step = step_for(stop - start)
+        body = await src.latency_over(start, stop, step)
     except PrometheusError as exc:
         raise ToolError(f"Prometheus did not answer: {exc}") from exc
-    return body
+    out = []
+    for m in body["models"][:MAX_SERIES]:
+        row = {k: v for k, v in m.items() if k != "series"}
+        for q in ("p50", "p95"):
+            if row.get(q):
+                row[q] = {**row[q], "max_at": iso(row[q]["max_at"])}
+        if points:
+            grid = lambda pts: {round((t - start) / step): v for t, v in pts}  # noqa: E731
+            n = int((stop - start) // step) + 1
+            for q in ("p50", "p95"):
+                g = grid(m["series"].get(q, []))
+                row[f"{q}_values_s"] = [_num(g[i]) if i in g else None for i in range(n)]
+        out.append(row)
+    return {"start": iso(start), "end": iso(stop), "step_s": step,
+            "each_step_is_over": body["window_each_step"], "models": out,
+            "note": "per engine instance, never pooled; the gateway only for models no engine measures"}
+
+
+# --- BB9: is the data there ----------------------------------------------
+
+#: A step with no sample, or `up` at 0, counts toward a gap. Shorter runs than
+#: this are a missed scrape, not an outage.
+GAP_MIN_S = 60
+
+
+async def monitoring_health(src: Sources, minutes: int = 60, end: str | None = None) -> dict:
+    """Whether the monitoring itself was working: each scrape target's state
+    now and its gaps in the window, agent versions, how fresh Prometheus is,
+    and targets gone a day or more. Read this before averaging a window: a
+    node whose agent was down reads as missing, not as idle."""
+    start, stop = _window(minutes, end)
+    step = max(15, step_for(stop - start, 480))
+    try:
+        series = await src.prom.query_range("up", start, stop, f"{step}s")
+    except PrometheusError as exc:
+        raise ToolError(f"Prometheus did not answer: {exc}") from exc
+    targets = []
+    for s in series:
+        lab = s.labels
+        seen = {round((t - start) / step): v for t, v in s.points}
+        n = int((stop - start) // step) + 1
+        gaps, run = [], None
+        for i in range(n):
+            bad = seen.get(i, 0.0) < 1
+            if bad and run is None:
+                run = i
+            if (not bad or i == n - 1) and run is not None:
+                last = i if bad else i - 1
+                if (last - run + 1) * step >= GAP_MIN_S:
+                    gaps.append([iso(start + run * step), iso(start + last * step)])
+                run = None
+        up_now = s.points[-1][1] >= 1 if s.points and s.points[-1][0] >= stop - 2 * step else False
+        targets.append({k: v for k, v in {
+            "job": lab.get("job"), "instance": lab.get("instance"), "node": lab.get("node"),
+            "up_now": up_now, "gaps": gaps[:20],
+            "gaps_cut": len(gaps) > 20 or None}.items() if v is not None})
+    targets.sort(key=lambda t: (not t["gaps"] and t["up_now"], t.get("job") or "", t.get("instance") or ""))
+    nodes = await src.nodes()
+    agents = [{"node": n.node_id, "up": n.up, "agent_version": getattr(n, "agent_version", None)} for n in nodes]
+    try:
+        age = await src.prom.data_age_s()
+    except Exception:  # noqa: BLE001 — a health report must not fail on one of its parts
+        age = None
+    absent = None
+    if src.absent_targets is not None:
+        try:
+            absent = (await src.absent_targets()).get("targets")
+        except Exception:  # noqa: BLE001
+            absent = None
+    troubled = [t for t in targets if t["gaps"] or not t["up_now"]]
+    return {
+        "start": iso(start), "end": iso(stop), "step_s": step,
+        "prometheus_newest_sample_age_s": None if age is None else round(age, 1),
+        "agents": agents,
+        "targets_with_gaps_or_down": troubled[:MAX_ROWS],
+        "targets_healthy": len(targets) - len(troubled),
+        "absent_a_day_or_more": absent,
+        "note": "a gap is a run of steps with up=0 or no sample; inside one, a node's series are missing, not zero",
+    }
+
+
+# --- BB11: topology -----------------------------------------------------
+
+async def topology(src: Sources) -> dict:
+    """How the cluster is put together: which nodes pool into a cluster (one
+    workload served across several), what each serves, the interfaces
+    alerting ignores; with what each node reports now."""
+    nodes = {n.node_id: n for n in await src.nodes()}
+    configured = src.cluster_nodes() if src.cluster_nodes else []
+    out = []
+    for c in configured:
+        live = nodes.get(c.node_id)
+        rt = c.runtimes
+        entry: dict[str, Any] = {
+            "node": c.node_id, "host": c.host, "cluster": c.cluster,
+            "up": live.up if live else None,
+            "llama_cpp_routers": [r.url for r in rt.llama_routers],
+            "engines": {k: v for k, v in rt.engines.items() if v},
+            "interfaces_not_alerted": list(c.interfaces.ignore),
+        }
+        if live:
+            d = live.model_dump(mode="json")
+            entry["serving_now"] = [
+                {"runtime": r, "model": e.get("model"), "reachable": e.get("reachable")}
+                for r in ("vllm", "sglang", "tensorfold") for e in (d.get("runtimes") or {}).get(r) or []
+            ] + [
+                {"runtime": "llama.cpp", "model": m["name"], "state": m.get("state")}
+                for router in (d.get("runtimes") or {}).get("llama_cpp") or []
+                for m in router.get("models") or [] if m.get("state") in ("loaded", "sleeping", "loading")
+            ]
+        out.append(entry)
+    pools: dict[str, list[str]] = {}
+    for e in out:
+        if e["cluster"]:
+            pools.setdefault(e["cluster"], []).append(e["node"])
+    return {
+        "nodes": out,
+        "clusters": [{"name": k, "nodes": v} for k, v in pools.items()],
+        "note": "nodes in one cluster can serve one model together; read them as one workload. "
+                "A node with no cluster stands alone." if out else
+                "this deployment lists its nodes in SPARK_NODES, so there is no topology beyond the names",
+    }
+
+
+# --- BB12: alerting -------------------------------------------------------
+
+async def alerting(src: Sources) -> dict:
+    """The alert rules with their expressions, thresholds and `for:`, which
+    are firing or pending, and what is silenced and under maintenance."""
+    try:
+        rules = await src.prom.rules()
+    except PrometheusError as exc:
+        raise ToolError(f"Prometheus did not answer: {exc}") from exc
+    alerting_rules = [
+        {k: v for k, v in {
+            "alert": r.get("name"), "group": r.get("group"), "expr": r.get("query"),
+            "for_s": r.get("duration"), "severity": (r.get("labels") or {}).get("severity"),
+            "summary": (r.get("annotations") or {}).get("summary"),
+            "state": r.get("state"),
+            "active": [{"node": (a.get("labels") or {}).get("node"), "state": a.get("state"),
+                        "since": a.get("activeAt")} for a in r.get("alerts") or []][:20] or None,
+        }.items() if v not in (None, "", [])}
+        for r in rules if r.get("type") == "alerting"
+    ]
+    silenced, windows = None, None
+    if src.silences:
+        try:
+            silenced = [{k: v for k, v in {
+                "id": x.get("id"), "matchers": x.get("matchers"), "by": x.get("createdBy"),
+                "why": x.get("comment"), "ends": x.get("endsAt"),
+                "maintenance": x.get("maintenance")}.items() if v}
+                for x in (await src.silences()).get("silences", [])][:MAX_ROWS]
+        except Exception:  # noqa: BLE001 — Alertmanager down is reported, not fatal
+            silenced = "Alertmanager did not answer"
+    if src.maintenance:
+        try:
+            m = await src.maintenance()
+            windows = m.get("windows") if m.get("available") else "Alertmanager did not answer"
+        except Exception:  # noqa: BLE001
+            windows = "Alertmanager did not answer"
+    return {
+        "rules": alerting_rules,
+        "firing_or_pending": [r["alert"] for r in alerting_rules if r.get("state") in ("firing", "pending")],
+        "silences": silenced,
+        "maintenance_windows": windows,
+        "note": "thermal rules compare against each node's own hardware limits; the bands are in cluster_now",
+    }
+
+
+# --- BB13: one model's activity ------------------------------------------
+
+#: Every family that reports throughput, as `tokens_per_second` charts it.
+_TPUT = "llama_model|vllm|sglang|tensorfold"
+
+
+async def model_activity(src: Sources, model: str | None = None, minutes: int = 360,
+                         end: str | None = None) -> dict:
+    """Per model over a window: its loads, sleeps and unloads with how long
+    each load took, its decode and prefill throughput, and its time to first
+    token. Without `model`, every model that did anything."""
+    from .timeline import extract_events, fetch_state_series, summarise_loads
+
+    start, stop = _window(minutes, end)
+    step = step_for(stop - start, 480)
+    # LOAD TIMES ARE COUNTED IN STEPS, so the state series is read at the
+    # finest step Prometheus allows for the window (11,000 points a series):
+    # the 15 s scrape up to 45 hours, 60 s for a week. At the throughput's
+    # step a 24 h window gave "180 s +/- 180".
+    fine = step_for(stop - start, 10_000)
+    try:
+        series = await fetch_state_series(src.prom, start=start, end=stop, step=f"{fine}s")
+    except PrometheusError as exc:
+        raise ToolError(f"Prometheus did not answer: {exc}") from exc
+    events = extract_events(series)
+    loads = summarise_loads(series, step_s=fine)
+
+    async def tput(kind: str):
+        expr = f'sum by (node, model) ({{__name__=~"sparkdash_({_TPUT})_{kind}_tokens_per_second"}})'
+        try:
+            return await src.prom.query_range(expr, start, stop, f"{step}s")
+        except PrometheusError:
+            return []
+
+    gen, pre = await asyncio.gather(tput("generation"), tput("prompt"))
+    ttft = None
+    if src.latency_over:
+        try:
+            ttft = (await src.latency_over(start, stop, step))["models"]
+        except Exception:  # noqa: BLE001 — a shorter answer, not a failed one
+            ttft = None
+
+    models: dict[str, dict] = {}
+
+    def slot(name: str) -> dict:
+        return models.setdefault(name, {"model": name, "events": [], "loads": []})
+
+    for e in events:
+        if model and e.model != model:
+            continue
+        slot(e.model)["events"].append({"at": iso(e.ts), "node": e.node, "from": e.from_state,
+                                        "to": e.to_state, "cold_start": e.cold})
+    for ld in loads:
+        if model and ld.model != model:
+            continue
+        slot(ld.model)["loads"].append({"node": ld.node, "finished": iso(ld.finished_at),
+                                        "seconds": ld.seconds, "plus_or_minus_s": ld.uncertainty_s})
+    for kind, ss in (("decode_tok_s", gen), ("prefill_tok_s", pre)):
+        for s in ss:
+            name = s.labels.get("model")
+            if not name or (model and name != model):
+                continue
+            summ = _summary(s.points)
+            if summ and (summ["max"] or 0) > 0:
+                slot(name).setdefault(kind, []).append({"node": s.node, **summ})
+    for t in ttft or []:
+        if model and t["model"] != model:
+            continue
+        if t["model"] in models or not model:
+            row = {k: v for k, v in t.items() if k not in ("series", "model")}
+            for q in ("p50", "p95"):
+                if row.get(q):
+                    row[q] = {**row[q], "max_at": iso(row[q]["max_at"])}
+            slot(t["model"])["time_to_first_token"] = row
+    rows = [m for m in models.values() if len(m) > 3 or m["events"] or m["loads"]]
+    for m in rows:
+        m["events"] = m["events"][-MAX_ROWS:]
+    return {"start": iso(start), "end": iso(stop), "step_s": step, "models": rows[:MAX_SERIES],
+            "load_step_s": fine,
+            "note": "load seconds are counted in steps of load_step_s, so each is within plus_or_minus_s"}
+
+
+# --- BB14: DGX OS updates --------------------------------------------------
+
+_FLEET_NODE_KEYS = ("name", "reachable", "collected_at", "board", "kernel", "driver")
+
+
+async def updates(src: Sources) -> dict:
+    """Each node's DGX OS release, pending packages and firmware, as the
+    updater last saw it. Read-only: nothing here starts an update."""
+    body = await src.fleet() if src.fleet else None
+    if not body:
+        return {"configured": False, "note": "DGX OS updates are not set up on this dashboard"}
+    nodes = []
+    for n in body.get("nodes") or []:
+        sw, fw, rel = n.get("software") or {}, n.get("firmware_gap") or {}, n.get("release") or {}
+        nodes.append({
+            **{k: n.get(k) for k in _FLEET_NODE_KEYS},
+            "release": {k: rel.get(k) for k in ("on", "on_name", "latest", "latest_name")},
+            "software": {"state": sw.get("state"), "behind": len(sw.get("behind") or []),
+                         "missing": sw.get("missing"), "failing": sw.get("failing")},
+            "firmware": {"state": fw.get("state"), "outstanding": fw.get("outstanding"),
+                         "not_reported": fw.get("not_reported")},
+        })
+    return {"configured": True, "last_check": body.get("last_sweep"), "next_check": body.get("next_sweep"),
+            "every_min": body.get("interval_min"), "nodes": nodes}
+
+
+# --- BB10: two windows side by side ---------------------------------------
+
+async def compare(src: Sources, a_end: str, b_end: str, minutes: int = 60,
+                  node: str | None = None) -> dict:
+    """Every named per-node series, window A against window B (each `minutes`
+    long, ending at `a_end` and `b_end`), ranked by how far B moved from A,
+    in A's own spread with correlate's floors. Alerts in each window too."""
+    if minutes < 5 or minutes > 60 * 24 * 7:
+        raise ToolError("minutes must be 5 to 10080 (a week)")
+    now = time.time()
+    ae, be = parse_time(a_end, now=now), parse_time(b_end, now=now)
+    windows = {"a": (ae - minutes * 60, ae), "b": (be - minutes * 60, be)}
+    step = step_for(minutes * 60, 120)
+    metrics = [k for k in HISTORY_QUERIES if k not in NOT_PER_NODE]
+    calls = [(w, m) for w in windows for m in metrics]
+    answers = await asyncio.gather(*(_range(src, m, *windows[w], step) for w, m in calls),
+                                   return_exceptions=True)
+    vals: dict[tuple, dict[str, list[float]]] = {}
+    for (w, metric), series in zip(calls, answers, strict=True):
+        if isinstance(series, BaseException):
+            continue
+        for s in series:
+            if node and s.node != node:
+                continue
+            key = (metric, tuple(sorted(_key(s.labels).items())))
+            vals.setdefault(key, {})[w] = [v for _, v in s.points if not math.isnan(v)]
+    rows = []
+    for (metric, labels), w in vals.items():
+        a, b = w.get("a") or [], w.get("b") or []
+        if len(a) < 3 or not b:
+            continue
+        a_mean, a_sd = _stats(a)
+        b_mean = sum(b) / len(b)
+        unit = METRICS.get(metric, ("", ""))[0]
+        floor = max(a_sd, FLOOR_SHARE * max(abs(a_mean), abs(b_mean)), UNIT_FLOOR.get(unit, 1e-9))
+        rows.append({**dict(labels), "metric": metric, "unit": unit,
+                     "a_avg": _num(a_mean), "b_avg": _num(b_mean),
+                     "a_max": _num(max(a)), "b_max": _num(max(b)),
+                     "change": _num(b_mean - a_mean),
+                     "score": round(abs(b_mean - a_mean) / floor, 1)})
+    rows.sort(key=lambda r: -r["score"])
+    episodes = {}
+    for w, (s0, s1) in windows.items():
+        try:
+            eps = await fetch_episodes(src.prom, start=s0, end=s1, step=_step_str(minutes))
+        except PrometheusError:
+            eps = []
+        episodes[w] = [{"alert": e.alertname, "node": e.node, "fired": e.fired} for e in eps
+                       if not node or e.node in (node, None)][:30]
+    return {
+        "a": [iso(x) for x in windows["a"]], "b": [iso(x) for x in windows["b"]], "step_s": step,
+        "how": "score is |B avg - A avg| in A's standard deviations, with correlate's floors; "
+               f"{MOVED:g} or more counts as moved",
+        "moved": [r for r in rows if r["score"] >= MOVED][:30],
+        "alerts": episodes,
+    }
 
 
 async def clients(src: Sources, minutes: int = 60) -> dict:
@@ -508,7 +860,8 @@ INSTRUCTIONS = (
     "live state, every named series in Prometheus, alert episodes, events (deploys, model loads, "
     "cold starts, maintenance), time to first token, and which clients called the engines. "
     "Start with cluster_now and list_metrics. To explain a slowdown or a spike, call correlate "
-    "with the node and the time, then metric_history for detail. To say what was using the GPU at "
+    "with the node and the time, then metric_history for detail; compare sets two windows side by "
+    "side; monitoring_health says whether data is missing. To say what was using the GPU at "
     "a past time, read metric_history for gpu_workload_sm (compute share) and "
     "gpu_workload_memory_bytes, per runtime and model; cluster_now's process list is only the "
     "present. All times are UTC. GB10 has "
@@ -565,8 +918,41 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
                                                                      "and the cluster's")] = None) -> str:
         return _dump(await events(src, minutes, end, node))
 
-    async def t_latency() -> str:
-        return _dump(await latency(src))
+    async def t_latency(
+        minutes: Annotated[int | None, Field(description="omit for the last 15 minutes; otherwise a window "
+                                                         "this many minutes back from `end`")] = None,
+        end: End = None,
+        points: Annotated[bool, Field(description="with a window, the p50 and p95 at each step")] = False,
+    ) -> str:
+        return _dump(await latency(src, minutes, end, points))
+
+    async def t_monitoring_health(minutes: Minutes = 60, end: End = None) -> str:
+        return _dump(await monitoring_health(src, minutes, end))
+
+    async def t_topology() -> str:
+        return _dump(await topology(src))
+
+    async def t_alerting() -> str:
+        return _dump(await alerting(src))
+
+    async def t_model_activity(
+        model: Annotated[str | None, Field(description="a model name as cluster_now lists it; default every "
+                                                       "model that did anything")] = None,
+        minutes: Annotated[int, Field(description="how far back from `end`, in minutes")] = 360,
+        end: End = None,
+    ) -> str:
+        return _dump(await model_activity(src, model, minutes, end))
+
+    async def t_updates() -> str:
+        return _dump(await updates(src))
+
+    async def t_compare(
+        a_end: Annotated[str, Field(description="end of window A, ISO 8601 UTC, e.g. last week's same hour")],
+        b_end: Annotated[str, Field(description="end of window B, ISO 8601 UTC; 'now' for the present")],
+        minutes: Annotated[int, Field(description="length of each window, 5 to 10080")] = 60,
+        node: Annotated[str | None, Field(description="only this node; default all")] = None,
+    ) -> str:
+        return _dump(await compare(src, a_end, b_end, minutes, node))
 
     async def t_clients(minutes: Annotated[int, Field(description="the window, in minutes (5 or more)")] = 60) -> str:
         return _dump(await clients(src, minutes))
@@ -600,8 +986,23 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
          "when it started, fired and ended."),
         (t_events, "events", "Events in a window: deploys, model loads and cold starts, maintenance "
          "windows, alerts firing."),
-        (t_latency, "latency", "Time to first token per model over the last 15 minutes, p50 and p95, "
-         "with request rate."),
+        (t_latency, "latency", "Time to first token per model, p50 and p95 with request counts: the last "
+         "15 minutes, or any window with `minutes` and `end`, with when each peaked."),
+        (t_monitoring_health, "monitoring_health", "Whether the monitoring was working: each scrape "
+         "target's gaps in a window and state now, agent versions, Prometheus freshness, targets gone a "
+         "day or more. Check before averaging a window, so a missing node is not read as an idle one."),
+        (t_topology, "topology", "How the cluster is put together: which nodes pool into a cluster to "
+         "serve one model together, the routers and engines each runs, what each serves now, and the "
+         "interfaces alerting ignores."),
+        (t_alerting, "alerting", "The alert rules (expression, for:, severity), which are firing or "
+         "pending, active silences and maintenance windows with who set them and why."),
+        (t_model_activity, "model_activity", "Per model over a window: loads, sleeps and unloads, how "
+         "long each load took, decode and prefill throughput, and time to first token."),
+        (t_updates, "updates", "DGX OS updates per node, as the updater last saw them: release, "
+         "pending packages, firmware. Read-only."),
+        (t_compare, "compare", "Two windows of equal length side by side (this week against last, "
+         "before and after a change): every named series per node ranked by how far B moved from A, "
+         "with the alerts in each."),
         (t_clients, "clients", "Who called the engines through the gateway in a window: harness, "
          "machine, model, engine, requests, failures, tokens. Empty when client stats are off."),
         (t_correlate, "correlate", "What moved around a moment: every named series on every node, "
@@ -610,6 +1011,12 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
         (t_promql, "promql", "A raw PromQL query, instant or over a range. Only when the named "
          "series do not cover the question."),
     ]
+    # Listed in the order an agent would reach for them: where things stand,
+    # what happened, why, then the alerting and serving detail.
+    order = ["cluster_now", "topology", "list_metrics", "metric_history", "compare", "correlate",
+             "alerts", "alerting", "events", "latency", "model_activity", "clients",
+             "monitoring_health", "updates", "promql"]
+    tools.sort(key=lambda t: order.index(t[1]) if t[1] in order else len(order))
     # Each returns compact JSON as one text block.
     for fn, name, desc in tools:
         server.add_tool(fn, name=name, description=desc, annotations=READ_ONLY,

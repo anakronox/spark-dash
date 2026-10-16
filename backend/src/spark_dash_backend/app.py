@@ -67,7 +67,7 @@ from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
 from spark_dash_backend import agent_tools, assistant
-from spark_dash_backend.latency import latency
+from spark_dash_backend.latency import latency, latency_over
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
     MaintenanceService,
@@ -1371,7 +1371,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     client_names = Names()
 
-    async def _latency() -> dict:
+    async def _engines() -> dict[str, dict]:
+        """An engine's `host:port` -> {model, node, runtime}, from the live
+        snapshot, which is what names an instance."""
         snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
         engines: dict[str, dict] = {}
         for node in snapshot.nodes:
@@ -1379,8 +1381,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for e in instances:
                     if e.server:
                         engines[e.server] = {"model": e.model, "node": node.node_id, "runtime": runtime}
+        return engines
+
+    async def _latency() -> dict:
         gateway, _ = inventory.gateway()
-        return await latency(prom, engines, bool(gateway and gateway.enabled))
+        return await latency(prom, await _engines(), bool(gateway and gateway.enabled))
+
+    async def _latency_over(start: float, end: float, step_s: int) -> dict:
+        gateway, _ = inventory.gateway()
+        return await latency_over(prom, await _engines(), bool(gateway and gateway.enabled), start, end, step_s)
 
     @app.get("/api/latency")
     async def api_latency() -> dict:
@@ -1653,9 +1662,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         served = await served_index(snapshot.nodes, client_names)
         return await client_rows(prom, inventory.cluster_nodes(), client_names, minutes, served)
 
+    async def _mcp_fleet() -> dict | None:
+        """BB14: the updater's view, without the request the route takes."""
+        if not fleet_updates.configured:
+            return None
+        try:
+            return await fleet_updates.envelope(secure=False)
+        except FleetError:
+            return None
+
     tool_sources = agent_tools.Sources(
         prom=prom, nodes=_mcp_nodes, latency=_latency, clients=_mcp_clients,
         promql_enabled=lambda: _mcp()[0].promql,
+        latency_over=_latency_over,
+        absent_targets=lambda: api_absent_targets(),
+        cluster_nodes=inventory.cluster_nodes,
+        silences=lambda: api_silences(),
+        maintenance=lambda: api_maintenance(),
+        fleet=_mcp_fleet,
     )
     mcp_server = agent_tools.build_server(tool_sources, version=os.environ.get("BACKEND_VERSION", "dev"))
     gate = agent_tools.KeyGate(

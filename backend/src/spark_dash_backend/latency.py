@@ -134,3 +134,66 @@ async def latency(prom: PrometheusClient, engines: dict[str, dict], gateway: boo
         "busiest": active[0] if active else None,
         "models": models,
     }
+
+
+async def latency_over(prom: PrometheusClient, engines: dict[str, dict], gateway: bool,
+                       start: float, end: float, step_s: int) -> dict:
+    """Time to first token per model over a window (roadmap BB8): p50 and p95
+    at each step, from the same histograms and with the same rules as the
+    header's: per instance, never pooled; the gateway only for what no engine
+    measures. Each step's quantile is over a window of at least five minutes,
+    so a quiet step is not a quantile of one request."""
+    window = f"{max(300, step_s)}s"
+    queries: list[tuple[str, str, str]] = []
+    for runtime, metric in TTFT.items():
+        p50, p95, rate = _quantiles(metric, "instance", window)
+        queries += [(runtime, "p50", p50), (runtime, "p95", p95), (runtime, "rate", rate)]
+    if gateway:
+        p50, p95, rate = _quantiles(GATEWAY_TTFT, "model, requested_model", window)
+        queries += [("gateway", "p50", p50), ("gateway", "p95", p95), ("gateway", "rate", rate)]
+    answers = await asyncio.gather(
+        *(prom.query_range(q, start, end, f"{step_s}s") for _, _, q in queries), return_exceptions=True
+    )
+
+    by_key: dict[tuple[str, str], dict] = {}
+    for (source, field, _), series in zip(queries, answers, strict=True):
+        if isinstance(series, BaseException):
+            continue
+        for s in series:
+            if source == "gateway":
+                key = ("gateway", f"{s.labels.get('model', '')}\x00{s.labels.get('requested_model', '')}")
+            else:
+                key = (source, s.labels.get("instance", ""))
+            pts = [(t, v) for t, v in s.points if not math.isnan(v)]
+            by_key.setdefault(key, {})[field] = pts
+
+    def summary(pts):
+        if not pts:
+            return None
+        values = [v for _, v in pts]
+        peak_t, peak = max(pts, key=lambda tv: tv[1])
+        return {"avg_s": round(sum(values) / len(values), 3), "max_s": round(peak, 3), "max_at": peak_t}
+
+    models, measured = [], set()
+    for (source, ident), f in by_key.items():
+        if source == "gateway":
+            continue
+        known = engines.get(ident, {})
+        model = known.get("model") or ident
+        measured.add(model)
+        requests = sum(v for _, v in f.get("rate", [])) * step_s
+        models.append({"model": model, "node": known.get("node"), "runtime": known.get("runtime") or source,
+                       "source": "engine", "requests": round(requests), "p50": summary(f.get("p50")),
+                       "p95": summary(f.get("p95")), "series": f})
+    for (source, ident), f in by_key.items():
+        if source != "gateway":
+            continue
+        model, requested = ident.split("\x00", 1)
+        if model in measured or requested.split("/", 1)[-1] in measured:
+            continue
+        requests = sum(v for _, v in f.get("rate", [])) * step_s
+        models.append({"model": requested or model, "node": None, "runtime": None, "source": "gateway",
+                       "requests": round(requests), "p50": summary(f.get("p50")),
+                       "p95": summary(f.get("p95")), "series": f})
+    models.sort(key=lambda m: -m["requests"])
+    return {"window_each_step": window, "models": models}

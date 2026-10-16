@@ -7963,24 +7963,30 @@ memory is one pool.
 - **More tools, planned 2026-10-16.** Brian, after Hermes's forensics run:
   build all of these, the event feed above all, for agents that open
   tickets (Paperclip and the like) and react while it is happening.
-  - [ ] **BB8. Time to first token over any window.** `latency(start, end)`:
+  - [x] **BB8. Time to first token over any window.** `latency(start, end)`:
     p50, p95 and rate per model as a series, not just the last 15 minutes.
-  - [ ] **BB9. Monitoring health.** Targets down or absent, when each node
+  - [x] **BB9. Monitoring health.** Targets down or absent, when each node
     was last scraped, agent versions, and the gaps in a window, so an
     agent can tell "no data" from "idle" before it averages over a hole.
-  - [ ] **BB10. `compare(a, b)`.** Two arbitrary windows side by side, every
+  - [x] **BB10. `compare(a, b)`.** Two arbitrary windows side by side, every
     named series per node ranked by how far it moved, with `correlate`'s
     scoring: this week against last, before and after a deploy.
-  - [ ] **BB11. Topology.** Which nodes pool into a cluster, the engines and
+  - [x] **BB11. Topology.** Which nodes pool into a cluster, the engines and
     routers on each, and the interfaces alerting watches, from
     `cluster.yml` and the live snapshot.
-  - [ ] **BB12. Alerting.** The rules with their thresholds and `for:`, what
+  - [x] **BB12. Alerting.** The rules with their thresholds and `for:`, what
     is silenced and maintenance windows, with who and why.
-  - [ ] **BB13. Model activity.** Per model: loads and unloads with how long
+  - [x] **BB13. Model activity.** Per model: loads and unloads with how long
     each took (roadmap T), and its throughput and time to first token over
     a window.
-  - [ ] **BB14. DGX OS updates.** Each node's pending packages, firmware and
+  - [x] **BB14. DGX OS updates.** Each node's pending packages, firmware and
     last check, read-only, when the updater is set up.
+  - BB8-BB14 built 2026-10-16 and checked against this cluster: GLM-5.3-Flash
+    served 446 requests in a day, p95 peaking at the 300 s Hermes timeout;
+    all 12 scrape targets clean; Oct 15 against Oct 16 on sparky ranked
+    swap traffic and ComfyUI's memory (9.4 to 40 GiB at peak) first; 35
+    rules; qwen36-35b's last load 30 s +/- 15, read at the 15 s scrape step
+    whatever the window, since load times are counted in steps.
   - [ ] **BB15. Prompts.** MCP prompt templates (a daily report, an incident
     report for a window, what is using capacity), so every client produces
     the same shape of report.
@@ -8000,7 +8006,8 @@ memory is one pool.
     until something happens, which any MCP client can loop on; and **MCP
     subscriptions** on a firing-alerts resource for clients that support
     them. Each event carries the alert, the node, when, and a short
-    `correlate` summary, so the receiver starts with context.
+    `correlate` summary, so the receiver starts with context. **Deferred
+    2026-10-16** (Brian): roadmapped, left out of this build.
 
 ### BC — Settings as a wide fly-out with a rail — **built 2026-10-16**
 

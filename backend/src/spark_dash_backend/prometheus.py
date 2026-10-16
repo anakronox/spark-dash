@@ -63,6 +63,11 @@ class PrometheusClient:
             out.append(Series(labels=result.get("metric", {}), points=points))
         return out
 
+    async def rules(self) -> list[dict]:
+        """Every alerting and recording rule, with its state (roadmap BB12)."""
+        data = await self._get("/api/v1/rules", {})
+        return [{**r, "group": g.get("name")} for g in data.get("groups", []) for r in g.get("rules", [])]
+
     async def query_range(self, expr: str, start: float, end: float, step: str) -> list[Series]:
         """Range query — the shape the trend charts consume."""
         data = await self._get(

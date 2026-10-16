@@ -79,8 +79,9 @@ class TestTheEndpoint:
         assert "GB10" in init.json()["result"]["instructions"]
         tools = api.post("/mcp", json=rpc("tools/list"), headers=api.headers_with_key).json()["result"]["tools"]
         names = [t["name"] for t in tools]
-        assert names == ["cluster_now", "list_metrics", "metric_history", "alerts", "events", "latency",
-                         "clients", "correlate"]
+        assert names == ["cluster_now", "topology", "list_metrics", "metric_history", "compare", "correlate",
+                         "alerts", "alerting", "events", "latency", "model_activity", "clients",
+                         "monitoring_health", "updates"]
 
     def test_every_tool_says_it_only_reads(self, api):
         switch_on(api, promql=True)
@@ -447,3 +448,111 @@ def test_a_flat_zero_that_twitches_does_not_head_the_ranking():
 def test_every_unit_has_a_floor():
     units = {u for u, _ in agent_tools.METRICS.values()}
     assert units <= set(agent_tools.UNIT_FLOOR), sorted(units - set(agent_tools.UNIT_FLOOR))
+
+
+
+# --- BB8-BB14 ----------------------------------------------------------------
+
+def test_monitoring_health_finds_a_gap_and_a_target_down_now():
+    now = time.time()
+
+    class P(Prom):
+        async def query_range(self, expr, start, end, step):
+            st = int(step.rstrip("s"))
+            n = int((end - start) // st)
+            # sparky's agent: missing for 10 steps in the middle, then back.
+            pts = [(start + i * st, 1.0) for i in range(n + 1) if not (20 <= i < 30)]
+            # sparkjr's: down at the end.
+            down = [(start + i * st, 1.0 if i < n - 5 else 0.0) for i in range(n + 1)]
+            return [Series(labels={"job": "spark-dash-agent", "instance": "a:9500", "node": "sparky"}, points=pts),
+                    Series(labels={"job": "spark-dash-agent", "instance": "c:9500", "node": "sparkjr"}, points=down)]
+
+        async def data_age_s(self):
+            return 2.0
+
+    r = asyncio.run(agent_tools.monitoring_health(sources(P()), minutes=60, end=agent_tools.iso(now)))
+    by = {t["node"]: t for t in r["targets_with_gaps_or_down"]}
+    assert len(by["sparky"]["gaps"]) == 1 and by["sparky"]["up_now"] is True
+    assert by["sparkjr"]["up_now"] is False
+    assert r["prometheus_newest_sample_age_s"] == 2.0
+
+
+def test_compare_ranks_what_moved_between_two_windows():
+    a_end, b_end = time.time() - 86400, time.time()
+
+    class P(Prom):
+        async def query_range(self, expr, start, end, step):
+            st = int(step.rstrip("s"))
+            hot = start > a_end  # window B
+            n = int((end - start) // st)
+            if "gpu_power" in expr:
+                return [Series(labels={"node": "sparky"}, points=[(start + i * st, (60.0 if hot else 10.0) + i % 2) for i in range(n + 1)])]
+            return [Series(labels={"node": "sparky"}, points=[(start + i * st, 10.0 + i % 2) for i in range(n + 1)])]
+
+    r = asyncio.run(agent_tools.compare(sources(P()), agent_tools.iso(a_end), agent_tools.iso(b_end), 60))
+    assert [m["metric"] for m in r["moved"]] == ["gpu_power"]
+    assert r["moved"][0]["a_avg"] < 11 and r["moved"][0]["b_avg"] > 59
+
+
+def test_topology_groups_pooled_nodes():
+    from spark_dash_backend.cluster import ClusterNode
+    src = sources(Prom())
+    src.cluster_nodes = lambda: [ClusterNode("sparketa", "10.0.0.2", cluster="pool"),
+                                 ClusterNode("sparkjr", "10.0.0.3", cluster="pool"),
+                                 ClusterNode("sparky", "10.0.0.1")]
+    r = asyncio.run(agent_tools.topology(src))
+    assert r["clusters"] == [{"name": "pool", "nodes": ["sparketa", "sparkjr"]}]
+    assert [n["node"] for n in r["nodes"]] == ["sparketa", "sparkjr", "sparky"]
+
+
+def test_alerting_lists_rules_and_says_when_alertmanager_is_down():
+    class P(Prom):
+        async def rules(self):
+            return [{"type": "alerting", "name": "GpuHot", "group": "thermal", "query": "x > 1",
+                     "duration": 300, "labels": {"severity": "warning"}, "state": "firing",
+                     "alerts": [{"labels": {"node": "sparky"}, "state": "firing", "activeAt": "t"}]},
+                    {"type": "recording", "name": "r"}]
+
+    async def down():
+        raise RuntimeError("no")
+
+    src = sources(P())
+    src.silences = down
+    r = asyncio.run(agent_tools.alerting(src))
+    assert [x["alert"] for x in r["rules"]] == ["GpuHot"]
+    assert r["firing_or_pending"] == ["GpuHot"]
+    assert r["rules"][0]["active"] == [{"node": "sparky", "state": "firing", "since": "t"}]
+    assert r["silences"] == "Alertmanager did not answer"
+
+
+def test_updates_summarises_the_fleet_and_says_when_it_is_off():
+    assert asyncio.run(agent_tools.updates(sources(Prom())))["configured"] is False
+
+    async def fleet():
+        return {"last_sweep": "t", "interval_min": 60, "nodes": [{
+            "name": "sparky", "reachable": True, "kernel": "7.0",
+            "software": {"state": "installable", "behind": ["a", "b"]},
+            "firmware_gap": {"state": "current", "outstanding": []},
+            "release": {"on": "OTA2607", "latest": "OTA2607"}}]}
+
+    src = sources(Prom())
+    src.fleet = fleet
+    r = asyncio.run(agent_tools.updates(src))
+    assert r["nodes"][0]["software"]["behind"] == 2
+    assert r["nodes"][0]["release"]["on"] == "OTA2607"
+
+
+def test_latency_over_a_window_names_the_peak():
+    async def over(start, end, step):
+        return {"window_each_step": "300s", "models": [{
+            "model": "GLM", "node": "sparketa", "runtime": "tensorfold", "source": "engine", "requests": 446,
+            "p50": {"avg_s": 1.4, "max_s": 6.2, "max_at": start + 60},
+            "p95": {"avg_s": 21.7, "max_s": 300.0, "max_at": start + 120},
+            "series": {"p50": [(start, 1.0)], "p95": [(start, 2.0)]}}]}
+
+    src = sources(Prom())
+    src.latency_over = over
+    r = asyncio.run(agent_tools.latency(src, minutes=60, points=True))
+    m = r["models"][0]
+    assert m["p95"]["max_s"] == 300.0 and m["p95"]["max_at"].endswith("Z")
+    assert m["p50_values_s"][0] == 1.0 and "series" not in m

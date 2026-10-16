@@ -370,7 +370,13 @@ claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
 | `list_metrics` | the named series, with unit and meaning |
 | `metric_history` | one series over a window, per node: min, avg, max and when, first and last; the values on request, at most 240. `gpu_workload_sm` and `gpu_workload_memory_bytes` are per workload (runtime and model), so they say what was using the GPU at a past time |
 | `alerts`, `events` | alert episodes; deploys, model loads, cold starts, maintenance |
-| `latency` | time to first token per model, last 15 minutes |
+| `latency` | time to first token per model: the last 15 minutes, or any window, with when each peaked |
+| `compare` | two windows of equal length side by side, every series per node ranked by how far it moved |
+| `monitoring_health` | each scrape target's gaps in a window and state now, agent versions, data freshness, targets gone a day or more |
+| `topology` | which nodes pool into a cluster, the routers and engines on each, what each serves now |
+| `alerting` | the alert rules with their expressions and `for:`, which are firing, active silences and maintenance windows |
+| `model_activity` | per model: loads with how long each took, decode and prefill throughput, time to first token |
+| `updates` | DGX OS release, pending packages and firmware per node, when the updater is set up |
 | `clients` | who called through the gateway, when client stats are on |
 | `correlate` | every series on every node ranked by how far it moved around a moment, with the alerts and events beside it |
 | `promql` | raw PromQL, only with **also allow raw PromQL queries** on |
