@@ -860,10 +860,13 @@
     align-items: center;
   }
 
+  /* Wraps: on a phone the view, events, scale and range controls are wider
+     than the card. */
   .controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 6px 10px;
   }
 
 

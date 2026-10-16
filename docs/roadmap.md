@@ -8100,6 +8100,18 @@ features with tips on what to configure, required first, optional last.
   is not on the page (Ask until it is set up). Reset layout keeps both
   "seen" flags.
 
+### BG — The page at phone width — **fixed 2026-10-16**
+
+Found while checking Settings at 400px: the dashboard itself was 571px wide in
+a 371px window and scrolled sideways. Two causes. The page wrapper is a grid
+with no column template, and an implicit grid column's minimum is its
+content's min-content, so the widest unbreakable row (the activity cards'
+control rows, 425 and 535px, which did not wrap) set the whole page's width.
+The wrapper now has `minmax(0, 1fr)`, the rule `.sections`, `.zone`, `.cols`
+and Section's `.slot` already state, and both control rows wrap. Measured
+after: 371px wide in a 371px window, charts 297px; unchanged at 1713 and
+2560px. Guarded by `test_the_page_never_scrolls_sideways_on_a_phone`.
+
 ### BF — Notifications (ntfy) as an integration — **built 2026-10-16**
 
 Brian: expose ntfy as an integration. It was a README step: write a topic URL

@@ -1284,3 +1284,17 @@ def test_reset_layout_keeps_what_the_reader_has_been_shown():
     assert "SEEN_KEY" in keep and "TOUR_KEY" in keep and "spark-dash.theme.v1" in keep
     setup = (FRONTEND / "lib" / "setup.svelte.ts").read_text()
     assert "SEEN_KEY = 'spark-dash." in setup and "TOUR_KEY = 'spark-dash." in setup
+
+
+def test_the_page_never_scrolls_sideways_on_a_phone():
+    """2026-10-16: at 371px the page was 571px wide. The page wrapper was a
+    grid with an implicit column, whose minimum is its content's min-content,
+    so the widest unbreakable row set the page width; and the activity cards'
+    control rows did not wrap. Both stated here."""
+    app = (FRONTEND / "App.svelte").read_text()
+    shell = app[app.index("const SHELL ="):]
+    shell = shell[: shell.index(";")]
+    assert "grid-cols-[minmax(0,1fr)]" in shell, "the page grid's column can grow to its widest row"
+    for name in ("Trends.svelte", "NetworkTrends.svelte"):
+        controls = css_block(FRONTEND / "components" / name, ".controls {")
+        assert "flex-wrap: wrap" in controls, f"{name}'s controls run off a phone screen"

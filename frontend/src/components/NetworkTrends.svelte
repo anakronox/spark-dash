@@ -1031,10 +1031,13 @@
     border-top-style: dashed;
   }
 
+  /* Wraps: on a phone the scale, view, events and range controls are wider
+     than the card. */
   .controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 6px 8px;
   }
 
 

@@ -455,8 +455,13 @@
      "two meanings under one class is how a stylesheet starts lying" problem
      that ModelsTable's `.idle` comment already names. */
 
+  /* `grid-cols-[minmax(0,1fr)]`, never the implicit track: an implicit
+     column's minimum is its content's min-content, so the page grew to its
+     widest unbreakable row and scrolled sideways on a phone (measured
+     2026-10-16: 391px of content in a 371px window). The rule .sections,
+     .zone, .cols and Section's .slot all state. */
   const SHELL =
-    'mx-auto grid max-w-[2400px] gap-4 px-5 pt-5 pb-12 transition-opacity ' +
+    'mx-auto grid grid-cols-[minmax(0,1fr)] max-w-[2400px] gap-4 px-5 pt-5 pb-12 transition-opacity ' +
     'duration-200 min-[1160px]:px-8';
   /* The whole page recedes when data stops arriving -- a global, unmissable
      signal that reading these numbers is a mistake. */
