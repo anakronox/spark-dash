@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     # Absent means this deployment still uses SPARK_NODES, which keeps working.
     cluster_config: Path = Path("/etc/spark-dash/cluster.yml")
 
+    # The ntfy topic file Alertmanager posts to, when the stack mounts
+    # secrets/ here (roadmap BF). Absent means notifications are set by hand.
+    notifications_dir: Path = Path("/etc/spark-dash-secrets")
+
     agent_port: int = 9500
     node_exporter_port: int = 9100
 

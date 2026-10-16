@@ -256,6 +256,24 @@ secret, so it must not be in a repo you might ever share.
 
 #### Setup
 
+**From the dashboard (recommended).** Settings → Notifications shows where
+alerts go, makes a random topic, shows it to subscribe, and sends a test shaped
+like a real alert. Alertmanager reads the topic file on every send, so a new
+topic takes effect on the next alert with no restart. The compose file mounts
+`secrets/` into the backend and gives it Alertmanager's group; once, on the
+monitoring host, let that group write there:
+
+```bash
+sudo mkdir -p secrets && sudo chown 65534:65534 secrets
+sudo chmod 2770 secrets                                   # setgid: new files keep the group
+[ -f secrets/ntfy-url ] && sudo chmod 660 secrets/ntfy-url
+```
+
+Then subscribe (step 2 below) and press **Send a test**. Until that step is
+done, the pane says which piece is missing.
+
+**By hand.**
+
 **1. Pick a topic and write it to the secrets file.**
 
 ```bash

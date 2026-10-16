@@ -66,7 +66,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
-from spark_dash_backend import agent_tools, assistant, setup
+from spark_dash_backend import agent_tools, assistant, notifications, setup
 from spark_dash_backend.latency import latency, latency_over
 from spark_dash_backend.notes import NoteStore
 from spark_dash_backend.maintenance import (
@@ -199,6 +199,13 @@ class AssistantQuestion(BaseModel):
     minutes: int = Field(60, ge=5, le=60 * 24 * 7)
 
 
+class NtfyWrite(BaseModel):
+    """BF: a new random topic on `server`, or this exact topic."""
+
+    server: str = notifications.DEFAULT_SERVER
+    topic: str | None = None
+
+
 class McpWrite(BaseModel):
     """BB2. Either switch, the other kept."""
 
@@ -246,6 +253,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     maintenance = MaintenanceService(alertmanager, inventory)
     note_store = NoteStore(settings.cluster_config)
+    ntfy = notifications.NtfyFile(settings.notifications_dir)
     # The DGX OS updater, in this process. Until AL3g there was a second
     # implementation here -- a typed proxy to a separate spark-fleet-updates
     # container, chosen when FLEET_UPDATES_URL was set -- which existed to be
@@ -1739,6 +1747,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (ClusterConfigError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _mcp_status(made)
+
+    # --- notifications through ntfy (roadmap BF) -----------------------------
+
+    async def _ntfy_status() -> dict:
+        cap = ntfy.capability()
+        url = ntfy.read() if cap["ok"] else None
+        routing = None
+        if await alertmanager.reachable():
+            try:
+                routing = await alertmanager.routing()
+            except Exception:  # noqa: BLE001
+                routing = None
+        default = (routing or {}).get("default")
+        info = notifications.describe(url) if url else None
+        return {
+            "capability": cap,
+            "configured": url is not None,
+            "server": info["server"] if info else None,
+            "topic_masked": notifications.mask(info["topic"]) if info else None,
+            "template": info["template"] if info else None,
+            "guessable": info["guessable"] if info else None,
+            "public_server": info["public_server"] if info else None,
+            "alertmanager": {"reachable": routing is not None, "default_receiver": default,
+                             "channels": ((routing or {}).get("receivers") or {}).get(default)},
+            "setup_doc": notifications.SETUP_DOC,
+        }
+
+    @app.get("/api/notifications/status")
+    async def api_ntfy_status() -> dict:
+        """Where alerts go. Never the topic itself: that is the secret."""
+        return await _ntfy_status()
+
+    @app.get("/api/notifications/topic")
+    async def api_ntfy_topic() -> dict:
+        """The topic, to subscribe to it. Asked for on purpose (a reveal), so
+        the status poll never carries it."""
+        url = ntfy.read() if ntfy.capability()["ok"] else None
+        if not url:
+            raise HTTPException(status_code=404, detail="no topic is set")
+        info = notifications.describe(url)
+        return {"server": info["server"], "topic": info["topic"],
+                "web": f"{info['server']}/{info['topic']}"}
+
+    @app.put("/api/notifications/topic")
+    async def api_ntfy_set(body: NtfyWrite) -> dict:
+        """A new topic: random unless one is given. Takes effect on the next
+        alert; Alertmanager reads the file on every send."""
+        cap = ntfy.capability()
+        if not cap["ok"]:
+            raise HTTPException(status_code=409, detail=cap["detail"])
+        try:
+            url = notifications.build_url(body.server, body.topic or notifications.new_topic())
+            await asyncio.to_thread(ntfy.write, url)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=409, detail=f"could not write the topic file: {exc}") from exc
+        return {**(await _ntfy_status()), **(await api_ntfy_topic())}
+
+    @app.post("/api/notifications/test")
+    async def api_ntfy_test() -> dict:
+        url = ntfy.read() if ntfy.capability()["ok"] else None
+        if not url:
+            raise HTTPException(status_code=409, detail="no topic is set")
+        try:
+            return await notifications.send_test(url)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"could not reach the ntfy server: {exc}") from exc
 
     @app.get("/api/setup")
     async def api_setup() -> dict:

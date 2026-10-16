@@ -8100,6 +8100,31 @@ features with tips on what to configure, required first, optional last.
   is not on the page (Ask until it is set up). Reset layout keeps both
   "seen" flags.
 
+### BF — Notifications (ntfy) as an integration — **built 2026-10-16**
+
+Brian: expose ntfy as an integration. It was a README step: write a topic URL
+to `secrets/ntfy-url` by hand, which Alertmanager posts every alert to.
+
+- [x] **BF1. Settings → Notifications**, first under Integrations: where
+  alerts go (Alertmanager's default receiver and its channels, read from its
+  loaded config), the server, the topic masked with **show**, how to
+  subscribe, **Send a test** (an Alertmanager-shaped body, so it renders
+  through ntfy's template exactly as an alert does), and **New topic**
+  (random, 80 bits; two presses when one exists, since phones on the old
+  topic stop receiving) or a topic and server of your own.
+- [x] **BF2. No restart.** Alertmanager's webhook reads `url_file` on every
+  send, whitespace trimmed (`notify/webhook`, `os.ReadFile` in `Notify`,
+  checked 2026-10-16), so a topic written here applies to the next alert.
+  Written atomically, 0640.
+- [x] **BF3. Capability, then use**, as DGX OS updates: `secrets/` is mounted
+  into the backend and the backend joins Alertmanager's group
+  (`${PGID:-65534}`); the directory is setgid so a file the backend writes
+  keeps that group and Alertmanager can read it. Until the host step
+  (`chmod 2770 secrets`, `chmod 660 secrets/ntfy-url`) is done the pane
+  names the missing piece. The topic is the secret: the status never
+  carries it, only an explicit reveal does.
+- The setup guide's "Alerts reach someone" goes straight to this pane.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

@@ -36,6 +36,7 @@
   import type { AssistantFeed, McpStatus } from '../lib/assistant.svelte';
   import { CLIENTS, clientOr, setupFor, type ClientId } from '../lib/mcpClients';
   import { SEEN_KEY, TOUR_KEY } from '../lib/setup.svelte';
+  import { ntfySet, ntfyStatus, ntfyTest, ntfyTopic, type NtfyStatus } from '../lib/notifications';
   import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
   import type { ProbeResult } from '../lib/clients';
 
@@ -629,6 +630,10 @@
       aKey = '';
       mKey = mError = null;
       assistant?.mcpStatus().then((m) => (mcp = m)).catch(() => (mcp = null));
+      nTopic = null;
+      nNote = nError = null;
+      nArmed = false;
+      loadNtfy();
       assistant?.load().then(() => {
         aUrl = assistant?.status?.url ?? '';
         aModel = assistant?.status?.model ?? '';
@@ -637,10 +642,67 @@
     } else if (!open && dialog.open) dialog.close();
   });
 
+  /* NOTIFICATIONS (roadmap BF). Where alerts go, a test, a new topic. The
+     topic is revealed on request and kept only while Settings is open. */
+  let ntfy = $state<NtfyStatus | null>(null);
+  let nTopic = $state<{ topic: string; web: string } | null>(null);
+  let nBusy = $state(false);
+  let nNote = $state<string | null>(null);
+  let nError = $state<string | null>(null);
+  let nArmed = $state(false);
+  let nServer = $state('https://ntfy.sh');
+  let nOwnTopic = $state('');
+  let nOwn = $state(false);
+  async function nAction(fn: () => Promise<void>) {
+    if (nBusy) return;
+    nBusy = true;
+    nError = nNote = null;
+    try {
+      await fn();
+    } catch (err) {
+      nError = (err as Error).message;
+    } finally {
+      nBusy = false;
+    }
+  }
+  const loadNtfy = () =>
+    ntfyStatus()
+      .then((s) => {
+        ntfy = s;
+        if (s.server) nServer = s.server;
+      })
+      .catch(() => (ntfy = null));
+  const revealTopic = () =>
+    nAction(async () => {
+      nTopic = nTopic ? null : await ntfyTopic();
+    });
+  const sendTest = () =>
+    nAction(async () => {
+      const r = await ntfyTest();
+      nNote = r.ok
+        ? `sent in ${r.seconds}s; it should be on your phone now`
+        : `the server answered ${r.status}: ${r.detail ?? ''}`;
+    });
+  /* Two presses when a topic exists: phones subscribed to the old one stop
+     receiving alerts the moment the new one is written. */
+  const newTopic = () =>
+    nAction(async () => {
+      if (ntfy?.configured && !nArmed) {
+        nArmed = true;
+        setTimeout(() => (nArmed = false), 5000);
+        return;
+      }
+      nArmed = false;
+      const r = await ntfySet(nServer, nOwn ? nOwnTopic.trim() : undefined);
+      ntfy = r;
+      nTopic = { topic: r.topic, web: r.web };
+      nNote = 'saved; the next alert goes to this topic. Subscribe to it now.';
+    });
+
   /* THE SHELL (roadmap BC). One pane at a time beside a rail, in a fly-out
      as wide as the update manager's and resizable from its left edge. The
      pane and the width are this browser's, like the rest of the layout. */
-  type Pane = 'appearance' | 'nodes' | 'updates' | 'clients' | 'assistant' | 'mcp';
+  type Pane = 'appearance' | 'nodes' | 'notifications' | 'updates' | 'clients' | 'assistant' | 'mcp';
   type Dot = 'on' | 'off' | 'warn' | 'edit';
   const DOT_WORD: Record<Dot, string> = { on: 'on', off: 'off', warn: 'needs setup', edit: 'unsaved' };
   const PANE_KEY = 'spark-dash.settings-pane.v1';
@@ -683,6 +745,11 @@
     {
       label: 'Integrations',
       items: [
+        {
+          id: 'notifications', label: 'Notifications', shown: true,
+          dot: !ntfy ? undefined : !ntfy.capability.ok ? 'warn' : ntfy.configured ? 'on' : 'off',
+          state: !ntfy ? undefined : !ntfy.capability.ok ? 'setup' : ntfy.configured ? undefined : 'off',
+        },
         {
           id: 'updates', label: 'DGX OS updates', shown: !!fleet,
           dot: !fleet?.capability ? 'warn' : fleet.enabled ? 'on' : 'off',
@@ -1184,6 +1251,113 @@
       {/if}
     </section>
 
+      {/if}
+      {#if pane === 'notifications'}
+      <section class="cols">
+        <div class="stack">
+          <h3 class="eyebrow dim">Where alerts go</h3>
+          {#if !ntfy}
+            <p class="note dim">Checking…</p>
+          {:else}
+            <p class="note">
+              {#if !ntfy.alertmanager.reachable}
+                <span data-tone="warning">Alertmanager is not answering, so no alert would be sent.</span>
+              {:else if !ntfy.alertmanager.channels?.length}
+                Alerts go to <code>{ntfy.alertmanager.default_receiver}</code>, which has no channel:
+                nobody is notified.
+              {:else}
+                Alertmanager sends every alert to <code>{ntfy.alertmanager.default_receiver}</code> by
+                {ntfy.alertmanager.channels.join(', ')}, and recoveries too.
+              {/if}
+            </p>
+            {#if !ntfy.capability.ok}
+              <p class="note" data-tone="warning">{ntfy.capability.detail}</p>
+              <p class="note dim">
+                Until then the topic is set by hand, as the guide describes.
+                <a href={ntfy.setup_doc} target="_blank" rel="noopener">Setup guide ↗</a>
+              </p>
+            {:else if !ntfy.configured}
+              <p class="note dim">
+                No topic yet. Make one below: ntfy.sh needs no account, and the topic name is the only
+                password, so it is generated rather than chosen.
+              </p>
+            {:else}
+              <div class="field">
+                <span class="dim">server</span>
+                <span class="note">{ntfy.server}</span>
+                <span></span>
+              </div>
+              <div class="field">
+                <span class="dim">topic</span>
+                <input
+                  class="in mono"
+                  readonly
+                  aria-label="ntfy topic"
+                  value={nTopic ? nTopic.topic : ntfy.topic_masked}
+                  onfocus={(e) => nTopic && e.currentTarget.select()}
+                />
+                <button class="mini" disabled={nBusy} onclick={revealTopic}>{nTopic ? 'hide' : 'show'}</button>
+              </div>
+              {#if ntfy.guessable}
+                <p class="note" data-tone="warning">
+                  This topic is easy to guess, and on ntfy.sh anyone who guesses it reads your alerts. Make
+                  a new one.
+                </p>
+              {/if}
+              {#if ntfy.template === false}
+                <p class="note" data-tone="warning">
+                  The URL lacks <code>?template=alertmanager</code>, so alerts arrive as raw JSON. Saving a
+                  topic here adds it.
+                </p>
+              {/if}
+              <div class="rt-row">
+                <button class="mini save add" disabled={nBusy} onclick={sendTest}>Send a test</button>
+              </div>
+            {/if}
+          {/if}
+          {#if nNote}<p class="note">{nNote}</p>{/if}
+          {#if nError}<p class="note" data-tone="warning">{nError}</p>{/if}
+        </div>
+
+        <div class="stack">
+          <h3 class="eyebrow dim">{ntfy?.configured ? 'Subscribe, or change the topic' : 'Make a topic'}</h3>
+          {#if nTopic}
+            <p class="note">
+              In the ntfy app (iOS, Android), <b>+</b>, then the topic name above. On a desktop, open
+              <a href={nTopic.web} target="_blank" rel="noopener">{nTopic.web}</a> and allow notifications.
+            </p>
+          {:else if ntfy?.configured}
+            <p class="note dim">Show the topic to subscribe a phone or a browser to it.</p>
+          {/if}
+          {#if ntfy?.capability.ok}
+            <div class="field">
+              <span class="dim">server</span>
+              <input class="in" aria-label="ntfy server" bind:value={nServer} placeholder="https://ntfy.sh" />
+              <span></span>
+            </div>
+            <label class="check">
+              <input type="checkbox" bind:checked={nOwn} />
+              <span>choose the topic name myself</span>
+            </label>
+            {#if nOwn}
+              <div class="field">
+                <span class="dim">topic</span>
+                <input class="in mono" aria-label="Topic name" bind:value={nOwnTopic} placeholder="spark-dash-…" />
+                <span></span>
+              </div>
+            {/if}
+            <div class="rt-row">
+              <button class="mini save add" disabled={nBusy || (nOwn && !nOwnTopic.trim())} onclick={newTopic}>
+                {nArmed ? 'press again: phones on the old topic stop getting alerts' : ntfy.configured ? 'New topic' : 'Make a topic'}
+              </button>
+            </div>
+            <p class="note dim">
+              Takes effect on the next alert: Alertmanager reads the topic on every send, so nothing restarts.
+              A self-hosted ntfy server works the same way.
+            </p>
+          {/if}
+        </div>
+      </section>
       {/if}
       {#if pane === 'updates'}
     <!-- Fleet updates (roadmap AK). Only when the backend has a fleet

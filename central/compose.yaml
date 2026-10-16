@@ -136,6 +136,11 @@ services:
     # it needs write access to ./targets. The image's own user is
     # 10002; PUID overrides it to match the host.
     user: "${PUID:-10002}:${PGID:-10002}"
+    # Alertmanager's group -- the same `${PGID:-65534}` it runs as -- so the
+    # backend can write the ntfy topic file Alertmanager reads (see the
+    # secrets mount below).
+    group_add:
+      - "${PGID:-65534}"
     depends_on:
       - prometheus
       - alertmanager
@@ -170,6 +175,13 @@ services:
       # NOT read-only: G4 will have the dashboard retire a decommissioned
       # endpoint by removing it from here.
       - ./cluster:/etc/spark-dash
+      # The ntfy topic file Alertmanager posts to, so Settings -> Notifications
+      # can show where alerts go, send a test and make a new topic (roadmap
+      # BF). Alertmanager reads it on every send, so a change needs no
+      # restart. Shared with Alertmanager through its group (group_add below)
+      # and a setgid directory: once, on the host,
+      #   sudo chmod 2770 secrets && sudo chmod 660 secrets/ntfy-url
+      - ./secrets:/etc/spark-dash-secrets
     ports:
       # The dashboard. THE ONLY PORT PUBLISHED THROUGH THE CLOUDFLARE TUNNEL —
       # Prometheus and Alertmanager stay LAN-only, so Google OAuth at the

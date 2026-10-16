@@ -62,7 +62,7 @@ def checklist(*, nodes: list, prom_ok: bool, data_age_s: float | None, targets_d
     if not am_ok:
         items.append(_item("alerting", "required", "Alerts reach someone", "attention",
                            "Alertmanager is not answering, so an alert would notify no one.",
-                           doc=NTFY_DOC))
+                           pane="notifications", doc=NTFY_DOC))
     else:
         default = (routing or {}).get("default")
         channels = ((routing or {}).get("receivers") or {}).get(default) or []
@@ -72,10 +72,10 @@ def checklist(*, nodes: list, prom_ok: bool, data_age_s: float | None, targets_d
         elif not channels:
             items.append(_item("alerting", "required", "Alerts reach someone", "todo",
                                f"Alerts go to the receiver '{default}', which has no channel: nobody is "
-                               "notified. Give it one (ntfy needs no account).", doc=NTFY_DOC))
+                               "notified. Give it one (ntfy needs no account).", pane="notifications", doc=NTFY_DOC))
         else:
             items.append(_item("alerting", "required", "Alerts reach someone", "done",
-                               f"Alerts go to '{default}' by {', '.join(channels)}."))
+                               f"Alerts go to '{default}' by {', '.join(channels)}.", pane="notifications"))
 
     # --- recommended ------------------------------------------------------
     fallback = [n.node_id for n in up if n.temp_bands is not None
