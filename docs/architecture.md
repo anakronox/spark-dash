@@ -242,6 +242,13 @@ nothing else. What follows is why, and it applies equally to a fourth:
   updates are set up — starting an update on a Spark (AK, AL), which is gated
   on a confirmation and on a sudo password that is refused unless it arrived
   over TLS.
+- **Tools for agents (`/mcp`, roadmap BB)** are read-only like the rest, and
+  are the one endpoint behind a key of the backend's own: a bearer key in
+  `mcp.key` (0600), checked before the MCP transport sees the request. An
+  MCP client is usually a program left running, and the key also stops a
+  page in a browser from using the endpoint, since it cannot attach the key.
+  Off is a 404. Behind Cloudflare Access an agent authenticates with an
+  Access service token.
 
 ## Storage / retention
 

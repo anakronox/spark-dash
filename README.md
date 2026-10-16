@@ -139,7 +139,8 @@ dashboard directly: the cluster now, any chart's series over any window,
 alerts, events, latency, who called, and what moved around a given moment. It
 can pull a report together, or chase down a slowdown across the metrics,
 without you copying numbers out of charts. Off until you switch it on in
-Settings, which makes the key and the command to connect.
+Settings, which makes the key and the command to connect
+([step 8](#8-optional-tools-for-agents)).
 
 ## The page is yours
 
@@ -361,6 +362,20 @@ gateway, in **Settings → Assistant**: the address, a key if it needs one,
 header. A question is answered from the window's alerts, events and series and
 the cluster as it stands, sent to the model as text; it cannot act on anything.
 Details: **[Asking the dashboard](docs/deployment.md#asking-the-dashboard--optional)**.
+
+### 8. Optional: tools for agents
+
+In **Settings → Tools for agents (MCP)**, switch on **serve the tools**. A key
+is made and shown once, inside the command that connects Claude Code:
+
+```sh
+claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
+  --header "Authorization: Bearer <key>"
+```
+
+Any other MCP client takes the same address and header. The tools only read;
+raw PromQL is a second switch, off by default. Details and the list of tools:
+**[Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional)**.
 
 ## Docs
 
