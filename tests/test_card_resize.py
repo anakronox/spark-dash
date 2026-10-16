@@ -946,8 +946,13 @@ def test_column_headers_stick_under_the_card_header_in_scroll_mode():
     )
 
     # Every horizontal scroll box in a card must be one of the two classes the
-    # rule above releases, or its th sticks to nothing.
+    # rule above releases, or its th sticks to nothing. The fly-outs are not
+    # cards: Section never puts them in scroll mode, and Settings' rail turns
+    # into a sideways row of tabs on a phone (roadmap BC).
+    FLYOUTS = {"Settings.svelte"}
     for path in sorted((FRONTEND / "components").glob("*.svelte")):
+        if path.name in FLYOUTS:
+            continue
         src = without_comments(path.read_text())
         for m in re.finditer(r"([^{}]+)\{[^{}]*overflow-x:\s*auto", src):
             selector = m.group(1).strip().split("\n")[-1].strip()

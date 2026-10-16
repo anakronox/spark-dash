@@ -337,7 +337,7 @@ took 120 seconds over one `correlate` call.
 
 ### Tools for agents (MCP) — optional
 
-**Off until switched on** in Settings → Tools for agents. Switching it on
+**Off until switched on** in Settings → Agent tools. Switching it on
 makes a key and shows it once. Settings shows the endpoint and the key on
 their own, and an **agent** picker writes the command or config block for
 Claude Code, Hermes Agent, Codex CLI, Gemini CLI, Cursor, VS Code or OpenCode;

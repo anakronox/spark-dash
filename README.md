@@ -365,7 +365,7 @@ Details: **[Asking the dashboard](docs/deployment.md#asking-the-dashboard--optio
 
 ### 8. Optional: tools for agents
 
-In **Settings → Tools for agents (MCP)**, switch on **serve the tools**. A key
+In **Settings → Agent tools**, switch on **serve the tools**. A key
 is made and shown once, beside the endpoint. Pick your agent (Claude Code,
 Hermes Agent, Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode, or Other) and
 Settings writes the command or config block to paste, key included. Every

@@ -160,6 +160,7 @@
      goes and the reader pastes it in. */
   const mSetup = $derived(setupFor(mClient, mcpUrl(), mKey ?? '<key>'));
 
+
   /* CLIENTS — a gateway address and a switch, AL5's two levels (roadmap AM).
    *
    * The address is capability and the switch is use; both live in
@@ -628,11 +629,150 @@
       });
     } else if (!open && dialog.open) dialog.close();
   });
+
+  /* THE SHELL (roadmap BC). One pane at a time beside a rail, in a fly-out
+     as wide as the update manager's and resizable from its left edge. The
+     pane and the width are this browser's, like the rest of the layout. */
+  type Pane = 'appearance' | 'nodes' | 'updates' | 'clients' | 'assistant' | 'mcp';
+  type Dot = 'on' | 'off' | 'warn' | 'edit';
+  const DOT_WORD: Record<Dot, string> = { on: 'on', off: 'off', warn: 'needs setup', edit: 'unsaved' };
+  const PANE_KEY = 'spark-dash.settings-pane.v1';
+  const WIDTH_KEY = 'spark-dash.settings-width.v1';
+  const DEFAULT_WIDTH = 1000;
+  /* The rail and a pane still usable beside it. */
+  const MIN_WIDTH = 560;
+
+  function stored(key: string): string | null {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  function store(key: string, value: string) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Private window: kept until reload.
+    }
+  }
+
+  let pane = $state<Pane>((stored(PANE_KEY) as Pane) || 'appearance');
+  function setPane(id: Pane) {
+    pane = id;
+    store(PANE_KEY, id);
+  }
+
+  const RAIL = $derived<{ label: string; items: { id: Pane; label: string; shown: boolean; dot?: Dot; state?: string }[] }[]>([
+    { label: 'Page', items: [{ id: 'appearance', label: 'Appearance', shown: true }] },
+    {
+      label: 'Cluster',
+      items: [{
+        id: 'nodes', label: 'Nodes', shown: true,
+        dot: dirty ? 'edit' : undefined,
+        state: draft ? `${draft.length}${dirty ? ' · unsaved' : ''}` : undefined,
+      }],
+    },
+    {
+      label: 'Integrations',
+      items: [
+        {
+          id: 'updates', label: 'DGX OS updates', shown: !!fleet,
+          dot: !fleet?.capability ? 'warn' : fleet.enabled ? 'on' : 'off',
+          state: !fleet?.capability ? 'setup' : fleet.enabled ? undefined : 'off',
+        },
+        {
+          id: 'clients', label: 'Clients', shown: !!clients,
+          dot: clients?.configured ? 'on' : 'off', state: clients?.configured ? undefined : 'off',
+        },
+        {
+          id: 'assistant', label: 'Assistant', shown: !!assistant,
+          dot: assistant?.status?.enabled ? 'on' : 'off',
+          state: assistant?.status?.enabled ? undefined : assistant?.status?.url ? 'off' : 'not set up',
+        },
+        {
+          id: 'mcp', label: 'Agent tools', shown: !!assistant,
+          dot: mcp?.enabled ? 'on' : 'off', state: mcp?.enabled ? undefined : 'off',
+        },
+      ],
+    },
+  ]);
+  /* A remembered pane this deployment does not have (no fleet service, say)
+     falls back to the first. */
+  $effect(() => {
+    const all = RAIL.flatMap((g) => g.items).filter((it) => it.shown);
+    if (!all.some((it) => it.id === pane)) pane = 'appearance';
+  });
+  const paneLabel = $derived(
+    pane === 'mcp' ? 'Agent tools (MCP)' : (RAIL.flatMap((g) => g.items).find((it) => it.id === pane)?.label ?? ''),
+  );
+
+  let panelWidth = $state(Number(stored(WIDTH_KEY)) || DEFAULT_WIDTH);
+  function setWidth(w: number, save = false) {
+    panelWidth = Math.round(Math.max(MIN_WIDTH, Math.min(w, window.innerWidth)));
+    if (save) store(WIDTH_KEY, String(panelWidth));
+  }
+  function startResize(e: PointerEvent) {
+    if (e.button !== 0) return;
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+    // Anchored right, so the width is the distance from the pointer to the
+    // window's right edge.
+    const move = (ev: PointerEvent) => setWidth(window.innerWidth - ev.clientX);
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      setWidth(panelWidth, true);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+    e.preventDefault();
+  }
+  function keyResize(e: KeyboardEvent) {
+    const step = e.key === 'ArrowLeft' ? 32 : e.key === 'ArrowRight' ? -32 : 0;
+    if (!step) return;
+    e.preventDefault();
+    setWidth(panelWidth + step, true);
+  }
+
+  /* RESET LAYOUT: every view preference this page keeps, except the theme.
+     They all share one prefix, so a key added later is reset too without an
+     edit here. Reloads, since each store read its key once at start. */
+  const KEEP = new Set(['spark-dash.theme.v1']);
+  let resetArmed = $state(false);
+  let resetTimer: ReturnType<typeof setTimeout> | undefined;
+  function resetLayout() {
+    if (!resetArmed) {
+      resetArmed = true;
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => (resetArmed = false), 4000);
+      return;
+    }
+    try {
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith('spark-dash.') && !KEEP.has(k)) localStorage.removeItem(k);
+      }
+    } catch {
+      // Nothing stored, so nothing to reset.
+    }
+    location.reload();
+  }
+
+  function watchedCount(n: ConfiguredNode): string {
+    const rows = interfaceRows(n);
+    return rows.length ? `${rows.filter((r) => isWatched(n, r.name)).length} of ${rows.length}` : 'none yet';
+  }
+  function engineCount(n: ConfiguredNode): number {
+    return ENGINE_RUNTIMES.reduce((sum, r) => sum + engineRefs(n, r).length, 0);
+  }
 </script>
 
 <dialog
   bind:this={dialog}
   class="flyout"
+  style:--settings-w="{panelWidth}px"
   aria-label="Settings"
   onclose={onclose}
   onclick={(e) => {
@@ -641,15 +781,76 @@
     if (e.target === dialog) onclose();
   }}
 >
+  <!-- Drag to resize, from the left edge: the panel is anchored right. The
+       arrow keys do the same, 32px a press, and a double click goes back to
+       the default. A focusable separator is ARIA's own resize widget, which
+       the two rules below do not know. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+  <div
+    class="edge-drag"
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="Resize settings"
+    aria-valuenow={Math.round(panelWidth)}
+    aria-valuemin={MIN_WIDTH}
+    tabindex="0"
+    onpointerdown={startResize}
+    onkeydown={keyResize}
+    ondblclick={() => setWidth(DEFAULT_WIDTH, true)}
+  ></div>
   <div class="panel">
     <header>
       <h2 class="eyebrow">Settings</h2>
       <button class="close" aria-label="Close" onclick={onclose}>×</button>
     </header>
 
+    <div class="body">
+      <nav class="rail" aria-label="Settings sections">
+        {#each RAIL as group (group.label)}
+          {@const items = group.items.filter((it) => it.shown)}
+          {#if items.length}
+            <div class="group">
+              <p class="eyebrow dim">{group.label}</p>
+              {#each items as it (it.id)}
+                <button
+                  class="nav"
+                  aria-current={pane === it.id ? 'page' : undefined}
+                  onclick={() => setPane(it.id)}
+                >
+                  {#if it.dot}<span class="dot {it.dot}" title={DOT_WORD[it.dot]}></span>{/if}
+                  <span class="label">{it.label}</span>
+                  {#if it.state}<span class="state">{it.state}</span>{/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {/each}
+
+        <!-- J4: the number that keeps the single-host argument honest.
+             Monitoring a GB10 should cost it as little as possible, and on one
+             box that cost comes out of the SAME unified pool the models use.
+             A line under the rail rather than a section: one figure, always in
+             view while Settings is open. Summed from components that measure
+             THEMSELVES; nothing here guesses which processes are monitoring. -->
+        <p
+          class="footprint note"
+          title="Resident memory of Prometheus, Alertmanager and the monitoring host's exporter. Each agent's own cost is reported per node."
+        >
+          {#if footprint === null}
+            <span class="dim">monitoring: unavailable</span>
+          {:else}
+            <span class="dim">monitoring uses</span>
+            <span class="num">{(footprint / 1024 ** 2).toFixed(0)} MiB</span>
+          {/if}
+        </p>
+      </nav>
+
+      <div class="pane">
+        <h3 class="pane-title">{paneLabel}</h3>
+      {#if pane === 'appearance'}
     <!-- Appearance -->
     <section class="stack">
-      <h3 class="eyebrow dim">Appearance</h3>
+      <h3 class="eyebrow dim">Theme</h3>
       <div class="choices" role="group" aria-label="Theme">
         {#each THEMES as t (t.id)}
           <button
@@ -726,11 +927,29 @@
     </section>
 
     <section class="stack">
+      <h3 class="eyebrow dim">This browser</h3>
+      <!-- Said plainly because the alternative is discovering it: these do not
+           follow you to another browser or machine, and there is no account to
+           sync them to. The dashboard is deliberately stateless server-side. -->
+      <p class="note dim">
+        The theme, the page's arrangement, each element's view and size, and column widths are kept
+        in this browser only.
+      </p>
+      <!-- Two presses, since the page cannot ask with confirm(): the first
+           arms it and says what will go, the second does it. -->
+      <div class="rt-row">
+        <button class="mini add" onclick={resetLayout}>
+          {resetArmed ? 'press again to reset' : 'Reset layout'}
+        </button>
+        {#if resetArmed}
+          <span class="note dim">Puts every element back where it started; keeps the theme.</span>
+        {/if}
+      </div>
     </section>
-
+      {/if}
+      {#if pane === 'nodes'}
     <!-- Cluster -->
-    <section class="stack">
-      <h3 class="eyebrow dim">Cluster</h3>
+    <section class="stack wide">
       {#if cfgError}
         <p class="note" data-tone="warning">Couldn't read the cluster config: {cfgError}</p>
       {:else if !draft}
@@ -743,6 +962,7 @@
         <p class="note dim">Stored in <code>central/cluster/cluster.yml</code> on the monitoring host
           (<code>{cfg?.path}</code> inside the backend container).</p>
 
+        <div class="nodes">
         {#each draft as n, i (i)}
           <div class="node">
             <div class="node-head">
@@ -826,8 +1046,11 @@
               </div>
             {/if}
 
-            <div class="rt">
-              <span class="eyebrow dim">llama.cpp routers</span>
+            <details class="rt" open={n.runtimes.llama_routers.length > 0}>
+              <summary class="eyebrow dim">
+                llama.cpp routers
+                <span class="count">{n.runtimes.llama_routers.length || 'none'}</span>
+              </summary>
               {#each n.runtimes.llama_routers as r, ri (ri)}
                 <div class="rt-row">
                   {#if r.port == null}
@@ -854,10 +1077,13 @@
                 class="mini add"
                 onclick={() => (n.runtimes.llama_routers = [...n.runtimes.llama_routers, { url: '', port: 8001, scrape_metrics: false }])}
               >+ router</button>
-            </div>
+            </details>
 
-            <div class="rt ifaces">
-              <span class="eyebrow dim">Interfaces watched by alerting</span>
+            <details class="rt ifaces">
+              <summary class="eyebrow dim">
+                Interfaces watched by alerting
+                <span class="count">{watchedCount(n)}</span>
+              </summary>
               {#if interfaceRows(n).length}
                 {#each interfaceRows(n) as iface (iface.name)}
                   <label class="iface">
@@ -882,8 +1108,13 @@
                   Nothing to list until this node reports its interfaces.
                 </p>
               {/if}
-            </div>
+            </details>
 
+            <details class="rt" open={engineCount(n) > 0}>
+              <summary class="eyebrow dim">
+                Engines: {ENGINE_RUNTIMES.map((r) => ENGINE_UI[r].label).join(', ')}
+                <span class="count">{engineCount(n) || 'none'}</span>
+              </summary>
             {#each ENGINE_RUNTIMES as runtime (runtime)}
               <div class="rt">
                 <span class="eyebrow dim">{ENGINE_UI[runtime].label}</span>
@@ -908,11 +1139,17 @@
                 >+ {ENGINE_UI[runtime].label}</button>
               </div>
             {/each}
+            </details>
           </div>
         {/each}
+        </div>
 
-        <div class="actions">
+        <div class="actions savebar">
           <button class="mini add" onclick={addNode}>+ node</button>
+          <!-- Kept, unlike the other notes: this is not background, it is what
+               the button beside it will DO to a file the reader may have
+               hand-edited. -->
+          <span class="note dim grow">Saving rewrites the file; comments are not preserved.</span>
           <button class="mini" disabled={!dirty || saving} onclick={() => (draft = clone(cfg!.nodes))}>Revert</button>
           <button class="mini save" disabled={!dirty || saving} onclick={save}>
             {saving ? 'Saving…' : 'Save cluster'}
@@ -924,14 +1161,11 @@
                generic failure. -->
           <p class="note" data-tone="warning">{saveError}</p>
         {/if}
-        <!-- Kept, unlike the other notes: this is not background, it is what
-             the button next to it will DO to a file the reader may have
-             hand-edited. The pointer to central/cluster.yml.example went — that
-             one is documentation. -->
-        <p class="note dim">Saving rewrites the file; comments are not preserved.</p>
       {/if}
     </section>
 
+      {/if}
+      {#if pane === 'updates'}
     <!-- Fleet updates (roadmap AK). Only when the backend has a fleet
          service; a section about a thing that is not there would be noise.
          Nothing here is editable on purpose: the login and the cadence are
@@ -939,7 +1173,6 @@
          control that could not actually change them. -->
     {#if fleet}
       <section class="stack">
-        <h3 class="eyebrow dim">DGX OS updates</h3>
 
         <!-- AL5: the switch is shown whatever the state, because Settings is
              where a person goes to find out how to turn a thing ON. When the
@@ -1019,12 +1252,13 @@
       </section>
     {/if}
 
+      {/if}
+      {#if pane === 'clients'}
     <!-- Client stats (roadmap AM5). Always present when the feed exists, like
          DGX OS updates above: Settings is where a person goes to find out how
          to turn a thing on. -->
     {#if clients}
       <section class="stack">
-        <h3 class="eyebrow dim">Clients</h3>
 
         <label class="check">
           <input
@@ -1099,13 +1333,21 @@
       </section>
     {/if}
 
+      {/if}
+      {#if pane === 'assistant'}
     {#if assistant}
-      <section class="stack">
-        <h3 class="eyebrow dim">Assistant</h3>
+      <section class="cols">
+       <div class="stack">
+        <h3 class="eyebrow dim">Model</h3>
+        <p class="note dim">Any OpenAI-compatible endpoint: an engine, or the gateway.</p>
+        {@render assistantModel()}
+       </div>
+       <div class="stack">
+        <h3 class="eyebrow dim">Behaviour</h3>
         <p class="note dim">
           Ask questions about the cluster from the header. The model is sent the window's alerts,
-          events and series as text; it cannot act on anything. Any OpenAI-compatible endpoint: an
-          engine, or the gateway.
+          events and series as text, and may call the read-only agent tools; it cannot act on
+          anything.
         </p>
         {#if assistant.status?.url}
           <label class="check">
@@ -1124,9 +1366,15 @@
               disabled={aBusy}
               onchange={(e) => setAssistantTools((e.currentTarget as HTMLInputElement).checked)}
             />
-            <span>let it look further with the tools below (needs a model that calls tools)</span>
+            <span>let it look further with the agent tools (needs a model that calls tools)</span>
           </label>
+        {:else}
+          <p class="note dim">Set a model and save to switch it on.</p>
         {/if}
+       </div>
+      </section>
+    {/if}
+    {#snippet assistantModel()}
         <div class="rt-row">
           <input
             id="assistant-url"
@@ -1142,7 +1390,7 @@
             class="in"
             type="password"
             autocomplete="off"
-            placeholder={assistant.status?.key_set ? `key set (${assistant.status.key_hint}); leave empty to keep` : 'API key, if it needs one'}
+            placeholder={assistant?.status?.key_set ? `key set (${assistant?.status.key_hint}); leave empty to keep` : 'API key, if it needs one'}
             aria-label="API key"
             bind:value={aKey}
           />
@@ -1155,27 +1403,29 @@
           <button class="mini" disabled={aBusy || !aUrl.trim()} onclick={detectModels}>Detect</button>
           <button class="mini" disabled={aBusy || !aUrl.trim() || !aModel} onclick={testAssistant}>Test</button>
           <button class="mini save" disabled={aBusy || !aUrl.trim() || !aModel} onclick={saveAssistant}>Save</button>
-          {#if assistant.status?.url}
+          {#if assistant?.status?.url}
             <button class="mini" disabled={aBusy} onclick={removeAssistant}>Remove</button>
           {/if}
         </div>
         {#if aBusy}<p class="note dim">working…</p>{/if}
         {#if aNote}<p class="note">{aNote}</p>{/if}
         {#if aError}<p class="note" data-tone="warning">{aError}</p>{/if}
-        {#if assistant.status?.error}
+        {#if assistant?.status?.error}
           <p class="note" data-tone="warning">
             The <code>assistant:</code> block in <code>cluster.yml</code> has a mistake:
-            {assistant.status.error} Saving here replaces it.
+            {assistant?.status.error} Saving here replaces it.
           </p>
         {/if}
-      </section>
-    {/if}
+    {/snippet}
 
+      {/if}
+      {#if pane === 'mcp'}
     <!-- Tools for agents (roadmap BB). With the assistant, since Ask uses
          the same tools; reachable whether or not Ask is set up. -->
     {#if assistant}
-      <section class="stack">
-        <h3 class="eyebrow dim">Tools for agents (MCP)</h3>
+      <section class="cols">
+       <div class="stack">
+        <h3 class="eyebrow dim">Access</h3>
         <p class="note dim">
           Lets an agent such as Claude Code query the dashboard itself: the cluster now, any series
           over any window, alerts, events, latency, clients, and what moved around a moment.
@@ -1231,7 +1481,17 @@
               Copy the key now: it is not shown again. A lost key is replaced with <b>new key</b>.
             </p>
           {/if}
-
+        {/if}
+        {#if mError}<p class="note" data-tone="warning">{mError}</p>{/if}
+        {#if mcp?.error}
+          <p class="note" data-tone="warning">
+            The <code>mcp:</code> block in <code>cluster.yml</code> has a mistake: {mcp.error}
+          </p>
+        {/if}
+       </div>
+       <div class="stack">
+        <h3 class="eyebrow dim">Connect an agent</h3>
+        {#if mcp?.enabled}
           <label class="field">
             <span class="dim">agent</span>
             <select
@@ -1253,45 +1513,19 @@
             onfocus={(e) => e.currentTarget.select()}
           ></textarea>
           {#if mSetup.then}<p class="note dim">{mSetup.then}</p>{/if}
-        {/if}
-        {#if mError}<p class="note" data-tone="warning">{mError}</p>{/if}
-        {#if mcp?.error}
-          <p class="note" data-tone="warning">
-            The <code>mcp:</code> block in <code>cluster.yml</code> has a mistake: {mcp.error}
+        {:else}
+          <p class="note dim">
+            Switch the tools on to get a key and the setup for Claude Code, Hermes Agent, Codex,
+            Gemini CLI, Cursor, VS Code or OpenCode.
           </p>
         {/if}
+       </div>
       </section>
     {/if}
 
-    <!-- Where this lives -->
-    <section class="stack">
-      <h3 class="eyebrow dim">Monitoring footprint</h3>
-      <!-- J4: the number that keeps the single-host argument honest.
-           Monitoring a GB10 should cost it as little as possible, and on one
-           box that cost comes out of the SAME unified pool the models use — so
-           the claim is shown as a live figure rather than left in a README to
-           age.
-
-           Summed from components that measure THEMSELVES; nothing here guesses
-           which processes are "monitoring". -->
-      <p class="note">
-        {#if footprint === null}
-          <span class="dim">unavailable — Prometheus did not answer</span>
-        {:else}
-          <span class="num">{(footprint / 1024 ** 2).toFixed(0)} MiB</span>
-          <span class="dim">
-            resident, for Prometheus, Alertmanager and the monitoring host's
-            exporter. Each agent's own cost is reported per node.
-          </span>
-        {/if}
-      </p>
-
-      <h3 class="eyebrow dim">Storage</h3>
-      <!-- Said plainly because the alternative is discovering it: these do not
-           follow you to another browser or machine, and there is no account to
-           sync them to. The dashboard is deliberately stateless server-side. -->
-      <p class="note dim">This browser only; clearing site data resets them.</p>
-    </section>
+      {/if}
+      </div>
+    </div>
   </div>
 </dialog>
 
@@ -1304,7 +1538,9 @@
     margin: 0 0 0 auto;
     height: 100%;
     max-height: 100%;
-    width: min(420px, 100%);
+    /* The update manager's width by default (roadmap BC), set from the
+       left-edge drag. */
+    width: min(var(--settings-w, 1000px), 100%);
     max-width: 100%;
     padding: 0;
     border: none;
@@ -1317,23 +1553,161 @@
     background: rgb(0 0 0 / 0.45);
   }
 
+  /* The header across the top; under it the rail and the pane, each
+     scrolling on its own. */
   .panel {
     display: flex;
     flex-direction: column;
-    gap: 18px;
     height: 100%;
-    overflow-y: auto;
-    padding: 18px 20px 28px;
+    min-height: 0;
   }
 
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    position: sticky;
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .edge-drag {
+    position: absolute;
     top: 0;
+    bottom: 0;
+    left: 0;
+    width: 7px;
+    cursor: ew-resize;
+    z-index: 2;
+    touch-action: none;
+  }
+  .edge-drag:hover,
+  .edge-drag:focus-visible {
+    background: color-mix(in srgb, var(--series-1) 35%, transparent);
+    outline: none;
+  }
+
+  .body {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 184px minmax(0, 1fr);
+  }
+
+  .rail {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 12px 8px;
+    border-right: 1px solid var(--rule);
+    overflow-y: auto;
+  }
+  .rail .group { display: flex; flex-direction: column; gap: 2px; }
+  .rail .group > .eyebrow { margin: 0; padding: 0 8px 4px; }
+
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    text-align: left;
+    font-size: var(--text-label);
+    color: var(--ink-2);
+  }
+  .nav:hover { background: var(--panel-raised); color: var(--ink); }
+  .nav[aria-current='page'] {
+    background: var(--panel-raised);
+    color: var(--ink);
+    box-shadow: inset 2px 0 0 var(--series-1);
+  }
+  .nav .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav .state {
+    margin-left: auto;
+    font-size: var(--text-micro);
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
+  /* State on the rail, never colour alone: the word beside it says it too,
+     and `title` names it. */
+  .dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: 1px solid var(--ink-muted);
+  }
+  .dot.on { background: var(--good); border-color: var(--good); }
+  .dot.warn { background: var(--warning); border-color: var(--warning); }
+  .dot.edit { background: var(--series-1); border-color: var(--series-1); }
+
+  /* `.rail` in the selector, or `.note`'s margin, later in the file, wins. */
+  .rail .footprint { margin-top: auto; padding: 8px 8px 0; border-top: 1px solid var(--rule); }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 16px 22px 0;
+    overflow-y: auto;
+    min-width: 0;
+  }
+  /* Room at the end, except where the save bar sits there. */
+  .pane::after { content: ''; flex: none; height: 10px; }
+
+  .pane-title {
+    margin: 0;
+    font-size: var(--text-title-sm);
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  /* A single column of controls stays at a readable width; Nodes, a grid
+     of cards, takes the pane. */
+  .pane > .stack:not(.wide) { max-width: 680px; }
+  .savebar .grow { flex: 1; text-align: right; }
+
+  /* Two columns where the width allows, one where it does not. */
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px 24px;
+    align-items: start;
+  }
+
+  .nodes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+
+  details.rt > summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+  }
+  details.rt > summary::-webkit-details-marker { display: none; }
+  details.rt > summary::before { content: '▸'; color: var(--ink-muted); }
+  details.rt[open] > summary::before { content: '▾'; }
+  summary .count {
+    margin-left: auto;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  /* Save stays in view at the foot of the pane, however many nodes. */
+  .savebar {
+    position: sticky;
+    bottom: 0;
+    margin: 0 -22px;
+    padding: 10px 22px;
     background: var(--panel);
-    padding-bottom: 8px;
+    border-top: 1px solid var(--rule);
+    align-items: center;
   }
 
   .close {
@@ -1370,13 +1744,16 @@
   .node {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 6px 8px;
+    gap: 8px;
+    padding: 10px 12px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
   }
 
-  .node-head { display: flex; align-items: baseline; gap: 8px; font-size: var(--text-body); }
+  .node-head { display: flex; align-items: baseline; gap: 8px; font-size: var(--text-body); flex-wrap: wrap; }
+  .node-head .in.id { flex: 1 1 110px; }
+  .node-head .tag,
+  .node-head .mini { white-space: nowrap; }
 
   .ifaces label.iface {
     display: flex;
@@ -1514,8 +1891,27 @@
 
 
 
+  /* A phone: full width, no drag, and the rail becomes a row of tabs over
+     the pane. */
   @media (max-width: 640px) {
     .flyout { width: 100%; border-left: none; }
+    .edge-drag { display: none; }
+    .body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .rail {
+      flex-direction: row;
+      gap: 4px;
+      overflow-x: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--rule);
+    }
+    .rail .group { flex-direction: row; }
+    .rail .group > .eyebrow,
+    .nav .state,
+    .rail .footprint { display: none; }
+    .nav { width: auto; white-space: nowrap; }
+    .pane { padding: 14px 14px 0; }
+    .savebar { margin: 0 -14px; padding: 10px 14px; }
+    .nodes { grid-template-columns: minmax(0, 1fr); }
   }
 
   @media (prefers-reduced-motion: no-preference) {

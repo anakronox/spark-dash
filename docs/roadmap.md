@@ -7945,6 +7945,38 @@ node names, units and scales, which temperatures have bands, the alerts
 and events in the window, who called through the gateway, and that GB10's
 memory is one pool.
 
+### BC — Settings as a wide fly-out with a rail — **built 2026-10-16**
+
+Brian: Settings had grown too long to scroll, ten sections in one 420px
+column. Mocked first (a private artifact), then built with his changes.
+
+- [x] **BC1. The shell.** The update manager's fly-out width (1000px by
+  default), with a rail of sections on the left and one pane at a time on
+  the right; each scrolls on its own. The pane and the width are this
+  browser's. On a phone the rail becomes a row of tabs over the pane.
+- [x] **BC2. Resizable.** Drag the left edge, so the whole rail and as much
+  pane as wanted fit; the arrow keys move it 32px a press, a double click
+  goes back to 1000px. Floored at 560px, where the two-column panes stack.
+- [x] **BC3. State on the rail.** A dot and a word for each integration (on,
+  off, needs setup) and for unsaved node edits, so all four can be read
+  without opening them. Never colour alone.
+- [x] **BC4. Panes.** *Appearance* holds theme, element overflow, node card
+  density, and *This browser*: what is kept here, and **Reset layout**,
+  which clears every `spark-dash.*` key but the theme and reloads (two
+  presses, since the page cannot use `confirm()`). *Nodes* shows a card per
+  node, two across at the default width, with routers, interfaces and
+  engines folded behind their counts and the save bar pinned to the foot.
+  *Assistant* and *Agent tools* use two columns: the model or access on the
+  left, what it does or how to connect an agent on the right.
+- [x] **BC5. The monitoring footprint** is a line at the foot of the rail
+  rather than a section: one figure, in view whenever Settings is open.
+- [ ] **BC6. An integrations overview** (considered 2026-10-16, not built).
+  A pane of four tiles, one per integration, each with its state and one
+  line on what it needs. Mostly redundant with the rail's dots; worth it if
+  integrations multiply. In the mockup as "Overview".
+- Not built: a search box over the settings. The rail is enough at six
+  panes.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
