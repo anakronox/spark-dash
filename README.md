@@ -71,7 +71,12 @@ close each is to *its own* limit, which differ by twenty degrees across one
 machine. On this cluster an SoC zone hit 95.4°C while the GPU read 72°C.
 The card's **groups** menu hides the groups you don't need to read. Alerts
 still watch every sensor, and the headline still names the hottest and the
-closest to its limit across all of them.
+closest to its limit across all of them. Each group can also show one reading
+per node instead of every sensor: its **hottest**, or its **avg**, so the
+seven SoC zones average into one figure for how warm a node runs, and four NIC
+chips become one line. An average never hides a hot sensor: its warning and
+critical colours still come from whichever sensor is closest to its limit.
+Switch the card to **gauges** for a dial per node in each group.
 
 **Alerting you can trust.** 35 rules, with push notifications via
 [ntfy](https://ntfy.sh) — no account, no API key. Thermal bands come from each

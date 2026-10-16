@@ -10,6 +10,7 @@
  * the same arrangement `network-history.ts` uses.
  */
 
+import type { GaugeItem, GaugeState } from './gauges';
 import type { NodeSnapshot } from './types';
 
 /** Domains in the order they are drawn, with what each one means.
@@ -144,4 +145,104 @@ export function groupRows(rows: TempRow[]): TempGroup[] {
       rows: [...seen.get(k)!].sort(byHeadroom),
     }));
   return [...known, ...extra];
+}
+
+/* --- Combined readings and gauges (roadmap BD) ---------------------- */
+
+/** How a group's sensors are shown: each one, or one reading per node. */
+export type Combine = 'each' | 'hottest' | 'average';
+
+/** One node's sensors in one group, as a single row.
+ *
+ * `celsius` is the hottest sensor or the mean of them all. THE STATE IS NEVER
+ * AVERAGED: `headroomC` is the least headroom of any sensor in the set and
+ * `limitC` that sensor's limit, so an average of 61° can still read 5° left
+ * and turn red. The mean is an overview of how warm the node runs (Brian,
+ * 2026-10-16); the rule this file keeps everywhere else, MAX never mean,
+ * still decides whether anything is wrong. */
+export interface CombinedRow extends TempRow {
+  how: 'hottest' | 'average';
+  /** Sensors in the set. */
+  count: number;
+  /** The sensor closest to its limit, which the state comes from. */
+  tightestSensor: string | null;
+  /** The hottest sensor and its reading, so an average names what it hides. */
+  hottestSensor: string;
+  hottestC: number;
+}
+
+export function combineRows(rows: TempRow[], how: 'hottest' | 'average'): CombinedRow[] {
+  const byNode = new Map<string, TempRow[]>();
+  for (const r of rows) byNode.set(r.node, [...(byNode.get(r.node) ?? []), r]);
+  const out: CombinedRow[] = [];
+  for (const [node, rs] of byNode) {
+    const hot = hottest(rs)!;
+    const tight = tightest(rs);
+    const celsius = how === 'hottest' ? hot.celsius : rs.reduce((s, r) => s + r.celsius, 0) / rs.length;
+    out.push({
+      key: `${node}/${rs[0].domain}/${how}`,
+      node,
+      domain: rs[0].domain,
+      sensor: how === 'hottest' ? `hottest of ${rs.length}: ${hot.sensor}` : `average of ${rs.length}`,
+      celsius,
+      limitC: tight?.limitC ?? null,
+      headroomC: tight?.headroomC ?? null,
+      how,
+      count: rs.length,
+      tightestSensor: tight?.sensor ?? null,
+      hottestSensor: hot.sensor,
+      hottestC: hot.celsius,
+    });
+  }
+  return out.sort(byHeadroom);
+}
+
+/** The card's own colouring of headroom, so a dial and the table row beside
+ *  it always agree: 5° or less is critical, 15° or less a warning. */
+export const HEADROOM_CRITICAL_C = 5;
+export const HEADROOM_WARNING_C = 15;
+
+export function headroomState(h: number | null): GaugeState {
+  if (h == null) return 'ok';
+  if (h <= HEADROOM_CRITICAL_C) return 'critical';
+  if (h <= HEADROOM_WARNING_C) return 'warning';
+  return 'ok';
+}
+
+/** The dial's scale starts here, as the table's bar does: every sensor in a
+ *  running machine sits above it, so a scale from zero would show every dial
+ *  about half full and never move. */
+export const FLOOR_C = 40;
+
+function sweep(c: number, limit: number): number {
+  return Math.max(0, Math.min(1, (c - FLOOR_C) / (limit - FLOOR_C)));
+}
+
+/** A dial per node for one group: the combined reading from FLOOR_C to the
+ *  tightest limit, with marks where the card turns amber and red. */
+export function thermalItems(rows: CombinedRow[], colourOf: (node: string) => string): GaugeItem[] {
+  return [...rows]
+    .sort((a, b) => a.node.localeCompare(b.node))
+    .map((r) => {
+      const lim = r.limitC != null && r.limitC > FLOOR_C ? r.limitC : null;
+      const what = r.how === 'hottest' ? `hottest of ${r.count}, ${r.hottestSensor}` : `average of ${r.count}`;
+      const tight =
+        r.tightestSensor && r.headroomC != null
+          ? `; closest to its limit: ${r.tightestSensor}, ${r.headroomC.toFixed(1)}° left of ${r.limitC}°`
+          : '; no stated limit';
+      const hot = r.how === 'average' ? `; hottest ${r.hottestSensor} ${r.hottestC.toFixed(1)}°` : '';
+      return {
+        id: r.node,
+        colour: colourOf(r.node),
+        fraction: lim ? sweep(r.celsius, lim) : 0,
+        value: `${r.celsius.toFixed(1)}°`,
+        unit: r.how === 'average' ? 'avg °C' : '°C',
+        state: headroomState(r.headroomC),
+        bands: lim
+          ? [sweep(lim - HEADROOM_WARNING_C, lim), sweep(lim - HEADROOM_CRITICAL_C, lim)]
+          : null,
+        scale: [`${FLOOR_C}°`, lim ? `${lim.toFixed(0)}°` : '—'],
+        title: `${r.node}: ${what}${hot}${tight}`,
+      };
+    });
 }

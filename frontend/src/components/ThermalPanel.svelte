@@ -46,8 +46,9 @@
   import SortButton from './SortButton.svelte';
   import { ColumnView } from '../lib/columns.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
-  import { byHeadroom, groupRows, hottest, tempRows, tightest } from '../lib/thermal';
-  import type { TempRow } from '../lib/thermal';
+  import GaugePanel from './GaugePanel.svelte';
+  import { byHeadroom, combineRows, groupRows, hottest, tempRows, thermalItems, tightest } from '../lib/thermal';
+  import type { Combine, CombinedRow, TempGroup, TempRow } from '../lib/thermal';
   import type { NodeSnapshot } from '../lib/types';
   import { nodeColor } from '../lib/theme';
 
@@ -112,6 +113,77 @@
     }),
   );
   const slots = $derived(new Map(nodes.map((n, i) => [n.node_id, i])));
+
+  /* TABLE OR GAUGES (roadmap BD), kept per copy like the other menus, so one
+     copy can list every sensor and another show a dial per node. */
+  type View = 'table' | 'gauges';
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const VIEW_KEY = instanceKey('spark-dash.thermal-view.v1', instance);
+  // svelte-ignore state_referenced_locally -- as above.
+  const COMBINE_KEY = instanceKey('spark-dash.thermal-combine.v1', instance);
+  function readJson<T>(key: string, fallback: T): T {
+    try {
+      return (JSON.parse(localStorage.getItem(key) ?? 'null') as T) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  let view = $state<View>(readJson<string>(VIEW_KEY, 'table') === 'gauges' ? 'gauges' : 'table');
+  function setView(v: View) {
+    view = v;
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(v));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  /* HOW EACH GROUP IS SHOWN, per view. The table lists each sensor unless a
+     group is set to one reading per node; gauges always show one per node,
+     hottest unless set to the average, since a dial per sensor would be
+     sixty-odd dials for the package zones alone. */
+  type Combos = { table: Record<string, Combine>; gauges: Record<string, Combine> };
+  let combos = $state<Combos>(
+    (() => {
+      const saved = readJson<Partial<Combos>>(COMBINE_KEY, {});
+      return { table: { ...(saved.table ?? {}) }, gauges: { ...(saved.gauges ?? {}) } };
+    })(),
+  );
+  const CHOICES: Record<View, { id: Combine; label: string; title: string }[]> = {
+    table: [
+      { id: 'each', label: 'each', title: 'Every sensor in the group' },
+      { id: 'hottest', label: 'hottest', title: 'One row a node: its hottest sensor' },
+      { id: 'average', label: 'avg', title: 'One row a node: the mean of its sensors; the state still comes from the one closest to its limit' },
+    ],
+    gauges: [
+      { id: 'hottest', label: 'hottest', title: 'A dial a node: its hottest sensor' },
+      { id: 'average', label: 'avg', title: 'A dial a node: the mean of its sensors; the state still comes from the one closest to its limit' },
+    ],
+  };
+  function comboOf(v: View, group: string): Combine {
+    const c = combos[v][group];
+    return c && CHOICES[v].some((x) => x.id === c) ? c : CHOICES[v][0].id;
+  }
+  function setCombo(v: View, group: string, c: Combine) {
+    combos = { ...combos, [v]: { ...combos[v], [group]: c } };
+    try {
+      localStorage.setItem(COMBINE_KEY, JSON.stringify(combos));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+  function rowsOf(g: TempGroup, v: View): TempRow[] {
+    const c = comboOf(v, g.key);
+    return c === 'each' ? g.rows : combineRows(g.rows, c);
+  }
+  const isCombined = (r: TempRow): r is CombinedRow => 'how' in r;
+  const colourOf = (id: string) => nodeColor(slots.get(id));
+  /* Every group's dials the same size: the panel with the most nodes. */
+  const mostNodes = $derived(Math.max(1, ...groups.map((g) => new Set(g.rows.map((r) => r.node)).size)));
+  /* Tall enough for a 120px dial and its label, the size three dials take
+     side by side in half a card. */
+  const GAUGE_PX = 116;
 
   /* TWO HEADLINES, because they answer different questions and are usually
      different sensors. The hottest thing in the box is not the thing closest to
@@ -262,12 +334,31 @@
   const TABLE = 'table-fixed text-body min-w-[620px]';
 </script>
 
+{#snippet combineControl(v: View, group: string, current: Combine)}
+  <span class="segmented combine" role="group" aria-label="How {group} is shown">
+    {#each CHOICES[v] as c (c.id)}
+      <button
+        class:active={current === c.id}
+        aria-pressed={current === c.id}
+        title={c.title}
+        onclick={() => setCombo(v, group, c.id)}>{c.label}</button
+      >
+    {/each}
+  </span>
+{/snippet}
+
 {#snippet cell(c: ColumnDef, r: TempRow)}
   {#if c.key === 'sensor'}
     <td class={TD}>
       <!-- Verbatim. `zone0` and `mlx5 0000:01:00.0 asic` are what the kernel
            calls these, and a prettified name is one nobody can grep for. -->
-      <span class="[font-variant-numeric:tabular-nums]">{r.sensor}</span>
+      <span
+        class="[font-variant-numeric:tabular-nums]"
+        title={isCombined(r) && r.tightestSensor
+          ? `Closest to its limit: ${r.tightestSensor}, ${r.headroomC?.toFixed(1)}° left` +
+            (r.how === 'average' ? `; hottest ${r.hottestSensor} ${r.hottestC.toFixed(1)}°` : '')
+          : undefined}
+      >{r.sensor}</span>
     </td>
   {:else if c.key === 'node'}
     <td class={DIM}>
@@ -336,7 +427,19 @@
         {/if}
       </span>
     {/if}
-    <ColumnMenu of="Temperatures" groups={[{ label: 'Sensors', view: cols }]} />
+    <div class="segmented" role="group" aria-label="View">
+      {#each ['table', 'gauges'] as const as v (v)}
+        <button
+          class:active={view === v}
+          aria-pressed={view === v}
+          title={v === 'table' ? 'Every sensor, ranked by headroom' : 'A dial a node for each group, live'}
+          onclick={() => setView(v)}>{v}</button
+        >
+      {/each}
+    </div>
+    {#if view === 'table'}
+      <ColumnMenu of="Temperatures" groups={[{ label: 'Sensors', view: cols }]} />
+    {/if}
   </header>
 
   {#if !rows.length}
@@ -345,11 +448,34 @@
       <code>/sys/class/hwmon</code> — this needs an agent from 2026-08-25 or later,
       with the host's <code>/sys</code> mounted.
     </p>
+  {:else if view === 'gauges'}
+    <div class="domains gauges">
+      {#each groups as g (g.key)}
+        {@const combo = comboOf('gauges', g.key)}
+        {@const items = thermalItems(combineRows(g.rows, combo === 'average' ? 'average' : 'hottest'), colourOf)}
+        <section class="domain">
+          <h3 class="head-row" title={g.note}>
+            {g.label}
+            <span class="count">{g.rows.length}</span>
+            {@render combineControl('gauges', g.key, combo)}
+          </h3>
+          <GaugePanel
+            title={g.label}
+            caption={false}
+            height={GAUGE_PX}
+            sizeFor={mostNodes}
+            {items}
+            tiles={items.every((it) => it.bands === null)}
+          />
+        </section>
+      {/each}
+    </div>
   {:else}
     <div class="domains">
       {#each groups as g (g.key)}
       {@const view = viewFor(g.key)}
-      {@const shown = view.slice(ordered(view, g.rows))}
+      {@const groupRowsShown = rowsOf(g, 'table')}
+      {@const shown = view.slice(ordered(view, groupRowsShown))}
       <section class="domain">
         <!-- The note is the heading's TITLE rather than a line of text. It
              explains something the numbers cannot — why the GPU limit reads 90°
@@ -359,6 +485,7 @@
         <h3 class="head-row" title={g.note}>
           {g.label}
           <span class="count">{g.rows.length}</span>
+          {@render combineControl('table', g.key, comboOf('table', g.key))}
         </h3>
         <div class="scroll">
           <table class={TABLE}>
@@ -413,7 +540,7 @@
             </tbody>
           </table>
         </div>
-        <Pager {view} total={g.rows.length} label="{g.label} pages" />
+        <Pager {view} total={groupRowsShown.length} label="{g.label} pages" />
       </section>
       {/each}
     </div>
@@ -516,6 +643,21 @@
     font-weight: 400;
     color: var(--ink-muted);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* At the end of the heading, in the heading's own case. */
+  .head-row .combine {
+    margin-left: auto;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+
+  /* Dials need far less width than a table, so groups sit side by side.
+     auto-fit, not auto-fill: the empty tracks collapse and the groups share
+     the width, rather than five groups sitting in room laid out for eight. */
+  .domains.gauges {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   }
 
 

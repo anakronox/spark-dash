@@ -7977,6 +7977,33 @@ column. Mocked first (a private artifact), then built with his changes.
 - Not built: a search box over the settings. The rail is enough at six
   panes.
 
+### BD — Temperatures as gauges, and one reading per node — **built 2026-10-16**
+
+Brian: the gauge treatment for the Temperatures card, an option to average
+the zones for a quick overview of the whole system's temperature, and the
+same per node for the NICs and the NVMe.
+
+- [x] **BD1. Combine per group.** Each group's heading takes **each**
+  (every sensor, as before and the default), **hottest** (one row a node:
+  its hottest sensor) or **avg** (one row a node: the mean of its sensors).
+  Kept per copy of the card. Averaging the package group gives the
+  overview: on 2026-10-16 the seven zones averaged 46.7 to 54.1 °C across
+  the three nodes.
+- [x] **BD2. An average never decides the state.** This card's rule is MAX,
+  never mean, because a mean of 95.4 and 58.0 describes nothing physical.
+  So a combined row's headroom, its colour and its dial's state come from
+  the sensor closest to its own limit, never from the mean, and its tooltip
+  names that sensor and the hottest one. An average of 61° can still read
+  5° left and turn red. The limit shown is that sensor's.
+- [x] **BD3. Gauges.** **table | gauges** beside the title, per copy. A dial
+  per node per group, hottest by default or the average; never a dial per
+  sensor, which would be sixty-odd for the package zones. The scale runs
+  from 40 °C, where the table's bar starts, to the group's tightest limit,
+  with marks where the card turns amber (15° left) and red (5° left), the
+  same thresholds as the table's colours, so a dial and its row agree.
+  A group whose sensors state no limit (the radio) is plain numbers, not
+  empty dials. Every group's dials are one size. Live from the snapshot.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

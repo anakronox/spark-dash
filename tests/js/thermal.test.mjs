@@ -18,6 +18,10 @@ import {
   tempRows,
   tightest,
   groupRows as group,
+  combineRows,
+  headroomState,
+  thermalItems,
+  FLOOR_C,
 } from '../../frontend/src/lib/thermal.ts';
 
 const tests = [];
@@ -220,6 +224,78 @@ test('32 nodes of sensors group and rank', () => {
   assert.equal(g[0].rows.length, 32 * 2);
   assert.equal(g[0].rows[0].node, 'gx10-17', 'the tripping node did not head its domain');
   assert.equal(tightest(rows).node, 'gx10-17');
+});
+
+/* --- BD: combined readings and gauges ------------------------------ */
+
+const pkg = () =>
+  tempRows([
+    node('sparky', [
+      ['package', 'zone0', 95.4, 104.8],
+      ['package', 'zone1', 58.0, 104.8],
+      ['package', 'zone2', 58.6, 104.8],
+    ]),
+    node('sparketa', [['package', 'zone0', 50.0, 104.8], ['package', 'zone1', 48.0, 104.8]]),
+  ]);
+
+test('hottest per node is the hottest sensor, one row a node', () => {
+  const r = combineRows(pkg(), 'hottest');
+  assert.equal(r.length, 2);
+  const s = r.find((x) => x.node === 'sparky');
+  assert.equal(s.celsius, 95.4);
+  assert.equal(s.count, 3);
+  assert.match(s.sensor, /hottest of 3: zone0/);
+});
+
+test('an average is the mean, and its state still comes from the tightest sensor', () => {
+  const s = combineRows(pkg(), 'average').find((x) => x.node === 'sparky');
+  assert.ok(Math.abs(s.celsius - (95.4 + 58.0 + 58.6) / 3) < 1e-9);
+  // 70.7 on average would look comfortable against 104.8; zone0 has 9.4 left.
+  assert.ok(Math.abs(s.headroomC - 9.4) < 1e-9);
+  assert.equal(s.tightestSensor, 'zone0');
+  assert.equal(headroomState(s.headroomC), 'warning', 'an average hid the hot zone');
+  assert.equal(s.hottestSensor, 'zone0');
+});
+
+test('combined rows rank by headroom, least first', () => {
+  const r = combineRows(pkg(), 'average');
+  assert.deepEqual(r.map((x) => x.node), ['sparky', 'sparketa']);
+});
+
+test('headroom states match the table: 5 or less critical, 15 or less warning', () => {
+  assert.equal(headroomState(5), 'critical');
+  assert.equal(headroomState(5.1), 'warning');
+  assert.equal(headroomState(15), 'warning');
+  assert.equal(headroomState(15.1), 'ok');
+  assert.equal(headroomState(null), 'ok');
+});
+
+test('a dial runs from the floor to the tightest limit, with the card\'s two marks', () => {
+  const items = thermalItems(combineRows(pkg(), 'hottest'), () => '#000');
+  const s = items.find((x) => x.id === 'sparky');
+  assert.ok(Math.abs(s.fraction - (95.4 - FLOOR_C) / (104.8 - FLOOR_C)) < 1e-9);
+  assert.deepEqual(s.scale, ['40°', '105°']);
+  assert.ok(Math.abs(s.bands[0] - (104.8 - 15 - FLOOR_C) / (104.8 - FLOOR_C)) < 1e-9);
+  assert.ok(Math.abs(s.bands[1] - (104.8 - 5 - FLOOR_C) / (104.8 - FLOOR_C)) < 1e-9);
+  assert.equal(s.state, 'warning');
+  assert.equal(s.value, '95.4°');
+  assert.deepEqual(items.map((x) => x.id), ['sparketa', 'sparky'], 'dials are in node order, not by heat');
+});
+
+test('an average dial says so, and names the hottest sensor in its title', () => {
+  const s = thermalItems(combineRows(pkg(), 'average'), () => '#000').find((x) => x.id === 'sparky');
+  assert.equal(s.unit, 'avg °C');
+  assert.match(s.title, /hottest zone0 95\.4°/);
+  assert.match(s.title, /zone0, 9\.4° left/);
+});
+
+test('a group with no stated limit gets an empty dial, not a made-up scale', () => {
+  const rows = tempRows([node('sparky', [['wireless', 'phy0', 42.0]])]);
+  const [s] = thermalItems(combineRows(rows, 'hottest'), () => '#000');
+  assert.equal(s.fraction, 0);
+  assert.equal(s.bands, null);
+  assert.equal(s.scale[1], '—');
+  assert.equal(s.state, 'ok');
 });
 
 let failed = 0;

@@ -24,8 +24,10 @@
     /** Size the dials as though there were this many, so every panel on a
      *  card draws them the same size: the fullest panel's count. */
     sizeFor?: number;
+    /** False when the card draws its own heading above the panel. */
+    caption?: boolean;
   }
-  const { title, verbatim = false, note, noteTitle, height, items, tiles = false, sizeFor = 0 }: Props =
+  const { title, verbatim = false, note, noteTitle, height, items, tiles = false, sizeFor = 0, caption = true }: Props =
     $props();
 
   // The box's 4px top padding comes off the height the dials can use.
@@ -38,11 +40,13 @@
   });
 </script>
 
-<figure class="gauge">
+<figure class="gauge" aria-label={caption ? undefined : title}>
+  {#if caption}
   <figcaption>
     <span class="name" class:verbatim>{title}</span>
     {#if note}<span class="note" title={noteTitle}>· {note}</span>{/if}
   </figcaption>
+  {/if}
 
   <div class="box" style:height="{height}px" bind:clientWidth={width} data-plot>
     {#if !items.length}
