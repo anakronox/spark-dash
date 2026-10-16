@@ -7960,6 +7960,48 @@ node names, units and scales, which temperatures have bands, the alerts
 and events in the window, who called through the gateway, and that GB10's
 memory is one pool.
 
+- **More tools, planned 2026-10-16.** Brian, after Hermes's forensics run:
+  build all of these, the event feed above all, for agents that open
+  tickets (Paperclip and the like) and react while it is happening.
+  - [ ] **BB8. Time to first token over any window.** `latency(start, end)`:
+    p50, p95 and rate per model as a series, not just the last 15 minutes.
+  - [ ] **BB9. Monitoring health.** Targets down or absent, when each node
+    was last scraped, agent versions, and the gaps in a window, so an
+    agent can tell "no data" from "idle" before it averages over a hole.
+  - [ ] **BB10. `compare(a, b)`.** Two arbitrary windows side by side, every
+    named series per node ranked by how far it moved, with `correlate`'s
+    scoring: this week against last, before and after a deploy.
+  - [ ] **BB11. Topology.** Which nodes pool into a cluster, the engines and
+    routers on each, and the interfaces alerting watches, from
+    `cluster.yml` and the live snapshot.
+  - [ ] **BB12. Alerting.** The rules with their thresholds and `for:`, what
+    is silenced and maintenance windows, with who and why.
+  - [ ] **BB13. Model activity.** Per model: loads and unloads with how long
+    each took (roadmap T), and its throughput and time to first token over
+    a window.
+  - [ ] **BB14. DGX OS updates.** Each node's pending packages, firmware and
+    last check, read-only, when the updater is set up.
+  - [ ] **BB15. Prompts.** MCP prompt templates (a daily report, an incident
+    report for a window, what is using capacity), so every client produces
+    the same shape of report.
+  - [ ] **BB16. Resources.** The metrics guide and the GB10 notes (unified
+    memory, thermal limits, why NVML's memory figure is wrong) served as
+    readable documents.
+  - [ ] **BB17. Notes on the timeline.** An agent may add an annotation,
+    "benchmark started", so a later `correlate` explains the spike. The
+    first write a tool can make, so behind a switch of its own, off by
+    default; notes are marked as an agent's.
+  - [ ] **BB18. Events pushed to agents.** Alert transitions (fired,
+    resolved) detected by the backend from Prometheus every 15 s, so no
+    Alertmanager change and no restart, delivered three ways: **webhooks**
+    (URLs set in Settings, each POST signed with HMAC-SHA256, a Test
+    button, retried with backoff), which is what Paperclip and similar
+    take; a **`wait_for_event(since, timeout)`** tool that holds the call
+    until something happens, which any MCP client can loop on; and **MCP
+    subscriptions** on a firing-alerts resource for clients that support
+    them. Each event carries the alert, the node, when, and a short
+    `correlate` summary, so the receiver starts with context.
+
 ### BC — Settings as a wide fly-out with a rail — **built 2026-10-16**
 
 Brian: Settings had grown too long to scroll, ten sections in one 420px
@@ -8018,6 +8060,26 @@ same per node for the NICs and the NVMe.
   same thresholds as the table's colours, so a dial and its row agree.
   A group whose sensors state no limit (the radio) is plain numbers, not
   empty dials. Every group's dials are one size. Live from the snapshot.
+
+### BE — Onboarding: what to set up, in order — **planned 2026-10-16**
+
+Brian: the product is becoming more complicated, so a walk-through of the
+features with tips on what to configure, required first, optional last.
+
+- [ ] **BE1. A setup checklist** that reads its state from the backend
+  rather than from what the reader clicked: *required*, nodes reporting,
+  Prometheus scraping them, Alertmanager reachable with a route that
+  notifies someone; *recommended*, thermal bands from each node's own
+  hardware rather than the fallback, clusters named where nodes pool;
+  *optional*, DGX OS updates, client stats, the assistant, agent tools,
+  webhooks. Each item says why it matters and goes straight to where it is
+  set.
+- [ ] **BE2. Shown first.** Open on a first visit, and from a "setup 3/5"
+  chip in the header while anything required is missing; dismissable, and
+  reopened from Settings.
+- [ ] **BE3. A short tour of the page.** Tips pinned to the features a
+  reader would not find by looking: drag a card's corner, `+ element` for a
+  second copy, charts or gauges, the groups menus, Ask. Skippable, once.
 
 ### J — Single-host profile (everything on one GB10)
 
