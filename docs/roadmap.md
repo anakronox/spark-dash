@@ -8209,6 +8209,10 @@ BB), so a report is a composition of them, not a new query layer.
   `time: 10:30` as the integer 630, which the parser now accepts. The
   notification goes to the ntfy topic without the Alertmanager template, as
   plain text with a title, the headline and a link.
+- The image publish that failed on a first run about one time in three,
+  2026-10-16/17, was caught in its log: `failed to fetch anonymous token`
+  from ghcr.io, a TLS handshake timeout fetching base-image metadata.
+  `build-images.sh` now retries a build three times, ten seconds apart.
 
 ### BJ — More notification channels: Slack, Telegram, Discord — **planned 2026-10-16**
 

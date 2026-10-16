@@ -128,8 +128,25 @@ build() {
   # BUILD_VERSION is what the running container reports as its version. Without
   # it a stale container presents as a missing feature rather than as a stale
   # container, which has cost real debugging time here more than once.
-  docker build -f "$dockerfile" --build-arg "BUILD_VERSION=${TAG}" \
-    -t "${name}:${TAG}" -t "${name}:latest" .
+  #
+  # RETRIED, three times. Every build fetches base-image metadata from
+  # ghcr.io and Docker Hub, and a TLS handshake timeout there failed roughly
+  # one publish in three on 2026-10-16/17 ("failed to fetch anonymous
+  # token ... TLS handshake timeout") while the code was fine. A retry
+  # reuses the layer cache, so it costs seconds.
+  local attempt
+  for attempt in 1 2 3; do
+    if docker build -f "$dockerfile" --build-arg "BUILD_VERSION=${TAG}" \
+      -t "${name}:${TAG}" -t "${name}:latest" .; then
+      break
+    fi
+    if [[ $attempt -eq 3 ]]; then
+      echo "${c_bad}build failed three times${c_off}" >&2
+      exit 1
+    fi
+    echo "${c_warn}build failed (attempt ${attempt} of 3); retrying in 10s${c_off}" >&2
+    sleep 10
+  done
 
   echo "${c_ok}built${c_off} ${name}:${TAG} ${c_dim}(and :latest)${c_off}"
   echo "${c_dim}this is the stacks' default image, so 'up -d' runs it as-is,${c_off}"
