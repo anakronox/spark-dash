@@ -38,6 +38,17 @@
   import { SEEN_KEY, TOUR_KEY } from '../lib/setup.svelte';
   import { ntfySet, ntfyStatus, ntfyTest, ntfyTopic, type NtfyStatus } from '../lib/notifications';
   import {
+    HOW as CHANNEL_HOW,
+    LABEL as CHANNEL_LABEL,
+    channelsStatus,
+    newChannel,
+    saveChannels,
+    testChannel,
+    type Channel,
+    type ChannelType,
+    type ChannelsStatus,
+  } from '../lib/channels';
+  import {
     describe as describeSchedule,
     newSchedule,
     reportsMeta,
@@ -646,6 +657,9 @@
       loadNtfy();
       rError = rNote = null;
       loadReports();
+      cError = null;
+      cNote = {};
+      loadChannels();
       assistant?.load().then(() => {
         aUrl = assistant?.status?.url ?? '';
         aModel = assistant?.status?.model ?? '';
@@ -725,7 +739,7 @@
     reportsMeta()
       .then((m) => {
         rMeta = m;
-        rDraft = structuredClone(m.config);
+        rDraft = $state.snapshot(m.config);
       })
       .catch((err) => (rError = (err as Error).message));
   async function rAction(fn: () => Promise<void>) {
@@ -743,7 +757,7 @@
   const saveReports = () =>
     rAction(async () => {
       rMeta = await saveReportsConfig(rDraft!);
-      rDraft = structuredClone(rMeta.config);
+      rDraft = $state.snapshot(rMeta.config);
       rNote = 'saved';
     });
   const runNow = (id: string) =>
@@ -756,6 +770,58 @@
   const local = (iso: string | undefined) =>
     iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
   const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+  /* COPIES ARE `$state.snapshot`, never structuredClone: a value read back
+     from $state is a proxy, which structuredClone refuses ("could not be
+     cloned"), and the page then never took up what it had just saved
+     (2026-10-17, saving a channel). */
+
+  /* CHANNELS (roadmap BJ): Slack, Discord, Telegram, sent by the dashboard
+     from the alerts Alertmanager forwards to it. Edited as a draft, saved
+     whole; a secret field left empty keeps the stored secret. */
+  let cStatus = $state<ChannelsStatus | null>(null);
+  let cDraft = $state<Channel[]>([]);
+  let cBusy = $state(false);
+  let cError = $state<string | null>(null);
+  let cNote = $state<Record<string, string>>({});
+  const strip = (list: Channel[]) =>
+    list.map(({ secret: _x, secret_set: _s, secret_hint: _h, ...c }) => c);
+  const cDirty = $derived(
+    !!cStatus &&
+      (JSON.stringify(strip(cStatus.channels)) !== JSON.stringify(strip(cDraft)) || cDraft.some((c) => c.secret)),
+  );
+  const loadChannels = () =>
+    channelsStatus()
+      .then((st) => {
+        cStatus = st;
+        cDraft = $state.snapshot(st.channels);
+      })
+      .catch((err) => (cError = (err as Error).message));
+  async function cAction(fn: () => Promise<void>) {
+    if (cBusy) return;
+    cBusy = true;
+    cError = null;
+    try {
+      await fn();
+    } catch (err) {
+      cError = (err as Error).message;
+    } finally {
+      cBusy = false;
+    }
+  }
+  const saveAllChannels = () =>
+    cAction(async () => {
+      cStatus = await saveChannels(cDraft);
+      cDraft = $state.snapshot(cStatus.channels);
+      cNote = {};
+    });
+  const testOne = (id: string) =>
+    cAction(async () => {
+      if (cDirty) throw new Error('save the channels first');
+      const r = await testChannel(id);
+      cNote = { ...cNote, [id]: r.ok ? 'sent: look in the channel' : `refused (${r.status}): ${r.detail ?? ''}` };
+    });
+  const addChannel = (t: ChannelType) => (cDraft = [...cDraft, newChannel(t)]);
 
   /* THE SHELL (roadmap BC). One pane at a time beside a rail, in a fly-out
      as wide as the update manager's and resizable from its left edge. The
@@ -813,8 +879,21 @@
       items: [
         {
           id: 'notifications', label: 'Notifications', shown: true,
-          dot: !ntfy ? undefined : !ntfy.capability.ok ? 'warn' : ntfy.configured ? 'on' : 'off',
-          state: !ntfy ? undefined : !ntfy.capability.ok ? 'setup' : ntfy.configured ? undefined : 'off',
+          // On if ntfy or any channel delivers; "setup" only when neither can.
+          dot: !ntfy
+            ? undefined
+            : ntfy.configured || cStatus?.channels.some((c) => c.enabled && c.secret_set)
+              ? 'on'
+              : !ntfy.capability.ok
+                ? 'warn'
+                : 'off',
+          state: !ntfy
+            ? undefined
+            : ntfy.configured || cStatus?.channels.some((c) => c.enabled && c.secret_set)
+              ? undefined
+              : !ntfy.capability.ok
+                ? 'setup'
+                : 'off',
         },
         {
           id: 'updates', label: 'DGX OS updates', shown: !!fleet,
@@ -1479,7 +1558,7 @@
               >+ schedule</button
             >
             <span class="note dim rest">{rNote ?? ''}</span>
-            <button class="mini" disabled={!rDirty || rBusy} onclick={() => (rDraft = structuredClone(rMeta!.config))}
+            <button class="mini" disabled={!rDirty || rBusy} onclick={() => (rDraft = $state.snapshot(rMeta!.config))}
               >Revert</button
             >
             <button class="mini save" disabled={!rDirty || rBusy} onclick={saveReports}>Save</button>
@@ -1596,6 +1675,82 @@
             </p>
           {/if}
         </div>
+      </section>
+
+      <section class="stack wide">
+        <h3 class="eyebrow dim">Slack, Discord and Telegram</h3>
+        {#if cStatus && !cStatus.forwarding && cStatus.alertmanager_reachable}
+          <p class="note" data-tone="warning">
+            Alertmanager is not forwarding alerts to the dashboard yet, so these channels get reports and
+            tests but not alerts. It needs the <code>alertmanager.yml</code> from this release loaded:
+            <code>curl -X POST http://&lt;monitoring-host&gt;:9093/-/reload</code> after the update.
+          </p>
+        {/if}
+        {#if cStatus && !cStatus.token}
+          <p class="note" data-tone="warning">
+            The dashboard cannot write the token Alertmanager presents into <code>secrets/</code>; it needs
+            the same setup as the ntfy topic above.
+          </p>
+        {/if}
+        <p class="note dim">
+          Sent by the dashboard from the alerts Alertmanager forwards to it, so channels change here
+          with nothing to restart. ntfy stays separate and direct, so alerts still reach a phone if the
+          dashboard is down.
+        </p>
+        <div class="nodes">
+          {#each cDraft as c, i (c.id)}
+            <div class="node">
+              <div class="node-head">
+                <span class="tag">{CHANNEL_LABEL[c.type]}</span>
+                <input class="in id" aria-label="Channel name" bind:value={c.name} />
+                <label class="check"><input type="checkbox" bind:checked={c.enabled} /> on</label>
+                <button class="mini" disabled={cBusy || !c.secret_set} onclick={() => testOne(c.id)}>test</button>
+                <button class="mini" onclick={() => (cDraft = cDraft.filter((_, j) => j !== i))}>remove</button>
+              </div>
+              <input
+                class="in"
+                type="password"
+                autocomplete="off"
+                aria-label="{CHANNEL_LABEL[c.type]} {c.type === 'telegram' ? 'bot token' : 'webhook URL'}"
+                placeholder={c.secret_set
+                  ? `set (${c.secret_hint}); leave empty to keep`
+                  : c.type === 'telegram'
+                    ? 'bot token, 123456789:AA…'
+                    : 'webhook URL, https://…'}
+                bind:value={c.secret}
+              />
+              {#if c.type === 'telegram'}
+                <input class="in" aria-label="Telegram chat id" placeholder="chat id, e.g. -1001234567890"
+                  bind:value={c.chat_id} />
+              {/if}
+              <div class="rt-row">
+                <select class="in" aria-label="Which alerts" bind:value={c.alerts}>
+                  <option value="all">every alert</option>
+                  <option value="critical">critical only</option>
+                  <option value="off">no alerts</option>
+                </select>
+                <label class="check"><input type="checkbox" bind:checked={c.resolved} /> recoveries</label>
+                <label class="check"><input type="checkbox" bind:checked={c.reports} /> reports</label>
+              </div>
+              {#if !c.secret_set}<p class="note dim">{CHANNEL_HOW[c.type]}</p>{/if}
+              {#if cNote[c.id]}<p class="note">{cNote[c.id]}</p>{/if}
+            </div>
+          {/each}
+        </div>
+        <div class="actions savebar">
+          <button class="mini add" onclick={() => addChannel('slack')}>+ Slack</button>
+          <button class="mini add" onclick={() => addChannel('discord')}>+ Discord</button>
+          <button class="mini add" onclick={() => addChannel('telegram')}>+ Telegram</button>
+          <span class="note dim rest"></span>
+          <button class="mini" disabled={!cDirty || cBusy} onclick={() => (cDraft = $state.snapshot(cStatus!.channels))}
+            >Revert</button
+          >
+          <button class="mini save" disabled={!cDirty || cBusy} onclick={saveAllChannels}>Save</button>
+        </div>
+        {#if cError}<p class="note" data-tone="warning">{cError}</p>{/if}
+        {#if cStatus?.error}
+          <p class="note" data-tone="warning">The <code>channels:</code> block in <code>cluster.yml</code> has a mistake: {cStatus.error}</p>
+        {/if}
       </section>
       {/if}
       {#if pane === 'updates'}

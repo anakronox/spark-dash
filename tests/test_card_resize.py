@@ -1298,3 +1298,12 @@ def test_the_page_never_scrolls_sideways_on_a_phone():
     for name in ("Trends.svelte", "NetworkTrends.svelte"):
         controls = css_block(FRONTEND / "components" / name, ".controls {")
         assert "flex-wrap: wrap" in controls, f"{name}'s controls run off a phone screen"
+
+
+def test_no_component_copies_state_with_structuredClone():
+    """A value read back from $state is a proxy; structuredClone refuses it
+    ("could not be cloned"). Settings did after saving a channel and never
+    took up what it had saved (2026-10-17). $state.snapshot copies it."""
+    for path in sorted((FRONTEND / "components").glob("*.svelte")):
+        src = without_comments(path.read_text())
+        assert "structuredClone(" not in src, f"{path.name} copies state with structuredClone"

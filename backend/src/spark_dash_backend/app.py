@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import secrets
 import logging
 import os
 import time
@@ -66,7 +67,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
-from spark_dash_backend import agent_tools, assistant, notifications, reports, setup
+from spark_dash_backend import agent_tools, assistant, channels, notifications, reports, setup
 from spark_dash_backend.latency import latency, latency_over
 from spark_dash_backend.notes import NoteStore
 from spark_dash_backend.maintenance import (
@@ -211,6 +212,25 @@ class ReportBuild(BaseModel):
     title: str | None = Field(None, max_length=120)
     keep: bool = False
     narrative: bool = False
+
+
+class ChannelWrite(BaseModel):
+    """BJ: one channel. `secret` (a webhook URL or a bot token) only when it
+    is being set or changed; left out, the stored one is kept."""
+
+    id: str | None = None
+    type: str
+    name: str = ""
+    enabled: bool = True
+    alerts: str = "all"
+    resolved: bool = True
+    reports: bool = True
+    chat_id: str | None = None
+    secret: str | None = Field(None, max_length=500)
+
+
+class ChannelsWrite(BaseModel):
+    channels: list[ChannelWrite]
 
 
 class NtfyWrite(BaseModel):
@@ -1740,16 +1760,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     async def _notify_report(doc: dict, config: reports.ReportsConfig) -> dict | None:
-        """BI6: a short line and a link, through ntfy. BJ adds channels."""
-        url = ntfy.read() if ntfy.capability()["ok"] else None
-        if not url:
-            return None
+        """BI6: a short line and a link, through ntfy and every channel that
+        takes reports (BJ)."""
         link = f"{config.public_url}/?report={doc['id']}" if config.public_url else None
-        body = "\n".join(doc.get("headline") or ["Report ready."])
-        try:
-            return await notifications.send_plain(url, title=doc["title"], message=body, click=link)
-        except httpx.HTTPError as exc:
-            return {"ok": False, "detail": str(exc)}
+        lines = doc.get("headline") or ["Report ready."]
+        out: dict = {}
+        url = ntfy.read() if ntfy.capability()["ok"] else None
+        if url:
+            try:
+                out["ntfy"] = await notifications.send_plain(url, title=doc["title"], message="\n".join(lines),
+                                                             click=link)
+            except httpx.HTTPError as exc:
+                out["ntfy"] = {"ok": False, "detail": str(exc)}
+        chs, _ = _channels()
+        if chs:
+            msg = channels.Message(title=doc["title"], lines=list(lines), url=link, kind="report")
+            out["channels"] = await channels.fan_out(chs, channels.read_secrets(settings.cluster_config), msg)
+        return out or None
 
     async def _run_schedule(s: reports.Schedule, due) -> dict:
         config, _ = _reports_config()
@@ -2080,6 +2107,109 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return await notifications.send_test(url)
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"could not reach the ntfy server: {exc}") from exc
+
+    # --- Slack, Discord, Telegram (roadmap BJ) ---------------------------------------
+
+    def _channels() -> tuple[tuple[channels.Channel, ...], str | None]:
+        try:
+            return channels.load_channels(settings.cluster_config), None
+        except ClusterConfigError as exc:
+            return (), str(exc)
+
+    async def _channels_status() -> dict:
+        chs, error = _channels()
+        stored = channels.read_secrets(settings.cluster_config)
+        token = await asyncio.to_thread(channels.ensure_webhook_token, settings.notifications_dir)
+        routing = None
+        if await alertmanager.reachable():
+            try:
+                routing = await alertmanager.routing()
+            except Exception:  # noqa: BLE001
+                routing = None
+        return {
+            "channels": [{**c.as_dict(), "secret_set": c.id in stored, "secret_hint": channels.hint(stored.get(c.id))}
+                         for c in chs],
+            "error": error,
+            "types": list(channels.TYPES),
+            # Alerts reach the channels only when Alertmanager forwards them
+            # here: the shipped alertmanager.yml does, once loaded, and it
+            # presents the token from secrets/.
+            "forwarding": bool(routing and channels.RECEIVER in (routing.get("receivers") or {})),
+            "alertmanager_reachable": routing is not None,
+            "token": token is not None,
+        }
+
+    @app.get("/api/channels")
+    async def api_channels() -> dict:
+        """The channels, never their secrets: whether one is set and its end."""
+        return await _channels_status()
+
+    @app.put("/api/channels")
+    async def api_channels_write(body: ChannelsWrite) -> dict:
+        """The whole list. A channel's secret is written when given and kept
+        when not; a removed channel's secret goes with it."""
+        stored = channels.read_secrets(settings.cluster_config)
+        out, keep = [], {}
+        try:
+            for w in body.channels:
+                c = channels.parse_channel(w.model_dump(exclude={"secret"}))
+                if w.secret:
+                    keep[c.id] = channels.check_secret(c.type, w.secret)
+                elif c.id in stored:
+                    keep[c.id] = stored[c.id]
+                out.append(c)
+            chs = tuple(out)
+            if len({c.id for c in chs}) != len(chs):
+                raise ClusterConfigError("channels must have different ids")
+            await asyncio.to_thread(channels.write_channels, settings.cluster_config, chs)
+            await asyncio.to_thread(channels.write_secrets, settings.cluster_config, keep)
+        except NoClusterFileError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (ClusterConfigError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return await _channels_status()
+
+    @app.post("/api/channels/{cid}/test")
+    async def api_channels_test(cid: str) -> dict:
+        chs, _ = _channels()
+        c = next((x for x in chs if x.id == cid), None)
+        if c is None:
+            raise HTTPException(status_code=404, detail="no such channel; save it first")
+        secret = channels.read_secrets(settings.cluster_config).get(cid)
+        if not secret:
+            raise HTTPException(status_code=409, detail="set the webhook or token first")
+        rc, _ = _reports_config()
+        msg = channels.Message(title="Test from spark-dash",
+                               lines=["Alerts and reports will arrive here, as this channel's settings say."],
+                               url=rc.public_url, kind="test")
+        try:
+            return await channels.send(c, secret, msg)
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"could not reach {c.type.title()}: {type(exc).__name__}") from exc
+
+    @app.post("/api/alerts/notify")
+    async def api_alerts_notify(request: Request) -> dict:
+        """Alertmanager's webhook (the `spark-dash` receiver): one
+        notification, fanned out to the channels that want it. Refused
+        without the token from secrets/, so nothing else on the LAN can post
+        alerts into a team's Slack."""
+        token = await asyncio.to_thread(channels.ensure_webhook_token, settings.notifications_dir)
+        given = request.headers.get("authorization", "")
+        presented = given[7:].strip() if given[:7].lower() == "bearer " else ""
+        if not token or not secrets.compare_digest(presented.encode(), token.encode()):
+            raise HTTPException(status_code=401, detail="a bearer token is required")
+        try:
+            payload = await request.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="not JSON") from exc
+        chs, _ = _channels()
+        rc, _ = _reports_config()
+        msg = channels.from_alertmanager(payload if isinstance(payload, dict) else {}, rc.public_url)
+        sent = await channels.fan_out(chs, channels.read_secrets(settings.cluster_config), msg)
+        for cid, r in sent.items():
+            if not r.get("ok"):
+                log.warning("channel %s did not take an alert: %s", cid, r)
+        return {"sent": sent}
 
     @app.get("/api/setup")
     async def api_setup() -> dict:

@@ -323,7 +323,27 @@ sudo chmod 2770 secrets && sudo chmod 660 secrets/ntfy-url
 
 Until then the pane names the missing piece. A hand-maintained compose copy (a
 deploy tool running compose from its own directory) needs the same mount and
-`group_add`. Setting the topic by hand, and self-hosting ntfy, are in
+`group_add`.
+
+**Slack, Discord and Telegram** are set in the same pane, any number of each,
+and sent by the dashboard rather than by Alertmanager: the shipped
+`alertmanager.yml` has a second receiver, `spark-dash`, that forwards every
+alert to `POST /api/alerts/notify` (with `continue: true`, so ntfy still gets
+it, direct), and the dashboard fans it out. Channels therefore change from
+Settings with nothing to reload, and ntfy still reaches a phone when the
+dashboard is down. Each channel chooses every alert, critical only or none,
+whether recoveries are sent, and whether scheduled reports are; each has a
+**test**. Messages are formatted for the service: a Slack attachment and a
+Discord embed coloured by severity, a Telegram message in bold with a link.
+The webhook URL or bot token is kept in `cluster/channels.secrets.json`
+(0600); the page only ever sees its last four characters. Alertmanager
+proves itself with a token the backend writes to
+`secrets/dashboard-webhook-token`, which both containers mount, so nothing
+else on the LAN can post alerts into a team's channel. After updating to a
+release with this receiver, Alertmanager must load it once:
+`curl -X POST http://<monitoring-host>:9093/-/reload` (or a restart); until
+then the pane says alerts are not forwarded yet, and reports and tests still
+work. Setting the topic by hand, and self-hosting ntfy, are in
 [central/README.md](../central/README.md#notifications-ntfy).
 
 ### DGX OS updates — optional

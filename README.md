@@ -79,8 +79,10 @@ critical colours still come from whichever sensor is closest to its limit.
 Switch the card to **gauges** for a dial per node in each group.
 
 **Alerting you can trust.** 35 rules, with push notifications via
-[ntfy](https://ntfy.sh) — no account, no API key — set up from **Settings →
-Notifications**, which makes the topic, shows it to subscribe, and sends a test. Thermal bands come from each
+[ntfy](https://ntfy.sh) — no account, no API key — and to **Slack, Discord and
+Telegram**, all set up from **Settings → Notifications**: ntfy's topic made and
+shown to subscribe, each channel choosing every alert or critical only and
+whether recoveries and reports come too, each with a test button. Thermal bands come from each
 node's own hardware limits, and you're told if a node falls back to a guess. A
 GX10 sits at ~84°C doing routine work, so a generic 80°C threshold would page
 you all day.

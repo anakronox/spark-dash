@@ -8233,28 +8233,39 @@ BB), so a report is a composition of them, not a new query layer.
   the narrower page, and a section heading with no room under it starts the
   next page.
 
-### BJ — More notification channels: Slack, Telegram, Discord — **planned 2026-10-16**
+### BJ — More notification channels: Slack, Telegram, Discord — **built 2026-10-17**
 
 Brian: notifications to Slack, Telegram and Discord as well as ntfy, for
 alerts and for reports (BI6).
 
-- [ ] **BJ1. Alerts.** Alertmanager speaks all three natively
-  (`slack_configs`, `telegram_configs`, `discord_configs`), and each takes
-  its secret from a file (`api_url_file`, `bot_token_file`,
-  `webhook_url_file`), as ntfy's topic already is. So a channel is a
-  receiver in `alertmanager.yml` plus a secret file in `secrets/`, set
-  from Settings → Notifications. Unlike the ntfy topic, which Alertmanager
-  re-reads on every send, a new receiver is configuration: the backend
-  writes the config and asks Alertmanager to reload it (`POST /-/reload`),
-  which needs the config mount writable by the backend, the same
-  capability pattern as BF. To check before building: whether Alertmanager
-  re-reads these secret files per send, as it does `url_file`.
-- [ ] **BJ2. Which alerts go where.** Per channel: every alert, or
+- [x] **BJ1. Alerts.** Built 2026-10-17, **not as planned.** The plan was
+  native Alertmanager receivers written by the backend and reloaded; but
+  `alertmanager.yml` is tracked in git, so the dashboard rewriting it would
+  collide with every `git pull`, and each change would need a reload.
+  Instead the shipped config has one more receiver, `spark-dash`, a webhook
+  to the backend (`/api/alerts/notify`) with `continue: true`, and the
+  dashboard fans out to the channels in Settings. ntfy stays direct, so
+  alerts reach a phone when the dashboard is down. Routing checked with
+  `amtool config routes test`: critical, warning and an alert with no
+  severity each go to `spark-dash` once and to `ntfy` once; the catch-all
+  ntfy route is named, since a matched child route stops Alertmanager
+  falling back to the parent's receiver. Alertmanager authenticates with a
+  bearer token the backend writes to `secrets/` (credentials_file).
+- [x] **BJ2. Which alerts go where.** Per channel: every alert, or
   critical only; recoveries on or off.
-- [ ] **BJ3. Reports.** The backend posts a report's notification to the
+- [x] **BJ3. Reports.** The backend posts a report's notification to the
   channels a schedule names, directly, since reports do not pass through
   Alertmanager.
-- [ ] **BJ4. A test per channel**, as ntfy's.
+- [x] **BJ4. A test per channel**, as ntfy's.
+- Secrets in `cluster/channels.secrets.json` (0600), the page seeing only
+  the last four characters. Messages per service: Slack attachments and
+  Discord embeds coloured by severity, Telegram HTML. Checked end to end
+  with Telegram pointed at a local stand-in (`TELEGRAM_API_URL`): the test,
+  a warning filtered out by a critical-only channel, the critical delivered,
+  a request without the token refused. Found on the way: Settings copied
+  `$state` values with `structuredClone`, which refuses Svelte's proxies,
+  so after saving a channel the page never took up what it had saved; it
+  uses `$state.snapshot` now, guarded by a test.
 
 ### J — Single-host profile (everything on one GB10)
 

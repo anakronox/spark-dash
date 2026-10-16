@@ -41,6 +41,23 @@ route:
   receiver: ntfy
 
   routes:
+    # EVERY ALERT ALSO GOES TO THE DASHBOARD, which sends it on to the Slack,
+    # Discord and Telegram channels set in Settings -> Notifications (roadmap
+    # BJ). `continue: true` so routing carries on to ntfy below. Two routes,
+    # critical and the rest, so a critical alert keeps the faster timing on
+    # this path too and no alert is sent here twice. With no channels set,
+    # the dashboard takes the alert and sends it nowhere.
+    - matchers:
+        - severity = "critical"
+      receiver: spark-dash
+      group_wait: 10s
+      repeat_interval: 4h
+      continue: true
+    - matchers:
+        - severity != "critical"
+      receiver: spark-dash
+      continue: true
+
     # Critical alerts use the same receiver but different timing: delivered
     # almost immediately and repeated more often. A throttled GPU or a node
     # down shouldn't wait out the 45s batching window.
@@ -49,6 +66,11 @@ route:
       receiver: ntfy
       group_wait: 10s
       repeat_interval: 4h
+
+    # Everything else to ntfy, NAMED rather than left to the top-level
+    # receiver: once a route above has matched (as the dashboard's always
+    # does), Alertmanager no longer falls back to the parent's receiver.
+    - receiver: ntfy
 
 inhibit_rules:
   # A node that's down will also stop reporting temperature, clocks and
@@ -77,6 +99,20 @@ receivers:
         # knowing it went away, and without this a resolved alert just goes
         # quiet — indistinguishable from you having missed it.
         send_resolved: true
+
+  # The dashboard, on the compose network. It fans out to the channels in
+  # Settings -> Notifications, each choosing all alerts or critical only and
+  # whether recoveries are sent, so this sends everything, resolved too.
+  # The token is written by the backend into secrets/, which both containers
+  # mount, so nothing else on the LAN can post alerts into a team's Slack.
+  - name: spark-dash
+    webhook_configs:
+      - url: http://backend:8080/api/alerts/notify
+        send_resolved: true
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/secrets/dashboard-webhook-token
 
 # ---------------------------------------------------------------------------
 # A NOTE ON SECRETS
