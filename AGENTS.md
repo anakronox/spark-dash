@@ -2,7 +2,7 @@
 
 For an agent changing this repository (Claude Code, Hermes, Codex and the
 like). An agent that only *queries* a running dashboard needs none of this:
-connect to its MCP endpoint (README, step 8) and read the guides it serves,
+connect to its MCP endpoint (README, step 9) and read the guides it serves,
 `sparkdash://guide/investigating` first.
 
 ## Where things live

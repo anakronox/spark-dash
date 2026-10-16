@@ -688,7 +688,13 @@ def parse_schedule(raw: object) -> Schedule:
     freq = raw.get("frequency")
     if freq not in FREQUENCIES:
         raise ClusterConfigError(f"schedule {name!r}: frequency must be one of {FREQUENCIES}")
-    t = str(raw.get("time", "08:00"))
+    t = raw.get("time", "08:00")
+    # YAML 1.1 reads an unquoted 10:30 as the base-60 integer 630; a hand
+    # edit of the cluster file must not break the schedule. (Written here it
+    # is always quoted.)
+    if isinstance(t, int) and not isinstance(t, bool):
+        t = f"{t // 60:02d}:{t % 60:02d}"
+    t = str(t)
     try:
         hh, mm = (int(x) for x in t.split(":"))
         assert 0 <= hh < 24 and 0 <= mm < 60

@@ -1815,7 +1815,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "assistant": bool(a_config and a_config.enabled),
             "ntfy": ntfy.capability()["ok"] and ntfy.read() is not None,
             "schedule_state": {k: v for k, v in state.items()},
+            "next_runs": _next_runs(config, state),
         }
+
+    def _next_runs(config: reports.ReportsConfig, state: dict) -> dict:
+        """When each enabled schedule fires next, as UTC ISO."""
+        tz = reports.ZoneInfo(_report_tz(config))
+        now = datetime.now(UTC)
+        out = {}
+        for s in config.schedules:
+            if not s.enabled:
+                continue
+            seen = state.get(s.id, {})
+            anchor = seen.get("last_due") or seen.get("since")
+            after = max(datetime.fromisoformat(anchor), now) if anchor else now
+            out[s.id] = reports.next_due(s, after, tz).astimezone(UTC).isoformat()
+        return out
 
     @app.get("/api/reports/meta")
     async def api_reports_meta() -> dict:

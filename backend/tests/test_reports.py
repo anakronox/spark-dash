@@ -104,6 +104,12 @@ class TestConfig:
         with pytest.raises(ClusterConfigError):
             reports.parse_reports({"reports": {"public_url": "monitor:8080"}})
 
+    def test_an_unquoted_time_in_a_hand_edit_still_reads(self):
+        """YAML 1.1 reads `time: 10:30` as 630."""
+        raw = yaml.safe_load("frequency: daily\ntime: 10:30\n")
+        assert raw["time"] == 630
+        assert reports.parse_schedule(raw).time == "10:30"
+
     def test_round_trips_through_the_cluster_file_keeping_the_nodes(self, tmp_path):
         p = tmp_path / "cluster.yml"
         p.write_text(NODES)

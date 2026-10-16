@@ -139,6 +139,16 @@ slow, Qwen 3.6 35B checked what moved around 15:44 and named swap thrashing,
 with the memory pressure and swap traffic behind it. The model can read about
 the cluster and can't act on it.
 
+**Reports, on a schedule or on demand.** Daily, weekly, monthly or every few
+hours, a report of the period: each node's load, temperature and memory, what
+used the GPU, model loads and latency, alerts, the network, gaps in the data,
+and what moved against the period before. Every figure is computed, so a
+report is right with no model involved; the assistant can add a short summary
+on top, marked as its own. Kept on a **Reports** page, printable to PDF, and
+downloadable as Markdown, HTML, CSV or JSON. Or pick the period, the nodes and
+the sections and build one on the spot. A notification says when a scheduled
+one is ready, with its headline figures and a link.
+
 **Or let your own agent look.** The same read-only tools are offered to agents
 over MCP, so Claude Code, Hermes, Codex, Cursor or any agent that speaks MCP
 can query the dashboard directly: the cluster now and how it is put together,
@@ -151,7 +161,7 @@ the whole node. Ready-made prompts give a daily report, an incident report or a
 capacity check in the same shape from any agent, and agents can be allowed to
 note things on the timeline ("benchmark started"). Off until you switch it on
 in Settings, which makes the key and the setup for your agent
-([step 8](#8-optional-tools-for-agents)).
+([step 9](#9-optional-tools-for-agents)).
 
 ## The page is yours
 
@@ -391,7 +401,17 @@ header. A question is answered from the window's alerts, events and series and
 the cluster as it stands, sent to the model as text; it cannot act on anything.
 Details: **[Asking the dashboard](docs/deployment.md#asking-the-dashboard--optional)**.
 
-### 8. Optional: tools for agents
+### 8. Optional: scheduled reports
+
+**Settings → Schedules**: add a schedule, choose daily, weekly, monthly or
+every N hours and the time, which sections and nodes, and whether to notify.
+Times follow the monitoring host's zone, read from its `/etc/localtime`, or the
+one you pick. Set **address** to how you reach the dashboard so a notification
+can link to its report. Reports are kept on the **reports** page in the
+header, where one can also be built on demand. Details:
+**[Reports](docs/deployment.md#reports--scheduled-and-on-demand)**.
+
+### 9. Optional: tools for agents
 
 In **Settings → Agent tools**, switch on **serve the tools**. A key
 is made and shown once, beside the endpoint. Pick your agent (Claude Code,

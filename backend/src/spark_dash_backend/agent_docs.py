@@ -84,8 +84,11 @@ INVESTIGATING = """\
    test started") when Settings allows it, so a later `correlate` or chart
    explains the spike; notes come back from `events` as kind `note`.
 
-For a report, the prompts `daily_report`, `incident_report` and
-`capacity_check` give the shape.
+For a report, `build_report` makes one from the dashboard's own engine (any
+period up to 31 days, chosen sections) and `list_reports` and `get_report`
+read the ones it keeps, scheduled or built on demand. The prompts
+`daily_report`, `incident_report` and `capacity_check` give the shape of a
+report written from the tools directly.
 
 ## Reading the answers
 

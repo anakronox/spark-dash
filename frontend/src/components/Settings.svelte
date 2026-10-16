@@ -37,6 +37,16 @@
   import { CLIENTS, clientOr, setupFor, type ClientId } from '../lib/mcpClients';
   import { SEEN_KEY, TOUR_KEY } from '../lib/setup.svelte';
   import { ntfySet, ntfyStatus, ntfyTest, ntfyTopic, type NtfyStatus } from '../lib/notifications';
+  import {
+    describe as describeSchedule,
+    newSchedule,
+    reportsMeta,
+    runSchedule,
+    saveReportsConfig,
+    zones as allZones,
+    type ReportsConfig,
+    type ReportsMeta,
+  } from '../lib/reports';
   import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
   import type { ProbeResult } from '../lib/clients';
 
@@ -634,6 +644,8 @@
       nNote = nError = null;
       nArmed = false;
       loadNtfy();
+      rError = rNote = null;
+      loadReports();
       assistant?.load().then(() => {
         aUrl = assistant?.status?.url ?? '';
         aModel = assistant?.status?.model ?? '';
@@ -699,10 +711,56 @@
       nNote = 'saved; the next alert goes to this topic. Subscribe to it now.';
     });
 
+  /* REPORTS (roadmap BI3). The schedules, the zone they run in, how many
+     reports are kept, and the dashboard's own address for the links in
+     notifications. Edited as a draft and saved whole. */
+  let rMeta = $state<ReportsMeta | null>(null);
+  let rDraft = $state<ReportsConfig | null>(null);
+  let rBusy = $state(false);
+  let rError = $state<string | null>(null);
+  let rNote = $state<string | null>(null);
+  const ZONES = allZones();
+  const rDirty = $derived(!!rMeta && !!rDraft && JSON.stringify(rMeta.config) !== JSON.stringify(rDraft));
+  const loadReports = () =>
+    reportsMeta()
+      .then((m) => {
+        rMeta = m;
+        rDraft = structuredClone(m.config);
+      })
+      .catch((err) => (rError = (err as Error).message));
+  async function rAction(fn: () => Promise<void>) {
+    if (rBusy) return;
+    rBusy = true;
+    rError = rNote = null;
+    try {
+      await fn();
+    } catch (err) {
+      rError = (err as Error).message;
+    } finally {
+      rBusy = false;
+    }
+  }
+  const saveReports = () =>
+    rAction(async () => {
+      rMeta = await saveReportsConfig(rDraft!);
+      rDraft = structuredClone(rMeta.config);
+      rNote = 'saved';
+    });
+  const runNow = (id: string) =>
+    rAction(async () => {
+      if (rDirty) throw new Error('save the schedules first');
+      const r = await runSchedule(id);
+      rNote = `report ${r.id} kept; it is in Reports`;
+      await loadReports();
+    });
+  const local = (iso: string | undefined) =>
+    iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
   /* THE SHELL (roadmap BC). One pane at a time beside a rail, in a fly-out
      as wide as the update manager's and resizable from its left edge. The
      pane and the width are this browser's, like the rest of the layout. */
-  type Pane = 'appearance' | 'nodes' | 'notifications' | 'updates' | 'clients' | 'assistant' | 'mcp';
+  type Pane = 'appearance' | 'nodes' | 'reports' | 'notifications' | 'updates' | 'clients' | 'assistant' | 'mcp';
   type Dot = 'on' | 'off' | 'warn' | 'edit';
   const DOT_WORD: Record<Dot, string> = { on: 'on', off: 'off', warn: 'needs setup', edit: 'unsaved' };
   const PANE_KEY = 'spark-dash.settings-pane.v1';
@@ -740,6 +798,14 @@
         id: 'nodes', label: 'Nodes', shown: true,
         dot: dirty ? 'edit' : undefined,
         state: draft ? `${draft.length}${dirty ? ' · unsaved' : ''}` : undefined,
+      }],
+    },
+    {
+      label: 'Reports',
+      items: [{
+        id: 'reports', label: 'Schedules', shown: true,
+        dot: rDirty ? 'edit' : rMeta?.config.schedules.some((x) => x.enabled) ? 'on' : undefined,
+        state: rMeta ? `${rMeta.config.schedules.filter((x) => x.enabled).length}${rDirty ? ' · unsaved' : ''}` : undefined,
       }],
     },
     {
@@ -1251,6 +1317,179 @@
       {/if}
     </section>
 
+      {/if}
+      {#if pane === 'reports'}
+      <section class="stack wide">
+        {#if !rDraft || !rMeta}
+          <p class="note dim">Loading…</p>
+        {:else}
+          <div class="cols">
+            <div class="stack">
+              <h3 class="eyebrow dim">When</h3>
+              <label class="field">
+                <span class="dim">time zone</span>
+                <select
+                  class="in"
+                  aria-label="Time zone for schedules"
+                  value={rDraft.timezone ?? ''}
+                  onchange={(e) => (rDraft!.timezone = (e.currentTarget as HTMLSelectElement).value || null)}
+                >
+                  <option value="">the monitoring host's ({rMeta.host_timezone})</option>
+                  {#each ZONES as z (z)}<option value={z}>{z}</option>{/each}
+                </select>
+                <span></span>
+              </label>
+              <p class="note dim">
+                Schedules fire on this zone's clock, so "daily at 08:00" stays 08:00 across a change to or from
+                summer time. Reports show their times in it.
+              </p>
+            </div>
+            <div class="stack">
+              <h3 class="eyebrow dim">Keeping and linking</h3>
+              <label class="field">
+                <span class="dim">keep</span>
+                <span class="rt-row">
+                  <input class="in num" type="number" min="1" aria-label="Reports to keep" bind:value={rDraft.keep_count} />
+                  <span class="note dim">reports, none older than</span>
+                  <input class="in num" type="number" min="1" aria-label="Days to keep" bind:value={rDraft.keep_days} />
+                  <span class="note dim">days</span>
+                </span>
+                <span></span>
+              </label>
+              <label class="field">
+                <span class="dim">address</span>
+                <input
+                  class="in"
+                  placeholder="https://dash.example.com"
+                  aria-label="The dashboard's address, for links in notifications"
+                  value={rDraft.public_url ?? ''}
+                  oninput={(e) => (rDraft!.public_url = (e.currentTarget as HTMLInputElement).value.trim() || null)}
+                />
+                <button class="mini" onclick={() => (rDraft!.public_url = location.origin)}>this page's</button>
+              </label>
+              <p class="note dim">The dashboard as you reach it, so a notification can link to its report.</p>
+            </div>
+          </div>
+
+          <h3 class="eyebrow dim">Schedules</h3>
+          {#if !rDraft.schedules.length}
+            <p class="note dim">No schedules. A report can still be built at any time from Reports.</p>
+          {/if}
+          <div class="nodes">
+            {#each rDraft.schedules as sc, i (sc.id)}
+              {@const st = rMeta.schedule_state[sc.id]}
+              <div class="node">
+                <div class="node-head">
+                  <input class="in id" aria-label="Schedule name" bind:value={sc.name} />
+                  <label class="check"><input type="checkbox" bind:checked={sc.enabled} /> on</label>
+                  <button class="mini" disabled={rBusy || !rMeta.config.schedules.some((x) => x.id === sc.id)}
+                    title="Build and keep this schedule's report now, for the period ending now"
+                    onclick={() => runNow(sc.id)}>run now</button>
+                  <button class="mini" onclick={() => (rDraft!.schedules = rDraft!.schedules.filter((_, j) => j !== i))}
+                    >remove</button>
+                </div>
+                <div class="rt-row">
+                  <select class="in" aria-label="Frequency" bind:value={sc.frequency}>
+                    <option value="daily">daily</option>
+                    <option value="weekly">weekly</option>
+                    <option value="monthly">monthly</option>
+                    <option value="hours">every N hours</option>
+                  </select>
+                  {#if sc.frequency === 'weekly'}
+                    <select class="in" aria-label="Weekday" bind:value={sc.weekday}>
+                      {#each WEEKDAYS as d (d)}<option value={d}>{d}</option>{/each}
+                    </select>
+                  {:else if sc.frequency === 'monthly'}
+                    <span class="note dim">day</span>
+                    <input class="in num" type="number" min="1" max="31" aria-label="Day of the month" bind:value={sc.day} />
+                  {/if}
+                  {#if sc.frequency === 'hours'}
+                    <span class="note dim">every</span>
+                    <input class="in num" type="number" min="1" max="168" aria-label="Hours" bind:value={sc.every_hours} />
+                    <span class="note dim">hours</span>
+                  {:else}
+                    <span class="note dim">at</span>
+                    <input class="in num" type="time" aria-label="Time" bind:value={sc.time} />
+                  {/if}
+                </div>
+                <p class="note dim">
+                  {describeSchedule(sc)}, covering the period since the run before.
+                  {#if rMeta.next_runs[sc.id]}Next: {local(rMeta.next_runs[sc.id])}.{/if}
+                  {#if st?.last_run}Last: {local(st.last_due)}.{/if}
+                </p>
+                {#if st?.error}<p class="note" data-tone="warning">Last run failed: {st.error}</p>{/if}
+                <details class="rt" open={false}>
+                  <summary class="eyebrow dim">
+                    Sections <span class="count">{sc.sections.length} of {rMeta.sections.length}</span>
+                  </summary>
+                  <div class="rt">
+                    {#each rMeta.sections as sec (sec.id)}
+                      <label class="check" title={sec.about}>
+                        <input
+                          type="checkbox"
+                          checked={sc.sections.includes(sec.id)}
+                          onchange={() =>
+                            (sc.sections = rMeta!.sections
+                              .map((x) => x.id)
+                              .filter((id) => (id === sec.id ? !sc.sections.includes(id) : sc.sections.includes(id))))}
+                        />
+                        <span>{sec.title}{sec.available ? '' : ' (not set up here)'}</span>
+                      </label>
+                    {/each}
+                  </div>
+                </details>
+                <details class="rt" open={false}>
+                  <summary class="eyebrow dim">
+                    Nodes <span class="count">{sc.nodes.length ? `${sc.nodes.length} of ${rMeta.nodes.length}` : 'all'}</span>
+                  </summary>
+                  <div class="rt">
+                    {#each rMeta.nodes as n (n)}
+                      <label class="check">
+                        <input
+                          type="checkbox"
+                          checked={!sc.nodes.length || sc.nodes.includes(n)}
+                          onchange={() => {
+                            const cur = sc.nodes.length ? sc.nodes : [...rMeta!.nodes];
+                            const next = cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n];
+                            sc.nodes = next.length === rMeta!.nodes.length ? [] : next;
+                          }}
+                        />
+                        <span>{n}</span>
+                      </label>
+                    {/each}
+                  </div>
+                </details>
+                <label class="check">
+                  <input type="checkbox" bind:checked={sc.notify} disabled={!rMeta.ntfy} />
+                  <span>notify when it is ready{rMeta.ntfy ? '' : ' (set up Notifications first)'}</span>
+                </label>
+                {#if rMeta.assistant}
+                  <label class="check">
+                    <input type="checkbox" bind:checked={sc.narrative} />
+                    <span>add a summary written by the assistant</span>
+                  </label>
+                {/if}
+              </div>
+            {/each}
+          </div>
+
+          <div class="actions savebar">
+            <button class="mini add"
+              onclick={() => (rDraft!.schedules = [...rDraft!.schedules, newSchedule(rMeta!.default_sections)])}
+              >+ schedule</button
+            >
+            <span class="note dim rest">{rNote ?? ''}</span>
+            <button class="mini" disabled={!rDirty || rBusy} onclick={() => (rDraft = structuredClone(rMeta!.config))}
+              >Revert</button
+            >
+            <button class="mini save" disabled={!rDirty || rBusy} onclick={saveReports}>Save</button>
+          </div>
+          {#if rError}<p class="note" data-tone="warning">{rError}</p>{/if}
+          {#if rMeta.error}
+            <p class="note" data-tone="warning">The <code>reports:</code> block in <code>cluster.yml</code> has a mistake: {rMeta.error}</p>
+          {/if}
+        {/if}
+      </section>
       {/if}
       {#if pane === 'notifications'}
       <section class="cols">

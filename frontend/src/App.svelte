@@ -28,6 +28,7 @@
   import { AssistantFeed } from './lib/assistant.svelte';
   import AskPanel from './components/AskPanel.svelte';
   import SetupGuide from './components/SetupGuide.svelte';
+  import ReportsPanel from './components/ReportsPanel.svelte';
   import Tour from './components/Tour.svelte';
   import { SEEN_KEY, SetupFeed, TOUR_KEY, flag, setFlag } from './lib/setup.svelte';
   import { LatencyFeed } from './lib/latency.svelte';
@@ -65,6 +66,11 @@
      follows the guide the first time. "Show when the dashboard opens" is the
      inverse of SEEN_KEY. */
   const setupFeed = new SetupFeed();
+  /* REPORTS (roadmap BI). A notification's link carries ?report=<id>, which
+     opens the panel on that report; the parameter is then dropped so a
+     reload does not reopen it. */
+  let reportsOpen = $state(false);
+  let reportFocus = $state<string | null>(null);
   let setupOpen = $state(false);
   let tourOpen = $state(false);
   let showSetupOnStart = $state(!flag(SEEN_KEY));
@@ -136,6 +142,18 @@
     latencyFeed.start();
     assistantFeed.start();
     setupFeed.start();
+    try {
+      const u = new URL(location.href);
+      const r = u.searchParams.get('report');
+      if (r) {
+        reportFocus = r;
+        reportsOpen = true;
+        u.searchParams.delete('report');
+        history.replaceState(null, '', u);
+      }
+    } catch {
+      // A page without a URL to read: nothing to open.
+    }
     // A first visit opens the guide once the page has something under it.
     if (!flag(SEEN_KEY)) setTimeout(() => (setupOpen = true), 800);
     return () => {
@@ -732,6 +750,11 @@
         align="end"
       />
 
+      <button class={SETTINGS_TRIGGER} aria-label="Open reports" onclick={() => (reportsOpen = true)}>
+        <span aria-hidden="true">▤</span>
+        <span class={SETTINGS_LABEL}>reports</span>
+      </button>
+
       {#if assistantFeed.configured}
         <button class={SETTINGS_TRIGGER} aria-label="Ask the dashboard" onclick={() => (askOpen = true)}>
           <span aria-hidden="true">?</span>
@@ -833,6 +856,18 @@
     }}
   />
   <Tour open={tourOpen} onclose={endTour} />
+  <ReportsPanel
+    open={reportsOpen}
+    focus={reportFocus}
+    onclose={() => {
+      reportsOpen = false;
+      reportFocus = null;
+    }}
+    onschedules={() => {
+      reportsOpen = false;
+      openSettingsAt('reports');
+    }}
+  />
   <AskPanel feed={assistantFeed} open={askOpen} onclose={() => (askOpen = false)} />
   <FleetUpdates feed={fleetFeed} open={fleetOpen} slots={slotOf} onclose={() => (fleetOpen = false)} />
 

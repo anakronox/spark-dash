@@ -8148,7 +8148,7 @@ to `secrets/ntfy-url` by hand, which Alertmanager posts every alert to.
   carries it, only an explicit reveal does.
 - The setup guide's "Alerts reach someone" goes straight to this pane.
 
-### BI — Reports: scheduled, on demand, kept and downloadable — **planned 2026-10-16**
+### BI — Reports: scheduled, on demand, kept and downloadable — **built 2026-10-17**
 
 Brian: scheduled reports at a frequency of the user's choosing, a Reports
 page, downloadable files as well as print to PDF, delivery that tees into
@@ -8161,7 +8161,7 @@ Grafana Enterprise and Cloud feature); or a script against the HTTP API on
 a cron, writing CSV or HTML. Here the reads already exist (the agent tools,
 BB), so a report is a composition of them, not a new query layer.
 
-- [ ] **BI1. The report engine.** A report is a window, a set of nodes and
+- [x] **BI1. The report engine.** A report is a window, a set of nodes and
   an ordered list of sections, built in the backend from the same functions
   the agent tools call, into one structured document. Sections: overview
   (per node: GPU use, temperature, memory, power, average and peak with
@@ -8174,30 +8174,41 @@ BB), so a report is a composition of them, not a new query layer.
   same length. **The figures are computed, never generated:** a report is
   correct with the assistant off. With the assistant on, an optional
   written summary heads it, marked as the model's.
-- [ ] **BI2. Kept.** Each report saved under the cluster directory as its
+- [x] **BI2. Kept.** Each report saved under the cluster directory as its
   document plus its rendered forms; kept for a configurable count or age.
-- [ ] **BI3. Scheduled, at any frequency.** Several schedules, each with
+- [x] **BI3. Scheduled, at any frequency.** Several schedules, each with
   its frequency (daily at a time, weekly on a day, monthly on a date, or
   every N hours), its window (the period since the last run by default),
   its nodes and its sections. Times in a configured time zone, shown in
   the reader's. A run missed while the backend was down runs once on
   start.
-- [ ] **BI4. The Reports page.** A fly-out like the update manager's:
+- [x] **BI4. The Reports page.** A fly-out like the update manager's:
   every kept report, newest first, read in place, with **print** (a print
   stylesheet, so the browser's print to PDF gives a clean document) and
   downloads: **Markdown**, **HTML** (self-contained), **CSV** (one file
   per table, zipped) and **JSON** (the document itself).
-- [ ] **BI5. A report on demand.** Pick the window (a preset or from and
+- [x] **BI5. A report on demand.** Pick the window (a preset or from and
   to), the nodes and the sections, and build it now; read it, download it,
   or keep it. The same builder edits a schedule.
-- [ ] **BI6. Delivery.** A schedule may notify when its report is ready:
+- [x] **BI6. Delivery.** A schedule may notify when its report is ready:
   a short line with the period's headline figures and a link to the
   report, sent through ntfy today and through the BJ channels when they
   exist. Needs the dashboard's own address for the link, a setting.
-- [ ] **BI7. For agents.** MCP tools `list_reports`, `get_report` (any
+- [x] **BI7. For agents.** MCP tools `list_reports`, `get_report` (any
   format) and `build_report` (sections and window), so an agent can fetch
   last week's report or assemble its own from the same engine.
-- [ ] **BI8. Documented.**
+- [x] **BI8. Documented.**
+- Built 2026-10-17. Measured on this cluster: a day's report with all
+  eleven sections in 2.1 s, a week's in 3.0 s. The zone defaults to the
+  host's, read from `/etc/localtime` (mounted read-only) by matching its
+  contents to a zone name, Region/City first: inside the image the VM read
+  as Europe/Moscow. Times in a report carry the date (`10-15 21:25`), since
+  "21:25" alone is ambiguous across a day. Two traps found: datetimes that
+  share a tzinfo subtract as wall-clock time and ignore the offset (the
+  daylight-saving test compares in UTC); and YAML 1.1 reads an unquoted
+  `time: 10:30` as the integer 630, which the parser now accepts. The
+  notification goes to the ntfy topic without the Alertmanager template, as
+  plain text with a title, the headline and a link.
 
 ### BJ — More notification channels: Slack, Telegram, Discord — **planned 2026-10-16**
 

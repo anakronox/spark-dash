@@ -258,6 +258,46 @@ in the header says how many. A short tour of the controls that are easy to miss
 follows the first time; both reopen from **Settings → Appearance**, and **Reset
 layout** does not bring them back.
 
+### Reports — scheduled and on demand
+
+A report is a period, a set of nodes and the sections chosen, in order:
+overview (per node: GPU use, temperature, memory, power, throughput, average
+and peak with when), what used the GPU (per workload), models (loads and how
+long, decode throughput, time to first token), alerts, events, temperatures
+(the peak per group and the least headroom), network (per interface: traffic,
+errors, drops), clients, monitoring health (gaps, so a report says where its
+own numbers have holes), DGX OS updates, and a comparison with the period
+before. The figures are computed from Prometheus, never generated; with the
+assistant set up, a schedule or a built report can add a three-to-five
+sentence summary on top, marked as the model's. A section that cannot be
+built says so and the rest stand.
+
+**Schedules** live in **Settings → Schedules** and in `cluster.yml` as a
+`reports:` block: daily at a time, weekly on a day, monthly on a date (past a
+short month's end, its last day), or every N hours on whole hours from
+midnight. Each covers the period since the run before. Times are wall-clock
+in the configured zone, so "daily at 08:00" stays 08:00 across a change to or
+from summer time; the zone defaults to the monitoring host's, which the
+backend reads from the host's `/etc/localtime` (mounted read-only; it matches
+the file's contents to a zone name), and the dropdown overrides it. A new
+schedule does not fire at once; a run missed while the backend was down runs
+once on start, for the latest period. **run now** builds one immediately.
+
+**Kept** under `cluster/reports/` as JSON, the newest 200 and none older than
+180 days by default. The **reports** page in the header lists them; each can
+be printed (a self-contained HTML page opens and asks to print, which is the
+PDF) or downloaded as Markdown, HTML, a zip with one CSV per table, or JSON.
+**build** makes one now from a preset or a from-to period (at most 31 days),
+the nodes and the sections, kept only when asked.
+
+**Notified** through ntfy when a scheduled report is ready, if the schedule
+says so: the title, its headline figures, and a link to the report, which
+needs **address** set to how you reach the dashboard. Slack, Telegram and
+Discord follow with roadmap BJ.
+
+Agents read and build reports too: `list_reports`, `get_report` and
+`build_report` over MCP.
+
 ### Notifications — ntfy
 
 Alertmanager sends every alert, and every recovery, to an
@@ -420,6 +460,7 @@ claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
 | `clients` | who called through the gateway, when client stats are on |
 | `correlate` | every series on every node ranked by how far it moved around a moment, with the alerts and events beside it |
 | `promql` | raw PromQL, only with **also allow raw PromQL queries** on |
+| `list_reports`, `get_report`, `build_report` | kept reports, one as Markdown or JSON, or a new one for any period, nodes and sections |
 | `add_note` | adds a note to the timeline ("benchmark started"), marked as an agent's; only with **let agents add notes** on. The one tool that writes. Settings shows how many there are and removes them all |
 
 The endpoint also serves **prompts**, report templates any client can offer
