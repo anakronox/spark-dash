@@ -263,7 +263,7 @@ class TestStore:
         store = reports.ReportStore(tmp_path / "cluster.yml")
         docs = [built(sections=["overview"]) for _ in range(3)]
         for i, d in enumerate(docs):
-            d["id"] = f"2026101{i}-000000-abc"
+            d["id"] = f"2026101{i}-000000-abcdef"
             store.save(d)
         assert [r["id"] for r in store.list()] == [d["id"] for d in reversed(docs)]
         assert store.get(docs[0]["id"])["title"] == docs[0]["title"]
@@ -271,6 +271,21 @@ class TestStore:
         assert len(store.list()) == 2
         store.delete(docs[2]["id"])
         assert len(store.list()) == 1
+
+    def test_other_files_beside_the_reports_are_not_reports(self, tmp_path):
+        """2026-10-17, live: the schedules' state file sits in the same
+        directory, and listing read it as a report and failed the whole
+        page; pruning would have deleted it."""
+        store = reports.ReportStore(tmp_path / "cluster.yml")
+        doc = built(sections=["overview"])
+        store.save(doc)
+        reports.ScheduleState(store).write({"a": {"since": "2026-10-17T00:00:00+00:00"}})
+        (store.dir / "notes.json").write_text("{}")
+        (store.dir / "20261017-000000-abcdef.json").write_text("not json")
+        assert [r["id"] for r in store.list()] == [doc["id"]]
+        assert store.prune(keep_count=5, keep_days=365) == 0
+        assert store.prune(keep_count=1, keep_days=365) == 1, "one of the two report-named files goes"
+        assert (store.dir / "schedule-state.json").exists() and (store.dir / "notes.json").exists()
 
     def test_ids_cannot_reach_outside_the_directory(self, tmp_path):
         store = reports.ReportStore(tmp_path / "cluster.yml")

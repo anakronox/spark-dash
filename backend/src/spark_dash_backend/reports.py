@@ -23,6 +23,7 @@ import io
 import json
 import math
 import os
+import re
 import secrets
 import time
 import zipfile
@@ -523,6 +524,13 @@ def render_csv_zip(doc: dict) -> bytes:
 
 # --- kept reports ------------------------------------------------------------------------
 
+#: A report's file name: its id, `YYYYMMDD-HHMMSS-hex6`. Only these are
+#: reports; other files share the directory (the schedules' state), and a
+#: glob for `*.json` read that one as a report and failed the whole list
+#: (2026-10-17), and would have let pruning delete it.
+_REPORT_FILE = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}\.json$")
+
+
 class ReportStore:
     """Reports as JSON files in the cluster directory's `reports/`; the
     renderings are made from them on request."""
@@ -530,12 +538,22 @@ class ReportStore:
     def __init__(self, cluster_path: Path):
         self.dir = cluster_path.parent / "reports"
 
+    def _files(self) -> list[Path]:
+        """Report files only, newest first."""
+        if not self.dir.is_dir():
+            return []
+        return sorted((p for p in self.dir.iterdir() if _REPORT_FILE.match(p.name)), reverse=True)
+
     def _path(self, rid: str) -> Path:
         if not rid or any(c not in "0123456789abcdef-" for c in rid):
             raise KeyError(rid)
         return self.dir / f"{rid}.json"
 
     def save(self, doc: dict) -> None:
+        # Only an id `list()` will find: a report kept under any other name
+        # would be saved and never shown.
+        if not _REPORT_FILE.match(f"{doc.get('id')}.json"):
+            raise KeyError(doc.get("id"))
         self.dir.mkdir(exist_ok=True)
         tmp = self.dir / f".{doc['id']}.tmp"
         tmp.write_text(json.dumps(doc, ensure_ascii=False))
@@ -552,10 +570,11 @@ class ReportStore:
 
     def list(self) -> list[dict]:
         out = []
-        for p in sorted(self.dir.glob("*.json"), reverse=True) if self.dir.is_dir() else []:
+        for p in self._files():
             try:
                 d = json.loads(p.read_text())
-            except (OSError, ValueError):
+                d["id"], d["title"], d["created"], d["window"], d["sections"]  # noqa: B018 — a report, or skipped
+            except (OSError, ValueError, KeyError, TypeError):
                 continue
             out.append({"id": d["id"], "title": d["title"], "created": d["created"], "window": d["window"],
                         "schedule": (d.get("schedule") or {}).get("name"), "headline": d.get("headline", []),
@@ -564,7 +583,7 @@ class ReportStore:
 
     def prune(self, keep_count: int, keep_days: int) -> int:
         """Oldest first past `keep_count`, and any older than `keep_days`."""
-        files = sorted(self.dir.glob("*.json"), reverse=True) if self.dir.is_dir() else []
+        files = self._files()
         cutoff = time.time() - keep_days * 86400
         gone = 0
         for i, p in enumerate(files):

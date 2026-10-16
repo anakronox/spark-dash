@@ -8213,6 +8213,16 @@ BB), so a report is a composition of them, not a new query layer.
   2026-10-16/17, was caught in its log: `failed to fetch anonymous token`
   from ghcr.io, a TLS handshake timeout fetching base-image metadata.
   `build-images.sh` now retries a build three times, ten seconds apart.
+- **Fixed 2026-10-17, found by Brian on the live stack:** after keeping a
+  report the Reports page showed none, and build did nothing. The schedules'
+  `schedule-state.json` shares `reports/`, the list globbed `*.json`, read
+  it as a report and failed with a KeyError; the page loaded the list and
+  the section catalogue together, so the catalogue failed too and the
+  builder had no sections. Reports are now matched by their id pattern
+  (`YYYYMMDD-HHMMSS-hex6.json`) in listing and in pruning, which would
+  otherwise have deleted the state file; a report is only saved under that
+  pattern; the page loads its two parts separately. The kept report was on
+  disk throughout and lists again.
 
 ### BJ — More notification channels: Slack, Telegram, Discord — **planned 2026-10-16**
 

@@ -41,17 +41,20 @@
 
   async function load(pick?: string | null) {
     error = null;
-    try {
-      const [l, m] = await Promise.all([listReports(), reportsMeta()]);
-      list = l.reports;
-      meta = m;
-      if (!bSections.length) bSections = [...m.default_sections];
+    /* Separately, not together: the list failing (2026-10-17, a file in
+       the reports directory that was not a report) took the catalogue with
+       it, and with no sections the builder could build nothing. */
+    const [l, m] = await Promise.allSettled([listReports(), reportsMeta()]);
+    if (m.status === 'fulfilled') {
+      meta = m.value;
+      if (!bSections.length) bSections = [...m.value.default_sections];
+    } else error = `could not load the report settings: ${(m.reason as Error).message}`;
+    if (l.status === 'fulfilled') {
+      list = l.value.reports;
       const want = pick ?? shown?.id ?? list[0]?.id;
       if (want && list.some((r) => r.id === want)) await choose(want);
       else if (!list.length) shown = null;
-    } catch (err) {
-      error = (err as Error).message;
-    }
+    } else error = `could not list the kept reports: ${(l.reason as Error).message}`;
   }
 
   async function choose(id: string) {
