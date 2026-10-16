@@ -420,3 +420,30 @@ class TestStreamedAsk:
         r = api.post("/api/assistant/ask", json={"question": "ok?", "minutes": 60})
         assert r.status_code == 200 and r.json()["answer"] == "plain"
         assert "tools" not in sent[0]
+
+
+def test_a_flat_zero_that_twitches_does_not_head_the_ranking():
+    """Memory pressure 0.000 -> 0.015% scored 246 and ranked above ComfyUI
+    taking the GPU from 0 to 58% (2026-10-16). Each unit has a least change
+    that counts."""
+    at = time.time() - 3600
+
+    class P(Prom):
+        async def query_range(self, expr, start, end, step):
+            n = int((end - start) // 30)
+            cut = n * 0.75
+            if "psi_memory_some" in expr:
+                return [Series(labels={"node": "sparky"}, points=[(start + i * 30, 0.0 if i < cut else 0.015) for i in range(n + 1)])]
+            if "gpu_utilization" in expr:
+                return [Series(labels={"node": "sparky"}, points=[(start + i * 30, 0.0 if i < cut else 58.0) for i in range(n + 1)])]
+            return []
+
+    r = asyncio.run(agent_tools.correlate(sources(P()), "sparky", agent_tools.iso(at), 10))
+    moved = [x["metric"] for x in r["moved_on_node"]]
+    assert moved[0] == "gpu_utilization"
+    assert "psi_some_avg10" not in moved
+
+
+def test_every_unit_has_a_floor():
+    units = {u for u, _ in agent_tools.METRICS.values()}
+    assert units <= set(agent_tools.UNIT_FLOOR), sorted(units - set(agent_tools.UNIT_FLOOR))

@@ -7928,7 +7928,22 @@ maintenance window or touches the fleet.
 - [x] **BB5. Raw PromQL, opt-in.** Built 2026-10-16; unlisted while off. A `promql(query, start, end, step)` tool
   behind a second switch, for the question the named series do not cover.
   Read-only by nature, but with a capped range and step and a timeout.
-- [x] **BB6. Documented.** 2026-10-16. README, a short "Ask it" mention of agents;
+- [x] **BB6. Documented.** 2026-10-16.
+- [x] **BB7. What was using the GPU, after the fact.** 2026-10-16. Brian's
+  Hermes agent, asked what sparky was doing between 12:00 and 16:00 on
+  Oct 15, could only infer ComfyUI from the shape of the other series:
+  `cluster_now`'s process list is live. But roadmap B has exported GPU
+  memory and SM share by workload since B2, and the tools did not offer
+  them. Now `gpu_workload_sm` and `gpu_workload_memory_bytes` are named
+  series, per node, runtime and model, with processes no runtime was
+  recognised for as `unrecognised`; `metric_history` and `correlate` read
+  them, and the tool descriptions say to. That window, from them: ComfyUI
+  averaged 23.4% of the GPU (the node's own average was 26.3%), peaked at
+  96% and 8.8 GiB; llama.cpp, 0%. `correlate` at 12:41 now ranks ComfyUI's
+  memory and SM share first. Its scores also gained a least meaningful
+  change per unit (0.5 for % and °C, 1 W, 64 MiB, ...): a series flat at
+  zero has no spread, so memory pressure going 0.000 -> 0.015% had scored
+  246 and headed the list. README, a short "Ask it" mention of agents;
   `docs/deployment.md`, enabling it and connecting a client (Claude Code's
   `claude mcp add --transport http`, and any client that speaks streamable
   HTTP).

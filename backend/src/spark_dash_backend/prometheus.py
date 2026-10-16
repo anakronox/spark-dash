@@ -405,6 +405,25 @@ HISTORY_QUERIES: dict[str, str] = {
         f"100 * max by (node) (rate(node_disk_io_time_seconds_total"
         f"{{{_NODES}}}[{{window}}]))"
     ),
+    # --- Per WORKLOAD, from roadmap B's series ----------------------------
+    #
+    # WHAT WAS USING THE GPU, AFTER THE FACT. The process table is live only,
+    # and an agent asked "what was sparky doing at 13:00 yesterday" had to
+    # infer ComfyUI from the shape of the other series (Hermes, 2026-10-16).
+    # The agent has exported these by workload since B2, never by pid, so the
+    # labels stay bounded by configuration. No chart reads them; the agent
+    # tools do (roadmap BB).
+    #
+    # `label_replace` names the processes no runtime was recognised for,
+    # which would otherwise be a series with no runtime at all.
+    "gpu_workload_sm": (
+        'label_replace(sum by (node, runtime, model) (sparkdash_gpu_process_sm_percent),'
+        ' "runtime", "unrecognised", "runtime", "")'
+    ),
+    "gpu_workload_memory_bytes": (
+        'label_replace(sum by (node, runtime, model) (sparkdash_gpu_process_memory_bytes),'
+        ' "runtime", "unrecognised", "runtime", "")'
+    ),
 }
 
 # Metrics whose expression is a bare selector, and so can take a `{node="..."}`

@@ -368,7 +368,7 @@ claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
 |---|---|
 | `cluster_now` | each node now: health, GPU, memory, CPU, pressure, temperature bands, GPU processes, engines and models; alerts firing |
 | `list_metrics` | the named series, with unit and meaning |
-| `metric_history` | one series over a window, per node: min, avg, max and when, first and last; the values on request, at most 240 |
+| `metric_history` | one series over a window, per node: min, avg, max and when, first and last; the values on request, at most 240. `gpu_workload_sm` and `gpu_workload_memory_bytes` are per workload (runtime and model), so they say what was using the GPU at a past time |
 | `alerts`, `events` | alert episodes; deploys, model loads, cold starts, maintenance |
 | `latency` | time to first token per model, last 15 minutes |
 | `clients` | who called through the gateway, when client stats are on |

@@ -30,6 +30,10 @@ QUERIES_WITHOUT_CHIPS = {
     # per-node chart. Read once in the settings panel, where the rest of the
     # deployment's facts already live.
     "monitoring_bytes",
+    # Per workload (roadmap B's series), read by the agent tools (BB): what
+    # was using the GPU at a past time. No chart draws them.
+    "gpu_workload_sm",
+    "gpu_workload_memory_bytes",
 }
 
 

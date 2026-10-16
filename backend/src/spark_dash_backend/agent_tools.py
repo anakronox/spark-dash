@@ -100,6 +100,10 @@ METRICS: dict[str, tuple[str, str]] = {
     "network_link_up": ("0/1", "1 if the interface was up for the whole step"),
     "rdma_port_state": ("0/1", "1 if the RDMA port was ACTIVE for the whole step"),
     "monitoring_bytes": ("bytes", "resident memory of Prometheus, Alertmanager and the monitoring host's exporter; no node"),
+    "gpu_workload_sm": ("%", "share of GPU compute (SM) time per workload: per node, runtime (llama.cpp, vllm, "
+                             "comfyui, ...; 'unrecognised' for the rest) and model. Says WHAT was using the GPU "
+                             "at a past time; the live process table only says it now"),
+    "gpu_workload_memory_bytes": ("bytes", "GPU (unified) memory held per workload: per node, runtime and model"),
 }
 
 #: Excluded from `correlate`: not a property of one node.
@@ -156,7 +160,7 @@ def _num(v: float) -> float | None:
 
 def _key(labels: dict) -> dict:
     """The labels that tell one series from another, in a stable order."""
-    return {k: labels[k] for k in ("node", "interface", "device", "port") if labels.get(k)}
+    return {k: labels[k] for k in ("node", "runtime", "model", "interface", "device", "port") if labels.get(k)}
 
 
 # --- the sources a tool reads -------------------------------------------------
@@ -378,6 +382,14 @@ async def clients(src: Sources, minutes: int = 60) -> dict:
 #: that sat perfectly flat does not turn a tiny wobble into a huge score.
 MOVED = 3.0
 FLOOR_SHARE = 0.05
+#: And an absolute floor per unit, the smallest change that means anything.
+#: A series sitting at zero has no spread and no level, so without this
+#: memory pressure going 0.000 -> 0.015% scored 246 and headed the ranking
+#: above ComfyUI taking the GPU from 0 to 58% (measured 2026-10-16).
+UNIT_FLOOR: dict[str, float] = {
+    "%": 0.5, "°C": 0.5, "W": 1.0, "MHz": 20.0, "bytes": 64 * 2**20, "pages/s": 1.0,
+    "tok/s": 1.0, "bit/s": 1e5, "count": 1.0, "0/1": 0.5,
+}
 
 
 def _stats(values: list[float]) -> tuple[float, float]:
@@ -418,7 +430,8 @@ async def correlate(src: Sources, node: str, at: str, minutes: int = 10) -> dict
             # The point furthest from the baseline, up or down: a dip matters
             # as much as a spike (a clock falling, a link going to 0).
             far_t, far = max(during, key=lambda tv: abs(tv[1] - b_mean))
-            floor = max(b_sd, FLOOR_SHARE * max(abs(b_mean), abs(d_mean)), 1e-9)
+            unit = METRICS.get(metric, ("", ""))[0]
+            floor = max(b_sd, FLOOR_SHARE * max(abs(b_mean), abs(d_mean)), UNIT_FLOOR.get(unit, 1e-9))
             score = abs(far - b_mean) / floor
             shift = abs(d_mean - b_mean) / floor
             rows.append({
@@ -448,7 +461,8 @@ async def correlate(src: Sources, node: str, at: str, minutes: int = 10) -> dict
         "node": node, "at": iso(centre),
         "span": [iso(span[0]), iso(span[1])], "baseline": [iso(base[0]), iso(base[1])], "step_s": step,
         "how": f"score is how far a series went from its baseline average, in baseline standard deviations "
-               f"(floored at {int(FLOOR_SHARE * 100)}% of its level); {MOVED:g} or more counts as moved",
+               f"(floored at {int(FLOOR_SHARE * 100)}% of its level, and at a least meaningful change per "
+               f"unit: 0.5 for % and °C, 1 W, 64 MiB); {MOVED:g} or more counts as moved",
         "moved_on_node": on_node,
         "moved_only_elsewhere": others,
         "alerts": alerts_in["episodes"],
@@ -494,7 +508,10 @@ INSTRUCTIONS = (
     "live state, every named series in Prometheus, alert episodes, events (deploys, model loads, "
     "cold starts, maintenance), time to first token, and which clients called the engines. "
     "Start with cluster_now and list_metrics. To explain a slowdown or a spike, call correlate "
-    "with the node and the time, then metric_history for detail. All times are UTC. GB10 has "
+    "with the node and the time, then metric_history for detail. To say what was using the GPU at "
+    "a past time, read metric_history for gpu_workload_sm (compute share) and "
+    "gpu_workload_memory_bytes, per runtime and model; cluster_now's process list is only the "
+    "present. All times are UTC. GB10 has "
     "unified memory: the GPU and CPU share one pool, so memory pressure affects both."
 )
 
@@ -572,7 +589,8 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
     tools = [
         (t_cluster_now, "cluster_now", "Each node as it stands now: health and why, GPU, memory, CPU, "
          "memory pressure, temperature bands, largest GPU processes, engines and their loaded models; "
-         "and the alerts firing."),
+         "and the alerts firing. Now only; for the GPU's workloads in the past, metric_history "
+         "gpu_workload_sm."),
         (t_list_metrics, "list_metrics", "The named series metric_history and correlate read, with "
          "unit and meaning."),
         (t_metric_history, "metric_history", "One named series over a window, per node (and per "
