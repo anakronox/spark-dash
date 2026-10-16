@@ -177,6 +177,22 @@ class AlertmanagerClient:
             resp = await client.delete(f"{self._base_url}/api/v2/silence/{silence_id}")
             resp.raise_for_status()
 
+    async def routing(self) -> dict:
+        """Where an alert goes (roadmap BE1): the default route's receiver and
+        each receiver's channels, from Alertmanager's own loaded config. A
+        receiver with no `*_configs` notifies nobody."""
+        import yaml
+
+        async with httpx.AsyncClient(timeout=self._timeout_s) as client:
+            resp = await client.get(f"{self._base_url}/api/v2/status")
+            resp.raise_for_status()
+        config = yaml.safe_load((resp.json().get("config") or {}).get("original") or "") or {}
+        receivers = {
+            r.get("name"): [k.removesuffix("_configs") for k, v in r.items() if k.endswith("_configs") and v]
+            for r in config.get("receivers") or [] if isinstance(r, dict)
+        }
+        return {"default": (config.get("route") or {}).get("receiver"), "receivers": receivers}
+
     async def reachable(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=self._timeout_s) as client:

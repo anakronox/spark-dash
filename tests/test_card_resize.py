@@ -1271,3 +1271,16 @@ def test_a_chart_card_taller_than_its_charts_centres_them_and_shrinks_the_gap_fi
     assert "margin-top: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel > header + *) {")
     assert "margin-bottom: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel > :last-child) {")
     assert "class:plots={mode === 'plot'}" in SECTION.read_text()
+
+
+
+def test_reset_layout_keeps_what_the_reader_has_been_shown():
+    """Reset layout clears every spark-dash.* key but the theme. The setup
+    guide and the tour must survive it, or a reset walks the reader through
+    the page again (roadmap BE)."""
+    src = (FRONTEND / "components" / "Settings.svelte").read_text()
+    keep = src[src.index("const KEEP = new Set("):]
+    keep = keep[: keep.index(")") + 1]
+    assert "SEEN_KEY" in keep and "TOUR_KEY" in keep and "spark-dash.theme.v1" in keep
+    setup = (FRONTEND / "lib" / "setup.svelte.ts").read_text()
+    assert "SEEN_KEY = 'spark-dash." in setup and "TOUR_KEY = 'spark-dash." in setup

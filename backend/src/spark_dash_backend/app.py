@@ -66,7 +66,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
-from spark_dash_backend import agent_tools, assistant
+from spark_dash_backend import agent_tools, assistant, setup
 from spark_dash_backend.latency import latency, latency_over
 from spark_dash_backend.notes import NoteStore
 from spark_dash_backend.maintenance import (
@@ -1739,6 +1739,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (ClusterConfigError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _mcp_status(made)
+
+    @app.get("/api/setup")
+    async def api_setup() -> dict:
+        """The onboarding checklist (roadmap BE1), from the system as it is."""
+        snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
+        prom_ok, am_ok = await asyncio.gather(prom.healthy(), alertmanager.reachable())
+        age, down, routing = None, 0, None
+        if prom_ok:
+            try:
+                age = await prom.data_age_s()
+                down = len(await prom.query(TARGETS_DOWN))
+            except PrometheusError:
+                pass
+        if am_ok:
+            try:
+                routing = await alertmanager.routing()
+            except Exception:  # noqa: BLE001 — reported as unreadable, not a failure
+                routing = None
+        gateway, _ = inventory.gateway()
+        a_config, _ = _assistant()
+        return setup.checklist(
+            nodes=snapshot.nodes, prom_ok=prom_ok, data_age_s=age, targets_down=down,
+            am_ok=am_ok, routing=routing, cluster_file=inventory.cluster_file_present,
+            fleet=fleet_updates.status(), gateway_on=bool(gateway and gateway.enabled),
+            assistant_on=bool(a_config and a_config.enabled), mcp_on=_mcp()[0].enabled,
+        )
 
     @app.delete("/api/notes")
     async def api_notes_clear() -> dict:

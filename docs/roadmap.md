@@ -8073,12 +8073,12 @@ same per node for the NICs and the NVMe.
   A group whose sensors state no limit (the radio) is plain numbers, not
   empty dials. Every group's dials are one size. Live from the snapshot.
 
-### BE — Onboarding: what to set up, in order — **planned 2026-10-16**
+### BE — Onboarding: what to set up, in order — **built 2026-10-16**
 
 Brian: the product is becoming more complicated, so a walk-through of the
 features with tips on what to configure, required first, optional last.
 
-- [ ] **BE1. A setup checklist** that reads its state from the backend
+- [x] **BE1. A setup checklist** that reads its state from the backend
   rather than from what the reader clicked: *required*, nodes reporting,
   Prometheus scraping them, Alertmanager reachable with a route that
   notifies someone; *recommended*, thermal bands from each node's own
@@ -8086,12 +8086,19 @@ features with tips on what to configure, required first, optional last.
   *optional*, DGX OS updates, client stats, the assistant, agent tools,
   webhooks. Each item says why it matters and goes straight to where it is
   set.
-- [ ] **BE2. Shown first.** Open on a first visit, and from a "setup 3/5"
+- [x] **BE2. Shown first.** Open on a first visit, and from a "setup 3/5"
   chip in the header while anything required is missing; dismissable, and
   reopened from Settings.
-- [ ] **BE3. A short tour of the page.** Tips pinned to the features a
+- [x] **BE3. A short tour of the page.** Tips pinned to the features a
   reader would not find by looking: drag a card's corner, `+ element` for a
   second copy, charts or gauges, the groups menus, Ask. Skippable, once.
+- Built 2026-10-16. `GET /api/setup` checks each step itself: the agents
+  answer, Prometheus is fresh with no target down, Alertmanager's default
+  route has a receiver with a channel (here `ntfy` by webhook), each node's
+  thermal bands came from its hardware. "Set up in Settings" opens Settings
+  on the step's pane; the tour has eight steps and skips any whose control
+  is not on the page (Ask until it is set up). Reset layout keeps both
+  "seen" flags.
 
 ### J — Single-host profile (everything on one GB10)
 

@@ -27,6 +27,9 @@
   import { FleetFeed } from './lib/fleet.svelte';
   import { AssistantFeed } from './lib/assistant.svelte';
   import AskPanel from './components/AskPanel.svelte';
+  import SetupGuide from './components/SetupGuide.svelte';
+  import Tour from './components/Tour.svelte';
+  import { SEEN_KEY, SetupFeed, TOUR_KEY, flag, setFlag } from './lib/setup.svelte';
   import { LatencyFeed } from './lib/latency.svelte';
   import { latencyTitle, seconds } from './lib/latency';
   import { ClientsFeed } from './lib/clients.svelte';
@@ -54,7 +57,47 @@
   let askOpen = $state(false);
   let historyOpen = $state(false);
   let settingsOpen = $state(false);
+  /* Settings opened on a pane by the setup guide (roadmap BE1). */
+  let settingsPane = $state<string | null>(null);
   let fleetOpen = $state(false);
+  /* ONBOARDING (roadmap BE). The guide opens on a first visit, and while a
+     required step is missing a chip in the header says how many; the tour
+     follows the guide the first time. "Show when the dashboard opens" is the
+     inverse of SEEN_KEY. */
+  const setupFeed = new SetupFeed();
+  let setupOpen = $state(false);
+  let tourOpen = $state(false);
+  let showSetupOnStart = $state(!flag(SEEN_KEY));
+  /* Set while the guide hands over to Settings, so its closing is not
+     read as the reader finishing with it: the tour must not start over the
+     pane they just asked for. */
+  let toSettings = false;
+  function closeSetup() {
+    setupOpen = false;
+    setFlag(SEEN_KEY, true);
+    showSetupOnStart = false;
+    if (toSettings) {
+      toSettings = false;
+      return;
+    }
+    // The first time, the tour follows.
+    if (!flag(TOUR_KEY)) startTour();
+  }
+  function startTour() {
+    setupOpen = false;
+    settingsOpen = false;
+    tourOpen = true;
+  }
+  function endTour() {
+    tourOpen = false;
+    setFlag(TOUR_KEY, true);
+  }
+  function openSettingsAt(pane: string) {
+    toSettings = true;
+    setupOpen = false;
+    settingsPane = pane;
+    settingsOpen = true;
+  }
   const layout = new Layout();
   /* The Clients card is on the page exactly while the feature is on (AM6a).
      Brian, 2026-09-29: on, it is a card like any other; off, it is not there
@@ -92,7 +135,11 @@
     clientsFeed.start();
     latencyFeed.start();
     assistantFeed.start();
+    setupFeed.start();
+    // A first visit opens the guide once the page has something under it.
+    if (!flag(SEEN_KEY)) setTimeout(() => (setupOpen = true), 800);
     return () => {
+      setupFeed.stop();
       feed.close();
       alertFeed.stop();
       fleetFeed.stop();
@@ -687,6 +734,19 @@
         </button>
       {/if}
 
+      <!-- While a required setup step is missing: how many, and the way in.
+           Gone once they all work, so a healthy install has no chip. -->
+      {#if setupFeed.missing > 0}
+        <button
+          class="{SETTINGS_TRIGGER} {ALERTS_LOUD}"
+          aria-label={`${setupFeed.missing} required setup step${setupFeed.missing === 1 ? '' : 's'} missing. Open the setup guide.`}
+          onclick={() => (setupOpen = true)}
+        >
+          <span aria-hidden="true">▲</span>
+          <span class={SETTINGS_LABEL}>setup {setupFeed.status?.required_done}/{setupFeed.status?.required_total}</span>
+        </button>
+      {/if}
+
       <button
         class={SETTINGS_TRIGGER}
         aria-label="Open settings"
@@ -736,7 +796,38 @@
     </p>
   {/each}
   <AlertHistory feed={alertFeed} open={historyOpen} onclose={() => (historyOpen = false)} />
-  <Settings {theme} {layout} fleet={fleetFeed} clients={clientsFeed} assistant={assistantFeed} open={settingsOpen} onclose={() => (settingsOpen = false)} />
+  <Settings
+    {theme}
+    {layout}
+    fleet={fleetFeed}
+    clients={clientsFeed}
+    assistant={assistantFeed}
+    open={settingsOpen}
+    requestPane={settingsPane}
+    onclose={() => {
+      settingsOpen = false;
+      settingsPane = null;
+      setupFeed.load();
+    }}
+    onguide={() => {
+      settingsOpen = false;
+      setupOpen = true;
+    }}
+    ontour={startTour}
+  />
+  <SetupGuide
+    feed={setupFeed}
+    open={setupOpen}
+    onclose={closeSetup}
+    onsettings={openSettingsAt}
+    ontour={startTour}
+    showOnStart={showSetupOnStart}
+    onshowonstart={(on) => {
+      showSetupOnStart = on;
+      setFlag(SEEN_KEY, !on);
+    }}
+  />
+  <Tour open={tourOpen} onclose={endTour} />
   <AskPanel feed={assistantFeed} open={askOpen} onclose={() => (askOpen = false)} />
   <FleetUpdates feed={fleetFeed} open={fleetOpen} slots={slotOf} onclose={() => (fleetOpen = false)} />
 

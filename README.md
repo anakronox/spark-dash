@@ -265,7 +265,14 @@ curl -s <monitoring-host>:8080/health | jq '{status, problems}'
 scraped. If a node is listed there but its agent isn't running yet, it shows up
 in `problems` with the reason.
 
-**That is the whole install.** Steps 4 and 5 are things you may never need.
+Then open the dashboard. The first time, **Get started** lists what to set up,
+required first and optional last, and marks each step done only once it is
+working: every node reporting, Prometheus scraping, an alert that would reach
+someone. While a required step is missing, a **setup** chip in the header says
+how many. A short tour of the controls that are easy to miss follows; both are
+under **Settings → Appearance** afterwards.
+
+**That is the whole install.** The steps below are things you may never need.
 
 ### 4. Adding a node, or an engine on one
 

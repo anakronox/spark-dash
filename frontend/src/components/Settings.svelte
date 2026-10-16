@@ -35,6 +35,7 @@
   import type { ClientsFeed } from '../lib/clients.svelte';
   import type { AssistantFeed, McpStatus } from '../lib/assistant.svelte';
   import { CLIENTS, clientOr, setupFor, type ClientId } from '../lib/mcpClients';
+  import { SEEN_KEY, TOUR_KEY } from '../lib/setup.svelte';
   import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
   import type { ProbeResult } from '../lib/clients';
 
@@ -50,8 +51,14 @@
     /** Client stats from a LiteLLM gateway (roadmap AM5). */
     clients?: ClientsFeed;
     assistant?: AssistantFeed;
+    /** Open on this pane (roadmap BE1: the setup guide's "set up in Settings"). */
+    requestPane?: string | null;
+    /** Reopen the setup guide, or the tour (roadmap BE2, BE3). */
+    onguide?: () => void;
+    ontour?: () => void;
   }
-  const { theme, layout, open, onclose, fleet, clients, assistant }: Props = $props();
+  const { theme, layout, open, onclose, fleet, clients, assistant, requestPane = null, onguide, ontour }: Props =
+    $props();
 
   /* ASSISTANT (roadmap AY). An OpenAI-compatible endpoint, its key and a
      model. The key goes to the backend once and is never sent back: the field
@@ -697,6 +704,11 @@
       ],
     },
   ]);
+  /* The setup guide asks for a pane; honoured each time Settings opens. */
+  $effect(() => {
+    if (open && requestPane) setPane(requestPane as Pane);
+  });
+
   /* A remembered pane this deployment does not have (no fleet service, say)
      falls back to the first. */
   $effect(() => {
@@ -740,7 +752,9 @@
   /* RESET LAYOUT: every view preference this page keeps, except the theme.
      They all share one prefix, so a key added later is reset too without an
      edit here. Reloads, since each store read its key once at start. */
-  const KEEP = new Set(['spark-dash.theme.v1']);
+  /* And what the reader has already been shown: a reset of the layout is not
+     a reason to walk them through the page again. */
+  const KEEP = new Set(['spark-dash.theme.v1', SEEN_KEY, TOUR_KEY]);
   let resetArmed = $state(false);
   let resetTimer: ReturnType<typeof setTimeout> | undefined;
   function resetLayout() {
@@ -945,6 +959,12 @@
           <span class="note dim">Puts every element back where it started; keeps the theme.</span>
         {/if}
       </div>
+      {#if onguide || ontour}
+        <div class="rt-row">
+          {#if onguide}<button class="mini add" onclick={onguide}>Setup guide</button>{/if}
+          {#if ontour}<button class="mini add" onclick={ontour}>Take the tour</button>{/if}
+        </div>
+      {/if}
     </section>
       {/if}
       {#if pane === 'nodes'}
@@ -1149,7 +1169,7 @@
           <!-- Kept, unlike the other notes: this is not background, it is what
                the button beside it will DO to a file the reader may have
                hand-edited. -->
-          <span class="note dim grow">Saving rewrites the file; comments are not preserved.</span>
+          <span class="note dim rest">Saving rewrites the file; comments are not preserved.</span>
           <button class="mini" disabled={!dirty || saving} onclick={() => (draft = clone(cfg!.nodes))}>Revert</button>
           <button class="mini save" disabled={!dirty || saving} onclick={save}>
             {saving ? 'Saving…' : 'Save cluster'}
@@ -1686,7 +1706,7 @@
   /* A single column of controls stays at a readable width; Nodes, a grid
      of cards, takes the pane. */
   .pane > .stack:not(.wide) { max-width: 680px; }
-  .savebar .grow { flex: 1; text-align: right; }
+  .savebar .rest { flex: 1; text-align: right; }
 
   /* Two columns where the width allows, one where it does not. */
   .cols {
