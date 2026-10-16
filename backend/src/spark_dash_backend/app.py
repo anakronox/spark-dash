@@ -68,6 +68,7 @@ from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
 from spark_dash_backend import agent_tools, assistant
 from spark_dash_backend.latency import latency, latency_over
+from spark_dash_backend.notes import NoteStore
 from spark_dash_backend.maintenance import (
     DEFAULT_HOURS,
     MaintenanceService,
@@ -203,6 +204,7 @@ class McpWrite(BaseModel):
 
     enabled: bool | None = None
     promql: bool | None = None
+    notes: bool | None = None
 
 
 class FleetEnrol(BaseModel):
@@ -243,6 +245,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings.alertmanager_url, timeout_s=settings.alertmanager_timeout_s
     )
     maintenance = MaintenanceService(alertmanager, inventory)
+    note_store = NoteStore(settings.cluster_config)
     # The DGX OS updater, in this process. Until AL3g there was a second
     # implementation here -- a typed proxy to a separate spark-fleet-updates
     # container, chosen when FLEET_UPDATES_URL was set -- which existed to be
@@ -690,7 +693,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         end = time.time()
         start = end - minutes * 60
         try:
-            found = await fetch_annotations(prom, start=start, end=end, step=step)
+            found = await fetch_annotations(prom, start=start, end=end, step=step, notes=note_store.between)
         except PrometheusError as exc:
             raise HTTPException(status_code=503, detail=f"prometheus: {exc}") from exc
         return {"annotations": as_dicts(found)}
@@ -1602,7 +1605,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         snapshot: ClusterSnapshot = poller.latest or await poller.poll_once()
         episodes, notes, lat = await asyncio.gather(
             fetch_episodes(prom, start=start, end=end, step=step),
-            fetch_annotations(prom, start=start, end=end, step=step),
+            fetch_annotations(prom, start=start, end=end, step=step, notes=note_store.between),
             _latency(),
             return_exceptions=True,
         )
@@ -1680,6 +1683,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         silences=lambda: api_silences(),
         maintenance=lambda: api_maintenance(),
         fleet=_mcp_fleet,
+        notes=note_store.between,
+        notes_enabled=lambda: _mcp()[0].notes,
+        add_note=note_store.add,
     )
     mcp_server = agent_tools.build_server(tool_sources, version=os.environ.get("BACKEND_VERSION", "dev"))
     gate = agent_tools.KeyGate(
@@ -1697,6 +1703,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "enabled": config.enabled,
             "promql": config.promql,
+            "notes": config.notes,
+            "note_count": note_store.count(),
             "key_set": stored is not None,
             "key_hint": assistant.key_hint(stored),
             "path": "/mcp",
@@ -1719,6 +1727,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         config = agent_tools.McpConfig(
             enabled=current.enabled if body.enabled is None else body.enabled,
             promql=current.promql if body.promql is None else body.promql,
+            notes=current.notes if body.notes is None else body.notes,
         )
         made = None
         try:
@@ -1730,6 +1739,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except (ClusterConfigError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _mcp_status(made)
+
+    @app.delete("/api/notes")
+    async def api_notes_clear() -> dict:
+        """Remove every note agents added (BB17)."""
+        removed = await asyncio.to_thread(note_store.clear)
+        return {**_mcp_status(), "removed": removed}
 
     @app.post("/api/mcp/key")
     async def api_mcp_key() -> dict:

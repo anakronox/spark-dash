@@ -337,6 +337,10 @@
        low alpha so the lines stay legible through it, edged so a short one
        still registers. Muted ink, not a status colour — a state you chose. */
     maintenance: { token: '--ink-muted', dash: [], alpha: 0.4 },
+    /* A note an agent added (roadmap BB17): someone saying why, which is
+       worth more than the other recessive kinds, so solid and a little
+       stronger, in ink rather than a status colour. */
+    note: { token: '--ink-2', dash: [], alpha: 0.7 },
   };
   const BAND_ALPHA = 0.1;
 

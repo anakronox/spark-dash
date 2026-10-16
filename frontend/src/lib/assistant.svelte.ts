@@ -34,6 +34,9 @@ export interface Answer {
 export interface McpStatus {
   enabled: boolean;
   promql: boolean;
+  /** BB17: agents may add notes to the timeline. */
+  notes: boolean;
+  note_count: number;
   key_set: boolean;
   key_hint: string | null;
   path: string;
@@ -121,8 +124,12 @@ export class AssistantFeed {
     return send('GET', '/api/mcp/status');
   }
 
-  async mcpSave(d: { enabled?: boolean; promql?: boolean }): Promise<McpStatus> {
+  async mcpSave(d: { enabled?: boolean; promql?: boolean; notes?: boolean }): Promise<McpStatus> {
     return send('PUT', '/api/mcp/config', d);
+  }
+
+  async clearNotes(): Promise<McpStatus> {
+    return send('DELETE', '/api/notes');
   }
 
   async mcpNewKey(): Promise<McpStatus> {

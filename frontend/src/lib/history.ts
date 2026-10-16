@@ -307,7 +307,7 @@ export function snapGrid(
 /** One event to mark on the charts. */
 export interface Annotation {
   ts: number;
-  /** "alert" | "cold-start" | "deploy" | "maintenance" — drives colour and wording. */
+  /** "alert" | "cold-start" | "deploy" | "maintenance" | "note" — drives colour and wording. */
   kind: string;
   label: string;
   node: string | null;

@@ -380,6 +380,13 @@ claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
 | `clients` | who called through the gateway, when client stats are on |
 | `correlate` | every series on every node ranked by how far it moved around a moment, with the alerts and events beside it |
 | `promql` | raw PromQL, only with **also allow raw PromQL queries** on |
+| `add_note` | adds a note to the timeline ("benchmark started"), marked as an agent's; only with **let agents add notes** on. The one tool that writes. Settings shows how many there are and removes them all |
+
+The endpoint also serves **prompts**, report templates any client can offer
+(`daily_report`, `incident_report`, `capacity_check`), and **resources**, reference an
+agent can read instead of guessing: `sparkdash://guide/gb10` (unified memory,
+temperature limits, clocks, power), `sparkdash://guide/metrics` (every series, its
+unit and its PromQL) and `sparkdash://guide/investigating` (which tool answers what).
 
 Series are picked by name, as the charts pick them, so a call cannot become
 an arbitrary Prometheus query unless raw PromQL is switched on. Results are

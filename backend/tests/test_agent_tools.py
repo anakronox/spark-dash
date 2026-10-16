@@ -123,7 +123,7 @@ class TestTheKey:
     def test_the_key_is_owner_only_and_not_in_the_cluster_file(self, api):
         key = switch_on(api)["key"]
         assert key not in api.cluster.read_text()
-        assert yaml.safe_load(api.cluster.read_text())["mcp"] == {"enabled": True, "promql": False}
+        assert yaml.safe_load(api.cluster.read_text())["mcp"] == {"enabled": True, "promql": False, "notes": False}
         path = agent_tools.key_path(api.cluster)
         assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
 
@@ -556,3 +556,70 @@ def test_latency_over_a_window_names_the_peak():
     m = r["models"][0]
     assert m["p95"]["max_s"] == 300.0 and m["p95"]["max_at"].endswith("Z")
     assert m["p50_values_s"][0] == 1.0 and "series" not in m
+
+
+# --- BB15, BB16 ----------------------------------------------------------------
+
+def test_the_guides_and_prompts_are_served(api):
+    switch_on(api)
+    h = api.headers_with_key
+    res = api.post("/mcp", json=rpc("resources/list"), headers=h).json()["result"]["resources"]
+    uris = sorted(r["uri"] for r in res)
+    assert uris == ["sparkdash://guide/gb10", "sparkdash://guide/investigating", "sparkdash://guide/metrics"]
+    body = api.post("/mcp", json=rpc("resources/read", {"uri": "sparkdash://guide/metrics"}), headers=h).json()
+    text = body["result"]["contents"][0]["text"]
+    for key in HISTORY_QUERIES:
+        assert f"## {key} (" in text, f"{key} is missing from the metrics guide"
+    prompts = api.post("/mcp", json=rpc("prompts/list"), headers=h).json()["result"]["prompts"]
+    assert sorted(p["name"] for p in prompts) == ["capacity_check", "daily_report", "incident_report"]
+    got = api.post("/mcp", json=rpc("prompts/get", {"name": "incident_report", "arguments": {
+        "node": "sparky", "start": "2026-10-15T12:00Z", "end": "2026-10-15T16:00Z"}}), headers=h).json()
+    msg = got["result"]["messages"][0]["content"]["text"]
+    assert "sparky" in msg and "correlate" in msg and "monitoring_health" in msg
+
+
+def test_the_gb10_guide_states_the_facts_the_dashboard_rests_on():
+    from spark_dash_backend.agent_docs import GB10
+    for fact in ("one pool", "NVML", "MemTotal - MemAvailable", "104.8", "3003 MHz", "temperature_bands_c"):
+        assert fact in GB10, fact
+
+
+
+# --- BB17: notes ----------------------------------------------------------------
+
+class TestNotes:
+    def call(self, api, name, args):
+        return api.post("/mcp", headers=api.headers_with_key, json=rpc("tools/call", {
+            "name": name, "arguments": args})).json()["result"]
+
+    def names(self, api):
+        return [t["name"] for t in api.post("/mcp", json=rpc("tools/list"), headers=api.headers_with_key).json()["result"]["tools"]]
+
+    def test_off_by_default_hidden_and_refused(self, api):
+        switch_on(api)
+        assert "add_note" not in self.names(api)
+        r = self.call(api, "add_note", {"text": "benchmark started"})
+        assert r["isError"] and "switched off" in r["content"][0]["text"]
+
+    def test_an_agent_adds_one_and_the_timeline_shows_it(self, api):
+        switch_on(api, notes=True)
+        tools = {t["name"]: t for t in api.post("/mcp", json=rpc("tools/list"), headers=api.headers_with_key).json()["result"]["tools"]}
+        assert tools["add_note"]["annotations"]["readOnlyHint"] is False
+        r = self.call(api, "add_note", {"text": "benchmark  started", "node": "sparky"})
+        added = json.loads(r["content"][0]["text"])["added"]
+        assert added["text"] == "benchmark started" and added["by"] == "agent"
+        ann = api.get("/api/annotations", params={"minutes": 5}).json()["annotations"]
+        assert any(a["kind"] == "note" and a["label"] == "benchmark started (agent)" and a["node"] == "sparky"
+                   for a in ann)
+        ev = json.loads(self.call(api, "events", {"minutes": 5})["content"][0]["text"])["events"]
+        assert [e["kind"] for e in ev] == ["note"]
+        status = api.get("/api/mcp/status").json()
+        assert status["notes"] is True and status["note_count"] == 1
+        assert api.delete("/api/notes").json()["removed"] == 1
+        assert api.get("/api/mcp/status").json()["note_count"] == 0
+
+    def test_a_note_is_bounded(self, api):
+        switch_on(api, notes=True)
+        r = self.call(api, "add_note", {"text": "x" * 201})
+        assert r["isError"] and "200" in r["content"][0]["text"]
+        assert self.call(api, "add_note", {"text": "   "})["isError"]

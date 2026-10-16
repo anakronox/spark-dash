@@ -75,7 +75,8 @@ METRICS: dict[str, tuple[str, str]] = {
     "gpu_utilization": ("%", "GPU busy"),
     "gpu_temperature": ("°C", "GPU temperature; the node's warning and critical bands are in cluster_now"),
     "gpu_power": ("W", "GPU power draw (the GPU alone; NVML on GB10 reports no whole-module figure)"),
-    "gpu_clock": ("MHz", "GPU clock; GB10 targets about 3000 MHz under load and drops when throttling"),
+    "gpu_clock": ("MHz", "GPU clock; GB10 never reaches the 3003 MHz NVML reports as its maximum, and a "
+                         "sustained drop under load is throttling: compare a node with itself over time"),
     "memory_used_percent": ("%", "unified memory used; the GPU and CPU share this one pool"),
     "memory_used_bytes": ("bytes", "unified memory used"),
     "cpu_utilization": ("%", "CPU busy, all cores"),
@@ -191,6 +192,10 @@ class Sources:
     maintenance: Callable[[], Awaitable[dict]] | None = None
     #: BB14: the DGX OS updater's view, or None when it is not set up.
     fleet: Callable[[], Awaitable[dict | None]] | None = None
+    #: BB17: notes on the timeline: read them, and whether agents may add one.
+    notes: Callable[[float, float], list] | None = None
+    notes_enabled: Callable[[], bool] = lambda: False
+    add_note: Callable[..., dict] | None = None
 
 
 def _dump(payload: Any) -> str:
@@ -354,7 +359,7 @@ async def alerts(src: Sources, minutes: int = 60, end: str | None = None) -> dic
 
 async def events(src: Sources, minutes: int = 60, end: str | None = None, node: str | None = None) -> dict:
     start, stop = _window(minutes, end)
-    notes = await fetch_annotations(src.prom, start=start, end=stop, step=_step_str(minutes))
+    notes = await fetch_annotations(src.prom, start=start, end=stop, step=_step_str(minutes), notes=src.notes)
     if node:
         notes = [a for a in notes if a.node in (node, None)]
     rows = [{k: v for k, v in {"at": iso(a.ts), "kind": a.kind, "what": a.label, "node": a.node,
@@ -823,6 +828,17 @@ async def correlate(src: Sources, node: str, at: str, minutes: int = 10) -> dict
     }
 
 
+def add_note(src: Sources, text: str, node: str | None = None, at: str | None = None) -> dict:
+    if not src.notes_enabled() or src.add_note is None:
+        raise ToolError("adding notes is switched off in Settings")
+    when = parse_time(at) if at else None
+    try:
+        note = src.add_note(text, node=node, at=when, by="agent")
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return {"added": {**note, "ts": iso(note["ts"]), "added": iso(note["added"])}}
+
+
 async def promql(src: Sources, query: str, minutes: int = 0, end: str | None = None) -> dict:
     if not src.promql_enabled():
         raise ToolError("raw PromQL is switched off in Settings; use metric_history")
@@ -864,7 +880,9 @@ INSTRUCTIONS = (
     "side; monitoring_health says whether data is missing. To say what was using the GPU at "
     "a past time, read metric_history for gpu_workload_sm (compute share) and "
     "gpu_workload_memory_bytes, per runtime and model; cluster_now's process list is only the "
-    "present. All times are UTC. GB10 has "
+    "present. The resources sparkdash://guide/gb10, /metrics and /investigating explain the "
+    "hardware, every series and the workflow; the prompts daily_report, incident_report and "
+    "capacity_check give report shapes. All times are UTC. GB10 has "
     "unified memory: the GPU and CPU share one pool, so memory pressure affects both."
 )
 
@@ -877,7 +895,8 @@ End = Annotated[str | None, Field(description="the window's end, ISO 8601 UTC li
 
 
 class DashboardMCP(MCPServer):
-    """An MCPServer that lists `promql` only while its switch is on."""
+    """An MCPServer that lists `promql` and `add_note` only while their
+    switches are on."""
 
     def __init__(self, src: Sources, **kwargs):
         super().__init__(**kwargs)
@@ -885,9 +904,12 @@ class DashboardMCP(MCPServer):
 
     async def list_tools(self):
         tools = await super().list_tools()
-        if self._src.promql_enabled():
-            return tools
-        return [t for t in tools if t.name != "promql"]
+        hidden = set()
+        if not self._src.promql_enabled():
+            hidden.add("promql")
+        if not self._src.notes_enabled():
+            hidden.add("add_note")
+        return [t for t in tools if t.name not in hidden]
 
 
 def build_server(src: Sources, version: str = "") -> DashboardMCP:
@@ -964,6 +986,13 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
     ) -> str:
         return _dump(await correlate(src, node, at, minutes))
 
+    async def t_add_note(
+        text: Annotated[str, Field(description="what happened, at most 200 characters: 'benchmark started'")],
+        node: Annotated[str | None, Field(description="the node it concerns; omit for the cluster")] = None,
+        at: Annotated[str | None, Field(description="when, ISO 8601 UTC; default now")] = None,
+    ) -> str:
+        return _dump(add_note(src, text, node, at))
+
     async def t_promql(
         query: Annotated[str, Field(description="a PromQL expression")],
         minutes: Annotated[int, Field(description="0 for an instant query at `end`; otherwise a range "
@@ -1021,6 +1050,23 @@ def build_server(src: Sources, version: str = "") -> DashboardMCP:
     for fn, name, desc in tools:
         server.add_tool(fn, name=name, description=desc, annotations=READ_ONLY,
                         structured_output=False)
+    # The one tool that writes, and only a note: listed only while its switch
+    # is on, and annotated as a write so a client can ask before using it.
+    server.add_tool(t_add_note, name="add_note",
+                    description="Add a note to the dashboard's timeline at a moment ('benchmark started', "
+                                "'restarted ComfyUI'), so later charts and correlate show why something "
+                                "moved. Marked as an agent's. Only when allowed in Settings.",
+                    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False,
+                                                idempotent_hint=False, open_world_hint=False),
+                    structured_output=False)
+
+    # BB15, BB16: report templates, and reference to read instead of guess.
+    from . import agent_docs
+
+    for res in agent_docs.resources(METRICS):
+        server.add_resource(res)
+    for fn, name, title, desc in agent_docs.PROMPTS:
+        server.prompt(name=name, title=title, description=desc)(fn)
     return server
 
 
@@ -1069,6 +1115,8 @@ async def _plain(send, status: int, text: str, extra: list | None = None):
 class McpConfig:
     enabled: bool = False
     promql: bool = False
+    #: BB17: agents may add notes to the timeline.
+    notes: bool = False
 
 
 def parse_mcp(payload: object) -> McpConfig:
@@ -1078,7 +1126,7 @@ def parse_mcp(payload: object) -> McpConfig:
     if not isinstance(block, dict):
         raise ClusterConfigError("`mcp:` must be a mapping with `enabled:` and `promql:`")
     out = {}
-    for name in ("enabled", "promql"):
+    for name in ("enabled", "promql", "notes"):
         value = block.get(name, False)
         if not isinstance(value, bool):
             raise ClusterConfigError(f"mcp.{name} must be true or false, not {value!r}")
@@ -1108,10 +1156,10 @@ def write_mcp(path: Path, config: McpConfig) -> None:
         )
     nodes = parse_cluster(path.read_text())
     updated = dict(doc)
-    if not config.enabled and not config.promql:
+    if not (config.enabled or config.promql or config.notes):
         updated.pop("mcp", None)
     else:
-        updated["mcp"] = {"enabled": config.enabled, "promql": config.promql}
+        updated["mcp"] = {"enabled": config.enabled, "promql": config.promql, "notes": config.notes}
     text = dump_cluster(nodes, preserve=updated)
     parse_mcp(yaml.safe_load(text))
     _atomic_write(path, text)

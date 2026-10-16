@@ -7987,16 +7987,21 @@ memory is one pool.
     swap traffic and ComfyUI's memory (9.4 to 40 GiB at peak) first; 35
     rules; qwen36-35b's last load 30 s +/- 15, read at the 15 s scrape step
     whatever the window, since load times are counted in steps.
-  - [ ] **BB15. Prompts.** MCP prompt templates (a daily report, an incident
+  - [x] **BB15. Prompts.** MCP prompt templates (a daily report, an incident
     report for a window, what is using capacity), so every client produces
     the same shape of report.
-  - [ ] **BB16. Resources.** The metrics guide and the GB10 notes (unified
+  - [x] **BB16. Resources.** The metrics guide and the GB10 notes (unified
     memory, thermal limits, why NVML's memory figure is wrong) served as
     readable documents.
-  - [ ] **BB17. Notes on the timeline.** An agent may add an annotation,
+  - [x] **BB17. Notes on the timeline.** An agent may add an annotation,
     "benchmark started", so a later `correlate` explains the spike. The
     first write a tool can make, so behind a switch of its own, off by
-    default; notes are marked as an agent's.
+    default; notes are marked as an agent's. Built 2026-10-16: `notes.json` beside
+    `cluster.yml`, the newest 2000 kept, none past retention, 200 characters
+    each; drawn on the charts as their own kind; Settings counts them and
+    removes them all. Prompts and the three guides (BB15, BB16) live in the
+    backend package, since the image ships it and not docs/; the metrics
+    guide is generated from the tools' own table.
   - [ ] **BB18. Events pushed to agents.** Alert transitions (fired,
     resolved) detected by the backend from Prometheus every 15 s, so no
     Alertmanager change and no restart, delivered three ways: **webhooks**

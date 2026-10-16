@@ -51,7 +51,7 @@ class Annotation:
     ts: float
     #: Drives the colour and the wording. Kept coarse deliberately — three
     #: kinds a reader can hold in their head, not a taxonomy.
-    kind: str  # "alert" | "cold-start" | "deploy" | "maintenance"
+    kind: str  # "alert" | "cold-start" | "deploy" | "maintenance" | "note"
     label: str
     node: str | None = None
     #: Only a maintenance window has one. The other kinds are instants; a
@@ -66,9 +66,16 @@ async def fetch_annotations(
     start: float,
     end: float,
     step: str = "60s",
+    notes=None,
 ) -> list[Annotation]:
-    """Every drawable event in the window, oldest first."""
+    """Every drawable event in the window, oldest first. `notes`, when given,
+    is `(start, end) -> [Annotation]` for the notes agents added (BB17)."""
     out: list[Annotation] = []
+    if notes is not None:
+        try:
+            out.extend(notes(start, end))
+        except Exception:  # noqa: BLE001
+            log.warning("notes unavailable for annotations", exc_info=True)
 
     try:
         for episode in await fetch_episodes(prom, start=start, end=end, step=step):

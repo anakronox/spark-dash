@@ -1451,6 +1451,26 @@
           />
           <span>also allow raw PromQL queries</span>
         </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={mcp?.notes ?? false}
+            disabled={mBusy || !mcp}
+            onchange={(e) =>
+              mcpAction(() => assistant!.mcpSave({ notes: (e.currentTarget as HTMLInputElement).checked }))}
+          />
+          <span>let agents add notes to the timeline ("benchmark started"), marked as theirs</span>
+        </label>
+        {#if mcp?.note_count}
+          <div class="rt-row">
+            <span class="note dim">
+              <span class="num">{mcp.note_count}</span> note{mcp.note_count === 1 ? '' : 's'} on the timeline
+            </span>
+            <button class="mini" disabled={mBusy} onclick={() => mcpAction(() => assistant!.clearNotes())}
+              >remove all</button
+            >
+          </div>
+        {/if}
         {#if mcp?.enabled}
           <label class="field">
             <span class="dim">endpoint</span>
