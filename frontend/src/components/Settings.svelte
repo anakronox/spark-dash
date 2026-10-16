@@ -34,6 +34,7 @@
   import type { FleetFeed } from '../lib/fleet.svelte';
   import type { ClientsFeed } from '../lib/clients.svelte';
   import type { AssistantFeed, McpStatus } from '../lib/assistant.svelte';
+  import { CLIENTS, clientOr, setupFor, type ClientId } from '../lib/mcpClients';
   import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
   import type { ProbeResult } from '../lib/clients';
 
@@ -115,7 +116,7 @@
   let mKey = $state<string | null>(null);
   let mBusy = $state(false);
   let mError = $state<string | null>(null);
-  let mBox = $state<HTMLTextAreaElement | null>(null);
+  let mBox = $state<HTMLInputElement | null>(null);
 
   async function mcpAction(fn: () => Promise<McpStatus>) {
     if (!assistant || mBusy) return;
@@ -135,8 +136,29 @@
     }
   }
   const mcpUrl = () => `${location.origin}${mcp?.path ?? '/mcp'}`;
-  const mcpCommand = (key: string) =>
-    `claude mcp add --transport http spark-dash ${mcpUrl()} --header "Authorization: Bearer ${key}"`;
+
+  /* Which agent the snippet is written for, remembered in this browser. */
+  const CLIENT_KEY = 'spark-dash.mcp-client.v1';
+  let mClient = $state<ClientId>(
+    clientOr((() => {
+      try {
+        return localStorage.getItem(CLIENT_KEY);
+      } catch {
+        return null;
+      }
+    })()),
+  );
+  function chooseClient(id: ClientId) {
+    mClient = id;
+    try {
+      localStorage.setItem(CLIENT_KEY, id);
+    } catch {
+      // Private window: the choice lasts until reload.
+    }
+  }
+  /* Without the key in hand (it is shown once), the snippet says where it
+     goes and the reader pastes it in. */
+  const mSetup = $derived(setupFor(mClient, mcpUrl(), mKey ?? '<key>'));
 
   /* CLIENTS — a gateway address and a switch, AL5's two levels (roadmap AM).
    *
@@ -1179,32 +1201,58 @@
           />
           <span>also allow raw PromQL queries</span>
         </label>
-        {#if mcp?.key_set}
-          <div class="rt-row">
-            <span class="note">key <span class="num">{mcp.key_hint}</span></span>
+        {#if mcp?.enabled}
+          <label class="field">
+            <span class="dim">endpoint</span>
+            <input class="in mono" readonly value={mcpUrl()} onfocus={(e) => e.currentTarget.select()} />
+          </label>
+          <label class="field">
+            <span class="dim">key</span>
+            {#if mKey}
+              <input
+                class="in mono"
+                readonly
+                value={mKey}
+                bind:this={mBox}
+                onfocus={(e) => e.currentTarget.select()}
+              />
+            {:else}
+              <span class="note">
+                <span class="num">{mcp.key_hint ?? 'none'}</span>
+                <span class="dim">· shown only when made</span>
+              </span>
+            {/if}
             <button class="mini" disabled={mBusy} onclick={() => mcpAction(() => assistant!.mcpNewKey())}
               >new key</button
             >
-          </div>
-        {/if}
-        {#if mKey}
-          <p class="note">
-            The key, shown this once. To connect Claude Code, run this; other clients take the address
-            and the same header.
-          </p>
+          </label>
+          {#if mKey}
+            <p class="note" data-tone="warning">
+              Copy the key now: it is not shown again. A lost key is replaced with <b>new key</b>.
+            </p>
+          {/if}
+
+          <label class="field">
+            <span class="dim">agent</span>
+            <select
+              class="in"
+              aria-label="Agent to connect"
+              value={mClient}
+              onchange={(e) => chooseClient((e.currentTarget as HTMLSelectElement).value as ClientId)}
+            >
+              {#each CLIENTS as c (c.id)}<option value={c.id}>{c.label}</option>{/each}
+            </select>
+          </label>
+          <p class="note dim">{mSetup.where}{mKey ? '' : ', with your key in place of <key>'}:</p>
           <textarea
-            class="yaml cmd"
+            class="yaml snippet"
             readonly
-            rows="4"
-            bind:this={mBox}
-            aria-label="Command to connect Claude Code"
-            value={mcpCommand(mKey)}
+            rows={mSetup.text.split('\n').length + 1}
+            aria-label="Configuration for the chosen agent"
+            value={mSetup.text}
+            onfocus={(e) => e.currentTarget.select()}
           ></textarea>
-        {:else if mcp?.enabled}
-          <p class="note dim">
-            Address <code>{mcpUrl()}</code>, with the header <code>Authorization: Bearer</code> and the
-            key. A lost key cannot be shown again; make a new one.
-          </p>
+          {#if mSetup.then}<p class="note dim">{mSetup.then}</p>{/if}
         {/if}
         {#if mError}<p class="note" data-tone="warning">{mError}</p>{/if}
         {#if mcp?.error}
@@ -1436,10 +1484,32 @@
     white-space: pre;
   }
 
-  /* One long command: wrapped, so the key is visible without scrolling. */
-  .yaml.cmd {
+  /* A label, its value, and sometimes a button, on one line. */
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--text-label);
+  }
+
+  .field > .dim:first-child {
+    flex: 0 0 64px;
+  }
+
+  .field .in {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Indentation kept (YAML needs it), long lines wrapped so the key and the
+     address show without scrolling sideways. */
+  .yaml.snippet {
     white-space: pre-wrap;
-    word-break: break-all;
+    overflow-wrap: anywhere;
+  }
+
+  .in.mono {
+    font-family: var(--font-mono, ui-monospace, monospace);
   }
 
 

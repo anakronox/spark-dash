@@ -366,14 +366,12 @@ Details: **[Asking the dashboard](docs/deployment.md#asking-the-dashboard--optio
 ### 8. Optional: tools for agents
 
 In **Settings → Tools for agents (MCP)**, switch on **serve the tools**. A key
-is made and shown once, inside the command that connects Claude Code:
-
-```sh
-claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
-  --header "Authorization: Bearer <key>"
-```
-
-Any other MCP client takes the same address and header. The tools only read;
+is made and shown once, beside the endpoint. Pick your agent (Claude Code,
+Hermes Agent, Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode, or Other) and
+Settings writes the command or config block to paste, key included. Every
+client needs the same two things: the address,
+`http://<monitoring-host>:8080/mcp`, and the header
+`Authorization: Bearer <key>`. The tools only read;
 raw PromQL is a second switch, off by default. Details and the list of tools:
 **[Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional)**.
 

@@ -7881,7 +7881,13 @@ maintenance window or touches the fleet.
 - [x] **BB2. A key.** Built 2026-10-16. Switching the tools on makes one,
   `sdk-` and 43 random characters, shown once with the `claude mcp add`
   command; **new key** replaces it. Off is a 404, a missing or wrong key a
-  401. The endpoint wants a bearer key, generated in
+  401. Brian, 2026-10-16: not every agent is Claude Code (Hermes here). So
+  Settings shows the endpoint and the raw key on their own, and an agent
+  picker writes the setup for Claude Code, Hermes Agent, Codex CLI, Gemini
+  CLI, Cursor, VS Code, OpenCode or Other, from each project's documented
+  format (`frontend/src/lib/mcpClients.ts`); a test parses each block as its
+  agent would, YAML, TOML, JSON or shell. Once Settings is closed the key is
+  gone from the page and the block shows `<key>`. The endpoint wants a bearer key, generated in
   Settings and kept like AY's: its own file beside `cluster.yml`, mode
   0600, the browser shown only its last four characters. The REST API on
   the LAN is open today; this is not, because an MCP client is usually a

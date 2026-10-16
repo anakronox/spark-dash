@@ -338,15 +338,29 @@ took 120 seconds over one `correlate` call.
 ### Tools for agents (MCP) — optional
 
 **Off until switched on** in Settings → Tools for agents. Switching it on
-makes a key and shows it once, with the command to connect Claude Code:
+makes a key and shows it once. Settings shows the endpoint and the key on
+their own, and an **agent** picker writes the command or config block for
+Claude Code, Hermes Agent, Codex CLI, Gemini CLI, Cursor, VS Code or OpenCode;
+**Other** gives the address and header for anything else that speaks MCP over
+streamable HTTP. Every one is the same two things, the address and an
+`Authorization: Bearer <key>` header. For Hermes, in `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  spark-dash:
+    url: "http://<monitoring-host>:8080/mcp"
+    headers:
+      Authorization: "Bearer <key>"
+```
+
+then `/reload-mcp` in a session. For Claude Code:
 
 ```sh
 claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
   --header "Authorization: Bearer <key>"
 ```
 
-Any client that speaks MCP over streamable HTTP takes the same address and
-header. **new key** replaces the key; the old one stops working at once.
+**new key** replaces the key; the old one stops working at once.
 
 **The tools.** All read-only, and each is a read the page already makes:
 
