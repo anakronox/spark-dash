@@ -23,7 +23,7 @@ from palette_check import (
 )
 
 REPO = Path(__file__).resolve().parent.parent
-THEME_TS = REPO / "frontend" / "src" / "lib" / "theme.svelte.ts"
+THEME_TS = REPO / "frontend" / "src" / "lib" / "themes.ts"
 
 
 def theme_names() -> list[str]:
@@ -88,7 +88,7 @@ def test_every_registered_palette_has_css_and_vice_versa():
     src = THEME_TS.read_text()
     union = re.search(r"export type PaletteId =([^;]+);", src)
     assert union, "PaletteId union not found — did the file move?"
-    registered = set(re.findall(r"'([a-z]+)'", union.group(1)))
+    registered = set(re.findall(r"'([a-z-]+)'", union.group(1)))
 
     in_css = set(theme_names())
     assert registered == in_css, (
@@ -146,7 +146,7 @@ def theme_tokens() -> dict[str, dict[str, str]]:
     cannot be added to the CSS and quietly skipped by the check.
     """
     text = APP_CSS.read_text()
-    blocks = re.findall(r":root(?:\[data-theme='([a-z]+)'\])?\s*\{(.*?)\n\}", text, re.S)
+    blocks = re.findall(r":root(?:\[data-theme='([a-z-]+)'\])?\s*\{(.*?)\n\}", text, re.S)
     base: dict[str, str] = {}
     out: dict[str, dict[str, str]] = {}
     for name, body in blocks:
@@ -174,10 +174,15 @@ def test_text_and_status_clear_aa_on_every_theme(name):
     assert not failures, f"{name}: below {TEXT_MIN}:1 on {panel} -> {failures}"
 
 
-def test_high_contrast_actually_is_the_highest_contrast():
+HIGH_CONTRAST = ("contrast", "contrast-light")
+
+
+@pytest.mark.parametrize("hc", HIGH_CONTRAST)
+def test_high_contrast_actually_is_the_highest_contrast(hc):
     """The theme's whole justification. If it does not beat the others at
-    separation it is just another dark theme with a misleading name, and a
-    reader who chose it for a reason has been sold nothing.
+    separation it is just another theme with a misleading name, and a reader
+    who chose it for a reason has been sold nothing. Both halves, dark and
+    light (BM), are held to it against every theme outside the family.
 
     Its rules are checked too: everywhere else a border is a hint and
     separation comes from surface lift, which is exactly what disappears at low
@@ -190,17 +195,17 @@ def test_high_contrast_actually_is_the_highest_contrast():
         worst[theme.name] = min(
             min(delta_e(a, b, "protan"), delta_e(a, b, "deutan")) for a, b in pairs
         )
-    others = {k: v for k, v in worst.items() if k != "contrast"}
-    assert worst["contrast"] > max(others.values()) * 1.5, (
-        f"high contrast separates at dE {worst['contrast']:.1f}; "
+    others = {k: v for k, v in worst.items() if k not in HIGH_CONTRAST}
+    assert worst[hc] > max(others.values()) * 1.5, (
+        f"{hc} separates at dE {worst[hc]:.1f}; "
         f"the rest reach {max(others.values()):.1f} — it is not earning its name"
     )
 
-    hc_rule = contrast(tokens["contrast"]["--rule"], tokens["contrast"]["--panel"])
+    hc_rule = contrast(tokens[hc]["--rule"], tokens[hc]["--panel"])
     rest = [
         contrast(t["--rule"], t["--panel"])
         for n, t in tokens.items()
-        if n != "contrast"
+        if n not in HIGH_CONTRAST
     ]
     assert hc_rule > max(rest) * 1.5, (
         f"rules at {hc_rule:.2f}:1 are not visibly stronger than the rest "
@@ -215,3 +220,16 @@ def test_band_overrides_name_real_themes():
     names = {t.name for t in parse_themes()}
     unknown = sorted(set(BAND_OVERRIDE) - names)
     assert not unknown, f"BAND_OVERRIDE names themes that do not exist: {unknown}"
+
+
+#: The first four chart slots are the node colours (nodeColorVar), which sit
+#: side by side on cards and in legends, so every pair is compared, not only
+#: neighbours. 12 is the closest any theme had when this was added (BM).
+NODE_SLOT_FLOOR = 12.0
+
+
+@pytest.mark.parametrize("theme", parse_themes(), ids=lambda t: t.name)
+def test_node_colours_are_apart_from_each_other(theme: ThemeBlock):
+    head = theme.slots[:4]
+    worst = min(delta_e(a, b) for i, a in enumerate(head) for b in head[i + 1:])
+    assert worst >= NODE_SLOT_FLOOR, f"{theme.name}: two node colours {worst:.1f} dE apart"

@@ -8313,6 +8313,40 @@ Brian: an option under Appearance to rename the page, spark-dash by default.
   still say spark-dash: the name is this browser's, and those are the
   install's.
 
+### BM — A light and a dark for every theme; Catppuccin, Solarized, Darcula — **built 2026-10-17**
+
+Brian: a glyphed light/dark switch in the header between + Element and
+Reports; Catppuccin, Solarized and Darcula; and a light/dark switch in
+Settings that applies to whichever theme is chosen, so every theme has
+both.
+
+- [x] **BM1. Family and mode.** A theme is now a family (Default,
+  Catppuccin, Solarized, Darcula, Cyberpunk, Forest, Slate, Paper, High
+  contrast) and a mode (Auto, Dark, Light), stored separately. A stored
+  theme from before migrates to what it looked like: `light` is Default in
+  light, `paper` is Paper in light, `auto` is Default on auto, the rest are
+  their family in dark.
+- [x] **BM2. The header switch.** A sun on a dark page, a moon on a light
+  one; a press flips to the other and takes the page off Auto.
+- [x] **BM3. Eleven new palettes**, 18 in all: Catppuccin Mocha and Latte,
+  Solarized dark and light, Darcula with IntelliJ Light as its light half,
+  and the missing half of each original (Cyberpunk, Forest, Slate and High
+  contrast in light, Paper in dark). Surfaces, ink and status start from
+  each scheme's published colours, moved in lightness only where a token
+  missed 4.5:1. Chart slots were fitted to `palette_check.py` from each
+  scheme's own accent hues, kept to hue 165-345 like the originals, since
+  red, amber and green mean a state. Series 1-3 follow the originals:
+  blue for LLM runtimes, magenta for other GPU work.
+- Measured: every theme passes every palette check; regular themes'
+  worst adjacent CVD separation is 9.4-12.2 dE. High contrast in light
+  reaches 27.6, against 18.9 for the dark one, and both still beat the
+  rest by half again, which the test now checks for each.
+- Found on the way: the checker compared only neighbouring slots, but the
+  first four are the node colours and sit side by side. A first fit gave
+  Latte a magenta and a crimson node. A new test holds every pair of the
+  first four 12 dE apart in every theme, the closest the original seven had.
+- Not changed: the default for a new browser is still Default in dark.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

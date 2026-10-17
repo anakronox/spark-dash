@@ -64,7 +64,7 @@ BAND = {"light": (0.43, 0.77), "dark": (0.48, 0.67)}  # OKLCH L
 #:
 #: Every other check still applies, including the contrast floor the widened
 #: band could otherwise hide behind.
-BAND_OVERRIDE = {"contrast": (0.55, 0.90)}
+BAND_OVERRIDE = {"contrast": (0.55, 0.90), "contrast-light": (0.25, 0.64)}
 CHROMA_FLOOR = 0.10
 
 #: Minimum ΔE between any node slot and any status colour.
@@ -192,7 +192,7 @@ def parse_themes(css: str | None = None) -> list[ThemeBlock]:
     """
     text = css if css is not None else APP_CSS.read_text()
     blocks = re.findall(
-        r":root(?:\[data-theme='([a-z]+)'\])?\s*\{(.*?)\n\}", text, re.S
+        r":root(?:\[data-theme='([a-z-]+)'\])?\s*\{(.*?)\n\}", text, re.S
     )
 
     base: dict[str, str] = {}

@@ -27,7 +27,7 @@
    */
   import { tick } from 'svelte';
   import { fetchWithTimeout } from '../lib/request';
-  import { THEMES } from '../lib/theme.svelte';
+  import { FAMILIES, MODES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
@@ -1091,16 +1091,29 @@
       <p class="note dim">Shown in the header and the browser tab.</p>
 
       <h3 class="eyebrow dim">Theme</h3>
-      <div class="choices" role="group" aria-label="Theme">
-        {#each THEMES as t (t.id)}
+      <!-- Mode and family are separate choices (BM): every family has a dark
+           and a light palette, and the mode picks between them. -->
+      <div class="choices" role="group" aria-label="Light or dark">
+        {#each MODES as m (m.id)}
           <button
             class="choice"
-            class:active={theme.current === t.id}
-            aria-pressed={theme.current === t.id}
-            onclick={() => theme.set(t.id)}
-          >{t.label}</button>
+            class:active={theme.mode === m.id}
+            aria-pressed={theme.mode === m.id}
+            onclick={() => theme.setMode(m.id)}
+          >{m.label}</button>
         {/each}
       </div>
+      <div class="choices" role="group" aria-label="Theme">
+        {#each FAMILIES as f (f.id)}
+          <button
+            class="choice"
+            class:active={theme.family === f.id}
+            aria-pressed={theme.family === f.id}
+            onclick={() => theme.setFamily(f.id)}
+          >{f.label}</button>
+        {/each}
+      </div>
+      <p class="note dim">Auto follows this computer's light or dark setting. The header's sun and moon switch it too.</p>
       <!-- Each theme is stepped on its own surface rather than derived by
            inverting another, so this is a real choice between three palettes,
            not a light/dark switch with a skin. -->

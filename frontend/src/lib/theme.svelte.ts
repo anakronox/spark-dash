@@ -12,53 +12,17 @@
  * read as grey.
  */
 
+import { FAMILIES, migrate, paletteOf, type FamilyId, type Mode, type PaletteId } from './themes';
+export { FAMILIES, MODES, migrate, paletteOf } from './themes';
+export type { FamilyDef, FamilyId, Mode, PaletteId } from './themes';
+
+/** The family last chosen. Before BM this key held one theme id, light or
+ *  dark built in; `read()` migrates those. */
 const STORAGE_KEY = 'spark-dash.theme.v1';
+/** Auto, dark or light (BM). Absent on a browser from before BM. */
+export const MODE_KEY = 'spark-dash.theme-mode.v1';
 
-/** A theme that actually exists as a block of CSS custom properties. */
-export type PaletteId =
-  | 'dark'
-  | 'light'
-  | 'cyberpunk'
-  | 'forest'
-  | 'contrast'
-  | 'slate'
-  | 'paper';
-
-/** What the reader can choose. `auto` is a rule, not a palette. */
-export type ThemeId = PaletteId | 'auto';
-
-export interface ThemeDef {
-  id: ThemeId;
-  label: string;
-  /** Whether charts should draw on a dark surface. Absent for `auto`, whose
-   *  answer depends on the system and can change while the page is open. */
-  dark?: boolean;
-}
-
-export const THEMES: ThemeDef[] = [
-  // First, and the default: a reader whose machine is in light mode should not
-  // have to find this menu to stop being handed a dark dashboard.
-  { id: 'auto', label: 'Auto' },
-  { id: 'dark', label: 'Dark', dark: true },
-  { id: 'light', label: 'Light', dark: false },
-  { id: 'cyberpunk', label: 'Cyberpunk', dark: true },
-  { id: 'forest', label: 'Forest', dark: true },
-  { id: 'slate', label: 'Slate', dark: true },
-  { id: 'paper', label: 'Paper', dark: false },
-  // Last, and deliberately: it is the only entry here chosen for a reason
-  // other than taste, so it reads as the end of the list rather than as one
-  // more colour scheme among the others.
-  { id: 'contrast', label: 'High contrast', dark: true },
-];
-
-const DARK_PALETTES = new Set<PaletteId>([
-  'dark',
-  'cyberpunk',
-  'forest',
-  'slate',
-  'contrast',
-]);
-const IDS = new Set<string>(THEMES.map((t) => t.id));
+const FAMILY = new Map(FAMILIES.map((f) => [f.id, f]));
 
 const DARK_QUERY = '(prefers-color-scheme: dark)';
 
@@ -68,48 +32,43 @@ function systemPrefersDark(): boolean {
   return globalThis.matchMedia?.(DARK_QUERY).matches ?? true;
 }
 
-/** Themes that have been renamed, so a stored choice survives the rename.
- *
- *  Without this a renamed theme silently reverts the reader to the default,
- *  which reads as "my setting was forgotten" rather than "that theme is called
- *  something else now". `forest` shipped as `nvidia` for a few hours on
- *  2026-08-19 and was renamed because the palette is a restrained green rather
- *  than the bold brand colours the name promised. */
-const RENAMED: Record<string, ThemeId> = { nvidia: 'forest' };
-
-function read(): ThemeId {
+function read(): { family: FamilyId; mode: Mode } {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && RENAMED[saved]) return RENAMED[saved];
-    if (saved && IDS.has(saved)) return saved as ThemeId;
+    const mode = localStorage.getItem(MODE_KEY);
+    if (mode === null) return migrate(saved);
+    return {
+      family: FAMILY.has(saved as FamilyId) ? (saved as FamilyId) : 'default',
+      mode: mode === 'light' || mode === 'auto' ? mode : 'dark',
+    };
   } catch {
     // Storage unavailable (private mode, quota). Fall through to the default.
+    return { family: 'default', mode: 'dark' };
   }
-  return 'dark';
-}
-
-function resolve(id: ThemeId): PaletteId {
-  return id === 'auto' ? (systemPrefersDark() ? 'dark' : 'light') : id;
 }
 
 export class Theme {
-  /** What the reader chose. May be `auto`, which is not a palette. */
-  current = $state<ThemeId>(read());
+  family = $state<FamilyId>('default');
+  /** What the reader chose. `auto` follows the system. */
+  mode = $state<Mode>('dark');
 
-  /** The palette actually in force. This is what charts must key off: `auto`
-   *  is never applied to the document, and it changes underneath while the
-   *  page is open. */
+  /** The palette actually in force. This is what charts must key off: it
+   *  changes underneath while the page is open when the mode is auto. */
   resolved = $state<PaletteId>('dark');
+  /** Whether that palette is a dark one. */
+  isDark = $state(true);
 
   #media: MediaQueryList | null = null;
 
   constructor() {
-    this.resolved = resolve(this.current);
+    const { family, mode } = read();
+    this.family = family;
+    this.mode = mode;
     // Applied synchronously in the constructor, not from an $effect. Charts
     // resolve CSS custom properties into literal canvas colours when they
     // build, and effect ordering isn't guaranteed — a chart that built before
     // the attribute landed would paint with the previous theme's values.
-    this.#apply(this.resolved);
+    this.#refresh();
 
     // The system preference can change while the page is open — at sunset, on
     // most machines. That is a theme change nobody clicked, and it is exactly
@@ -119,21 +78,22 @@ export class Theme {
     this.#media?.addEventListener('change', this.#onSystemChange);
   }
 
-  set(id: ThemeId) {
-    this.current = id;
-    this.resolved = resolve(id);
-    this.#apply(this.resolved);
-    try {
-      localStorage.setItem(STORAGE_KEY, id);
-    } catch {
-      // Still applied for this session.
-    }
+  setFamily(id: FamilyId) {
+    this.family = id;
+    this.#refresh();
+    this.#save();
   }
 
-  /** Whether the active palette sits on a dark surface — charts need to know,
-   *  since they can't read CSS variables from a canvas. */
-  get isDark(): boolean {
-    return DARK_PALETTES.has(this.resolved);
+  setMode(mode: Mode) {
+    this.mode = mode;
+    this.#refresh();
+    this.#save();
+  }
+
+  /** The header's switch: the other of dark and light from what is showing,
+   *  which takes the page off auto. */
+  toggle() {
+    this.setMode(this.isDark ? 'light' : 'dark');
   }
 
   destroy() {
@@ -141,16 +101,24 @@ export class Theme {
   }
 
   #onSystemChange = () => {
-    if (this.current !== 'auto') return;
-    const next = resolve('auto');
-    if (next === this.resolved) return;
-    this.resolved = next;
-    this.#apply(next);
+    if (this.mode === 'auto') this.#refresh();
   };
 
-  #apply(id: PaletteId) {
-    // Always a real palette id — `auto` has no CSS block, and writing it here
-    // would leave the document on :root's defaults with no way to reach light.
-    document.documentElement.dataset.theme = id;
+  #refresh() {
+    const dark = this.mode === 'auto' ? systemPrefersDark() : this.mode === 'dark';
+    const next = paletteOf(this.family, dark);
+    this.isDark = dark;
+    if (next === this.resolved && document.documentElement.dataset.theme === next) return;
+    this.resolved = next;
+    document.documentElement.dataset.theme = next;
+  }
+
+  #save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, this.family);
+      localStorage.setItem(MODE_KEY, this.mode);
+    } catch {
+      // Still applied for this session.
+    }
   }
 }

@@ -107,6 +107,7 @@ export const DEFAULT_PRESET = PRESETS[0].id;
  *  reader has already been shown, and Settings' own pane and width. */
 const KEEP = new Set([
   'spark-dash.theme.v1',
+  'spark-dash.theme-mode.v1',
   'spark-dash.page-title.v1',
   SEEN_KEY,
   TOUR_KEY,
@@ -150,7 +151,7 @@ export function applyPreset(id: string, storage: Storage = localStorage) {
 export function seedFirstVisit(storage: Storage = localStorage): boolean {
   try {
     if (storage.getItem(PRESET_KEY) !== null || storage.getItem(SEEN_KEY) !== null) return false;
-    const KEPT_ANYWAY = new Set(['spark-dash.theme.v1', 'spark-dash.page-title.v1']);
+    const KEPT_ANYWAY = new Set(['spark-dash.theme.v1', 'spark-dash.theme-mode.v1', 'spark-dash.page-title.v1']);
     if (Object.keys(storage).some((k) => k.startsWith('spark-dash.') && !KEPT_ANYWAY.has(k))) return false;
     applyPreset(DEFAULT_PRESET, storage);
     return true;

@@ -760,6 +760,27 @@
         align="end"
       />
 
+      <!-- LIGHT OR DARK (BM), glyph only: the one theme control worth a seat
+           here, since daylight changes and the family does not. Shows what a
+           press gives, and takes the page off auto. -->
+      <button
+        class={SETTINGS_TRIGGER}
+        aria-label={theme.isDark ? 'Switch to light' : 'Switch to dark'}
+        title={theme.isDark ? 'Switch to light' : 'Switch to dark'}
+        onclick={() => theme.toggle()}
+      >
+        {#if theme.isDark}
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="3" />
+            <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
+          </svg>
+        {:else}
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13.5 9.6A5.6 5.6 0 0 1 6.4 2.5a5.6 5.6 0 1 0 7.1 7.1z" />
+          </svg>
+        {/if}
+      </button>
+
       <button class={SETTINGS_TRIGGER} aria-label="Open reports" onclick={() => (reportsOpen = true)}>
         <span aria-hidden="true">▤</span>
         <span class={SETTINGS_LABEL}>reports</span>

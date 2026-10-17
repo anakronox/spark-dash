@@ -198,7 +198,10 @@ nothing is configured on the server.
   afterwards is kept on top of it.
 - **Name it.** **Settings → Appearance → Title** replaces spark-dash in the
   header and the browser tab.
-- **Seven themes**, dark instrument panel through to paper and high contrast.
+- **Nine themes, each light and dark**: Default, Catppuccin, Solarized,
+  Darcula, Cyberpunk, Forest, Slate, Paper and High contrast. Pick the
+  theme and Auto / Dark / Light in **Settings → Appearance**; the sun or
+  moon in the header flips light and dark.
   **Reset layout** puts it back to the layout you picked.
 - **Settings** opens as a wide panel with a section on each tab of its left
   rail, each integration's state shown beside its name; drag the panel's left

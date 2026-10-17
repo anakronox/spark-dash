@@ -10,7 +10,7 @@
  * first real finding of the spike.
  *
  * The tokens below stay exactly as they are and Tailwind reads them. That
- * matters beyond convenience: seven themes are defined as `:root[data-theme]`
+ * matters beyond convenience: every theme is defined as a `:root[data-theme]`
  * blocks, and `scripts/palette_check.py` plus `tests/test_palettes.py` parse
  * THIS FILE to validate every palette. Keeping the stylesheet as the source
  * rather than a build output keeps both of those working untouched.
@@ -557,6 +557,363 @@
   --chart-6: #6135c1;  /* L 0.47  h 291 */
   --chart-7: #b06adc;  /* L 0.65  h 311 */
   --chart-8: #1a9e8d;  /* L 0.63  h 181 */
+}
+
+/* A DARK AND A LIGHT FOR EVERY FAMILY (roadmap BM). The blocks above are
+ * the original seven; these complete the pairs and add Catppuccin (Mocha and
+ * Latte), Solarized and Darcula (with IntelliJ Light as its light half).
+ *
+ * Surfaces, ink and status start from each scheme's published colours, moved
+ * in lightness only where a token missed 4.5:1 on its panel. The eight chart
+ * slots are drawn from the scheme's own accent hues (within 20 degrees) and
+ * fitted to scripts/palette_check.py: hue 165-345 as in the original seven
+ * (red, amber and green belong to status), inside the mode's lightness band,
+ * off every status colour, adjacent pairs 9-12 dE apart under protanopia and
+ * deuteranopia (below the separation the high-contrast themes have to beat
+ * by half again), and the first four, which are the node colours, at least
+ * 13 dE apart from each other, not only from their neighbours. Pastel accents such as Catppuccin's sit above the dark
+ * band, so their chart slots are the same hues stepped down. Series 1-3
+ * follow the originals: blue for LLM runtimes, magenta for other GPU work. */
+
+:root[data-theme='catppuccin'] {
+  color-scheme: dark;
+  --page: #181825;
+  --panel: #1e1e2e;
+  --panel-raised: #313244;
+  --rule: #313244;
+  --track: #313244;
+
+  --ink: #cdd6f4;
+  --ink-2: #bac2de;
+  --ink-muted: #a6adc8;
+
+  --series-1: #1387fe;
+  --series-2: #d155db;
+  --series-3: #0de2eb;
+
+  --good: #a6e3a1;
+  --warning: #f9e2af;
+  --serious: #fab387;
+  --critical: #f38ba8;
+
+  --chart-1: #9e49a1;  /* L 0.55  h 326 */
+  --chart-2: #1799ec;  /* L 0.66  h 245 */
+  --chart-3: #5257ed;  /* L 0.55  h 275 */
+  --chart-4: #21aa8b;  /* L 0.66  h 173 */
+  --chart-5: #8184f1;  /* L 0.66  h 280 */
+  --chart-6: #058564;  /* L 0.55  h 168 */
+  --chart-7: #804ecf;  /* L 0.55  h 298 */
+  --chart-8: #108fb1;  /* L 0.60  h 223 */
+}
+
+:root[data-theme='catppuccin-light'] {
+  color-scheme: light;
+  --page: #e6e9ef;
+  --panel: #eff1f5;
+  --panel-raised: #e6e9ef;
+  --rule: #ccd0da;
+  --track: #dce0e8;
+
+  --ink: #4c4f69;
+  --ink-2: #5c5f77;
+  --ink-muted: #686b81;
+
+  --series-1: #1b61ec;
+  --series-2: #c42195;
+  --series-3: #04568b;
+
+  --good: #54754d;
+  --warning: #96611e;
+  --serious: #ba4601;
+  --critical: #d20f39;
+
+  --chart-1: #e547b2;  /* L 0.65  h 343 */
+  --chart-2: #203ac9;  /* L 0.44  h 267 */
+  --chart-3: #2c88c0;  /* L 0.60  h 240 */
+  --chart-4: #8a0b7d;  /* L 0.44  h 334 */
+  --chart-5: #3c79f0;  /* L 0.60  h 262 */
+  --chart-6: #901db1;  /* L 0.49  h 317 */
+  --chart-7: #7263fd;  /* L 0.60  h 282 */
+  --chart-8: #13509e;  /* L 0.44  h 257 */
+}
+
+:root[data-theme='solarized'] {
+  color-scheme: dark;
+  --page: #00212b;
+  --panel: #002b36;
+  --panel-raised: #073642;
+  --rule: #0e4250;
+  --track: #073642;
+
+  --ink: #eee8d5;
+  --ink-2: #c9cdc0;
+  --ink-muted: #93a1a1;
+
+  --series-1: #508ff9;
+  --series-2: #d961d2;
+  --series-3: #12e3e3;
+
+  --good: #859900;
+  --warning: #b58900;
+  --serious: #bf7f69;
+  --critical: #b4837d;
+
+  --chart-1: #25a898;  /* L 0.66  h 182 */
+  --chart-2: #5762f7;  /* L 0.58  h 274 */
+  --chart-3: #b940a3;  /* L 0.57  h 336 */
+  --chart-4: #1799ec;  /* L 0.66  h 245 */
+  --chart-5: #1c967a;  /* L 0.60  h 172 */
+  --chart-6: #8881ef;  /* L 0.66  h 284 */
+  --chart-7: #129f8f;  /* L 0.63  h 182 */
+  --chart-8: #8e4ce5;  /* L 0.57  h 299 */
+}
+
+:root[data-theme='solarized-light'] {
+  color-scheme: light;
+  --page: #eee8d5;
+  --panel: #fdf6e3;
+  --panel-raised: #eee8d5;
+  --rule: #e2dbc6;
+  --track: #eee8d5;
+
+  --ink: #073642;
+  --ink-2: #586e75;
+  --ink-muted: #586e75;
+
+  --series-1: #2e60ee;
+  --series-2: #bd1d96;
+  --series-3: #01578a;
+
+  --good: #6b744b;
+  --warning: #8c6a0e;
+  --serious: #c4440a;
+  --critical: #d52928;
+
+  --chart-1: #900171;  /* L 0.44  h 341 */
+  --chart-2: #e249b7;  /* L 0.65  h 341 */
+  --chart-3: #133cc9;  /* L 0.44  h 265 */
+  --chart-4: #7d82ef;  /* L 0.65  h 279 */
+  --chart-5: #085491;  /* L 0.44  h 250 */
+  --chart-6: #2f7bef;  /* L 0.60  h 259 */
+  --chart-7: #6817b7;  /* L 0.44  h 299 */
+  --chart-8: #825df8;  /* L 0.60  h 289 */
+}
+
+:root[data-theme='darcula'] {
+  color-scheme: dark;
+  --page: #232323;
+  --panel: #2b2b2b;
+  --panel-raised: #3c3f41;
+  --rule: #3f4244;
+  --track: #3c3f41;
+
+  --ink: #dfe1e5;
+  --ink-2: #c4ccd5;
+  --ink-muted: #a9b7c6;
+
+  --series-1: #069ff9;
+  --series-2: #e85fc2;
+  --series-3: #12e3e3;
+
+  --good: #7f9c6d;
+  --warning: #ffc66d;
+  --serious: #ae8d75;
+  --critical: #ff6b68;
+
+  --chart-1: #e04dc2;  /* L 0.66  h 337 */
+  --chart-2: #5a8ff3;  /* L 0.66  h 262 */
+  --chart-3: #038564;  /* L 0.55  h 168 */
+  --chart-4: #9656f0;  /* L 0.60  h 299 */
+  --chart-5: #dd3faa;  /* L 0.63  h 344 */
+  --chart-6: #8670f4;  /* L 0.63  h 287 */
+  --chart-7: #2198ba;  /* L 0.63  h 223 */
+  --chart-8: #ad59ef;  /* L 0.63  h 307 */
+}
+
+:root[data-theme='darcula-light'] {
+  color-scheme: light;
+  --page: #f2f3f5;
+  --panel: #ffffff;
+  --panel-raised: #f7f8fa;
+  --rule: #dfe1e5;
+  --track: #ebecf0;
+
+  --ink: #080808;
+  --ink-2: #2b2d30;
+  --ink-muted: #5a5d63;
+
+  --series-1: #2961ee;
+  --series-2: #c435b3;
+  --series-3: #4b7d82;
+
+  --good: #067d17;
+  --warning: #877304;
+  --serious: #c55028;
+  --critical: #d1242f;
+
+  --chart-1: #da4dc8;  /* L 0.65  h 333 */
+  --chart-2: #891f69;  /* L 0.44  h 343 */
+  --chart-3: #5d8bf1;  /* L 0.65  h 264 */
+  --chart-4: #3534c8;  /* L 0.44  h 273 */
+  --chart-5: #087ba5;  /* L 0.55  h 232 */
+  --chart-6: #7c83ef;  /* L 0.65  h 278 */
+  --chart-7: #1662ae;  /* L 0.49  h 253 */
+  --chart-8: #2b98de;  /* L 0.65  h 243 */
+}
+
+:root[data-theme='cyberpunk-light'] {
+  color-scheme: light;
+  --page: #f1ecfb;
+  --panel: #fbf9ff;
+  --panel-raised: #ece4fb;
+  --rule: #dbd0f2;
+  --track: #ece4fb;
+
+  --ink: #1a0f33;
+  --ink-2: #2e2150;
+  --ink-muted: #4a3d6b;
+
+  --series-1: #2f60ee;
+  --series-2: #bf33b3;
+  --series-3: #02578b;
+
+  --good: #577967;
+  --warning: #936a1a;
+  --serious: #c2410c;
+  --critical: #d1105a;
+
+  --chart-1: #7584f0;  /* L 0.65  h 275 */
+  --chart-2: #153cc9;  /* L 0.44  h 265 */
+  --chart-3: #8a1e66;  /* L 0.44  h 345 */
+  --chart-4: #e149b9;  /* L 0.65  h 340 */
+  --chart-5: #08519d;  /* L 0.44  h 255 */
+  --chart-6: #4494e2;  /* L 0.65  h 250 */
+  --chart-7: #8f4271;  /* L 0.49  h 345 */
+  --chart-8: #6e65fe;  /* L 0.60  h 280 */
+}
+
+:root[data-theme='forest-light'] {
+  color-scheme: light;
+  --page: #ecf2e8;
+  --panel: #f8fbf6;
+  --panel-raised: #edf3e9;
+  --rule: #d1dec9;
+  --track: #e3ecdd;
+
+  --ink: #122012;
+  --ink-2: #253625;
+  --ink-muted: #3d4f3d;
+
+  --series-1: #1564ee;
+  --series-2: #ad2bb3;
+  --series-3: #5d767f;
+
+  --good: #4b7d00;
+  --warning: #8a6100;
+  --serious: #b8531c;
+  --critical: #b3352c;
+
+  --chart-1: #8c0779;  /* L 0.44  h 336 */
+  --chart-2: #0c8cbb;  /* L 0.60  h 232 */
+  --chart-3: #0246b9;  /* L 0.44  h 261 */
+  --chart-4: #a26ff2;  /* L 0.65  h 299 */
+  --chart-5: #d035a6;  /* L 0.60  h 341 */
+  --chart-6: #6b66fe;  /* L 0.60  h 279 */
+  --chart-7: #07568b;  /* L 0.44  h 246 */
+  --chart-8: #4890ef;  /* L 0.65  h 256 */
+}
+
+:root[data-theme='slate-light'] {
+  color-scheme: light;
+  --page: #eef1f5;
+  --panel: #f8fafc;
+  --panel-raised: #eef2f6;
+  --rule: #d5dce5;
+  --track: #e5eaf0;
+
+  --ink: #0f172a;
+  --ink-2: #1e293b;
+  --ink-muted: #475569;
+
+  --series-1: #2362ee;
+  --series-2: #ac3ecd;
+  --series-3: #5d767f;
+
+  --good: #15803d;
+  --warning: #8a6100;
+  --serious: #c2410c;
+  --critical: #c53030;
+
+  --chart-1: #3534c8;  /* L 0.44  h 273 */
+  --chart-2: #6866ff;  /* L 0.60  h 278 */
+  --chart-3: #0a8cbb;  /* L 0.60  h 231 */
+  --chart-4: #7f178e;  /* L 0.44  h 322 */
+  --chart-5: #7186f1;  /* L 0.65  h 273 */
+  --chart-6: #14679a;  /* L 0.49  h 242 */
+  --chart-7: #1691ff;  /* L 0.65  h 252 */
+  --chart-8: #14509e;  /* L 0.44  h 257 */
+}
+
+:root[data-theme='paper-dark'] {
+  color-scheme: dark;
+  --page: #17140f;
+  --panel: #211d17;
+  --panel-raised: #2b261e;
+  --rule: #3a3328;
+  --track: #2b261e;
+
+  --ink: #f4ecdc;
+  --ink-2: #e4d9c4;
+  --ink-muted: #cdbfa5;
+
+  --series-1: #1387fe;
+  --series-2: #cb58e3;
+  --series-3: #12e3e3;
+
+  --good: #5fbf7a;
+  --warning: #e8b04a;
+  --serious: #e8865a;
+  --critical: #e86a5f;
+
+  --chart-1: #ae66ff;  /* L 0.66  h 302 */
+  --chart-2: #029682;  /* L 0.60  h 179 */
+  --chart-3: #028af7;  /* L 0.63  h 252 */
+  --chart-4: #c8299b;  /* L 0.57  h 343 */
+  --chart-5: #704ce6;  /* L 0.55  h 287 */
+  --chart-6: #1a8eb4;  /* L 0.60  h 227 */
+  --chart-7: #9c61fb;  /* L 0.63  h 297 */
+  --chart-8: #047ba5;  /* L 0.55  h 231 */
+}
+
+:root[data-theme='contrast-light'] {
+  color-scheme: light;
+  --page: #ffffff;
+  --panel: #ffffff;
+  --panel-raised: #ebebeb;
+  --rule: #4d4d4d;
+  --track: #d9d9d9;
+
+  --ink: #000000;
+  --ink-2: #1a1a1a;
+  --ink-muted: #383838;
+
+  --series-1: #103ecb;
+  --series-2: #b042d0;
+  --series-3: #358177;
+
+  --good: #006b00;
+  --warning: #7a4f00;
+  --serious: #a33a00;
+  --critical: #b00000;
+
+  --chart-1: #042583;  /* L 0.32  h 264 */
+  --chart-2: #4d81fa;  /* L 0.63  h 264 */
+  --chart-3: #5b014c;  /* L 0.32  h 337 */
+  --chart-4: #c44dd5;  /* L 0.63  h 322 */
+  --chart-5: #1d0c65;  /* L 0.26  h 279 */
+  --chart-6: #896ff3;  /* L 0.63  h 289 */
+  --chart-7: #38054b;  /* L 0.26  h 314 */
+  --chart-8: #683dd7;  /* L 0.51  h 289 */
 }
 
 /* @layer base — AND THIS IS LOAD-BEARING, not tidiness.
