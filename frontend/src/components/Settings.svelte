@@ -37,6 +37,7 @@
   import { CLIENTS, clientOr, setupFor, type ClientId } from '../lib/mcpClients';
   import { applyPreset, currentPreset } from '../lib/presets';
   import PresetPicker from './PresetPicker.svelte';
+  import { DEFAULT_TITLE, MAX_TITLE, pageTitle } from '../lib/title.svelte';
   import { ntfySet, ntfyStatus, ntfyTest, ntfyTopic, type NtfyStatus } from '../lib/notifications';
   import {
     HOW as CHANNEL_HOW,
@@ -851,6 +852,8 @@
     }
   }
 
+  let titleDraft = $state(pageTitle.custom);
+
   let pane = $state<Pane>((stored(PANE_KEY) as Pane) || 'appearance');
   function setPane(id: Pane) {
     pane = id;
@@ -1069,6 +1072,24 @@
       {#if pane === 'appearance'}
     <!-- Appearance -->
     <section class="stack">
+      <h3 class="eyebrow dim">Title</h3>
+      <!-- Saved as it is typed, like every other choice in this pane. The box
+           keeps what was typed, spaces and all; the store keeps it trimmed. -->
+      <div class="title-row">
+        <input
+          class="in title-in"
+          aria-label="Page title"
+          maxlength={MAX_TITLE}
+          placeholder={DEFAULT_TITLE}
+          bind:value={titleDraft}
+          oninput={() => pageTitle.set(titleDraft)}
+        />
+        {#if pageTitle.custom}
+          <button class="mini title-reset" onclick={() => pageTitle.set((titleDraft = ''))}>Use {DEFAULT_TITLE}</button>
+        {/if}
+      </div>
+      <p class="note dim">Shown in the header and the browser tab.</p>
+
       <h3 class="eyebrow dim">Theme</h3>
       <div class="choices" role="group" aria-label="Theme">
         {#each THEMES as t (t.id)}
@@ -2415,6 +2436,21 @@
 
   .rt { gap: 4px; margin-top: 4px; }
   .rt-row { display: flex; align-items: center; gap: 6px; }
+
+  .title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mini.title-reset {
+    margin-left: 0;
+  }
+
+  .title-in {
+    width: min(100%, 32ch);
+  }
 
   .check {
     display: inline-flex;

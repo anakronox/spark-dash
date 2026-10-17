@@ -8300,6 +8300,19 @@ previous default, and one more.
   which is that install's own arrangement; a preset cannot name another
   install's clusters, so the order stays cluster.yml's.
 
+### BL — The page's name — **built 2026-10-17**
+
+Brian: an option under Appearance to rename the page, spark-dash by default.
+
+- [x] Settings → Appearance → Title. Shown in the header in place of the
+  wordmark and as the browser tab's title; empty means spark-dash, and
+  "Use spark-dash" clears it. Kept in this browser like the theme, and
+  kept across a layout preset or Reset layout. Trimmed, one line, at most
+  40 characters.
+- Not carried into reports, notifications or the MCP server name, which
+  still say spark-dash: the name is this browser's, and those are the
+  install's.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

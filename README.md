@@ -196,6 +196,8 @@ nothing is configured on the server.
   display** (gauges only, for a screen across the room). Pick one in the
   setup guide or **Settings → Appearance → Layout**; anything you change
   afterwards is kept on top of it.
+- **Name it.** **Settings → Appearance → Title** replaces spark-dash in the
+  header and the browser tab.
 - **Seven themes**, dark instrument panel through to paper and high contrast.
   **Reset layout** puts it back to the layout you picked.
 - **Settings** opens as a wide panel with a section on each tab of its left

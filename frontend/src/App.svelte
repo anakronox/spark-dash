@@ -41,6 +41,7 @@
   import { compact, gib, num } from './lib/format';
   import type { NodeSnapshot, ProcessInfo } from './lib/types';
   import { engines, isEngineJob } from './lib/types';
+  import { pageTitle } from './lib/title.svelte';
 
   const feed = new LiveFeed();
   const alertFeed = new AlertFeed();
@@ -105,6 +106,9 @@
     settingsOpen = true;
   }
   const layout = new Layout();
+  $effect(() => {
+    document.title = pageTitle.text;
+  });
   /* The Clients card is on the page exactly while the feature is on (AM6a).
      Brian, 2026-09-29: on, it is a card like any other; off, it is not there
      at all. */
@@ -604,7 +608,13 @@
 <div class="{SHELL} {feed.stale ? STALE : ''}">
   <header class={TOP}>
     <div class={BRAND}>
-      <h1 class={H1}>spark<span class={MUTED}>-dash</span></h1>
+      <!-- The reader's name for the page when they have given one (BL); the
+           wordmark otherwise. -->
+      {#if pageTitle.custom}
+        <h1 class="{H1} [overflow-wrap:anywhere]">{pageTitle.custom}</h1>
+      {:else}
+        <h1 class={H1}>spark<span class={MUTED}>-dash</span></h1>
+      {/if}
 
       <!-- THE CLUSTER'S FOUR FACTS LIVE ON THE TITLE LINE. They had a band of
            their own under the header, with the decode figure at 30px as the

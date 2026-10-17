@@ -20,12 +20,13 @@ class Mem {
 const dump = (m) => ({ ...m });
 
 const fresh = new Mem();
-const freshThemed = new Mem({ 'spark-dash.theme.v1': 'paper' });
+const freshThemed = new Mem({ 'spark-dash.theme.v1': 'paper', 'spark-dash.page-title.v1': 'lab' });
 const arranged = new Mem({ 'spark-dash.section-order.v1': '["models"]' });
 const seen = new Mem({ 'spark-dash.onboarding-seen.v1': '1' });
 
 const switched = new Mem({
   'spark-dash.theme.v1': 'cyberpunk',
+  'spark-dash.page-title.v1': 'lab',
   'spark-dash.onboarding-seen.v1': '1',
   'spark-dash.tour-done.v1': '1',
   'spark-dash.layout-baseline.v1': '[]',

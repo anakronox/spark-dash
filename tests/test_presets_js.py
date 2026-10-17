@@ -66,12 +66,13 @@ def test_a_first_visit_gets_the_default_and_nobody_else_does(out):
     assert out["fresh"]["spark-dash.layout-preset.v1"] == "side-by-side"
     assert out["fresh"]["spark-dash.compact-cards.v1"] == "1"
     assert out["freshThemed"]["spark-dash.theme.v1"] == "paper", "a theme alone is still a first visit"
+    assert out["freshThemed"]["spark-dash.page-title.v1"] == "lab", "so is a page title"
     assert out["arranged"] == {"spark-dash.section-order.v1": '["models"]'}
 
 
 def test_a_preset_replaces_the_layout_and_keeps_the_rest(out):
     s = out["switched"]
-    assert s["spark-dash.theme.v1"] == "cyberpunk"
+    assert s["spark-dash.theme.v1"] == "cyberpunk" and s["spark-dash.page-title.v1"] == "lab"
     assert s["spark-dash.onboarding-seen.v1"] == "1" and s["spark-dash.tour-done.v1"] == "1"
     assert s["other-site.key"] == "x", "only this page's keys are touched"
     assert "spark-dash.trend-view.v1:history#2" not in s, "a copy's view goes with the layout"
@@ -79,3 +80,13 @@ def test_a_preset_replaces_the_layout_and_keeps_the_rest(out):
     assert s["spark-dash.layout-preset.v1"] == "wall"
     assert s["spark-dash.trend-view.v1"] == "gauges"
     assert out["current"] == ["wall", None, None]
+
+
+def test_the_page_title_reaches_the_header_and_the_tab():
+    """BL: the reader's name for the page, kept in this browser."""
+    src = (ROOT / "frontend" / "src")
+    store = (src / "lib" / "title.svelte.ts").read_text()
+    assert "DEFAULT_TITLE = 'spark-dash'" in store
+    app = (src / "App.svelte").read_text()
+    assert "{pageTitle.custom}</h1>" in app and "document.title = pageTitle.text" in app
+    assert "pageTitle.set(" in (src / "components" / "Settings.svelte").read_text()
