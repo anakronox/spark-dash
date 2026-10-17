@@ -209,6 +209,8 @@
    *  through a tunnel, where a relative docs link goes nowhere. */
   const CLIENTS_NOTES =
     'https://github.com/anakronox/spark-dash/blob/main/docs/deployment.md#client-stats--optional';
+  /** Running the gateway is LiteLLM's to document, not this project's. */
+  const LITELLM_DOCS = 'https://docs.litellm.ai/docs/simple_proxy';
 
   const clientsView = $derived(viewOf(clients?.status ?? null));
   const clientsDirty = $derived(!sameAddress(clientsDraft, clients?.status?.url ?? null));
@@ -1877,7 +1879,27 @@
          to turn a thing on. -->
     {#if clients}
       <section class="stack">
+        <!-- What it is and what it needs, whatever the state: Settings is where
+             a person finds out how to turn a thing on. The gateway's own setup
+             is LiteLLM's to document, so this links there. -->
+        <p class="note">
+          Shows which programs call your models, from which machines, with requests, failures and
+          tokens per model. The engines do not record who called them, so this reads a
+          <strong>LiteLLM proxy</strong> that your clients talk to instead of the engines.
+        </p>
+        <h3 class="eyebrow dim">It needs</h3>
+        <ul class="needs">
+          <li>A LiteLLM proxy in front of your engines, run outside this dashboard.</li>
+          <li>LiteLLM's Prometheus callback switched on, with <code>/metrics</code> readable without a key.</li>
+          <li>Your clients pointed at the proxy. One that still calls an engine directly does not appear.</li>
+          <li>The nodes in <code>cluster.yml</code>, where the proxy's address is saved.</li>
+        </ul>
+        <div class="rt-row links">
+          <a class="mini" href={CLIENTS_NOTES} target="_blank" rel="noopener">Setup guide ↗</a>
+          <a class="mini" href={LITELLM_DOCS} target="_blank" rel="noopener">LiteLLM proxy docs ↗</a>
+        </div>
 
+        <h3 class="eyebrow dim">Gateway</h3>
         <label class="check">
           <input
             type="checkbox"
@@ -1892,7 +1914,7 @@
           <p class="note" data-tone="warning">
             The gateway's address is kept in <code>cluster.yml</code>, and this deployment takes its
             nodes from <code>SPARK_NODES</code> instead. Move the nodes into <code>cluster.yml</code>
-            first. <a href={CLIENTS_NOTES} target="_blank" rel="noopener">Deployment notes ↗</a>
+            first. <a href={CLIENTS_NOTES} target="_blank" rel="noopener">Setup guide ↗</a>
           </p>
         {:else}
           <div class="rt-row">
@@ -1927,9 +1949,8 @@
             </p>
           {:else if clientsView === 'absent'}
             <p class="note dim">
-              Needs a LiteLLM proxy in front of the engines, set up outside this dashboard. The
-              engines never record who called them; the gateway does.
-              <a href={CLIENTS_NOTES} target="_blank" rel="noopener">Deployment notes ↗</a>
+              Paste the proxy's address (the <code>…/v1</code> URL clients use is fine), press Test,
+              then Save and switch it on.
             </p>
           {:else if clientsView === 'off'}
             <p class="note dim">
@@ -2455,6 +2476,19 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+  }
+
+  .needs {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--ink-muted);
+    font-size: var(--text-label);
+    line-height: 1.6;
+  }
+
+  .links .mini {
+    margin-left: 0;
+    text-decoration: none;
   }
 
   .mini.title-reset {
