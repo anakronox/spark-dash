@@ -53,6 +53,7 @@
     pairPorts,
     ports,
     summarise,
+    unacknowledged,
   } from '../lib/network-history';
   import { ColumnView } from '../lib/columns.svelte';
   import type { Port } from '../lib/network-history';
@@ -206,6 +207,33 @@
    * wifi ports at a true zero drop out of it. */
   let includeQuiet = $state(readFlag(QUIET_KEY, false));
   let showEvents = $state(readFlag(EVENTS_KEY, true));
+
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const ACK_KEY = instanceKey('spark-dash.network-ack.v1', instance);
+  /** When the reader last acknowledged the fault and port charts, in seconds,
+   *  or null. Charts with nothing newer stay hidden; a new fault or port change
+   *  brings its chart back. Per browser, like the card's other view choices:
+   *  it hides charts and silences nothing. */
+  let ackedAt = $state<number | null>(
+    (() => {
+      try {
+        const raw = Number(localStorage.getItem(ACK_KEY));
+        return raw > 0 ? raw : null;
+      } catch {
+        return null;
+      }
+    })(),
+  );
+  function acknowledge(at: number | null) {
+    ackedAt = at;
+    try {
+      if (at == null) localStorage.removeItem(ACK_KEY);
+      else localStorage.setItem(ACK_KEY, String(at));
+    } catch {
+      // Still applied for this session.
+    }
+  }
   /* Linear by default: the axis then means what it says. Log is one click
      away for the window where one spike flattens everything beside it. */
   let logScale = $state(readFlag(LOG_KEY, false));
@@ -447,6 +475,10 @@
      something happened, and are about one interface, so they stay
      per-interface, under the group charts. */
   const summary = $derived(summarise(groups, nodeIds));
+  const exceptions = $derived(
+    unacknowledged(summary.exceptions, x, ackedAt, parseInt(range.step, 10) || 60),
+  );
+  const acknowledgedCount = $derived(summary.exceptions.length - exceptions.length);
   const groupCols = $derived(gridCols(summary.charts.length, gridWidth, GRID_GAP_PX));
   const groupRows = $derived(Math.ceil(summary.charts.length / groupCols));
 
@@ -476,10 +508,12 @@
      row per division. Infinity flows through as "all". */
   $effect.pre(() => {
     /* The group charts are never paged, there are at most four. Whatever rows
-       they leave go to the exceptions under them, at least one so they keep
-       a pager. */
-    pagesFor('exceptions').pageSize = Math.max(1, plotRows - groupRows) * cols;
+       they leave go to the exceptions under them; with none left they fold to
+       their heading, which still counts them, so they cannot hold the card
+       taller than the reader dragged it. */
+    pagesFor('exceptions').pageSize = Math.max(1, exceptionRows) * cols;
   });
+  const exceptionRows = $derived(Math.max(0, plotRows - groupRows));
   const rowsTotal = (n: number) => Math.ceil(n / cols);
 
   const isActive = (id: string) => active === null || active.includes(id);
@@ -855,7 +889,7 @@
             {@const note = DIVISIONS.find((d) => d.key === c.division)?.note}
             <div class="cell" title={note}>
               <MetricChart
-                showTime={!summary.exceptions.length && onLastRow(i, summary.charts.length, groupCols)}
+                showTime={(!exceptions.length || exceptionRows === 0) && onLastRow(i, summary.charts.length, groupCols)}
                 metric={{ ...c.metric, label: `${c.metric.label} · ${c.links} interface${c.links === 1 ? '' : 's'}` }}
                 {x}
                 columns={c.columns}
@@ -876,41 +910,63 @@
           interfaces, and multicast reaching it counts on both. Open the table for one
           interface's own chart.
         </p>
-        {#if summary.exceptions.length}
+        {#if exceptions.length}
           {@const pages = pagesFor('exceptions')}
+          {@const folded = exceptionRows === 0}
           <section class="division" data-division="exceptions">
             <h3 class="division-head">
               Faults and port changes
-              <span class="count">{summary.exceptions.length}</span>
-              <span class="note dim">interfaces with errors or drops, and RDMA ports that changed state</span>
+              <span class="count">{exceptions.length}</span>
+              <span class="note dim">
+                {folded
+                  ? 'drag the card taller to see them'
+                  : 'interfaces with errors or drops, and RDMA ports that changed state'}
+              </span>
+              <button
+                class="clear"
+                title="Hide these charts until a new fault or port change"
+                onclick={() => acknowledge(Date.now() / 1000)}
+              >acknowledge</button>
             </h3>
-            <div
-              class="charts"
-              style:--cols={cols}
-              data-rows-total={rowsTotal(summary.exceptions.length)}
-            >
-              {#each pages.slice(summary.exceptions) as c, i (c.key)}
-                {@const shown = pages.slice(summary.exceptions).length}
-                <div class="cell">
-                  <MetricChart
-                    owner={c.link.node}
-                    showTime={onLastRow(i, shown, cols)}
-                    metric={c.metric}
-                    {x}
-                    columns={c.columns}
-                    names={c.names}
-                    {slots}
-                    identity={c.link.node}
-                    theme={themeKey}
-                    syncKey="spark-dash-network"
-                    annotations={showEvents ? annotations : []}
-                    height={plotHeight}
-                  />
-                </div>
-              {/each}
-            </div>
-            <Pager view={pages} total={summary.exceptions.length} label="Fault and port chart pages" />
+            {#if folded}
+              <!-- No charts, but Section still counts their rows, so dragging
+                   the card taller brings them back. -->
+              <div data-rows-total={rowsTotal(exceptions.length)}></div>
+            {:else}
+              <div
+                class="charts"
+                style:--cols={cols}
+                data-rows-total={rowsTotal(exceptions.length)}
+              >
+                {#each pages.slice(exceptions) as c, i (c.key)}
+                  {@const shown = pages.slice(exceptions).length}
+                  <div class="cell">
+                    <MetricChart
+                      owner={c.link.node}
+                      showTime={onLastRow(i, shown, cols)}
+                      metric={c.metric}
+                      {x}
+                      columns={c.columns}
+                      names={c.names}
+                      {slots}
+                      identity={c.link.node}
+                      theme={themeKey}
+                      syncKey="spark-dash-network"
+                      annotations={showEvents ? annotations : []}
+                      height={plotHeight}
+                    />
+                  </div>
+                {/each}
+              </div>
+              <Pager view={pages} total={exceptions.length} label="Fault and port chart pages" />
+            {/if}
           </section>
+        {/if}
+        {#if acknowledgedCount}
+          <p class="note dim sum-note">
+            {acknowledgedCount} acknowledged fault and port chart{acknowledgedCount === 1 ? '' : 's'} hidden.
+            <button class="clear" onclick={() => acknowledge(null)}>show</button>
+          </p>
         {/if}
       {:else}
       {#each divisions as g (g.key)}
@@ -1114,6 +1170,12 @@
     font-weight: 400;
     font-size: var(--text-micro);
     letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  .division-head .clear {
+    font-weight: 400;
+    letter-spacing: normal;
     text-transform: none;
   }
 

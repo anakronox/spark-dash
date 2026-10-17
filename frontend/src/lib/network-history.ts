@@ -842,3 +842,46 @@ export function summarise(
   }
   return { charts, exceptions };
 }
+
+/** When an exception chart last had something new to say, in the x axis's
+ *  seconds, or -Infinity when nothing in the window changed.
+ *
+ * A fault chart's event is its last non-zero sample. A port chart's is its last
+ * change of state: a port down for the whole window has no event, so
+ * acknowledging it holds as the window slides, and it returns when the port
+ * comes back or drops again. */
+export function lastEvent(c: LinkChart, x: number[]): number {
+  let last = -Infinity;
+  if (c.metric.states) {
+    for (const col of c.columns) {
+      let prev: number | null = null;
+      col.forEach((v, i) => {
+        if (v == null) return;
+        if (prev != null && v !== prev) last = Math.max(last, x[i] ?? -Infinity);
+        prev = v;
+      });
+    }
+    return last;
+  }
+  for (const col of c.columns) {
+    col.forEach((v, i) => {
+      if (v != null && v !== 0) last = Math.max(last, x[i] ?? -Infinity);
+    });
+  }
+  return last;
+}
+
+/** The exceptions with something new since `ackedAt` (seconds; null when
+ *  nothing was acknowledged). A sample covers the step that ENDS at its x, so
+ *  it is new only when that whole step is after the acknowledgement: on a 7d
+ *  range one step is an hour, and the bucket holding the moment of the
+ *  acknowledgement would otherwise bring back the faults just acknowledged. */
+export function unacknowledged(
+  exceptions: LinkChart[],
+  x: number[],
+  ackedAt: number | null,
+  step: number,
+): LinkChart[] {
+  if (ackedAt == null) return exceptions;
+  return exceptions.filter((c) => lastEvent(c, x) - step >= ackedAt);
+}

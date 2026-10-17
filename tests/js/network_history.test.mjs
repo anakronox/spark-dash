@@ -44,6 +44,8 @@ import {
   pairPorts,
   ports,
   summarise,
+  lastEvent,
+  unacknowledged,
 } from '../../frontend/src/lib/network-history.ts';
 import { sparkPath } from '../../frontend/src/lib/sparkline.ts';
 
@@ -148,6 +150,51 @@ test('fault charts pass through as exceptions, never summed away', () => {
   const { charts, exceptions } = summarise(grid.groups, ['sparky']);
   assert.equal(charts.length, 1);
   assert.deepEqual(exceptions.map((c) => c.metric.label), ['enP7s7 faults']);
+});
+
+// ---------------------------------------------------------------- acknowledging
+
+/** sparketa's management port unplugged at t=120: drops in that bucket only. */
+function unplugged(drops = [0, 4, 0, 0]) {
+  const { names, columns } = dataset({
+    [`sparketa/enP7s7/${RX}`]: [5, 6, 0, 0],
+    [`sparketa/enP7s7/${TX}`]: [7, 8, 0, 0],
+    [`sparketa/enP7s7/${DROPS}`]: drops,
+  });
+  return summarise(buildGrid(names, columns, ['sparketa'], null, true).groups, ['sparketa']).exceptions;
+}
+const X = [60, 120, 180, 240];
+
+test("a fault chart's event is its last non-zero sample", () => {
+  assert.equal(lastEvent(unplugged()[0], X), 120);
+});
+
+test('acknowledging hides a fault chart with nothing newer', () => {
+  assert.equal(unacknowledged(unplugged(), X, null, 60).length, 1, 'nothing acknowledged');
+  assert.equal(unacknowledged(unplugged(), X, 200, 60).length, 0);
+});
+
+test('the bucket holding the acknowledgement does not bring it back', () => {
+  // Acknowledged at 100, inside the step that ends at 120: the drops in that
+  // bucket may predate the acknowledgement.
+  assert.equal(unacknowledged(unplugged(), X, 100, 60).length, 0);
+});
+
+test('a new fault after the acknowledgement brings the chart back', () => {
+  assert.equal(unacknowledged(unplugged([0, 4, 0, 2]), X, 150, 60).length, 1);
+});
+
+test('a port down the whole window stays acknowledged as the window slides', () => {
+  const chart = portChart({ node: 'sparky', device: 'roceP2p1s0f1', port: '1', iface: '', column: [0, 0, 0, 0] });
+  assert.equal(lastEvent(chart, X), -Infinity);
+  assert.equal(unacknowledged([chart], X, 1, 60).length, 0);
+});
+
+test('a port that changes state after the acknowledgement comes back', () => {
+  const chart = portChart({ node: 'sparky', device: 'roceP2p1s0f1', port: '1', iface: '', column: [0, 0, 1, 1] });
+  assert.equal(lastEvent(chart, X), 180);
+  assert.equal(unacknowledged([chart], X, 100, 60).length, 1);
+  assert.equal(unacknowledged([chart], X, 130, 60).length, 0);
 });
 
 // ---------------------------------------------------------------- packing

@@ -704,8 +704,11 @@ def test_growing_restores_rows_before_it_grows_plots():
 def test_the_row_budget_goes_to_the_exceptions_under_the_group_charts():
     """Network Activity draws one chart per group (AO3), at most four, and they
     are never paged. The row budget a drag sets is spent on what is under
-    them, the fault and port-state charts, which keep at least one row so they
-    keep their pager.
+    them, the fault and port-state charts. With no rows left they fold to their
+    heading rather than taking a row anyway: a forced row held the card taller
+    than the reader could drag it (measured, a management port unplugged on
+    sparketa). The folded heading still reports its rows to Section, so
+    dragging taller brings the charts back.
 
     It replaced a shared budget across per-interface divisions, which existed
     because a per-grid cap did not shrink the card: Fabric had exactly two
@@ -713,8 +716,14 @@ def test_the_row_budget_goes_to_the_exceptions_under_the_group_charts():
     src = without_comments(NETWORK.read_text())
     effect = src[src.index("pagesFor('exceptions').pageSize") :]
     effect = effect[: effect.index(";")]
-    assert "plotRows - groupRows" in effect, "the group charts' rows are not taken off the budget"
-    assert "Math.max(1," in effect, "the exceptions can be left with no rows and no pager"
+    assert "exceptionRows" in effect, "the exceptions do not take their rows from the budget"
+    assert "Math.max(0, plotRows - groupRows)" in src, (
+        "the exceptions claim a row the budget does not have"
+    )
+    assert "{@const folded = exceptionRows === 0}" in src, "spent budget does not fold the exceptions"
+    assert src.count("data-rows-total={rowsTotal(exceptions.length)}") == 2, (
+        "folded exceptions stop reporting their rows, so dragging taller cannot restore them"
+    )
     assert "data-rows-total={groupRows}" in src, "Section cannot count the group charts' rows"
 
     section = section_fn("measure")

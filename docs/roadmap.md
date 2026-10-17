@@ -8347,6 +8347,26 @@ both.
   first four 12 dE apart in every theme, the closest the original seven had.
 - Not changed: the default for a new browser is still Default in dark.
 
+### BN — Network Activity: fault charts fold and can be acknowledged — **built 2026-10-17**
+
+Brian unplugged sparketa's management port on purpose. "Faults and port
+changes" appeared under the group charts, grew the card, and the card
+could not be dragged back to its layout or the charts dismissed.
+
+- [x] **BN1. They fold.** The section always took at least one chart row
+  so it kept a pager, which put a floor under the card. With no rows left
+  in the budget it now folds to its heading, which keeps the count and
+  says to drag the card taller; it still reports its rows to Section, so
+  dragging taller brings the charts back.
+- [x] **BN2. Acknowledge.** A button on the heading hides the charts until
+  something new: a fault chart's event is its last non-zero sample, a port
+  chart's its last change of state, so a port down the whole window stays
+  acknowledged as the window slides. A sample counts as new only when its
+  whole step is after the acknowledgement; otherwise, on 7d, the hour
+  holding the click brings back what was just acknowledged. Per browser,
+  like the card's other view choices; it hides charts and silences nothing.
+  A line under the group charts counts what is hidden, with a show button.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
