@@ -506,6 +506,9 @@
      after it so that none disappears: a division with no rows would have no
      pager, and the reader could not page to what it holds. The floor is one
      row per division. Infinity flows through as "all". */
+  /* Declared before the effect below: a pre-effect runs during init, and
+     reading a later `const` there throws before the first frame. */
+  const exceptionRows = $derived(Math.max(0, plotRows - groupRows));
   $effect.pre(() => {
     /* The group charts are never paged, there are at most four. Whatever rows
        they leave go to the exceptions under them; with none left they fold to
@@ -513,7 +516,6 @@
        taller than the reader dragged it. */
     pagesFor('exceptions').pageSize = Math.max(1, exceptionRows) * cols;
   });
-  const exceptionRows = $derived(Math.max(0, plotRows - groupRows));
   const rowsTotal = (n: number) => Math.ceil(n / cols);
 
   const isActive = (id: string) => active === null || active.includes(id);
