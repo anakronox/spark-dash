@@ -352,7 +352,7 @@ def test_a_standalone_frame_carries_a_header_and_its_own_band():
     app = without_comments(APP.read_text())
     solo = app[app.index('<section class="cluster solo">') :]
     solo = solo[: solo.index("</section>")]
-    assert "memory not pooled" in solo and "<MemoryBand" in solo
+    assert "<span class={MUTED}>1 node</span>" in solo and "<MemoryBand" in solo
     top = app[app.index("  .top.split {") :]
     assert "repeat(2, minmax(0, 1fr))" in top[: top.index("}")]
 

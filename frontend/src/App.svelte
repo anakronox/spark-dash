@@ -1023,7 +1023,7 @@
         <section class="cluster">
           <header class={CLUSTER_HEAD}>
             <h2 class={CLUSTER_H2}>{cluster.name}</h2>
-            <span class={MUTED}>{cluster.nodes.length} nodes pooled</span>
+            <span class={MUTED}>{cluster.nodes.length} nodes clustered</span>
             <!-- Clusters go down together, so they mute together: one window
                  for every member, from the frame that means "these pool". -->
             <MaintenanceControl
@@ -1073,7 +1073,7 @@
                the card's own. -->
           <header class={CLUSTER_HEAD}>
             <h2 class={CLUSTER_H2}>standalone</h2>
-            <span class={MUTED}>1 node · memory not pooled</span>
+            <span class={MUTED}>1 node</span>
           </header>
           {#if cluster.totalBytes > 0}
             <MemoryBand

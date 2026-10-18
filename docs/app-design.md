@@ -253,7 +253,7 @@ node frames, then the cards, each full width or in one of two columns:
 ┌──────────────────────────────────────────────────────────────────────┐
 │ spark-dash  decode tok/s · first token · free block · nodes · prefill│
 ├──────────────────────────────────────────────────────────────────────┤
-│ ┌ DANFLASHES · 2 nodes pooled ───────┐ ┌ STANDALONE ┐                │
+│ ┌ DANFLASHES · 2 nodes clustered ────┐ ┌ STANDALONE ┐                │
 │ │ pooled memory band                 │ │            │   beside the   │
 │ │ [sparketa]        [sparkjr]        │ │ [sparky]   │   nodes (wide  │
 │ └────────────────────────────────────┘ └────────────┘   monitors)    │
