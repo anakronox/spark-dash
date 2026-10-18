@@ -8370,9 +8370,10 @@ could not be dragged back to its layout or the charts dismissed.
 ### BO — Temperatures gauges: dividers, and Package is Processor — **built 2026-10-18**
 
 - [x] **BO1. Dividers.** A short 1px rule in the gap between gauge groups on
-  the same row, inset 18% top and bottom. The row count is worked out from
-  the grid's own rule (auto-fit, 260px, 16px gap), so no divider runs down
-  the left edge of a wrapped row.
+  the same row, centred between the heading rule and the card edge rather
+  than on the whole group, which put it too high. The row count is worked
+  out from the grid's own rule (auto-fit, 260px, 16px gap), so no divider
+  runs down the left edge of a wrapped row.
 - [x] **BO2. Toggle inset.** The hottest/avg toggle sits 10px in from its
   group's edge, where it had run into the next group's heading.
 - [x] **BO3. Package is Processor**, on the card, the History chip and the

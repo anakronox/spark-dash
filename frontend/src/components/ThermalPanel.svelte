@@ -466,14 +466,16 @@
             <span class="count">{g.rows.length}</span>
             {@render combineControl('gauges', g.key, combo)}
           </h3>
-          <GaugePanel
-            title={g.label}
-            caption={false}
-            height={GAUGE_PX}
-            sizeFor={mostNodes}
-            {items}
-            tiles={items.every((it) => it.bands === null)}
-          />
+          <div class="dials">
+            <GaugePanel
+              title={g.label}
+              caption={false}
+              height={GAUGE_PX}
+              sizeFor={mostNodes}
+              {items}
+              tiles={items.every((it) => it.bands === null)}
+            />
+          </div>
         </section>
       {/each}
     </div>
@@ -668,17 +670,20 @@
   }
 
   /* Between groups on one row: a short hairline in the middle of the 16px gap,
-     inset top and bottom so it separates without boxing anything in. */
-  .domains.gauges .domain {
+     inset top and bottom so it separates without boxing anything in.
+     On the dials, not the group, and centred between the heading's rule and
+     the card's bottom edge, which sits 4px further below the dials than the
+     rule sits above them (measured: 17px and 21px before this offset). */
+  .domains.gauges .dials {
     position: relative;
   }
 
-  .domains.gauges .divided::before {
+  .domains.gauges .divided .dials::before {
     content: '';
     position: absolute;
     left: -8.5px;
-    top: 18%;
-    bottom: 18%;
+    top: calc(15% - 4px);
+    bottom: calc(15% - 14px);
     width: 1px;
     background: var(--rule);
     opacity: 0.6;
