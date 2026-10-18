@@ -20,7 +20,7 @@ import type { NodeSnapshot } from './types';
  * 42 °C radio nobody will ever look at twice.
  */
 export const DOMAINS: { key: string; label: string; note: string }[] = [
-  { key: 'package', label: 'Package', note: 'SoC thermal zones — GPU and Grace share one die' },
+  { key: 'package', label: 'Processor', note: 'SoC thermal zones — the Grace CPU and the GPU share one die' },
   { key: 'gpu', label: 'GPU', note: 'NVML, judged against the shutdown threshold' },
   { key: 'storage', label: 'Storage', note: 'NVMe controller and its own sensors' },
   { key: 'network', label: 'Network', note: 'ConnectX asic, one per port' },

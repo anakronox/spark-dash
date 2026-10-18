@@ -180,6 +180,13 @@
   const isCombined = (r: TempRow): r is CombinedRow => 'how' in r;
   const colourOf = (id: string) => nodeColor(slots.get(id));
   /* Every group's dials the same size: the panel with the most nodes. */
+  /* Gauge groups per row, worked out the way the grid does it (auto-fit,
+     260px minimum, 16px gap), so a divider is drawn only BETWEEN groups on one
+     row and never down the card's left edge. */
+  let gaugesWidth = $state(0);
+  const gaugeCols = $derived(
+    Math.max(1, Math.min(groups.length, Math.floor((gaugesWidth + 16) / (260 + 16)))),
+  );
   const mostNodes = $derived(Math.max(1, ...groups.map((g) => new Set(g.rows.map((r) => r.node)).size)));
   /* Tall enough for a 120px dial and its label, the size three dials take
      side by side in half a card. */
@@ -449,11 +456,11 @@
       with the host's <code>/sys</code> mounted.
     </p>
   {:else if view === 'gauges'}
-    <div class="domains gauges">
-      {#each groups as g (g.key)}
+    <div class="domains gauges" bind:clientWidth={gaugesWidth}>
+      {#each groups as g, i (g.key)}
         {@const combo = comboOf('gauges', g.key)}
         {@const items = thermalItems(combineRows(g.rows, combo === 'average' ? 'average' : 'hottest'), colourOf)}
-        <section class="domain">
+        <section class="domain" class:divided={i % gaugeCols !== 0}>
           <h3 class="head-row" title={g.note}>
             {g.label}
             <span class="count">{g.rows.length}</span>
@@ -658,6 +665,29 @@
      the width, rather than five groups sitting in room laid out for eight. */
   .domains.gauges {
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  /* Between groups on one row: a short hairline in the middle of the 16px gap,
+     inset top and bottom so it separates without boxing anything in. */
+  .domains.gauges .domain {
+    position: relative;
+  }
+
+  .domains.gauges .divided::before {
+    content: '';
+    position: absolute;
+    left: -8.5px;
+    top: 18%;
+    bottom: 18%;
+    width: 1px;
+    background: var(--rule);
+    opacity: 0.6;
+  }
+
+  /* Off the group's right edge, so the toggle does not run into the next
+     group's heading across the gap. */
+  .domains.gauges .head-row .combine {
+    margin-right: 10px;
   }
 
 

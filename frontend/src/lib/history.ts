@@ -171,7 +171,7 @@ export const METRICS: MetricSpec[] = [
      Charted separately rather than as one "temperature" line: 104.8 for a
      package zone against 84.85 for the nvme means the same number is
      comfortable in one place and fatal in another. */
-  { key: 'package_temperature', label: 'Package temp', unit: '°C', scaleMax: 104, minSpan: 15 },
+  { key: 'package_temperature', label: 'Processor temp', unit: '°C', scaleMax: 104, minSpan: 15 },
   // 90: just above the 84.85C the nvme calls critical.
   { key: 'storage_temperature', label: 'Storage temp', unit: '°C', scaleMax: 90, minSpan: 15 },
   // 110: just above the 105C a ConnectX asic calls critical.

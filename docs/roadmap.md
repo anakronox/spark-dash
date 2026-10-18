@@ -8367,6 +8367,18 @@ could not be dragged back to its layout or the charts dismissed.
   like the card's other view choices; it hides charts and silences nothing.
   A line under the group charts counts what is hidden, with a show button.
 
+### BO — Temperatures gauges: dividers, and Package is Processor — **built 2026-10-18**
+
+- [x] **BO1. Dividers.** A short 1px rule in the gap between gauge groups on
+  the same row, inset 18% top and bottom. The row count is worked out from
+  the grid's own rule (auto-fit, 260px, 16px gap), so no divider runs down
+  the left edge of a wrapped row.
+- [x] **BO2. Toggle inset.** The hottest/avg toggle sits 10px in from its
+  group's edge, where it had run into the next group's heading.
+- [x] **BO3. Package is Processor**, on the card, the History chip and the
+  report column. "Package" was the kernel's word; these are the SoC zones,
+  where the Grace CPU and the GPU share one die. The key stays `package`.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

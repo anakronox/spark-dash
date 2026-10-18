@@ -262,7 +262,7 @@ async def s_temperatures(ctx: Ctx) -> dict:
         lines.append(f"Closest to a limit: {tight['node']}, {tight['headroom_min']} °C of headroom at "
                      f"{tight['headroom_at']}.")
     return {"lines": lines, "tables": [_table("Peak per node (°C)", [
-        ("node", "Node"), ("hottest", "Hottest sensor"), ("package", "Package"), ("gpu", "GPU"),
+        ("node", "Node"), ("hottest", "Hottest sensor"), ("package", "Processor"), ("gpu", "GPU"),
         ("storage", "Storage"), ("network", "Network"), ("headroom_min", "Least headroom"), ("headroom_at", "at"),
     ], rows)]}
 
