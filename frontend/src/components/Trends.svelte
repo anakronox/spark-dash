@@ -418,26 +418,27 @@
     return systemItems(m, gaugeNodes, gaugeColour, fromProm ? (latest.values[m.key] ?? {}) : undefined);
   }
 
-  /** Click solos, click the soloed node again to restore. Shift adds.
+  /** Click hides or shows that node. Shift solos, shift the soloed node again
+   * to restore.
    *
-   * Solo-first because "what is this one box doing" is the question the node
-   * control exists for, and plain per-node toggles would make it seven clicks
-   * out of eight. Never empty: an empty plot reads as broken rather than as a
-   * choice — the same rule the metric chips already have. */
-  function pickNode(id: string, additive: boolean) {
-    if (additive) {
-      const current = active ?? [...pool];
-      const next = current.includes(id)
-        ? current.filter((n) => n !== id)
-        : [...current, id];
-      activeNodes = next.length ? next : null;
-      // Everything selected IS "all" — kept as null so the count and the
-      // "show all" control do not linger over a selection of everything.
-      if (activeNodes && activeNodes.length === pool.length) activeNodes = null;
+   * Toggle-first (Brian, 2026-10-20): hiding the one node that is in the way
+   * is the common case, and solo stays one shift-click away. Never empty: an
+   * empty plot reads as broken rather than as a choice — the same rule the
+   * metric chips already have, so hiding the last shown node does nothing. */
+  function pickNode(id: string, solo: boolean) {
+    if (solo) {
+      const soloed = active?.length === 1 && active[0] === id;
+      activeNodes = soloed ? null : [id];
       return;
     }
-    const soloed = active?.length === 1 && active[0] === id;
-    activeNodes = soloed ? null : [id];
+    const current = active ?? [...pool];
+    const next = current.includes(id)
+      ? current.filter((n) => n !== id)
+      : [...current, id];
+    if (!next.length) return;
+    // Everything selected IS "all" — kept as null so the count and the
+    // "show all" control do not linger over a selection of everything.
+    activeNodes = next.length === pool.length ? null : next;
   }
 
   /* CHIPS ARE LABELS ONLY.
@@ -576,9 +577,10 @@
       <!-- THE LEGEND IS THE CONTROL. It was decoration before — it mapped
            colours to nodes while every line on the chart was coloured by
            METRIC, so nothing on the plot used these swatches. Now the swatches
-           are real and clicking one scopes every chart to that node, which is
-           what takes this panel from "which node is different" to "what is this
-           one box doing" without a second layout.
+           are real and clicking one hides or shows that node on every chart
+           and gauge; shift-click shows only that node, which is what takes
+           this panel from "which node is different" to "what is this one box
+           doing" without a second layout.
            Shown only when there is more than one node: with one node it would
            be a control whose every state looks the same. -->
       {#if legendNodes.length > 1}
@@ -593,7 +595,7 @@
               disabled={!plottable}
               aria-pressed={on}
               title={plottable
-                ? `Show only ${id} — shift-click to add`
+                ? `${on ? 'Hide' : 'Show'} ${id} — shift-click to show only ${id}`
                 : view === 'gauges'
                   ? `${id} is not in the live feed`
                   : `${id} has no samples in this range — live, but nothing to plot yet`}

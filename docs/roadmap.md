@@ -1817,7 +1817,8 @@ with one swatch per node — it just does nothing today.
 
 Settled:
 
-- **Click solos, click again restores.** One click each way for the drill-down
+- **Click solos, click again restores.** (Superseded by BP: click toggles,
+  shift-click solos.) One click each way for the drill-down
   case; shift-click adds a second node for a pairwise comparison. Plain per-node
   toggles would be seven clicks to isolate one of eight.
 - **Not persisted.** Scoping to one node is a question you ask, not a preference
@@ -8379,6 +8380,13 @@ could not be dragged back to its layout or the charts dismissed.
 - [x] **BO3. Package is Processor**, on the card, the History chip and the
   report column. "Package" was the kernel's word; these are the SoC zones,
   where the Grace CPU and the GPU share one die. The key stays `package`.
+
+### BP — System Activity node chips toggle — **built 2026-10-20**
+
+- [x] **BP1. Click hides or shows a node** on every chart and gauge; it used
+  to show only that node. Shift-click now does that, and shift-clicking the
+  soloed node restores all. The last shown node cannot be hidden. Supersedes
+  "click solos" under the node legend above. Still not persisted.
 
 ### J — Single-host profile (everything on one GB10)
 
