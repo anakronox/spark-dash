@@ -204,6 +204,9 @@ nothing is configured on the server.
   moon in the header flips light and dark.
 - **Card headers.** **Settings → Appearance → Card headers** puts a band
   behind each card's title: Raised, Tinted (the default), Solid, or Off.
+- **Node chips on the Activity cards** hide or show a node on every chart
+  (System Activity; shift-click shows only that node). On a cluster too big
+  for the chips to fit beside the controls they fold into a **nodes** menu.
   **Reset layout** puts it back to the layout you picked.
 - **Settings** opens as a wide panel with a section on each tab of its left
   rail, each integration's state shown beside its name; drag the panel's left

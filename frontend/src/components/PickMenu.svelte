@@ -28,6 +28,8 @@
     note?: string;
     /** The note is a warning rather than an explanation. */
     warn?: boolean;
+    /** A colour key beside the label: a node's identity colour. */
+    swatch?: string;
   }
   export interface PickGroup {
     label?: string;
@@ -75,6 +77,10 @@
      *  is for the twenty-metric picker. A menu of three actions reads as a
      *  list, not a grid; it says so with 1. */
     columns?: 1 | 2;
+    /** A second action on each enabled row, after the checkbox: "only" shows
+     *  that item alone. The node menus use it for what shift-click does on a
+     *  chip. */
+    onsolo?: (key: string) => void;
   }
   const {
     groups,
@@ -90,6 +96,7 @@
     align,
     disabled = false,
     columns = 2,
+    onsolo,
   }: Props = $props();
 
   const hangsEnd = $derived(align ? align === 'end' : !text);
@@ -213,11 +220,26 @@
               disabled={item.disabled}
               onchange={() => ontoggle(item.key)}
             />
+            {#if item.swatch}
+              <span class="swatch" style:background={item.swatch}></span>
+            {/if}
             <span class="name">{item.label}</span>
             {#if item.note}
               <!-- Named rather than silently disabled, so a control that cannot
                    be moved says why it cannot be moved. -->
               <span class="note" class:warn={item.warn} class:dim={!item.warn}>{item.note}</span>
+            {/if}
+            {#if onsolo && !item.disabled}
+              <!-- Inside the label, so the row stays one target; a button in a
+                   label does not toggle the checkbox. -->
+              <button
+                class="solo"
+                title={`Show only ${item.label}`}
+                onclick={(e) => {
+                  e.preventDefault();
+                  onsolo(item.key);
+                }}
+              >only</button>
             {/if}
           </label>
           {/if}
@@ -408,6 +430,38 @@
 
   .name {
     flex: 1;
+  }
+
+  .swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    flex: none;
+  }
+
+  /* Shown on the row being pointed at, like the card's own secondary
+     controls; always there for the keyboard. */
+  .solo {
+    padding: 0 5px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: none;
+    color: var(--ink-muted);
+    font: inherit;
+    font-size: var(--text-nano);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    opacity: 0;
+  }
+
+  .row:hover .solo,
+  .solo:focus-visible {
+    opacity: 1;
+  }
+
+  .solo:hover {
+    color: var(--ink);
+    border-color: var(--ink-muted);
   }
 
   .note {

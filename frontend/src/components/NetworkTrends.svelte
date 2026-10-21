@@ -32,6 +32,7 @@
   import GaugePanel from './GaugePanel.svelte';
   import MetricChart from './MetricChart.svelte';
   import Pager from './Pager.svelte';
+  import FitLegend from './FitLegend.svelte';
   import PickMenu from './PickMenu.svelte';
   import RdmaTable, { RDMA_COLUMNS } from './RdmaTable.svelte';
   import { TableView } from '../lib/table.svelte';
@@ -552,6 +553,24 @@
   });
   const shownGaugePanels = $derived(gaugePages.slice(gaugePanels));
 
+  /** The node chips as menu rows, for when they no longer fit (BR). The
+   *  checkbox adds or removes one node, as shift-click on a chip does;
+   *  "only" is the chip's plain click. */
+  const nodeItems = $derived(
+    plotted.map((id) => {
+      const on = isActive(id);
+      const last = on && (active?.length ?? plotted.length) === 1;
+      return {
+        key: id,
+        label: id,
+        checked: on,
+        disabled: last,
+        note: last ? 'last one' : undefined,
+        swatch: nodeColor(slots.get(id)),
+      };
+    }),
+  );
+
   function pickNode(id: string, additive: boolean) {
     if (additive) {
       const current = active ?? [...plotted];
@@ -687,24 +706,46 @@
         icon="list"
       />
       {#if plotted.length > 1}
-        <span class="legend" role="group" aria-label="Nodes">
-          {#each plotted as id (id)}
-            {@const on = isActive(id)}
-            <button
-              class="item"
-              class:off={!on}
-              aria-pressed={on}
-              title={`Show only ${id}'s links — shift-click to add`}
-              onclick={(e) => pickNode(id, e.shiftKey)}
-            >
-              <span class="swatch" style:background={nodeColor(slots.get(id))}></span>
-              {id}
-            </button>
-          {/each}
-          {#if active}
-            <button class="clear" onclick={() => (activeNodes = null)}>show all</button>
-          {/if}
-        </span>
+        <!-- Chips while they fit on the row, the Nodes menu once they would
+             push the controls onto a second (BR). -->
+        <FitLegend>
+          {#snippet chips()}
+            <span class="legend" role="group" aria-label="Nodes">
+              {#each plotted as id (id)}
+                {@const on = isActive(id)}
+                <button
+                  class="item"
+                  class:off={!on}
+                  aria-pressed={on}
+                  title={`Show only ${id}'s links — shift-click to add`}
+                  onclick={(e) => pickNode(id, e.shiftKey)}
+                >
+                  <span class="swatch" style:background={nodeColor(slots.get(id))}></span>
+                  {id}
+                </button>
+              {/each}
+              {#if active}
+                <button class="clear" onclick={() => (activeNodes = null)}>show all</button>
+              {/if}
+            </span>
+          {/snippet}
+          {#snippet collapsed()}
+            <PickMenu
+              groups={[{ items: nodeItems }]}
+              ontoggle={(id) => pickNode(id, true)}
+              onsolo={(id) => pickNode(id, false)}
+              what="Nodes"
+              of="Network Activity"
+              text="nodes"
+              count={active?.length ?? plotted.length}
+              countLabel={`of ${plotted.length} shown`}
+              icon="list"
+            />
+            {#if active}
+              <button class="clear" onclick={() => (activeNodes = null)}>show all</button>
+            {/if}
+          {/snippet}
+        </FitLegend>
       {/if}
       <!-- The KEY to the two lines, for the table and ports views' charts.
            Dash rather than a second hue because colour is already carrying the

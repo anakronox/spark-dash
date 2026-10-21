@@ -8,6 +8,7 @@
   import GaugePanel from './GaugePanel.svelte';
   import MetricChart from './MetricChart.svelte';
   import Pager from './Pager.svelte';
+  import FitLegend from './FitLegend.svelte';
   import PickMenu from './PickMenu.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
@@ -418,6 +419,24 @@
     return systemItems(m, gaugeNodes, gaugeColour, fromProm ? (latest.values[m.key] ?? {}) : undefined);
   }
 
+  /** The node chips as menu rows, for when they no longer fit (BR). The
+   *  checkbox does what a click on the chip does; "only" what shift does. */
+  const nodeItems = $derived(
+    legendNodes.map((id) => {
+      const plottable = selectable(id);
+      const on = plottable && isActive(id);
+      const last = on && shownNodes.length === 1;
+      return {
+        key: id,
+        label: id,
+        checked: on,
+        disabled: !plottable || last,
+        note: !plottable ? 'no samples' : last ? 'last one' : undefined,
+        swatch: plottable ? nodeColor(slots.get(id)) : undefined,
+      };
+    }),
+  );
+
   /** Click hides or shows that node. Shift solos, shift the soloed node again
    * to restore.
    *
@@ -584,33 +603,55 @@
            Shown only when there is more than one node: with one node it would
            be a control whose every state looks the same. -->
       {#if legendNodes.length > 1}
-        <span class="legend" role="group" aria-label="Nodes">
-          {#each legendNodes as id (id)}
-            {@const plottable = selectable(id)}
-            {@const on = plottable && isActive(id)}
-            <button
-              class="item"
-              class:off={!on}
-              class:absent={!plottable}
-              disabled={!plottable}
-              aria-pressed={on}
-              title={plottable
-                ? `${on ? 'Hide' : 'Show'} ${id} — shift-click to show only ${id}`
-                : view === 'gauges'
-                  ? `${id} is not in the live feed`
-                  : `${id} has no samples in this range — live, but nothing to plot yet`}
-              onclick={(e) => pickNode(id, e.shiftKey)}
-            >
-              <span class="swatch" style:background={nodeColor(slots.get(id))}></span>
-              {id}
-            </button>
-          {/each}
-          {#if active}
-            <button class="clear" onclick={() => (activeNodes = null)}>
-              {shownNodes.length} of {pool.length} · show all
-            </button>
-          {/if}
-        </span>
+        <!-- Chips while they fit on the row, the Nodes menu once they would
+             push the controls onto a second (BR). -->
+        <FitLegend>
+          {#snippet chips()}
+            <span class="legend" role="group" aria-label="Nodes">
+              {#each legendNodes as id (id)}
+                {@const plottable = selectable(id)}
+                {@const on = plottable && isActive(id)}
+                <button
+                  class="item"
+                  class:off={!on}
+                  class:absent={!plottable}
+                  disabled={!plottable}
+                  aria-pressed={on}
+                  title={plottable
+                    ? `${on ? 'Hide' : 'Show'} ${id} — shift-click to show only ${id}`
+                    : view === 'gauges'
+                      ? `${id} is not in the live feed`
+                      : `${id} has no samples in this range — live, but nothing to plot yet`}
+                  onclick={(e) => pickNode(id, e.shiftKey)}
+                >
+                  <span class="swatch" style:background={nodeColor(slots.get(id))}></span>
+                  {id}
+                </button>
+              {/each}
+              {#if active}
+                <button class="clear" onclick={() => (activeNodes = null)}>
+                  {shownNodes.length} of {pool.length} · show all
+                </button>
+              {/if}
+            </span>
+          {/snippet}
+          {#snippet collapsed()}
+            <PickMenu
+              groups={[{ items: nodeItems }]}
+              ontoggle={(id) => pickNode(id, false)}
+              onsolo={(id) => pickNode(id, true)}
+              what="Nodes"
+              of="System Activity"
+              text="nodes"
+              count={shownNodes.length}
+              countLabel={`of ${pool.length} shown`}
+              icon="list"
+            />
+            {#if active}
+              <button class="clear" onclick={() => (activeNodes = null)}>show all</button>
+            {/if}
+          {/snippet}
+        </FitLegend>
       {/if}
     </div>
 

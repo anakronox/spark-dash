@@ -8419,6 +8419,25 @@ could not be dragged back to its layout or the charts dismissed.
   keep the line key). 166px to spare at 2560, one row in every view down to
   2240.
 
+### BR — Node chips fold into a menu on large clusters — **built 2026-10-21**
+
+- [x] **BR1. Chips while they fit, a Nodes menu once they would not.** Each
+  node chip takes 65-80px; at 2560 System Activity's header had room for
+  three more and Network Activity's for two, so a sixth or seventh node
+  pushed the controls onto a second row. `FitLegend` measures a hidden,
+  unwrapped copy of the chips against the rest of the header and swaps in a
+  PickMenu, like Groups and Metrics, when they would leave less than 32px.
+  Decided on the chips' own width, so it cannot flip at the threshold.
+- [x] **BR2. The menu does what the chips do.** A checkbox hides or shows
+  one node; "only" shows that node alone; "show all" stays beside the
+  trigger. Rows keep each node's colour swatch, so the menu is still the key
+  to the lines. The last node shown cannot be unticked.
+- Measured with 3, 5, 8 and 16 nodes (history responses cloned under new
+  names) at 2560, 2240 and 1680: one row at 2560 and 2240 in every case,
+  3 nodes unchanged. At 1680 Network Activity's header wraps with or without
+  the menu, as it did before: its title and controls alone exceed a
+  half-width card there.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
