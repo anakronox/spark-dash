@@ -706,13 +706,13 @@
           {/if}
         </span>
       {/if}
-      <!-- The KEY to the two lines in every chart, stated once for the grid.
+      <!-- The KEY to the two lines, for the table and ports views' charts.
            Dash rather than a second hue because colour is already carrying the
            node here, and keeping that constant is what lets one box's charts
-           read as a group across the grid. -->
-      {#if mode === 'charts'}
-        <span class="key" aria-hidden="true">↑ in&nbsp;&nbsp;↓ out</span>
-      {:else if mode !== 'gauges'}
+           read as a group across the grid. Not in charts view: every chart
+           there labels in ↑ and out ↓ itself, and the header needed the room
+           (BQ4). -->
+      {#if mode !== 'charts' && mode !== 'gauges'}
         <span class="key" aria-hidden="true">
           <span class="line solid"></span>in
           <span class="line dash"></span>out

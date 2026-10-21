@@ -8410,6 +8410,14 @@ could not be dragged back to its layout or the charts dismissed.
   header (`--head-gap`, declared by each card) and adds nothing: page height,
   card heights and where content starts measure identical to Off on all nine
   cards. Only the title moves, 5-7px up, to sit centred in the band.
+- [x] **BQ4. Network Activity's header had 17px to spare** at 2560 (needs
+  1,110 of 1,126) and wrapped to two rows on the user's screen with the band
+  on or off. The pre-BQ build measured identical here, so the trigger was not
+  found; the margin was the fault. Segmented buttons and toggles go from 9px
+  to 6px of side padding everywhere, and the charts view drops its
+  "↑ in ↓ out" key, since each chart labels in and out itself (table and ports
+  keep the line key). 166px to spare at 2560, one row in every view down to
+  2240.
 
 ### J — Single-host profile (everything on one GB10)
 

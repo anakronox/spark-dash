@@ -1031,7 +1031,9 @@
   }
 
   .segmented > button {
-    padding: 3px 9px;
+    /* 6px, not 9: at 9 Network Activity's header needed 1,110px of the
+       1,126 its card has at 2560 and wrapped to two rows (BQ4). */
+    padding: 3px 6px;
     border: 0;
     background: none;
     color: var(--ink-muted);
@@ -1062,7 +1064,7 @@
 
   /* A standalone on/off, styled to match: outlined when off, filled when on. */
   .toggle {
-    padding: 3px 9px;
+    padding: 3px 6px;
     border: 1px solid var(--rule);
     border-radius: var(--radius);
     background: none;
