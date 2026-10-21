@@ -122,7 +122,7 @@
   aria-label={dense ? `${node.node_id} details` : undefined}
   tabindex={dense ? 0 : undefined}
 >
-  <header>
+  <header class="card-head">
     <h2>
       <span class="mark" aria-hidden="true"></span>
       <!-- SCOPES THE WHOLE PAGE to this node. A real button rather than a
@@ -230,9 +230,13 @@
   .node {
     /* Positioning context for the compact card's reveal. */
     position: relative;
-    padding: 16px 18px;
+    --pad-t: 16px;
+    --pad-x: 18px;
+    padding: var(--pad-t) var(--pad-x);
     display: grid;
     gap: 14px;
+    /* The grid's gap already spaces the header band from what follows. */
+    --band-gap: 0px;
     /* The node's identity colour appears once, as a rule — enough to tell
        cards apart at a glance without tinting the whole panel. */
     border-top: 2px solid var(--accent);
@@ -291,7 +295,10 @@
      would make a compact card harder to read at the exact moment there are
      more of them to read. */
   .node.dense {
-    padding: 10px 12px;
+    --pad-t: 10px;
+    --pad-x: 12px;
+    --band-py: 7px;
+    padding: var(--pad-t) var(--pad-x);
     gap: 8px;
   }
 

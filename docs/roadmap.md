@@ -8388,6 +8388,22 @@ could not be dragged back to its layout or the charts dismissed.
   soloed node restores all. The last shown node cannot be hidden. Supersedes
   "click solos" under the node legend above. Still not persisted.
 
+### BQ — Card header bands — **built 2026-10-21**
+
+- [x] **BQ1. A band behind each card's title**, to separate the title from
+  the card's content. Chosen in Settings → Appearance → Card headers:
+  Raised (`--panel-raised`), Tinted (9% ink into the panel, the default),
+  Solid (`--rule`), or Off. Built from each theme's tokens, so every family
+  has it with no new colours. Kept per browser.
+- [x] **BQ2. The band bleeds to the card's edges** by the card's own padding,
+  which each card now declares as `--pad-t` / `--pad-x` and uses for its
+  padding too. Measured flush against the border on all nine cards, dark
+  and light. The rule is unlayered in `app.css` because the cards' scoped
+  `header` padding is; a layered rule loses to it.
+- Mocked first on the live page at 2560px against the three strengths;
+  Tinted was the only one that separated clearly in both dark and light.
+  Fly-outs (Settings, Alerts, Reports) keep their plain headers.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

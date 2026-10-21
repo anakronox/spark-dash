@@ -202,6 +202,8 @@ nothing is configured on the server.
   Darcula, Cyberpunk, Forest, Slate, Paper and High contrast. Pick the
   theme and Auto / Dark / Light in **Settings → Appearance**; the sun or
   moon in the header flips light and dark.
+- **Card headers.** **Settings → Appearance → Card headers** puts a band
+  behind each card's title: Raised, Tinted (the default), Solid, or Off.
   **Reset layout** puts it back to the layout you picked.
 - **Settings** opens as a wide panel with a section on each tab of its left
   rail, each integration's state shown beside its name; drag the panel's left

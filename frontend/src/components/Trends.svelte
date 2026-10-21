@@ -556,7 +556,7 @@
 </script>
 
 <section class="panel">
-  <header>
+  <header class="card-head">
     <div class="titles">
       <h2 class="eyebrow">System Activity</h2>
       <!-- THE CHIPS BECAME A MENU. Twenty toggles took three rows of the
@@ -732,7 +732,9 @@
 
 <style>
   section {
-    padding: 12px 16px 12px;
+    --pad-t: 12px;
+    --pad-x: 16px;
+    padding: var(--pad-t) var(--pad-x) 12px;
   }
 
   header {

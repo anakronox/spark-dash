@@ -400,7 +400,7 @@
 {/snippet}
 
 <section class="panel">
-  <header>
+  <header class="card-head">
     <h2 class="eyebrow">Temperatures</h2>
     {#if allGroups.length > 1}
       <PickMenu
@@ -558,7 +558,9 @@
 
 <style>
   section.panel {
-    padding: 12px 16px 12px;
+    --pad-t: 12px;
+    --pad-x: 16px;
+    padding: var(--pad-t) var(--pad-x) 12px;
     /* A CONTAINER, and the first one in this codebase. Every other responsive
        rule here keys off the viewport, which stopped being a proxy for how much
        room a card has: the same window shows this card at 817px in a column and

@@ -12,15 +12,17 @@
  * read as grey.
  */
 
-import { FAMILIES, migrate, paletteOf, type FamilyId, type Mode, type PaletteId } from './themes';
-export { FAMILIES, MODES, migrate, paletteOf } from './themes';
-export type { FamilyDef, FamilyId, Mode, PaletteId } from './themes';
+import { CARD_HEADERS, FAMILIES, migrate, paletteOf, type CardHeaders, type FamilyId, type Mode, type PaletteId } from './themes';
+export { CARD_HEADERS, FAMILIES, MODES, migrate, paletteOf } from './themes';
+export type { CardHeaders, FamilyDef, FamilyId, Mode, PaletteId } from './themes';
 
 /** The family last chosen. Before BM this key held one theme id, light or
  *  dark built in; `read()` migrates those. */
 const STORAGE_KEY = 'spark-dash.theme.v1';
 /** Auto, dark or light (BM). Absent on a browser from before BM. */
 export const MODE_KEY = 'spark-dash.theme-mode.v1';
+/** The card header band (BQ). Absent means the default, tinted. */
+const HEADERS_KEY = 'spark-dash.card-headers.v1';
 
 const FAMILY = new Map(FAMILIES.map((f) => [f.id, f]));
 
@@ -47,6 +49,15 @@ function read(): { family: FamilyId; mode: Mode } {
   }
 }
 
+function readHeaders(): CardHeaders {
+  try {
+    const saved = localStorage.getItem(HEADERS_KEY);
+    return CARD_HEADERS.some((h) => h.id === saved) ? (saved as CardHeaders) : 'tinted';
+  } catch {
+    return 'tinted';
+  }
+}
+
 export class Theme {
   family = $state<FamilyId>('default');
   /** What the reader chose. `auto` follows the system. */
@@ -57,6 +68,8 @@ export class Theme {
   resolved = $state<PaletteId>('dark');
   /** Whether that palette is a dark one. */
   isDark = $state(true);
+  /** The band behind each card's title. */
+  headers = $state<CardHeaders>('tinted');
 
   #media: MediaQueryList | null = null;
 
@@ -64,6 +77,8 @@ export class Theme {
     const { family, mode } = read();
     this.family = family;
     this.mode = mode;
+    this.headers = readHeaders();
+    document.documentElement.dataset.cardHeaders = this.headers;
     // Applied synchronously in the constructor, not from an $effect. Charts
     // resolve CSS custom properties into literal canvas colours when they
     // build, and effect ordering isn't guaranteed — a chart that built before
@@ -88,6 +103,16 @@ export class Theme {
     this.mode = mode;
     this.#refresh();
     this.#save();
+  }
+
+  setHeaders(headers: CardHeaders) {
+    this.headers = headers;
+    document.documentElement.dataset.cardHeaders = headers;
+    try {
+      localStorage.setItem(HEADERS_KEY, headers);
+    } catch {
+      // Still applied for this session.
+    }
   }
 
   /** The header's switch: the other of dark and light from what is showing,

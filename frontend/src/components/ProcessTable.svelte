@@ -320,7 +320,7 @@
 {/snippet}
 
 <section class="panel">
-  <header>
+  <header class="card-head">
     <h2 class="eyebrow">GPU processes</h2>
     <span class="text-ink-muted text-label">
       {gib(totals.llm)} GiB models · {gib(totals.other)} GiB other
@@ -431,7 +431,9 @@
   /* Section chrome stays until phase 4 converts App.svelte, which owns the
      layout these belong to. */
   section {
-    padding: 14px 0 4px;
+    --pad-t: 14px;
+    --pad-x: 0px;
+    padding: var(--pad-t) var(--pad-x) 4px;
   }
 
   header {

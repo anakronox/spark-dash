@@ -243,7 +243,7 @@
 {/snippet}
 
 <section class="panel">
-  <header>
+  <header class="card-head">
     <h2 class="eyebrow">Clients</h2>
     <span class="text-ink-muted text-label">
       {summary || (loaded ? 'no requests' : '')}{#if note}{summary ? ' · ' : ''}{note}{/if}
@@ -334,7 +334,9 @@
   }
 
   section {
-    padding: 14px 0 4px;
+    --pad-t: 14px;
+    --pad-x: 0px;
+    padding: var(--pad-t) var(--pad-x) 4px;
   }
 
   header {

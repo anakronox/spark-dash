@@ -1128,6 +1128,37 @@
   }
 }
 
+/* CARD HEADER BANDS (BQ), chosen in Settings -> Appearance.
+ *
+ * UNLAYERED, and that is the point: it has to beat each card's own scoped
+ * `header {}` padding, which is unlayered too, and any rule in @layer base
+ * loses to those at any specificity (see the note above @layer base).
+ *
+ * The band bleeds out to the card's edges by the card's own padding, which
+ * each card declares as --pad-t and --pad-x and uses for its padding as well,
+ * so the two cannot drift. A table card has --pad-x 0 and pads its header
+ * itself; the max() keeps the title off the edge there. Off draws nothing.
+ *
+ * Tinted is the fallback in the rule rather than a token on a bare root block:
+ * scripts/palette_check.py reads every bare root block as a theme. */
+:root[data-card-headers='raised'] {
+  --card-head: var(--panel-raised);
+}
+
+/* The rule colour itself: the line under it disappears into the band, and
+   stays only so the three bands are the same height. */
+:root[data-card-headers='solid'] {
+  --card-head: var(--rule);
+}
+
+:root:not([data-card-headers='off']) .card-head {
+  margin: calc(-1 * var(--pad-t)) calc(-1 * var(--pad-x)) var(--band-gap, 10px);
+  padding: var(--band-py, 9px) max(var(--pad-x), 16px);
+  background: var(--card-head, color-mix(in oklab, var(--ink) 9%, var(--panel)));
+  border-bottom: 1px solid var(--rule);
+  border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

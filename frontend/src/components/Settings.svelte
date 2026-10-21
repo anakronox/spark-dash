@@ -27,7 +27,7 @@
    */
   import { tick } from 'svelte';
   import { fetchWithTimeout } from '../lib/request';
-  import { FAMILIES, MODES } from '../lib/theme.svelte';
+  import { CARD_HEADERS, FAMILIES, MODES } from '../lib/theme.svelte';
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
@@ -1116,6 +1116,19 @@
         {/each}
       </div>
       <p class="note dim">Auto follows this computer's light or dark setting. The header's sun and moon switch it too.</p>
+
+      <h3 class="eyebrow dim">Card headers</h3>
+      <div class="choices" role="group" aria-label="Card headers">
+        {#each CARD_HEADERS as h (h.id)}
+          <button
+            class="choice"
+            class:active={theme.headers === h.id}
+            aria-pressed={theme.headers === h.id}
+            onclick={() => theme.setHeaders(h.id)}
+          >{h.label}</button>
+        {/each}
+      </div>
+      <p class="note dim">A band behind each card's title, in the theme's own colours.</p>
       <!-- Each theme is stepped on its own surface rather than derived by
            inverting another, so this is a real choice between three palettes,
            not a light/dark switch with a skin. -->

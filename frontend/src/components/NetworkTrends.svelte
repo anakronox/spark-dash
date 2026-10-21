@@ -669,7 +669,7 @@
 </script>
 
 <section class="panel">
-  <header>
+  <header class="card-head">
     <div class="titles">
       <h2 class="eyebrow">Network Activity</h2>
       <!-- Stays put in every view. A port is RoCE by definition, so the
@@ -1003,7 +1003,9 @@
 
 <style>
   section {
-    padding: 12px 16px 12px;
+    --pad-t: 12px;
+    --pad-x: 16px;
+    padding: var(--pad-t) var(--pad-x) 12px;
   }
 
   header {

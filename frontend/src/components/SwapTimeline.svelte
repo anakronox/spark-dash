@@ -124,7 +124,7 @@
 </script>
 
 <section class="panel">
-  <header>
+  <header class="card-head">
     <div class="titles">
       <h2 class="eyebrow">Model activity</h2>
       {#if loaded && !error}
@@ -185,7 +185,9 @@
 
 <style>
   section {
-    padding: 14px 16px 16px;
+    --pad-t: 14px;
+    --pad-x: 16px;
+    padding: var(--pad-t) var(--pad-x) 16px;
   }
 
   header {

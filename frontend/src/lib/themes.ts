@@ -67,6 +67,17 @@ export const MODES: { id: Mode; label: string }[] = [
   { id: 'light', label: 'Light' },
 ];
 
+/** The band behind each card's title (BQ). Each is drawn from the theme's own
+ *  tokens, so every family gets it without a colour of its own. */
+export type CardHeaders = 'off' | 'raised' | 'tinted' | 'solid';
+
+export const CARD_HEADERS: { id: CardHeaders; label: string }[] = [
+  { id: 'off', label: 'Off' },
+  { id: 'raised', label: 'Raised' },
+  { id: 'tinted', label: 'Tinted' },
+  { id: 'solid', label: 'Solid' },
+];
+
 /** A theme id stored before BM, as the family and mode it now is. `forest`
  *  shipped as `nvidia` for a few hours on 2026-08-19. */
 export function migrate(saved: string | null): { family: FamilyId; mode: Mode } {
