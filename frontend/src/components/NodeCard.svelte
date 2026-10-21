@@ -235,8 +235,7 @@
     padding: var(--pad-t) var(--pad-x);
     display: grid;
     gap: 14px;
-    /* The grid's gap already spaces the header band from what follows. */
-    --band-gap: 0px;
+    --band-py: 7px;
     /* The node's identity colour appears once, as a rule — enough to tell
        cards apart at a glance without tinting the whole panel. */
     border-top: 2px solid var(--accent);
@@ -297,7 +296,7 @@
   .node.dense {
     --pad-t: 10px;
     --pad-x: 12px;
-    --band-py: 7px;
+    --band-py: 4px;
     padding: var(--pad-t) var(--pad-x);
     gap: 8px;
   }

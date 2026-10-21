@@ -441,6 +441,7 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 12px;
-    padding: 0 16px 10px;
+    --head-gap: 10px;
+    padding: 0 16px var(--head-gap);
   }
 </style>

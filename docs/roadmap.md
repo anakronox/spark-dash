@@ -8403,6 +8403,13 @@ could not be dragged back to its layout or the charts dismissed.
 - Mocked first on the live page at 2560px against the three strengths;
   Tinted was the only one that separated clearly in both dark and light.
   Fly-outs (Settings, Alerts, Reports) keep their plain headers.
+- [x] **BQ3. Zero height.** The first build added 19px to every card. A page
+  that had just fitted the window grew past it, a scrollbar took 15px, and
+  Network Activity's header, which has 17px to spare at 2560, wrapped to two
+  rows. The band now fills the card's top padding and the gap under its
+  header (`--head-gap`, declared by each card) and adds nothing: page height,
+  card heights and where content starts measure identical to Off on all nine
+  cards. Only the title moves, 5-7px up, to sit centred in the band.
 
 ### J — Single-host profile (everything on one GB10)
 

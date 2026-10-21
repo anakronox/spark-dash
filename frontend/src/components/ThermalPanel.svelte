@@ -576,7 +576,8 @@
     flex-wrap: wrap;
     align-items: baseline;
     gap: 6px 14px;
-    margin-bottom: 8px;
+    --head-gap: 8px;
+    margin-bottom: var(--head-gap);
   }
 
   h2 {

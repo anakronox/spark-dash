@@ -196,7 +196,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 10px 16px;
-    padding-bottom: 12px;
+    --head-gap: 12px;
+    padding-bottom: var(--head-gap);
   }
 
   .titles {

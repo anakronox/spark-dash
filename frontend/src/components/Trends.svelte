@@ -743,7 +743,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px 16px;
-    padding-bottom: 8px;
+    --head-gap: 8px;
+    padding-bottom: var(--head-gap);
   }
 
   .titles {

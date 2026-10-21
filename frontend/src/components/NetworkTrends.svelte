@@ -1014,7 +1014,8 @@
     align-items: baseline;
     justify-content: space-between;
     gap: 8px 12px;
-    margin-bottom: 8px;
+    --head-gap: 8px;
+    margin-bottom: var(--head-gap);
   }
 
   .titles {
