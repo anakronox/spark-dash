@@ -95,6 +95,11 @@
      window for every member, and the reader should know that before
      clicking. */
   const via = $derived(win && win.scope !== scope ? win.name : null);
+  const fullLine = $derived(
+    win
+      ? ['maintenance', via ? `(${via})` : '', win.reason ?? '', left].filter(Boolean).join(' ')
+      : undefined,
+  );
 
   /* Small controls in the card's label size. Muted ink until hovered, like
      the silence buttons in the history fly-out: present, never loud. The
@@ -104,7 +109,11 @@
     'text-micro tracking-[0.04em] px-[6px] py-px rounded-sm border border-rule ' +
     'text-ink-muted hover:text-ink disabled:opacity-50 disabled:cursor-default';
   const DEFAULT_CHIP = 'text-ink border-ink-muted';
-  const ACTIVE = 'inline-flex items-baseline gap-[6px] text-label text-ink-muted whitespace-nowrap';
+  /* Never wider than the card: the words truncate first, and the time left
+     and "end" stay whole. The full line is the title. */
+  const ACTIVE =
+    'inline-flex items-baseline gap-[6px] min-w-0 max-w-full text-label text-ink-muted whitespace-nowrap';
+  const WORDS = 'min-w-0 truncate';
   const FORM = 'inline-flex items-baseline gap-[4px] text-label';
   const REASON =
     'w-[15ch] min-w-0 px-[6px] py-px text-label bg-transparent border-b border-rule ' +
@@ -113,15 +122,17 @@
 </script>
 
 {#if win}
-  <span class={ACTIVE} data-testid="maintenance-active">
-    {#if label}
-      <span class="text-nano leading-none" aria-hidden="true">◌</span>
-      <span>maintenance</span>
+  <span class={ACTIVE} data-testid="maintenance-active" title={fullLine}>
+    {#if label || via || win.reason}
+      <!-- Inline runs, not flex items: an ellipsis needs a line of text. -->
+      <span class={WORDS}>
+        {#if label}<span class="text-nano leading-none" aria-hidden="true">◌</span> maintenance{/if}
+        {#if via}({via}){/if}
+        {#if win.reason}<span class="text-ink-2">{win.reason}</span>{/if}
+      </span>
     {/if}
-    {#if via}<span>({via})</span>{/if}
-    {#if win.reason}<span class="text-ink-2">{win.reason}</span>{/if}
-    <span>{left}</span>
-    <button class={MINI} disabled={busy} onclick={end} title="End this window now">end</button>
+    <span class="shrink-0">{left}</span>
+    <button class="{MINI} shrink-0" disabled={busy} onclick={end} title="End this window now">end</button>
   </span>
 {:else if arming}
   <form

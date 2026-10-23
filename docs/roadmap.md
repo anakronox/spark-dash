@@ -8453,6 +8453,18 @@ could not be dragged back to its layout or the charts dismissed.
   row (was 4); in a half-width card, 4 (unchanged). Temperatures, 4 groups
   on one row, unchanged.
 
+### BT — Maintenance line stays inside the node card — **built 2026-10-23**
+
+- [x] **BT1. Truncated, with the full line on hover.** Under a cluster
+  window a compact card's header read "maintenance (danflashes) 23h 29m
+  left end" on one unwrapped line, and the card's implicit grid track grew
+  to fit it: the header band and memory bar ran 20px past the card's right
+  edge. The card's track is now `minmax(0, 1fr)`; the words truncate with an
+  ellipsis while the time left and "end" stay whole, and the line's title
+  carries all of it.
+- Measured at 2560 with 3 nodes, danflashes in maintenance: column 347px in
+  a 327px content box before, 327px after.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

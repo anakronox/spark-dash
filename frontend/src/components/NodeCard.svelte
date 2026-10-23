@@ -234,6 +234,10 @@
     --pad-x: 18px;
     padding: var(--pad-t) var(--pad-x);
     display: grid;
+    /* minmax(0, 1fr), never the implicit auto track: that one widens to the
+       header's unwrapped width, and a maintenance line pushed the header
+       band and memory bar past the card's edge. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
     --band-py: 7px;
     /* The node's identity colour appears once, as a rule — enough to tell
@@ -341,10 +345,14 @@
     flex: none;
   }
 
+  /* min-width: 0 so a long maintenance line shrinks inside the card instead
+     of running past its edge. */
   .meta {
     display: flex;
     align-items: baseline;
     gap: 12px;
+    min-width: 0;
+    max-width: 100%;
     font-size: var(--text-label);
   }
 
