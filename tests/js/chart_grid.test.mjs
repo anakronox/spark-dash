@@ -13,7 +13,9 @@ import {
   mirrorRange,
   decadeSplits,
   niceStep,
+  gaugeCols,
   gridCols,
+  MIN_GAUGE_PX,
   maxColsFor,
   onLastRow,
   stampOf,
@@ -163,6 +165,24 @@ test('no traffic at all is a small symmetric range, not a collapsed one', () => 
 test('decade gridlines on both sides of zero, from 1 kb/s', () => {
   assert.deepEqual(decadeSplits(-25000, 3e6), [-10000, -1000, 0, 1000, 10000, 100000, 1000000]);
   assert.deepEqual(decadeSplits(-500, 800), [0]);
+});
+
+test('gauges fill the row with no 1 / 2 / 4 snap: three panels, one row', () => {
+  assert.equal(gaugeCols(3, 1900, 14), 3);
+  assert.equal(gaugeCols(4, 1900, 16), 4);
+  assert.equal(gaugeCols(3, 3000, 14), 3);
+});
+
+test('gauges drop a column only below MIN_GAUGE_PX each', () => {
+  const exact = 3 * MIN_GAUGE_PX + 2 * 14;
+  assert.equal(gaugeCols(3, exact, 14), 3);
+  assert.equal(gaugeCols(3, exact - 1, 14), 2);
+  assert.equal(gaugeCols(3, 200, 14), 1);
+});
+
+test('gauges before the first measure keep every panel on one row', () => {
+  assert.equal(gaugeCols(5, 0, 14), 5);
+  assert.equal(gaugeCols(0, 0, 14), 1);
 });
 
 console.log(`${passed}/${passed + failed} passed`);

@@ -8438,6 +8438,21 @@ could not be dragged back to its layout or the charts dismissed.
   the menu, as it did before: its title and controls alone exceed a
   half-width card there.
 
+### BS — Gauge cards share one column rule — **built 2026-10-23**
+
+- [x] **BS1. Gauges fill the row; charts keep the 1 / 2 / 4 snap.** System
+  Activity and Network Activity laid gauges out by the chart rule, so three
+  metrics on a full-width card drew two panels and a page ("1-2 of 3")
+  while Temperatures, beside it, put four groups on one row. The snap keeps
+  time axes lined up across cards, and gauges have none. `gaugeCols` in
+  `chart-grid.ts` puts as many panels on a row as fit at 260px each, up to
+  how many there are, and all three gauge cards use it. Temperatures'
+  dividers already came from that sum; its grid now takes the same count
+  instead of auto-fit.
+- Measured at 2560: 12 System Activity metrics in a full-width card, 8 per
+  row (was 4); in a half-width card, 4 (unchanged). Temperatures, 4 groups
+  on one row, unchanged.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

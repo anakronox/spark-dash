@@ -12,7 +12,7 @@
   import PickMenu from './PickMenu.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
-  import { gridCols, onLastRow } from '../lib/chart-grid';
+  import { gaugeCols, gridCols, onLastRow } from '../lib/chart-grid';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation, MetricSpec } from '../lib/history';
   import { PROMETHEUS_ONLY, ageLabel, kindOf, systemItems } from '../lib/gauges';
@@ -335,7 +335,9 @@
      reads the snapshot, so nothing is waiting on a fetch. Paged and sized by
      the same grid as the charts, so the card's corner works the same way. */
   const panelCount = $derived(view === 'gauges' ? chosen.length : charts.length);
-  const cols = $derived(gridCols(panelCount, gridWidth, GRID_GAP_PX));
+  const cols = $derived(
+    (view === 'gauges' ? gaugeCols : gridCols)(panelCount, gridWidth, GRID_GAP_PX),
+  );
 
   /* PAGED BY CHART ROW, with the machinery tables use. A grid of charts was
      the one thing on the page that could not paginate, so a card of eight

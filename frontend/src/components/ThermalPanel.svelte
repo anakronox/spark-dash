@@ -47,6 +47,7 @@
   import { ColumnView } from '../lib/columns.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
   import GaugePanel from './GaugePanel.svelte';
+  import { gaugeCols as gaugeColsFor } from '../lib/chart-grid';
   import { byHeadroom, combineRows, groupRows, hottest, tempRows, thermalItems, tightest } from '../lib/thermal';
   import type { Combine, CombinedRow, TempGroup, TempRow } from '../lib/thermal';
   import type { NodeSnapshot } from '../lib/types';
@@ -180,13 +181,11 @@
   const isCombined = (r: TempRow): r is CombinedRow => 'how' in r;
   const colourOf = (id: string) => nodeColor(slots.get(id));
   /* Every group's dials the same size: the panel with the most nodes. */
-  /* Gauge groups per row, worked out the way the grid does it (auto-fit,
-     260px minimum, 16px gap), so a divider is drawn only BETWEEN groups on one
-     row and never down the card's left edge. */
+  /* Gauge groups per row: the rule every gauge card uses (lib/chart-grid.ts),
+     with the grid's 16px gap. Known here, not left to auto-fit, so a divider
+     is drawn only BETWEEN groups on one row and never down the left edge. */
   let gaugesWidth = $state(0);
-  const gaugeCols = $derived(
-    Math.max(1, Math.min(groups.length, Math.floor((gaugesWidth + 16) / (260 + 16)))),
-  );
+  const gaugeCols = $derived(gaugeColsFor(groups.length, gaugesWidth, 16));
   const mostNodes = $derived(Math.max(1, ...groups.map((g) => new Set(g.rows.map((r) => r.node)).size)));
   /* Tall enough for a 120px dial and its label, the size three dials take
      side by side in half a card. */
@@ -456,7 +455,7 @@
       with the host's <code>/sys</code> mounted.
     </p>
   {:else if view === 'gauges'}
-    <div class="domains gauges" bind:clientWidth={gaugesWidth}>
+    <div class="domains gauges" style:--cols={gaugeCols} bind:clientWidth={gaugesWidth}>
       {#each groups as g, i (g.key)}
         {@const combo = comboOf('gauges', g.key)}
         {@const items = thermalItems(combineRows(g.rows, combo === 'average' ? 'average' : 'hottest'), colourOf)}
@@ -665,11 +664,10 @@
     font-weight: 400;
   }
 
-  /* Dials need far less width than a table, so groups sit side by side.
-     auto-fit, not auto-fill: the empty tracks collapse and the groups share
-     the width, rather than five groups sitting in room laid out for eight. */
+  /* Dials need far less width than a table, so groups sit side by side,
+     --cols of them, sharing the width. */
   .domains.gauges {
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   }
 
   /* Between groups on one row: a short hairline in the middle of the 16px gap,

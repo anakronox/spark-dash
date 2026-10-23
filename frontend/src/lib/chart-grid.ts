@@ -38,6 +38,20 @@ export function gridCols(n: number, width: number, gap: number): number {
   return cols;
 }
 
+/** Narrowest panel of gauges: three 80px dials side by side. */
+export const MIN_GAUGE_PX = 260;
+
+/** Columns for `n` panels of gauges: as many as fit at MIN_GAUGE_PX, up to
+ *  `n`. No 1 / 2 / 4 snap: that keeps time axes lined up across cards, and a
+ *  gauge has none, so three panels on a wide card sit on one row instead of
+ *  two and a page. Every gauge card uses this, so they lay out alike. An
+ *  unmeasured width keeps all `n`. */
+export function gaugeCols(n: number, width: number, gap: number): number {
+  if (n <= 1) return 1;
+  if (!(width > 0)) return n;
+  return Math.max(1, Math.min(n, Math.floor((width + gap) / (MIN_GAUGE_PX + gap))));
+}
+
 /** Is chart `i` of `count` on the grid's bottom row? Only that row draws the
  *  time axis: every chart in a grid shares one window and one synced cursor,
  *  so the labels above it repeat the same times. */

@@ -37,7 +37,7 @@
   import RdmaTable, { RDMA_COLUMNS } from './RdmaTable.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
-  import { gridCols, onLastRow } from '../lib/chart-grid';
+  import { gaugeCols as gaugeColsFor, gridCols, onLastRow } from '../lib/chart-grid';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation } from '../lib/history';
@@ -545,8 +545,8 @@
     ),
   );
 
-  /* The gauges' panels on the same grid rule, paged by row like the charts. */
-  const gaugeCols = $derived(gridCols(gaugePanels.length, gridWidth, GRID_GAP_PX));
+  /* The gauges' panels on the gauge grid rule, paged by row like the charts. */
+  const gaugeCols = $derived(gaugeColsFor(gaugePanels.length, gridWidth, GRID_GAP_PX));
   const gaugePages = new TableView<(typeof gaugePanels)[number]>([], Infinity);
   $effect.pre(() => {
     gaugePages.pageSize = plotRows * gaugeCols;
