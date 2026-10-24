@@ -609,7 +609,7 @@
   });
 </script>
 
-<section class="panel">
+<section class="panel" data-top={view === 'gauges' || undefined}>
   <header class="card-head">
     <div class="titles">
       <h2 class="eyebrow">System Activity</h2>
@@ -660,7 +660,7 @@
                   onclick={(e) => pickNode(id, e.shiftKey)}
                 >
                   <span class="swatch" style:background={nodeColor(slots.get(id))}></span>
-                  {id}
+                  <span>{id}</span>
                 </button>
               {/each}
               {#if active}
@@ -814,10 +814,13 @@
     padding: var(--pad-t) var(--pad-x) 12px;
   }
 
+  /* Baseline, as Network Activity and Temperatures: their headers come out
+     2px taller than a centred one, and gauge cards side by side only line
+     up when their headers are one height. */
   header {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
     gap: 8px 16px;
     --head-gap: 8px;
@@ -826,7 +829,7 @@
 
   .titles {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 16px;
     flex-wrap: wrap;
   }
@@ -840,9 +843,12 @@
     color: var(--ink-2);
   }
 
+  /* Baseline from the name, not the swatch: an empty 2px line has no text
+     baseline, so the chips sat 3px low against the card title and made the
+     header taller than its neighbours'. */
   .item {
     display: inline-flex;
-    align-items: center;
+    align-items: baseline;
     gap: 5px;
     padding: 2px 6px;
     border-radius: var(--radius);
@@ -905,6 +911,7 @@
     width: 8px;
     height: 2px;
     flex: none;
+    align-self: center;
   }
 
 

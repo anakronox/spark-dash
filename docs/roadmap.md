@@ -8504,6 +8504,21 @@ could not be dragged back to its layout or the charts dismissed.
   in the grid's 14px gap. A panel's caption no longer matches its chart's
   caption in the charts view; the gauge cards matching each other won.
 
+### BX — Gauge cards side by side share one line — **built 2026-10-24**
+
+- [x] **BX1. Top-aligned, one header height, one heading height.** Beside
+  Temperatures, System Activity's gauge headings and dials sat higher.
+  Three causes, measured at 2560: Section centred each plot card's content
+  in its spare room, so every card's dials sat at a height of their own;
+  System Activity's header was 35.5px against the others' 37.75 (centred
+  where they are baseline-aligned, and its node chips took their baseline
+  from an empty 2px swatch, 3px low); and a gauge panel's heading was
+  17.5px against Temperatures' 25.5, which carries a toggle. Gauge views
+  now opt out of the centring (`data-top`), System Activity's header and
+  chips are baseline-aligned on the name, and the panel heading is 25.5px.
+- Measured after, all three cards: title 12.25px from the card's top,
+  heading 43.75, its rule 69.25, dials 79.25.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

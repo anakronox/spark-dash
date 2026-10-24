@@ -1277,9 +1277,18 @@ def test_a_chart_card_taller_than_its_charts_centres_them_and_shrinks_the_gap_fi
 
     panel = css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel) {")
     assert "flex-direction: column" in panel
-    assert "margin-top: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel > header + *) {")
-    assert "margin-bottom: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel > :last-child) {")
+    assert "margin-top: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel:not([data-top]) > header + *) {")
+    assert "margin-bottom: auto" in css_block(SECTION, ".slot.plots:not(.scrolling) > :global(section.panel:not([data-top]) > :last-child) {")
     assert "class:plots={mode === 'plot'}" in SECTION.read_text()
+
+
+def test_gauge_cards_sit_at_the_top_so_side_by_side_they_line_up():
+    """BX: centred, each gauge card's dials sat at a height set by its own
+    spare room, so System Activity's sat higher than Temperatures' beside it.
+    Every gauge view opts out with `data-top`."""
+    for name, flag in (("Trends", "view"), ("NetworkTrends", "mode"), ("ThermalPanel", "view")):
+        src = (FRONTEND / "components" / f"{name}.svelte").read_text()
+        assert f'<section class="panel" data-top={{{flag} === \'gauges\' || undefined}}>' in src, name
 
 
 

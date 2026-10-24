@@ -1095,15 +1095,19 @@
      in one band at the bottom; now it is split above and below the content,
      the header staying at the top. Auto margins take only spare room, and
      measure() reads the card with the fill lifted, when there is none, so
-     this cannot feed the height it centres in. */
+     this cannot feed the height it centres in.
+     EXCEPT GAUGES (`data-top`, BX): centred, each card's dials sat at a
+     height set by its own spare room, so gauge cards side by side never
+     lined up. Top-aligned, with one header height and one heading height,
+     their headings and dials share a line. */
   .slot.plots:not(.scrolling) > :global(section.panel) {
     display: flex;
     flex-direction: column;
   }
-  .slot.plots:not(.scrolling) > :global(section.panel > header + *) {
+  .slot.plots:not(.scrolling) > :global(section.panel:not([data-top]) > header + *) {
     margin-top: auto;
   }
-  .slot.plots:not(.scrolling) > :global(section.panel > :last-child) {
+  .slot.plots:not(.scrolling) > :global(section.panel:not([data-top]) > :last-child) {
     margin-bottom: auto;
   }
 

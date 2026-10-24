@@ -687,7 +687,7 @@
   });
 </script>
 
-<section class="panel">
+<section class="panel" data-top={mode === 'gauges' || undefined}>
   <header class="card-head">
     <div class="titles">
       <h2 class="eyebrow">Network Activity</h2>

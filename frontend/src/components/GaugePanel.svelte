@@ -107,8 +107,13 @@
      rule clear of the next panel's divider across the gap. */
   figcaption {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
+    /* Temperatures' heading carries a 20.5px hottest/avg toggle; the same
+       height here puts every gauge card's rule, and its dials, on one line.
+       Measured: 25.5px with the 4px padding and 1px rule. */
+    box-sizing: border-box;
+    min-height: 25.5px;
     white-space: nowrap;
     overflow: hidden;
     margin: 0 10px 6px 0;

@@ -398,7 +398,7 @@
   {/if}
 {/snippet}
 
-<section class="panel">
+<section class="panel" data-top={view === 'gauges' || undefined}>
   <header class="card-head">
     <h2 class="eyebrow">Temperatures</h2>
     {#if allGroups.length > 1}
