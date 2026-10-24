@@ -7678,7 +7678,7 @@ that fail; this covers the ones that succeed under an old name.
   engine's list reads "not listed", with what the engine does serve on hover;
   an engine the dashboard does not watch reads unknown, never stale. The
   column switches itself on while any row is unlisted, as the network
-  table's fault columns do, and the menu says so. Columns could not start
+  table's fault columns do, and the menu says so. (Undone in BU.) Columns could not start
   hidden before; `optional` on a ColumnDef stores an explicit "+key" for one
   switched on. Checked on 14 days of live traffic: Hermes's 1,506 requests
   for `danflashes/glm5.3.nvfp4` and four from Open WebUI on the web server
@@ -8464,6 +8464,16 @@ could not be dragged back to its layout or the charts dismissed.
   carries all of it.
 - Measured at 2560 with 3 nodes, danflashes in maintenance: column 347px in
   a 327px content box before, 327px after.
+
+### BU — The Clients card's "listed" column stays off when switched off — **built 2026-10-24**
+
+- [x] **BU1. No longer a signal column.** AW1 had it switch itself on
+  while any row was unlisted. Taking GLM down to test another model left
+  Hermes's old rows "not listed", and the column came back however often it
+  was unticked: the menu showed it off and the card showed it anyway. It is
+  now an ordinary optional column, shown only when ticked. The network
+  tables' `err` and `drop` keep the AW behaviour; a fault counter is not
+  something a reader takes down on purpose.
 
 ### J — Single-host profile (everything on one GB10)
 

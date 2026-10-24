@@ -142,16 +142,17 @@
     { key: 'tokens_out', label: 'tokens out', right: true, width: 11 },
     { key: 'active', label: 'active', width: 10 },
     /* A STALE NAME (roadmap AW): the model is not in its engine's own list.
-       Off by default, and on by itself while a row has one: Hermes asked for
-       a retired name for days, every request answered, its context-window
-       lookup quietly failing. */
-    { key: 'listed', label: 'listed', width: 12, optional: true, signal: true },
+       Hermes asked for a retired name for days, every request answered, its
+       context-window lookup quietly failing. Off by default and NOT a
+       signal (BU): a model taken down on purpose leaves its old clients
+       "not listed", and an unticked column that turned itself back on for
+       that could not be put away. */
+    { key: 'listed', label: 'listed', width: 12, optional: true },
   ];
 
   const cols = new ColumnView('clients', COLUMNS);
 
   $effect(() => dropSortWhenHidden(view, (k) => cols.isVisible(k)));
-  $effect(() => cols.force(rows.some((r) => r.listed === false) ? ['listed'] : []));
 
   const summary = $derived(summaryText(rows));
   const note = $derived(
