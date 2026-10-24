@@ -79,7 +79,7 @@ from spark_dash_backend.maintenance import (
     render_metrics,
     tag_episodes,
 )
-from spark_dash_backend.latest import LATEST_METRICS, latest
+from spark_dash_backend.latest import LATEST_METRICS, PEAK_METRICS, latest, peaks
 from spark_dash_backend.poller import LivePoller
 from spark_dash_backend.prometheus import (
     ABSENT_AFTER_S,
@@ -575,6 +575,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail=f"unknown metric {unknown}; valid: {sorted(LATEST_METRICS)}",
             )
         return await latest(prom, metric)
+
+    @app.get("/api/peaks")
+    async def api_peaks(
+        metric: list[str] = Query(..., description=f"Any of: {', '.join(sorted(PEAK_METRICS))}"),
+    ) -> dict:
+        """Each node's 24h peak of the System Activity metrics with no natural
+        ceiling, the full scale of their dials (roadmap BV)."""
+        unknown = sorted(set(metric) - PEAK_METRICS)
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown metric {unknown}; valid: {sorted(PEAK_METRICS)}",
+            )
+        return await peaks(prom, metric)
 
     @app.get("/api/targets/absent")
     async def api_absent_targets() -> dict:

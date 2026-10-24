@@ -15,7 +15,7 @@
   import { gaugeCols, gridCols, onLastRow } from '../lib/chart-grid';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation, MetricSpec } from '../lib/history';
-  import { PROMETHEUS_ONLY, ageLabel, kindOf, systemItems } from '../lib/gauges';
+  import { PEAK_SCALED, PROMETHEUS_ONLY, ageLabel, kindOf, systemItems } from '../lib/gauges';
   import { fetchWithTimeout } from '../lib/request';
   import { nodeColor, nodeColorVar } from '../lib/theme';
   import type { NodeSnapshot } from '../lib/types';
@@ -405,6 +405,33 @@
     return () => clearInterval(t);
   });
 
+  /* THE FOUR WITH NO CEILING (BV) are dials scaled to each node's 24h peak.
+     A day's maximum barely moves in five minutes, so it is polled that often;
+     a live reading past it fills the dial until the next poll catches up. */
+  const peakKeys = $derived(
+    view === 'gauges' ? chosen.filter((m) => PEAK_SCALED.has(m.key)).map((m) => m.key) : [],
+  );
+  let peaks = $state<Record<string, Record<string, number>>>({});
+
+  async function loadPeaks(keys: string[]) {
+    const params = new URLSearchParams();
+    for (const k of keys) params.append('metric', k);
+    try {
+      const resp = await fetchWithTimeout(`/api/peaks?${params}`);
+      if (!resp.ok) return;
+      peaks = (await resp.json()).values ?? {};
+    } catch {
+      // The dials keep the last scale.
+    }
+  }
+
+  $effect(() => {
+    const keys = peakKeys;
+    if (!keys.length) return;
+    loadPeaks(keys);
+    return poll(() => loadPeaks(keys), 300_000);
+  });
+
   /** How old the oldest Prometheus reading on the card is, in seconds. */
   const latestAge = $derived.by(() => {
     const stamps = gaugeNodes.map((n) => latest.sampledAt[n.node_id]).filter((t) => t != null);
@@ -418,7 +445,13 @@
 
   function gaugeItems(m: MetricSpec) {
     const fromProm = PROMETHEUS_ONLY.has(m.key);
-    return systemItems(m, gaugeNodes, gaugeColour, fromProm ? (latest.values[m.key] ?? {}) : undefined);
+    return systemItems(
+      m,
+      gaugeNodes,
+      gaugeColour,
+      fromProm ? (latest.values[m.key] ?? {}) : undefined,
+      peaks[m.key],
+    );
   }
 
   /** The node chips as menu rows, for when they no longer fit (BR). The

@@ -15,6 +15,7 @@ import {
   dialFit,
   formatReading,
   kindOf,
+  peakLabel,
   liveValue,
   stateOf,
   capacityLabel,
@@ -88,9 +89,35 @@ test('dials use the full-axis scale; metrics with no ceiling are tiles', () => {
   assert.equal(ceilingOf(spec('gpu_temperature')), 100);
   assert.equal(ceilingOf(spec('gpu_power')), 300);
   assert.equal(ceilingOf(spec('cpu_clock')), 3500);
+  // No ceiling of their own: dials scaled to each node's 24h peak (BV).
   for (const k of ['tokens_per_second', 'prompt_tokens_per_second', 'swap_io', 'temperature_headroom']) {
-    assert.equal(kindOf(spec(k)), 'tile', k);
+    assert.equal(ceilingOf(spec(k)), null, k);
+    assert.equal(kindOf(spec(k)), 'dial', k);
   }
+});
+
+test('a peak-scaled dial reads against its node\'s 24h peak', () => {
+  const n = node();
+  const v = liveValue('tokens_per_second', n);
+  const [it] = systemItems(spec('tokens_per_second'), [n], () => 'c', undefined, { [n.node_id]: v * 4 });
+  assert.equal(it.fraction, 0.25);
+  assert.equal(it.scale[1], peakLabel(v * 4));
+  // a reading past a minute-old peak fills the dial, never overruns it
+  const [over] = systemItems(spec('tokens_per_second'), [n], () => 'c', undefined, { [n.node_id]: v / 2 });
+  assert.equal(over.fraction, 1);
+  // no peak and nothing now: no scale, an empty arc
+  const idle = node({ runtimes: { llama_cpp: [], vllm: [], sglang: [], tensorfold: [] } });
+  const [none] = systemItems(spec('tokens_per_second'), [idle], () => 'c', undefined, {});
+  assert.equal(none.fraction, 0);
+  assert.equal(none.scale[1], '');
+  // from Prometheus, with its peak
+  const [swap] = systemItems(spec('swap_io'), [node()], () => 'c', { [node().node_id]: 30 }, { [node().node_id]: 120 });
+  assert.equal(swap.fraction, 0.25);
+  assert.equal(swap.scale[1], '120');
+});
+
+test('peak labels stay short', () => {
+  assert.deepEqual([0.5, 9.94, 47.3, 820, 1250, 12400].map(peakLabel), ['0.5', '9.9', '47', '820', '1.3k', '12k']);
 });
 
 test('bands only where the hardware states a warning and a critical', () => {

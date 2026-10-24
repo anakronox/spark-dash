@@ -66,3 +66,47 @@ async def latest(prom: PrometheusClient, keys: list[str]) -> dict:
         "values": {k: v for k, v in results if v is not None},
         "sampled_at": sampled,
     }
+
+
+# --- Peaks (roadmap BV) -------------------------------------------------
+
+#: Metrics with no natural ceiling. Their dials take full scale from each
+#: node's own peak over PEAK_RANGE, so the needle reads "how near its recent
+#: best", and the scale end says what that best was.
+PEAK_METRICS: frozenset[str] = frozenset(
+    {"tokens_per_second", "prompt_tokens_per_second", "swap_io", "temperature_headroom"}
+)
+
+PEAK_RANGE = "24h"
+
+#: The subquery's resolution. Four scrapes, as RATE_WINDOW: a burst shorter
+#: than this can be missed, and a dial's scale does not need it.
+PEAK_STEP = "1m"
+
+
+def peak_expr(key: str) -> str:
+    base = HISTORY_QUERIES[key].replace("{window}", RATE_WINDOW)
+    return f"max_over_time(({base})[{PEAK_RANGE}:{PEAK_STEP}])"
+
+
+async def peaks(prom: PrometheusClient, keys: list[str]) -> dict:
+    """`{"values": {metric: {node: peak}}, "range": "24h"}`.
+
+    A failing query is left out, as in `latest`: that dial has no scale and
+    reads its number on an empty arc.
+    """
+    wanted = [k for k in dict.fromkeys(keys) if k in PEAK_METRICS]
+
+    async def one(key: str) -> tuple[str, dict[str, float] | None]:
+        try:
+            series = await prom.query(peak_expr(key))
+        except PrometheusError:
+            return key, None
+        return key, {
+            s.node: s.points[-1][1]
+            for s in series
+            if s.node and s.points and not math.isnan(s.points[-1][1])
+        }
+
+    results = await asyncio.gather(*(one(k) for k in wanted))
+    return {"values": {k: v for k, v in results if v is not None}, "range": PEAK_RANGE}

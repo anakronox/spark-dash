@@ -16,10 +16,20 @@ import { ENGINE_RUNTIMES } from './types';
 
 /** How a metric is drawn as a gauge.
  *
- * `dial` needs a ceiling. A metric with none (throughput, prefill, swap I/O,
- * headroom) is a `tile`: a needle against an invented maximum would look
- * precise and say nothing. */
+ * `dial` needs a ceiling. The four with none (throughput, prefill, swap I/O,
+ * headroom) were tiles until BV: a needle against an invented maximum would
+ * look precise and say nothing. They are dials now, scaled to each node's
+ * own 24h peak (PEAK_SCALED), which is measured, not invented. `tile` is
+ * left for a reading with neither, such as a link with no reported speed. */
 export type GaugeKind = 'dial' | 'tile';
+
+/** Dials whose full scale is each node's 24h peak, from /api/peaks. */
+export const PEAK_SCALED = new Set([
+  'tokens_per_second',
+  'prompt_tokens_per_second',
+  'swap_io',
+  'temperature_headroom',
+]);
 
 /** Where the five metrics the snapshot does not carry come from: Prometheus's
  *  latest sample, through /api/latest. Everything else is read live. */
@@ -118,7 +128,14 @@ export function ceilingOf(m: MetricSpec): number | null {
 }
 
 export function kindOf(m: MetricSpec): GaugeKind {
-  return ceilingOf(m) == null ? 'tile' : 'dial';
+  return ceilingOf(m) == null && !PEAK_SCALED.has(m.key) ? 'tile' : 'dial';
+}
+
+/** A peak as the dial's scale end prints it: 47.3, 820, 12k. */
+export function peakLabel(v: number): string {
+  if (v >= 10_000) return `${Math.round(v / 1000)}k`;
+  if (v >= 1000) return `${+(v / 1000).toFixed(1)}k`;
+  return v >= 10 ? String(Math.round(v)) : String(+v.toFixed(1));
 }
 
 /** [warning, critical] for this node, where the hardware states them.
@@ -241,16 +258,25 @@ export interface GaugeItem {
 }
 
 /** System Activity's items for one metric: a reading per node, live or from
- *  `latest` for the five the snapshot lacks. */
+ *  `latest` for the five the snapshot lacks. `peaks` is each node's 24h peak,
+ *  the full scale of a PEAK_SCALED dial. */
 export function systemItems(
   m: MetricSpec,
   nodes: NodeSnapshot[],
   colourOf: (id: string) => string,
   latest?: Record<string, number>,
+  peaks?: Record<string, number>,
 ): GaugeItem[] {
-  const ceiling = ceilingOf(m);
+  const fixed = ceilingOf(m);
+  const byPeak = PEAK_SCALED.has(m.key);
+  const unit = m.key === 'temperature_headroom' ? '°C left' : m.unit;
   return nodes.map((n) => {
     const v = latest ? (n.up ? (latest[n.node_id] ?? null) : null) : liveValue(m.key, n);
+    /* The peak was scraped up to a minute ago, so a reading can pass it:
+       the scale is then the reading, never a needle off the end. Nothing
+       above zero all day leaves no scale and an empty arc. */
+    const peak = byPeak ? Math.max(peaks?.[n.node_id] ?? 0, v ?? 0) : 0;
+    const ceiling = byPeak ? (peak > 0 ? peak : null) : fixed;
     const b = bandsOf(m.key, n);
     const idle = v === 0 && m.unit === 'tok/s';
     return {
@@ -258,11 +284,15 @@ export function systemItems(
       colour: colourOf(n.node_id),
       fraction: v == null || ceiling == null ? 0 : v / ceiling,
       value: idle ? 'idle' : formatReading(m, v),
-      unit: m.key === 'temperature_headroom' ? '°C left' : m.unit,
+      unit,
       state: stateOf(v, b),
       bands: b && ceiling ? [b[0] / ceiling, b[1] / ceiling] : null,
-      scale: ['0', String(ceiling ?? '')],
-      title: b ? `${n.node_id}: warns above ${b[0]}°C, critical above ${b[1]}°C` : n.node_id,
+      scale: ['0', ceiling == null ? '' : byPeak ? peakLabel(ceiling) : String(ceiling)],
+      title: b
+        ? `${n.node_id}: warns above ${b[0]}°C, critical above ${b[1]}°C`
+        : byPeak
+          ? `${n.node_id}: full scale is its 24h peak, ${ceiling == null ? 'none yet' : `${peakLabel(ceiling)} ${unit}`}`
+          : n.node_id,
     };
   });
 }

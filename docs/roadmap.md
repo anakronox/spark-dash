@@ -7797,6 +7797,7 @@ against `frontend/src/lib/types.ts`:
   state, "▲ warn" or "■ crit", since status is never colour alone; back under,
   it returns to the node's colour. That cannot be misread as a node: node
   colours are kept ≥12 ΔE from the status colours (`scripts/palette_check.py`).
+  (Superseded by BV: these are dials scaled to a 24h peak now.)
   A metric with no natural ceiling (throughput, prefill, swap I/O) gets a
   number tile instead of a dial: a needle against a made-up maximum would
   look precise and say nothing.
@@ -8474,6 +8475,24 @@ could not be dragged back to its layout or the charts dismissed.
   now an ordinary optional column, shown only when ticked. The network
   tables' `err` and `drop` keep the AW behaviour; a fault counter is not
   something a reader takes down on purpose.
+
+### BV — Dials for the four tiles, scaled to each node's 24h peak — **built 2026-10-24**
+
+- [x] **BV1. Throughput, prefill, swap I/O and thermal headroom are dials.**
+  BA left them as number tiles because they have no ceiling, and a needle
+  against an invented maximum says nothing. A node's own peak is measured,
+  not invented: full scale is the highest value that node reached in the
+  last 24h, so the needle reads "how near its recent best" and the title
+  names that peak. `GET /api/peaks` takes the chart's own expression through
+  `max_over_time((…)[24h:1m])`; the card polls it every 5 minutes. A live
+  reading past the peak fills the dial rather than overrunning it, and a
+  node with nothing above zero all day has no scale and an empty arc.
+- Measured on the VM's Prometheus, 2026-10-24: all four queries under 0.1s.
+  Decode peaks: sparketa 328 tok/s, sparky 0 (no decode in 24h). Prefill
+  peaks run to 70k tok/s on sparketa, so an ordinary prefill reads low on
+  its dial: a single burst sets the scale for a day.
+- Headroom reads the other way: a full dial is the most room this node has
+  had today, and a short arc is the one nearer its limit.
 
 ### J — Single-host profile (everything on one GB10)
 
