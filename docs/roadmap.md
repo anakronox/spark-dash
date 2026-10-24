@@ -8494,6 +8494,16 @@ could not be dragged back to its layout or the charts dismissed.
 - Headroom reads the other way: a full dial is the most room this node has
   had today, and a short arc is the one nearer its limit.
 
+### BW — Activity gauges take Temperatures' headings and dividers — **built 2026-10-24**
+
+- [x] **BW1. One look for every gauge card.** System Activity and Network
+  Activity captioned each gauge panel like a chart (micro type, no rule)
+  and drew nothing between panels; Temperatures had a label-size heading
+  over a hairline and a short divider between groups on a row. GaugePanel
+  now draws Temperatures' heading and, with `divided`, its divider, centred
+  in the grid's 14px gap. A panel's caption no longer matches its chart's
+  caption in the charts view; the gauge cards matching each other won.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

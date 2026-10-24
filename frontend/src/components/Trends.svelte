@@ -750,7 +750,7 @@
 
   {#if view === 'gauges'}
     <div class="charts" style:--cols={cols} data-rows-total={rowsTotal} bind:clientWidth={gridWidth}>
-      {#each shownGauges as m (m.key)}
+      {#each shownGauges as m, i (m.key)}
         {@const fromProm = PROMETHEUS_ONLY.has(m.key)}
         <!-- Not live, for the five from Prometheus: the age is what makes
              the reading honest. -->
@@ -760,6 +760,7 @@
           note={fromProm && latestAge != null ? ageLabel(latestAge) : undefined}
           noteTitle="From Prometheus's latest scrape; not in the live feed"
           height={plotHeight}
+          divided={i % cols !== 0}
           items={gaugeItems(m)}
           tiles={kindOf(m) === 'tile'}
         />

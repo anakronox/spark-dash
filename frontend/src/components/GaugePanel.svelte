@@ -26,9 +26,22 @@
     sizeFor?: number;
     /** False when the card draws its own heading above the panel. */
     caption?: boolean;
+    /** Not first on its row: a hairline on the left, between it and the
+     *  panel before, as Temperatures draws between its groups. */
+    divided?: boolean;
   }
-  const { title, verbatim = false, note, noteTitle, height, items, tiles = false, sizeFor = 0, caption = true }: Props =
-    $props();
+  const {
+    title,
+    verbatim = false,
+    note,
+    noteTitle,
+    height,
+    items,
+    tiles = false,
+    sizeFor = 0,
+    caption = true,
+    divided = false,
+  }: Props = $props();
 
   // The box's 4px top padding comes off the height the dials can use.
   const PAD_PX = 4;
@@ -40,7 +53,7 @@
   });
 </script>
 
-<figure class="gauge" aria-label={caption ? undefined : title}>
+<figure class="gauge" class:divided aria-label={caption ? undefined : title}>
   {#if caption}
   <figcaption>
     <span class="name" class:verbatim>{title}</span>
@@ -48,36 +61,38 @@
   </figcaption>
   {/if}
 
-  <div class="box" style:height="{height}px" bind:clientWidth={width} data-plot>
-    {#if !items.length}
-      <p class="dim none">No nodes reporting.</p>
-    {:else if tiles}
-      <div class="tiles">
-        {#each items as it (it.id)}
-          <div class="tile" style:--c={it.colour} title={it.title}>
-            <b class="num" class:quiet={it.value === 'idle' || it.value === '—'}>{it.value}</b>
-            <span>{it.id} · {it.unit}</span>
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <div class="dials" style:--per-line={fit.perLine} style:--size="{fit.size}px">
-        {#each items as it (it.id)}
-          <Dial
-            size={fit.size}
-            fraction={it.fraction}
-            colour={it.colour}
-            value={it.value}
-            unit={it.unit}
-            state={it.state}
-            bands={it.bands}
-            scale={it.scale}
-            label={it.id}
-            title={it.title}
-          />
-        {/each}
-      </div>
-    {/if}
+  <div class="body">
+    <div class="box" style:height="{height}px" bind:clientWidth={width} data-plot>
+      {#if !items.length}
+        <p class="dim none">No nodes reporting.</p>
+      {:else if tiles}
+        <div class="tiles">
+          {#each items as it (it.id)}
+            <div class="tile" style:--c={it.colour} title={it.title}>
+              <b class="num" class:quiet={it.value === 'idle' || it.value === '—'}>{it.value}</b>
+              <span>{it.id} · {it.unit}</span>
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="dials" style:--per-line={fit.perLine} style:--size="{fit.size}px">
+          {#each items as it (it.id)}
+            <Dial
+              size={fit.size}
+              fraction={it.fraction}
+              colour={it.colour}
+              value={it.value}
+              unit={it.unit}
+              state={it.state}
+              bands={it.bands}
+              scale={it.scale}
+              label={it.id}
+              title={it.title}
+            />
+          {/each}
+        </div>
+      {/if}
+    </div>
   </div>
 </figure>
 
@@ -87,23 +102,46 @@
     min-width: 0;
   }
 
-  /* The chart's caption, so a gauges copy and a charts copy read as one card
-     in two views. */
+  /* Temperatures' group heading (its .head-row), so every gauge card reads
+     alike: label size, a hairline under it. The 10px off the right keeps the
+     rule clear of the next panel's divider across the gap. */
   figcaption {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 8px;
     white-space: nowrap;
     overflow: hidden;
-    padding: 0 0 2px 2px;
-    font-size: var(--text-micro);
-    letter-spacing: 0.1em;
+    margin: 0 10px 6px 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--rule);
+    font-size: var(--text-label);
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
+    color: var(--ink-2);
+  }
+
+  .note {
+    font-weight: 400;
     color: var(--ink-muted);
   }
 
-  .name {
-    color: var(--ink-2);
+  /* Temperatures' divider: a short hairline in the middle of the grid's 14px
+     column gap, inset top and bottom so it separates without boxing. */
+  /* On a wrapper, not the box: the box clips its dials. */
+  .body {
+    position: relative;
+  }
+
+  .gauge.divided .body::before {
+    content: '';
+    position: absolute;
+    left: -7.5px;
+    top: calc(15% - 4px);
+    bottom: calc(15% - 14px);
+    width: 1px;
+    background: var(--rule);
+    opacity: 0.6;
   }
 
   .name.verbatim,

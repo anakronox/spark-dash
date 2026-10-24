@@ -835,11 +835,12 @@
     <!-- Before the history checks: the gauges read the snapshot, so a
          Prometheus outage must not take them with it. -->
     <div class="charts" style:--cols={gaugeCols} data-rows-total={Math.ceil(gaugePanels.length / gaugeCols)} bind:clientWidth={gridWidth}>
-      {#each shownGaugePanels as p (p.key)}
+      {#each shownGaugePanels as p, i (p.key)}
         <GaugePanel
           title={p.title}
           note={p.note}
           height={plotHeight}
+          divided={i % gaugeCols !== 0}
           items={p.items}
           tiles={p.tiles}
           sizeFor={Math.max(...gaugePanels.map((q) => q.items.length))}
