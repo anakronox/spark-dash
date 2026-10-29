@@ -258,6 +258,67 @@ in the header says how many. A short tour of the controls that are easy to miss
 follows the first time; both reopen from **Settings → Appearance**, and **Reset
 layout** does not bring them back.
 
+### Adding a node, or an engine on one
+
+The cluster is defined in one file, `central/cluster/cluster.yml`. You can edit
+it from the dashboard or by hand — both write the same file, and **neither needs
+a restart**. The backend re-reads it on a timer and generates Prometheus's
+scrape targets from it, so there's no second list to keep in sync.
+
+**From the dashboard.** ⚙ **settings** → **Nodes**:
+
+- **`+ node`** adds a row. Set its **host** — the node's LAN address — and
+  optionally a **cluster** name.
+- **`+ router`** adds a llama.cpp router by **port**. The **metrics** tick beside
+  it opts that router in to `/metrics?model=`, which is what provides per-model
+  tokens/sec and KV-cache detail.
+- **`+ vLLM`**, **`+ SGLang`** and **`+ TensorFold`** add those engines the same way, by port.
+- **copy yaml** shows the YAML for that node if you would rather paste it
+  somewhere than save from here.
+
+Each node is a card; its routers, engines and the interfaces it currently
+reports fold away behind their counts. The interfaces are tick boxes, so you can
+exclude an unplugged port from alerting without looking up its name.
+
+**Or edit the file.** Same result:
+
+```yaml
+# central/cluster/cluster.yml
+nodes:
+  - id: node-1                 # becomes the `node` label on every metric
+    host: 10.0.0.11
+    runtimes:
+      llama_routers:
+        - port: 8001
+          scrape_metrics: true # per-model tokens/sec and KV cache
+        - port: 8108
+      vllm: [8120]
+      sglang: [30000]          # only if started with --enable-metrics
+      tensorfold: [8080]       # under --tp, only on the node running rank 0
+
+  - id: node-2
+    host: 10.0.0.12
+    cluster: alpha             # pools memory with other `alpha` nodes
+```
+
+A few things worth knowing:
+
+- **Runtimes are ports, not URLs.** Each one is resolved against that node's own
+  `host`, so the address appears once per node — which is why the node stack is
+  identical on every machine.
+- **A node that only holds weights** for a tensor-parallel cluster needs no
+  `runtimes:` block at all.
+- **Adding a node here doesn't install it.** Install the node stack on the machine too;
+  listing it here is what makes the dashboard and Prometheus look for it.
+- **`cluster:` affects the numbers, not just the layout.** Nodes in a cluster
+  pool their memory, so their free space is added up and shown as capacity a
+  single model could use. Nodes outside one are never added together.
+
+Deploying from a registry instead of building on each host is the maintainer
+path — see [building and shipping
+images](#building-and-shipping-images). It needs
+`PULL_POLICY=always` in each `.env`, for reasons the compose files spell out.
+
 ### Reports — scheduled and on demand
 
 A report is a period, a set of nodes and the sections chosen, in order:

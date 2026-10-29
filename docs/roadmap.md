@@ -8519,6 +8519,18 @@ could not be dragged back to its layout or the charts dismissed.
 - Measured after, all three cards: title 12.25px from the card's top,
   heading 43.75, its rule 69.25, dials 79.25.
 
+### BY — A README a visitor reads to the end — **built 2026-10-29**
+
+- [x] **BY1. Short README, detail moved, nothing dropped.** The first command
+  was at line 232 of 503 (4,263 words), after 190 lines of features and
+  layout controls. Now 153 lines (898 words): a pitch, the screenshot, eight
+  feature bullets, the install, an optional-features table, the docs list.
+  The full feature write-up and "The page is yours" moved to
+  `docs/features.md` (with the DGX OS updates screenshot); the cluster file
+  section to `docs/deployment.md`, "Adding a node, or an engine on one". The
+  README keeps a minimal `cluster.yml`, which `test_distribution` parses.
+  The clone command names the GitHub URL instead of a placeholder.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

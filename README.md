@@ -1,346 +1,72 @@
 # spark-dash
 
-A web dashboard for a home cluster of NVIDIA GB10 machines — ASUS GX10 / "DGX
-Spark" class. It shows GPU and system health, and live metrics for the LLM jobs
-running on them (llama.cpp router, vLLM, SGLang, TensorFold).
-
-Works with one node or many.
+A self-hosted dashboard for NVIDIA GB10 machines (ASUS GX10, DGX Spark), from
+one node to a home cluster. GPU and system health, temperatures, network, and
+live metrics for the LLMs running on them: llama.cpp router, vLLM, SGLang and
+TensorFold.
 
 ![The spark-dash dashboard in compact view: a pooled two-node cluster and a standalone node in their own frames, beside the Clients card listing five callers with their requests and tokens; Temperatures as gauges, a dial per node for the package zones, GPU and storage averaged and the network chips at their hottest, each dial marked where it would turn amber and red; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic, received above the line and sent below; and the GPU process and model tables](Screenshot.jpg)
 
-Three GB10s: two pooled into a tensor-parallel cluster, one standalone. Every
-threshold is measured for this hardware, not guessed, and the layout is
-[yours to arrange](#the-page-is-yours).
+## What you get
 
-![DGX OS updates open over the dashboard: the pooled pair sparketa and sparkjr shown together with the two 200 GbE links between them, each with routine and security Ubuntu updates waiting, and the standalone sparky with its own updates and the record of its last one, the July 2026 release with 204 package updates applied](Screenshot-dgx-os-updates.jpg)](Screenshot-dgx-os-updates.jpg)
+- **GB10 read correctly.** Unified memory from the kernel, not NVML's flat
+  line; throttle state; memory pressure. Every threshold is measured on this
+  hardware: a GX10 sits at ~84°C doing routine work, so a generic 80°C alert
+  would page you all day.
+- **Which process holds the memory**, labelled by runtime: "97 GiB used"
+  becomes "97 GiB held by these two vLLM shards".
+- **Per-model inference state:** loaded and sleeping models, slots, KV cache,
+  decode and prefill counted separately, time to first token.
+- **Pooled clusters treated as one machine**, with free memory summed only
+  where a single model could use it.
+- **Every sensor and every link:** 18–23 temperature sensors per node, each
+  against its own limit, and every interface and RoCE port with its negotiated
+  rate, errors and drops.
+- **35 alert rules** with push notifications to ntfy, Slack, Discord or
+  Telegram, set up from the UI.
+- **History for 180 days** in Prometheus, live updates every 1–2 seconds, and a
+  layout you arrange yourself: move, size and copy any card, nine themes.
+- **Read-only.** It can't load, unload or kill anything.
 
-[DGX OS updates](#5-optional-dgx-os-updates) on the same three machines, with
-`sparkjr` expanded to show what the release would change.
+Optional, each off until you switch it on: one-button DGX OS updates, who is
+calling your models (via LiteLLM), questions answered by your own model,
+scheduled reports, and MCP tools for agents such as Claude Code.
 
-Two details worth pointing at. The button says *update sparkjr and sparketa*
-because those two pool memory — updating one without the other breaks the pair.
-And *6 packages pinned here* means someone ran `apt-mark hold` on that node, so
-the count isn't a misleading zero.
-
-## What it monitors
-
-**77 metric families per node**, live at 1–2s over a WebSocket and kept for 180
-days in Prometheus. Read-only: it can't load, unload or kill anything.
-
-**The GPU, as GB10 actually reports it.**
-
-- Utilization, temperature, power, clocks.
-- **Unified memory, read correctly.** NVML reports a total that never moves on
-  GB10, so generic exporters show a flat line. The agent reads `/proc/meminfo`.
-- **Throttle state** — `IDLE` / `PASS` / `LOCKED` / `THROTTLED`, judged only
-  under load. On GB10 a throttle usually means power, not heat.
-- **Memory pressure (PSI).** Contention shows up here before swap does.
-
-**Which process is holding the memory.** Per-process GPU attribution, labelled
-with the runtime that owns it — llama.cpp, vLLM, SGLang, TensorFold, ComfyUI. "97 GiB used"
-becomes "97 GiB held by these two vLLM shards".
-
-**Per-model inference state.**
-
-- llama.cpp router: which models are loaded, sleeping or unloaded, slots in use,
-  KV-cache occupancy, and a timeline of every load and unload.
-- vLLM, SGLang and TensorFold are scraped directly by Prometheus, so their full metric
-  surface is stored whether or not this UI draws it.
-- **Decode and prefill counted separately.** Combined, they once read 47,672
-  tok/s while the model was generating 48.
-- **Time to first token** in the header, p50 and p95 for the busiest model,
-  with every model and its speculative-decoding acceptance on hover. From the
-  engines' own histograms, and from the gateway's for llama.cpp, which keeps
-  none.
-
-**The cluster as one machine.** Nodes sharing a `cluster:` name pool their
-memory, so free space is summed within a cluster and never across one — a
-fleet-wide total would describe space no single model could use.
-Tensor-parallel workers show as shards of one job, and two alerts compare
-cluster members against each other to catch the straggler.
-
-**The fabric.** Every interface and RoCE port: link state, negotiated rate,
-throughput, errors and drops. Unplug a port and you can exclude it from
-alerting by name; the RoCE device behind it goes with it, since one cable
-carries both. A ConnectX-7 that negotiates 10 Gb/sec instead of 200 is
-otherwise invisible.
-
-**Every sensor, not just the GPU.** A GB10 exposes 18–23 temperature sensors —
-seven SoC zones, the NVMe, one per ConnectX port, the radio — ranked by how
-close each is to *its own* limit, which differ by twenty degrees across one
-machine. On this cluster an SoC zone hit 95.4°C while the GPU read 72°C.
-The card's **groups** menu hides the groups you don't need to read. Alerts
-still watch every sensor, and the headline still names the hottest and the
-closest to its limit across all of them. Each group can also show one reading
-per node instead of every sensor: its **hottest**, or its **avg**, so the
-seven SoC zones average into one figure for how warm a node runs, and four NIC
-chips become one line. An average never hides a hot sensor: its warning and
-critical colours still come from whichever sensor is closest to its limit.
-Switch the card to **gauges** for a dial per node in each group.
-
-**Alerting you can trust.** 35 rules, with push notifications via
-[ntfy](https://ntfy.sh) — no account, no API key — and to **Slack, Discord and
-Telegram**, all set up from **Settings → Notifications**: ntfy's topic made and
-shown to subscribe, each channel choosing every alert or critical only and
-whether recoveries and reports come too, each with a test button. Thermal bands come from each
-node's own hardware limits, and you're told if a node falls back to a guess. A
-GX10 sits at ~84°C doing routine work, so a generic 80°C threshold would page
-you all day.
-
-**History.** 20 metrics charted over 1h to 7d, a chart per metric and a line
-per node — GPU and CPU utilization, clocks, power, memory, every temperature
-group and its headroom, all four PSI signals, swap and disk I/O, throughput and
-prefill. Each axis fits its data but never spans less than a set minimum, so a
-45–70°C climb fills the chart and memory holding at 93% stays a flat line.
-**Full** puts the fixed 0–100% and 0–100°C axes back.
-
-**Or as gauges, live.** Switch System Activity to **gauges** and each metric
-becomes a dial per node, updating every second or two from the live feed
-rather than Prometheus's 15-second scrape. GPU and package temperature dials
-mark the node's own warning and critical limits, and past one the whole dial
-turns amber or red and says so. Rates with no ceiling, like throughput, are
-plain numbers. Keep a copy of the card on each view: trends in one, the
-present in the other.
-
-**Network traffic, a chart per group.** RoCE, management, Wi-Fi and the rest
-each get one chart with a line per node, received above the zero line and sent
-below it. The links span six orders of magnitude, so a **log** switch keeps a
-12 Mb/s management spike from flattening the 100 kb/s lines beside it. Errors,
-drops and an RDMA port changing state get a chart of their own when they
-happen. A **gauges** view shows each node's traffic in each group now, as a
-share of the rate its links negotiated. The table lists every interface, worst first, and opens any one's own
-chart; past a dozen links the card opens as the table.
-
-**Optionally, NVIDIA release updates.** The dashboard can check every Spark
-against NVIDIA's release recipes and install what's available: an *updates*
-button in the header, and a panel showing what each update would change before
-you start it. It runs NVIDIA's own sequence — `apt full-upgrade`,
-`fwupdmgr upgrade`, restart — one Spark at a time over SSH.
-
-**It's off until you set it up**, and that takes an SSH key and a login on each
-Spark: [the quick setup](docs/fleet-updates-setup.md). Nothing installs on a
-timer — the hourly part is a read-only check, and every update is a button
-somebody pressed.
-
-**Optionally, who is calling.** The engines count requests and never record the
-caller. Put a [LiteLLM](https://docs.litellm.ai/docs/simple_proxy) proxy in
-front of them and a Clients card shows which harness, on which machine, sent
-how many requests to which model on which node, how many failed, and the
-tokens in and out. An agent that sends an SDK's default User-Agent is still
-named, by its machine.
-
-**Optionally, ask it.** Connect any model you run, or one behind the gateway,
-and an **ask** button takes questions about the cluster's history: "why was
-sparky slow at 9pm?", "which node ran hottest?", "who has been using the
-cluster most?". It answers from what the dashboard already holds for the
-window you pick: alerts, events, how each chart moved and when it peaked, and
-who called. Asked which node ran hottest, GLM-5.3-Flash named sparkjr's
-96.4°C at 15:21 and the alert that caught it, in under six seconds. A model
-that can use tools may also look further on its own: asked why sparky had been
-slow, Qwen 3.6 35B checked what moved around 15:44 and named swap thrashing,
-with the memory pressure and swap traffic behind it. The model can read about
-the cluster and can't act on it.
-
-**Reports, on a schedule or on demand.** Daily, weekly, monthly or every few
-hours, a report of the period: each node's load, temperature and memory, what
-used the GPU, model loads and latency, alerts, the network, gaps in the data,
-and what moved against the period before. Every figure is computed, so a
-report is right with no model involved; the assistant can add a short summary
-on top, marked as its own. Kept on a **Reports** page, as a PDF (A4,
-portrait or landscape, previewed before you download it, no print dialog
-involved), or as Markdown, HTML, CSV or JSON. Or pick the period, the nodes and
-the sections and build one on the spot. A notification says when a scheduled
-one is ready, with its headline figures and a link.
-
-**Or let your own agent look.** The same read-only tools are offered to agents
-over MCP, so Claude Code, Hermes, Codex, Cursor or any agent that speaks MCP
-can query the dashboard directly: the cluster now and how it is put together,
-any chart's series over any window, what moved around a given moment, this week
-against last, alerts and the rules behind them, model loads and latency, who
-called, and whether the monitoring itself had gaps. It can say what was using
-the GPU at any past time, by workload, not just now: asked what sparky was
-doing one afternoon, an agent found ComfyUI at 23% of the GPU, against 26% for
-the whole node. Ready-made prompts give a daily report, an incident report or a
-capacity check in the same shape from any agent, and agents can be allowed to
-note things on the timeline ("benchmark started"). Off until you switch it on
-in Settings, which makes the key and the setup for your agent
-([step 9](#9-optional-tools-for-agents)).
-
-## The page is yours
-
-Move, size, copy and put away any card. It's all remembered in the browser —
-nothing is configured on the server.
-
-- **Move it.** Drag by the grip in the left gutter, or use the arrow keys. Drop
-  a card beside another to pair them side by side.
-- **Size it.** Drag the bottom-right corner. Height moves one table row at a
-  time so cards stay on a grid, and you can drag *past* the content to make two
-  columns end level. Sideways flips between half and full width.
-- **Too short for its content?** It pages. Or pick **Scroll** in **Settings →
-  Appearance** and cards scroll inside their box instead, headers staying put.
-  A chart card held taller than its charts centres them, and shrinking it takes
-  up the empty space before the charts.
-- **More than one.** `+ element` adds another copy of any card — one Network
-  Activity showing RDMA ports, another showing charts.
-- **Each card has its own menus.** Which metrics, which interface or sensor
-  groups, fitted or full axes, linear or log, charts or table or RDMA ports,
-  which columns. Column edges drag.
-- **Compact node cards.** **Settings → Appearance → Node elements → Compact** puts every node
-  on one grid at the same width, each cluster and each standalone node in its
-  own frame. When the frames fit in half the page, as on a wide monitor, the
-  right half becomes a column like the ones below: drag a half-width card into
-  it. A single row of frames spreads to fill its half, and stretches to end
-  level with a taller card beside it.
-- **Three layouts to start from.** **Side by side** (the default, as in
-  the screenshot above), **Stacked** (every card full width) and **Wall
-  display** (gauges only, for a screen across the room). Pick one in the
-  setup guide or **Settings → Appearance → Layout**; anything you change
-  afterwards is kept on top of it.
-- **Name it.** **Settings → Appearance → Title** replaces spark-dash in the
-  header and the browser tab.
-- **Nine themes, each light and dark**: Default, Catppuccin, Solarized,
-  Darcula, Cyberpunk, Forest, Slate, Paper and High contrast. Pick the
-  theme and Auto / Dark / Light in **Settings → Appearance**; the sun or
-  moon in the header flips light and dark.
-- **Card headers.** **Settings → Appearance → Card headers** puts a band
-  behind each card's title: Raised, Tinted (the default), Solid, or Off.
-- **Node chips on the Activity cards** hide or show a node on every chart
-  (System Activity; shift-click shows only that node). On a cluster too big
-  for the chips to fit beside the controls they fold into a **nodes** menu.
-  **Reset layout** puts it back to the layout you picked.
-- **Settings** opens as a wide panel with a section on each tab of its left
-  rail, each integration's state shown beside its name; drag the panel's left
-  edge to make it wider or narrower.
+**[All features in detail →](docs/features.md)**
 
 ## Quickstart
 
-Everything runs in Docker; nothing is installed on the base OS. You install two
-stacks: `central/` on a monitoring host, and `node/` on each GB10 you want to
-watch.
+Two Docker Compose stacks: `central/` on a monitoring host, `node/` on each
+GB10. Usually those are different machines
+([why](docs/deployment.md#why-not-on-a-gx10)); with only one GB10, put both on
+it ([single host](docs/deployment.md#single-host--everything-on-one-gb10)).
 
-Usually those are different machines
-([why](docs/deployment.md#why-not-on-a-gx10)). If you only have the one, put
-both on it — see
-[single-host](docs/deployment.md#single-host--everything-on-one-gb10).
-
-You need Docker with Compose v2 on both, plus the NVIDIA Container Toolkit on
-each node — the agent reads NVML. **No registry account and no `docker login`:
-the images are built on the hosts that run them.**
+You need Docker with Compose v2, plus the NVIDIA Container Toolkit on each
+node. Images build on the hosts that run them, so no registry account.
 
 ### 1. Monitoring host
 
 ```bash
-git clone <this repo's URL> spark-dash && cd spark-dash
-./scripts/build-images.sh backend               # builds spark-dash-backend:latest
+git clone https://github.com/anakronox/spark-dash.git && cd spark-dash
+./scripts/build-images.sh backend
 
 cd central
 cp .env.example .env
-$EDITOR .env                    # one value to change: ALERTMANAGER_EXTERNAL_URL
+$EDITOR .env                    # set ALERTMANAGER_EXTERNAL_URL
 
 mkdir -p cluster prometheus targets alertmanager secrets
 cp cluster.yml.example cluster/cluster.yml
-$EDITOR cluster/cluster.yml     # your nodes: id, host, and what each one serves
+$EDITOR cluster/cluster.yml     # your nodes (see below)
 
-# Prometheus and the backend run as non-root, so these directories need to be
-# owned by them. Docker would otherwise create them as root and Prometheus
-# fails to start.
+# The containers run as non-root and need to own their directories.
 sudo chown 65534:65534 prometheus alertmanager secrets
 sudo chown 10002:10002 targets
-# secrets/ holds the ntfy topic Alertmanager notifies; setgid and
-# group-writable so Settings -> Notifications can set it too.
 sudo chmod 2770 secrets
 
 docker compose up -d
 ```
 
-The dashboard is on `:8080`.
-
-### 2. Each GB10 node
-
-Build on the node itself — it is arm64, which avoids cross-building entirely:
-
-```bash
-git clone <this repo's URL> spark-dash && cd spark-dash
-./scripts/build-images.sh agent                 # builds spark-dash-agent:latest
-
-cd node
-cp .env.example .env
-$EDITOR .env                    # one value to change: BACKEND_URL
-docker compose up -d
-```
-
-**`BACKEND_URL` is the monitoring host from step 1**, on the dashboard's port —
-the same address you would type in a browser, without a trailing path:
-
-```bash
-BACKEND_URL=http://10.0.0.10:8080     # the monitoring host, not this node
-```
-
-The agent runs *on the node* and fetches its configuration *from* the monitoring
-host, so the value is that host's LAN address — and it will be **identical on
-every node**. The agent takes its id from the machine's hostname, and takes
-which routers and engines to poll from `cluster.yml` on the monitoring host, so
-nothing else in this file differs between nodes.
-
-Confirm it landed, on the node:
-
-```bash
-curl -s localhost:9500/snapshot | jq .config
-# {"source": "central", "fetched_at": "..."}
-```
-
-What `source` tells you:
-
-| | |
-|---|---|
-| `central` | working — this node is in `cluster.yml` and got its config |
-| `unreachable` | `BACKEND_URL` is wrong, or a firewall is in the way |
-| `env` | the backend answered, but this node is **not listed in `cluster.yml`** yet — add it in step 4 |
-
-### 3. Check it
-
-```bash
-curl -s <monitoring-host>:8080/health | jq '{status, problems}'
-```
-
-`ok` with an empty `problems` means every node in `cluster.yml` is being
-scraped. If a node is listed there but its agent isn't running yet, it shows up
-in `problems` with the reason.
-
-Then open the dashboard. The first time, **Get started** lists what to set up,
-required first and optional last, and marks each step done only once it is
-working: every node reporting, Prometheus scraping, an alert that would reach
-someone. For the last, **Settings → Notifications** makes an
-[ntfy](https://ntfy.sh) topic (no account needed), shows it to subscribe your
-phone, and sends a test. While a required step is missing, a **setup** chip in the header says
-how many. A short tour of the controls that are easy to miss follows; both are
-under **Settings → Appearance** afterwards.
-
-**That is the whole install.** The steps below are things you may never need.
-
-### 4. Adding a node, or an engine on one
-
-The cluster is defined in one file, `central/cluster/cluster.yml`. You can edit
-it from the dashboard or by hand — both write the same file, and **neither needs
-a restart**. The backend re-reads it on a timer and generates Prometheus's
-scrape targets from it, so there's no second list to keep in sync.
-
-**From the dashboard.** ⚙ **settings** → **Nodes**:
-
-- **`+ node`** adds a row. Set its **host** — the node's LAN address — and
-  optionally a **cluster** name.
-- **`+ router`** adds a llama.cpp router by **port**. The **metrics** tick beside
-  it opts that router in to `/metrics?model=`, which is what provides per-model
-  tokens/sec and KV-cache detail.
-- **`+ vLLM`**, **`+ SGLang`** and **`+ TensorFold`** add those engines the same way, by port.
-- **copy yaml** shows the YAML for that node if you would rather paste it
-  somewhere than save from here.
-
-Each node is a card; its routers, engines and the interfaces it currently
-reports fold away behind their counts. The interfaces are tick boxes, so you can
-exclude an unplugged port from alerting without looking up its name.
-
-**Or edit the file.** Same result:
+The dashboard is on `:8080`. A minimal `cluster.yml`:
 
 ```yaml
 # central/cluster/cluster.yml
@@ -351,152 +77,76 @@ nodes:
       llama_routers:
         - port: 8001
           scrape_metrics: true # per-model tokens/sec and KV cache
-        - port: 8108
       vllm: [8120]
-      sglang: [30000]          # only if started with --enable-metrics
-      tensorfold: [8080]       # under --tp, only on the node running rank 0
 
   - id: node-2
     host: 10.0.0.12
     cluster: alpha             # pools memory with other `alpha` nodes
 ```
 
-A few things worth knowing:
+You can also edit it later from **Settings → Nodes**, with no restart
+([more](docs/deployment.md#adding-a-node-or-an-engine-on-one)).
 
-- **Runtimes are ports, not URLs.** Each one is resolved against that node's own
-  `host`, so the address appears once per node — which is why the node stack in
-  step 2 is identical on every machine.
-- **A node that only holds weights** for a tensor-parallel cluster needs no
-  `runtimes:` block at all.
-- **Adding a node here doesn't install it.** Run step 2 on the machine too;
-  listing it here is what makes the dashboard and Prometheus look for it.
-- **`cluster:` affects the numbers, not just the layout.** Nodes in a cluster
-  pool their memory, so their free space is added up and shown as capacity a
-  single model could use. Nodes outside one are never added together.
+### 2. Each GB10 node
 
-Deploying from a registry instead of building on each host is the maintainer
-path — see [building and shipping
-images](docs/deployment.md#building-and-shipping-images). It needs
-`PULL_POLICY=always` in each `.env`, for reasons the compose files spell out.
+```bash
+git clone https://github.com/anakronox/spark-dash.git && cd spark-dash
+./scripts/build-images.sh agent
 
-### 5. Optional: DGX OS updates
+cd node
+cp .env.example .env
+$EDITOR .env                    # BACKEND_URL=http://<monitoring-host>:8080
+docker compose up -d
+```
 
-Skip this and nothing is missing. Without it there's no button, no SSH key, and
-nothing that reaches a Spark except HTTP to its agent.
+`BACKEND_URL` is the monitoring host, the same on every node. The agent fetches
+its config from there. To check it worked:
 
-With it, the dashboard checks each Spark hourly against NVIDIA's release
-recipes, shows you what an update would change, and — once you press the button
-and type your sudo password — runs `apt full-upgrade`, `fwupdmgr upgrade` and
-the restart, one Spark at a time.
+```bash
+curl -s localhost:9500/snapshot | jq .config.source
+```
 
-It's separate because it needs two things no other step does:
+| | |
+|---|---|
+| `central` | Working. |
+| `unreachable` | `BACKEND_URL` is wrong, or a firewall is in the way. |
+| `env` | The backend answered, but this node isn't in `cluster.yml` yet. |
 
-- an SSH key the dashboard can use, mounted into the backend;
-- a login on each Spark that can run `apt` — yours is fine.
+### 3. Open the dashboard
 
-Nothing installs on a timer. The hourly part is a read-only check, and every
-update is a button somebody pressed. Sparks that pool memory are always updated
-together.
+**Get started** lists what's left to set up and ticks each step off only once
+it works: every node reporting, Prometheus scraping, an alert that reaches your
+phone. That's the whole install.
 
-A few minutes, once: **[DGX OS updates: the quick
-setup](docs/fleet-updates-setup.md)**.
+## Optional features
 
-### 6. Optional: client stats
-
-Needs a LiteLLM proxy in front of your engines, with its Prometheus callback on
-and `/metrics` readable without a key. Running one is outside this project;
-LiteLLM's docs cover it. Then, in **Settings → Clients**, paste the gateway's
-address, press **Test**, and save. The Clients card appears once Prometheus is
-reading it. Details and troubleshooting:
-**[Client stats](docs/deployment.md#client-stats--optional)**.
-
-### 7. Optional: ask the dashboard
-
-Point it at any OpenAI-compatible endpoint, one of your own engines or the
-gateway, in **Settings → Assistant**: the address, a key if it needs one,
-**Detect** for its models, **Test**, save. An **ask** button appears in the
-header. A question is answered from the window's alerts, events and series and
-the cluster as it stands, sent to the model as text; it cannot act on anything.
-Details: **[Asking the dashboard](docs/deployment.md#asking-the-dashboard--optional)**.
-
-### 8. Optional: scheduled reports
-
-**Settings → Schedules**: add a schedule, choose daily, weekly, monthly or
-every N hours and the time, which sections and nodes, and whether to notify.
-Times follow the monitoring host's zone, read from its `/etc/localtime`, or the
-one you pick. Set **address** to how you reach the dashboard so a notification
-can link to its report. Reports are kept on the **reports** page in the
-header, where one can also be built on demand. Details:
-**[Reports](docs/deployment.md#reports--scheduled-and-on-demand)**.
-
-### 9. Optional: tools for agents
-
-In **Settings → Agent tools**, switch on **serve the tools**. A key
-is made and shown once, beside the endpoint. Pick your agent (Claude Code,
-Hermes Agent, Codex CLI, Gemini CLI, Cursor, VS Code, OpenCode, or Other) and
-Settings writes the command or config block to paste, key included. Every
-client needs the same two things: the address,
-`http://<monitoring-host>:8080/mcp`, and the header
-`Authorization: Bearer <key>`. The tools only read. Raw PromQL and letting
-agents add notes to the timeline are separate switches, both off by default.
-The endpoint also serves report prompts and reference an agent can read (what
-GB10's readings mean, every series, which tool answers what). Details and the
-list of tools: **[Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional)**.
+| Feature | Needs | Setup |
+|---|---|---|
+| DGX OS updates | An SSH key and a sudo login on each Spark | [Quick setup](docs/fleet-updates-setup.md) |
+| Client stats | A LiteLLM proxy in front of your engines | [Client stats](docs/deployment.md#client-stats--optional) |
+| Ask the dashboard | Any OpenAI-compatible model | [Asking the dashboard](docs/deployment.md#asking-the-dashboard--optional) |
+| Scheduled reports | Nothing | [Reports](docs/deployment.md#reports--scheduled-and-on-demand) |
+| Tools for agents (MCP) | Nothing; switch on in Settings | [Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional) |
 
 ## Docs
 
-- [Requirements](docs/requirements.md) — goals, current stack, functional/
-  non-functional requirements.
-- [Architecture](docs/architecture.md) — Prometheus for collection/storage,
-  homegrown backend + frontend for the UI; component diagram; scaling approach.
-- [Metrics catalog](docs/metrics.md) — exactly what's being collected, from
-  vLLM, llama.cpp router mode, and GPU/system exporters, including GB10-specific
-  caveats (unified memory, router autoload behavior).
-- [Roadmap](docs/roadmap.md) — the decision log: every workstream, what shipped,
-  and what was deliberately not built, with the reasoning kept.
-- [App design](docs/app-design.md) — backend/frontend stack (FastAPI + Svelte 5),
-  API surface, live-update contract, and panel/visual design rules.
-- [DGX OS updates: the quick setup](docs/fleet-updates-setup.md) — turning the
-  updates feature on: make a key, put it on each Spark, one line in `.env`.
-  What it does, what it will never do on its own, and how to turn it off again.
-- [DGX OS updates: the research](docs/fleet-updates.md) — how NVIDIA actually
-  updates GB10 systems, from the OTA recipes and the DGX Dashboard's internals
-  up to the agentless-SSH Enterprise Manageability framework, read off live
-  nodes. The reference the feature is built on, and worth reading before
-  trusting any tool that updates a Spark — including this one.
-- [Deployment](docs/deployment.md) — Docker-only deployment approach (base OS
-  stays untouched) and the per-node/central Compose service breakdown; the
-  optional features (client stats, the assistant, tools for agents) in full.
-- [Working on spark-dash](AGENTS.md) — for agents (and people) changing the
-  code: where things live, the test guards, the rules the code depends on, and
-  where each kind of change is documented.
-- [Notifications (ntfy)](central/README.md#notifications-ntfy) — where alerts
-  go, the topic as a secret, setting it from Settings or by hand, and
-  self-hosting ntfy.
+- [Features](docs/features.md): everything it shows and does.
+- [Deployment](docs/deployment.md): the stacks, the cluster file, the optional
+  features in full, and building images for a registry.
+- [Metrics](docs/metrics.md): what's collected, and every `sparkdash_*` series.
+  Prometheus holds it all, so [Grafana](central/grafana/) or your own views
+  work too.
+- [Architecture](docs/architecture.md) and [app design](docs/app-design.md):
+  how it's built, and the API.
+- [Roadmap](docs/roadmap.md): the decision log, including what was
+  deliberately not built.
+- [DGX OS updates: the research](docs/fleet-updates.md): how NVIDIA updates
+  GB10 systems.
+- [Working on spark-dash](AGENTS.md): for people and agents changing the code.
 
-## Bring your own dashboard
-
-Prometheus holds everything the UI shows, and 180 days of it, so building your
-own views is a supported path rather than a workaround. The inference engines
-are scraped *directly*, so latency histograms and per-request counters the
-bundled frontend never renders are already stored.
-
-- **[central/grafana/](central/grafana/)** — an importable starter dashboard,
-  and the list of ways this metric surface can mislead you.
-- **[Every metric the agent exports](docs/metrics.md#what-the-agent-itself-exports)**
-  — all 85 `sparkdash_*` names with their labels and meanings. A test checks
-  that list against the exporter in both directions, so a name in the table is
-  a name you can query.
-
-[docs/roadmap.md](docs/roadmap.md) is the authoritative task list — every
-workstream, what shipped, and what was deliberately not built, with the
-reasoning kept. Planning happens on a LAN-internal Forgejo that isn't reachable
-from outside, so that file is the copy to read.
-
-**Bugs and questions belong in GitHub Issues.** If something in the quickstart
-doesn't work on your hardware, that's worth reporting — most of this is
-measured against three GB10s on one LAN, and the interesting failures will be
-the ones that aren't.
+Bugs and questions go in GitHub Issues. Most of this has been measured on
+three GB10s on one LAN, so a report from different hardware is especially
+useful.
 
 ## License
 

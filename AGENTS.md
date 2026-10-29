@@ -2,7 +2,7 @@
 
 For an agent changing this repository (Claude Code, Hermes, Codex and the
 like). An agent that only *queries* a running dashboard needs none of this:
-connect to its MCP endpoint (README, step 9) and read the guides it serves,
+connect to its MCP endpoint ([setup](docs/deployment.md#tools-for-agents-mcp--optional)) and read the guides it serves,
 `sparkdash://guide/investigating` first.
 
 ## Where things live
@@ -73,8 +73,9 @@ Run the suite before you call anything done; these fail loudly on purpose.
 - **What and why** goes in `docs/roadmap.md`, under its lettered section,
   with what was measured. The roadmap keeps what was deliberately not built,
   too.
-- **How to use it** goes in `README.md` (features, quickstart) and
-  `docs/deployment.md` (the optional features in full).
+- **How to use it** goes in `docs/features.md` (what it does) and
+  `docs/deployment.md` (setup, the optional features in full). `README.md`
+  is the short version: a line in its feature list at most.
 - **An API route** goes in the table in `docs/app-design.md`.
 - **Anything an agent querying the dashboard should know** goes in
   `backend/.../agent_docs.py` (served as MCP resources) or a tool's own
