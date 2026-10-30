@@ -1405,6 +1405,14 @@
     margin-bottom: 16px;
   }
 
+  /* With a zone, the top already ends in the 16px every card carries below
+     it, and the page's own 16px gap stacked on that: 32px under the node row
+     against 16px between every other card (Brian, 2026-10-30). Without one,
+     the node grid ends bare and the page gap is the only gap. */
+  .top:has(> .zone) {
+    margin-bottom: -16px;
+  }
+
   /* An empty zone is invisible until a drag needs it, as in the page's
      columns, whose rule is scoped to `.sections`. */
   .top.dragging .zone.empty {

@@ -8545,6 +8545,15 @@ could not be dragged back to its layout or the charts dismissed.
   frozen from that moment, so the line now ends "…, last counted N ago" at any
   age. `docs/fleet-updates-setup.md` quotes the wording.
 
+### CA — The node row's gap matches every other card's — **built 2026-10-30**
+
+- [x] **CA1. 16px under the top row, not 32.** With a zone beside or under
+  the nodes, the top ended in the 16px each card carries below it and the
+  page added its own 16px gap. Measured 32px there against 16px between cards
+  in a column and between bands, at 2560 (split) and 1680 (stacked). `.top`
+  now takes `margin-bottom: -16px` when it holds a zone; without one the node
+  grid ends bare and the page gap was already right.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
