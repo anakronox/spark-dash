@@ -8655,6 +8655,42 @@ could not be dragged back to its layout or the charts dismissed.
 - [x] **CH3. Guard.** `test_light_cards_do_not_glare`: a light theme's cards
   at most L 0.96, and its borders darker than its page.
 
+### CI — Prefix hits, draft acceptance, and llama.cpp's KV back — **built 2026-10-30**
+
+GitHub issue #2 asked for KV prefix hit rate, KV size and peak, and
+speculative-decoding acceptance rate, length and totals.
+
+- [x] **CI1. llama.cpp KV had been "—" for every model.** b11977 no longer
+  publishes `kv_cache_usage_ratio`. The agent now reads `/slots` behind the
+  same gates as `/metrics` (allowlisted router, ACTIVE and busy model): prompt
+  plus decoded tokens of the slots processing, over their total `n_ctx`.
+  In-flight context, not cache kept between requests; the old ratio is still
+  preferred where an older build publishes it.
+- [x] **CI2. Prefix cache and speculative decoding, per model.** `ServingStats`
+  on both `RouterModel` and `EngineMetrics`: the engine's counters, and
+  lifetime ratios derived once in `collectors/serving.py`. llama.cpp's
+  `prompt_tokens_total` EXCLUDES cached tokens, so its lookups are prompt +
+  cached. Acceptance length is 1 + accepted ÷ steps, vLLM's and SGLang's
+  convention. A zero denominator gives no ratio: speculative decoding switched
+  off is not 0% accepted. Read live on 2026-10-30: llama.cpp b11977 has all
+  three; TensorFold has draft and accepted tokens (71%) but no steps and no
+  prefix cache. vLLM and SGLang names are from their docs; SGLang's are gauges.
+- [x] **CI3. Idle llama.cpp models keep their last figures.** The busy gate
+  means an idle model is not scraped, which left its lifetime ratios "—" most
+  of the day. Its counters cannot move while idle, so the last values stand
+  until it unloads.
+- [x] **CI4. Exported as one family with a `runtime` label**
+  (`sparkdash_model_prefix_cache_*`, `sparkdash_model_spec_*`), so history can
+  take `rate()` ratios without the per-family `__name__` collision. Three
+  history series: `kv_cache_percent` (max per node, the peak question),
+  `prefix_cache_hit_percent` and `spec_accept_percent` (windowed, gapped when
+  nothing was looked up or drafted). Their dials read `/api/latest`, so a dial
+  agrees with its chart; KV's reads live.
+- [x] **CI5. Three optional Models columns**, `prefix hit`, `accept`,
+  `accept len`, off until ticked.
+- [ ] Not done: SGLang `token_usage` as its KV (still unchecked against a
+  server, as before); TensorFold acceptance length (no step counter).
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

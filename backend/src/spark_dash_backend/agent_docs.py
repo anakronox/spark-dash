@@ -96,6 +96,12 @@ report written from the tools directly.
   engines' `tokens_per_second` and `clients` are near zero, the work is not
   going through a monitored engine or the gateway: an image generator
   (ComfyUI), a training run, a notebook. `gpu_workload_sm` names it.
+- **KV, prefix hits and draft acceptance.** `kv_cache_percent` is the fullest
+  model on the node; on current llama.cpp it counts only the context of
+  requests in flight, not cache kept between them. `prefix_cache_hit_percent`
+  and `spec_accept_percent` are windowed ratios and have gaps where nothing
+  was looked up or drafted: a gap means no traffic, not 0%. TensorFold has no
+  prefix cache; SGLang's figures are live only and never charted.
 - **Several ComfyUI instances aggregate as one** `comfyui` workload: their
   command lines are identical, so nothing tells them apart.
 - **llama.cpp has no time-to-first-token histogram.** Its models have a

@@ -24,6 +24,7 @@ import httpx
 from prometheus_client.parser import text_string_to_metric_families
 from spark_dash_common.models import EngineMetrics
 
+from spark_dash_agent.collectors import serving
 from spark_dash_agent.collectors.base import Budget, Collector
 from spark_dash_agent.collectors.llama_router import RateTracker
 
@@ -70,6 +71,17 @@ class EngineSpec:
     #: and not the primary.
     throughput_gauge: str | None = None
 
+    #: Prefix cache and speculative decoding (GitHub issue #2). Counters where
+    #: the engine has them, so history can take windowed ratios; SGLang
+    #: publishes only ratio gauges, read as the live figure and nothing more.
+    prefix_hits: str | None = None
+    prefix_queries: str | None = None
+    prefix_hit_ratio: str | None = None
+    spec_draft_tokens: str | None = None
+    spec_accepted: str | None = None
+    spec_drafts: str | None = None
+    spec_accept_length: str | None = None
+
 
 SPECS: dict[str, EngineSpec] = {
     "vllm": EngineSpec(
@@ -79,6 +91,13 @@ SPECS: dict[str, EngineSpec] = {
         prompt_tokens="vllm:prompt_tokens_total",
         generation_tokens="vllm:generation_tokens_total",
         kv_cache="vllm:kv_cache_usage_perc",
+        # vLLM v1's names, from its metrics docs; no vLLM runs on this cluster
+        # since sparketa moved to TensorFold, so not checked against a server.
+        prefix_hits="vllm:prefix_cache_hits_total",
+        prefix_queries="vllm:prefix_cache_queries_total",
+        spec_draft_tokens="vllm:spec_decode_num_draft_tokens_total",
+        spec_accepted="vllm:spec_decode_num_accepted_tokens_total",
+        spec_drafts="vllm:spec_decode_num_drafts_total",
     ),
     "sglang": EngineSpec(
         runtime="sglang",
@@ -95,6 +114,11 @@ SPECS: dict[str, EngineSpec] = {
         # cell is honest and a guessed one is not.
         kv_cache=None,
         throughput_gauge="sglang:gen_throughput",
+        # Ratio gauges, not counters, from SGLang's metrics docs; not checked
+        # against a server. `cache_hit_rate` is exactly the prefix-hit share
+        # the kv note above refuses to show as occupancy.
+        prefix_hit_ratio="sglang:cache_hit_rate",
+        spec_accept_length="sglang:spec_accept_length",
     ),
     # TensorFold (roadmap AN), read from a live server on 2026-10-02 (v0.6.0).
     # Its series carry NO model label: the name comes from /v1/models instead
@@ -107,6 +131,11 @@ SPECS: dict[str, EngineSpec] = {
         prompt_tokens="tensorfold:prompt_tokens_total",
         generation_tokens="tensorfold:generation_tokens_total",
         kv_cache="tensorfold:kv_cache_usage_ratio",
+        # Read from sparketa 2026-10-30. Draft tokens, not draft steps, so no
+        # acceptance length; no prefix-cache series at all. `mtp_drafted` and
+        # `mtp_accepted` repeat these two.
+        spec_draft_tokens="tensorfold:spec_decode_num_draft_tokens_total",
+        spec_accepted="tensorfold:spec_decode_num_accepted_tokens_total",
     ),
 }
 
@@ -207,7 +236,7 @@ class EngineCollector(Collector[list[EngineMetrics]]):
         kv = values.get(spec.kv_cache) if spec.kv_cache else None
         gen_rate, prompt_rate = self._throughput(url, values, prompt, generation)
 
-        return EngineMetrics(
+        instance = EngineMetrics(
             model=model_name or url,
             # host:port, so it sits in the same column as a llama.cpp router
             # rather than leaving a gap. Nothing fronts these engines, so an
@@ -224,6 +253,26 @@ class EngineCollector(Collector[list[EngineMetrics]]):
             prompt_tokens_total=int(prompt),
             generation_tokens_total=int(generation),
         )
+
+        def read(name: str | None) -> float | None:
+            return values.get(name) if name else None
+
+        serving.fill(
+            instance,
+            prefix_hits=read(spec.prefix_hits),
+            prefix_queries=read(spec.prefix_queries),
+            draft_tokens=read(spec.spec_draft_tokens),
+            accepted=read(spec.spec_accepted),
+            drafts=read(spec.spec_drafts),
+        )
+        # Gauge-only engines: the engine's own figure, when no counter gave one.
+        ratio = read(spec.prefix_hit_ratio)
+        if instance.prefix_hit_pct is None and ratio is not None:
+            instance.prefix_hit_pct = 100.0 * ratio
+        length = read(spec.spec_accept_length)
+        if instance.spec_accept_len is None and length:
+            instance.spec_accept_len = length
+        return instance
 
     def _model_from_listing(self, client: httpx.Client, url: str, budget: Budget) -> str | None:
         """The served model's name from the engine's own /v1/models, for an

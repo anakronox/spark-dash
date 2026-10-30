@@ -183,6 +183,28 @@ HISTORY_QUERIES: dict[str, str] = {
         "sum by (node) ({__name__=~"
         f'"sparkdash_({_THROUGHPUT_FAMILIES})_prompt_tokens_per_second"}})'
     ),
+    # KV CACHE, the fullest model on the node (GitHub issue #2: "peak
+    # utilisation"). Max, not mean: one model near its limit is the news, and
+    # an idle neighbour averaging it down would hide it. A gauge, so the name
+    # regex is safe here as it is for throughput above.
+    "kv_cache_percent": (
+        "max by (node) ({__name__=~"
+        f'"sparkdash_({_THROUGHPUT_FAMILIES})_kv_cache_percent"}})'
+    ),
+    # Prefix-cache hits and draft acceptance as WINDOWED ratios of the
+    # agent's counters, one family with a `runtime` label so `rate()` is safe
+    # (see network_errors below for the per-family collision). Tokens over
+    # tokens, summed across the node's models, so a busy model weighs more
+    # than a quiet one. `> 0` on the denominator leaves a gap when nothing was
+    # looked up or drafted: no traffic is not 0%.
+    "prefix_cache_hit_percent": (
+        "100 * sum by (node) (rate(sparkdash_model_prefix_cache_hit_tokens_total[{window}])) "
+        "/ (sum by (node) (rate(sparkdash_model_prefix_cache_query_tokens_total[{window}])) > 0)"
+    ),
+    "spec_accept_percent": (
+        "100 * sum by (node) (rate(sparkdash_model_spec_accepted_tokens_total[{window}])) "
+        "/ (sum by (node) (rate(sparkdash_model_spec_draft_tokens_total[{window}])) > 0)"
+    ),
     # WHAT MONITORING COSTS, summed from every component that measures
     # ITSELF. Prometheus, Alertmanager and node_exporter export
     # `process_resident_memory_bytes` as standard; the agent now does too.

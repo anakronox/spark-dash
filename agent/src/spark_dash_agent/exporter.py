@@ -49,6 +49,7 @@ class SnapshotMetricsCollector:
         yield from _network_metrics(snap, node)
         yield from _process_metrics(snap, node)
         yield from _runtime_metrics(snap, node)
+        yield from _serving_metrics(snap, node)
 
 
 class CollectionStatsCollector:
@@ -719,3 +720,51 @@ def _runtime_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             waiting.add_metric([node, instance.model], float(instance.requests_waiting))
 
         yield from (tps, gen_tps, prompt_tps, kv, running, waiting)
+
+
+#: (series, field, help) for the prefix-cache and speculative-decoding counters.
+_SERVING_COUNTERS: tuple[tuple[str, str, str], ...] = (
+    ("model_prefix_cache_hit_tokens_total", "prefix_hit_tokens_total",
+     "Prompt tokens served from the prefix cache"),
+    ("model_prefix_cache_query_tokens_total", "prefix_query_tokens_total",
+     "Prompt tokens looked up in the prefix cache, hits included"),
+    ("model_spec_draft_tokens_total", "spec_draft_tokens_total",
+     "Speculative decoding: draft tokens proposed"),
+    ("model_spec_accepted_tokens_total", "spec_accepted_tokens_total",
+     "Speculative decoding: draft tokens accepted"),
+    ("model_spec_drafts_total", "spec_drafts_total",
+     "Speculative decoding: verification steps"),
+)
+
+
+def _serving_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
+    """Prefix-cache and speculative-decoding counters (GitHub issue #2).
+
+    ONE FAMILY WITH A `runtime` LABEL, the design the per-engine families
+    above describe as tidier and decline only to keep old history. These have
+    no history to keep, and one family is what lets a ratio be taken with
+    `rate()`: rate drops `__name__`, so a regex over per-engine families
+    collides (see `network_errors` in the backend's HISTORY_QUERIES).
+
+    A series exists only where the engine reported the counter, so an engine
+    without speculative decoding has no draft series rather than a zero.
+    """
+    labels = ["node", "runtime", "server", "model"]
+    families = {field: _g(series, doc, labels) for series, field, doc in _SERVING_COUNTERS}
+
+    def emit(runtime: str, server: str, model: str, stats) -> None:
+        for field, family in families.items():
+            value = getattr(stats, field)
+            if value is not None:
+                family.add_metric([node, runtime, server, model], float(value))
+
+    for router in snap.runtimes.llama_cpp:
+        for model in router.active_models:
+            emit("llama.cpp", router.name or router.endpoint, model.name, model)
+    for runtime, instances in snap.runtimes.engines.items():
+        for instance in instances:
+            if instance.reachable:
+                emit(runtime, instance.server, instance.model, instance)
+
+    yield from families.values()
+

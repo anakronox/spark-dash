@@ -95,6 +95,11 @@ export const METRICS: MetricSpec[] = [
      made that chart spike three orders of magnitude while a prompt was being
      ingested — the chart said 47,672 while the model generated 48. */
   { key: 'prompt_tokens_per_second', label: 'Prefill', unit: 'tok/s' },
+  /* Issue #2. KV is the fullest model on the node; the two ratios are over
+     the chart's window and gap when nothing was looked up or drafted. */
+  { key: 'kv_cache_percent', label: 'KV cache', unit: '%', percent: true, minSpan: 20 },
+  { key: 'prefix_cache_hit_percent', label: 'Prefix hits', unit: '%', percent: true, minSpan: 20 },
+  { key: 'spec_accept_percent', label: 'Draft accept', unit: '%', percent: true, minSpan: 20 },
   // The GB10 idles ~12W and peaks well under 300W.
   { key: 'gpu_power', label: 'GPU power', unit: 'W', scaleMax: 300, minSpan: 50 },
   // max_sm_clock as NVML reports it. Note the part actually runs ~2411MHz,

@@ -33,8 +33,10 @@ from spark_dash_common.models import (
     LlamaRouterMetrics,
     ModelState,
     RouterModel,
+    ServingStats,
 )
 
+from spark_dash_agent.collectors import serving
 from spark_dash_agent.collectors.base import Budget, Collector
 
 log = logging.getLogger(__name__)
@@ -44,7 +46,17 @@ _M_PROMPT_TOKENS = "llamacpp:prompt_tokens_total"
 _M_PREDICTED_TOKENS = "llamacpp:tokens_predicted_total"
 _M_REQUESTS_PROCESSING = "llamacpp:requests_processing"
 _M_REQUESTS_DEFERRED = "llamacpp:requests_deferred"
+#: GONE from current builds: b11977 publishes no KV occupancy at all, and the
+#: kv column read "—" for every llama.cpp model. Still read first, for older
+#: routers; `_slots_kv_pct` is the fallback.
 _M_KV_CACHE_RATIO = "llamacpp:kv_cache_usage_ratio"
+# Issue #2, confirmed on b11977. `prompt_tokens_total` EXCLUDES these, so the
+# lookups are prompt + cached.
+_M_PROMPT_CACHED = "llamacpp:prompt_tokens_cached_total"
+_M_SPEC_DRAFT_TOKENS = "llamacpp:spec_decode_num_draft_tokens_total"
+_M_SPEC_ACCEPTED = "llamacpp:spec_decode_num_accepted_tokens_total"
+_M_SPEC_DRAFTS = "llamacpp:spec_decode_num_drafts_total"
+_SERVING_FIELDS = frozenset(ServingStats.model_fields)
 
 # Router `status.value` strings → our state enum.
 #
@@ -264,6 +276,11 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         # which is how the "never wake a sleeping model" guarantee is verified.
         self._transport = transport
         self._rates = RateTracker()
+        #: The last prefix-cache and draft figures read per model, shown while
+        #: it is loaded but idle. Its counters cannot move while it serves
+        #: nothing, and the busy gate means it is not scraped then, which left
+        #: the lifetime ratios "—" most of the day.
+        self._serving_last: dict[str, dict] = {}
 
     def set_busy_models(self, names: set[str]) -> None:
         """Which models have GPU work in flight, from NVML's per-process view.
@@ -315,6 +332,15 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             for suffix in ("predicted", "prompt")
         }
         self._rates.forget(live_rate_keys)
+        # A model that unloads or sleeps starts its counters again when it
+        # comes back, so what was remembered for it no longer applies.
+        loaded = {
+            f"{base_url}:{m.name}"
+            for base_url, result in zip(self._base_urls, out, strict=True)
+            for m in result.active_models
+        }
+        for key in set(self._serving_last) - loaded:
+            del self._serving_last[key]
         return out
 
     def _collect_router(
@@ -328,6 +354,13 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         for model in models:
             if model.state in SCRAPEABLE_STATES:
                 self._enrich_active_model(client, base_url, model, budget)
+                key = f"{base_url}:{model.name}"
+                fresh = model.model_dump(include=_SERVING_FIELDS)
+                if any(v is not None for v in fresh.values()):
+                    self._serving_last[key] = fresh
+                elif key in self._serving_last:
+                    for name, value in self._serving_last[key].items():
+                        setattr(model, name, value)
 
         props = self._fetch_props(client, base_url, budget)
         return LlamaRouterMetrics(
@@ -435,7 +468,20 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         model.requests_running = int(metrics.get(_M_REQUESTS_PROCESSING, 0))
         model.requests_waiting = int(metrics.get(_M_REQUESTS_DEFERRED, 0))
         kv = metrics.get(_M_KV_CACHE_RATIO)
-        model.kv_cache_pct = kv * 100.0 if kv is not None else None
+        model.kv_cache_pct = (
+            kv * 100.0 if kv is not None else self._slots_kv_pct(client, base_url, model, budget)
+        )
+
+        prompt = metrics.get(_M_PROMPT_TOKENS)
+        cached = metrics.get(_M_PROMPT_CACHED)
+        serving.fill(
+            model,
+            prefix_hits=cached,
+            prefix_queries=(prompt or 0.0) + cached if cached is not None else None,
+            draft_tokens=metrics.get(_M_SPEC_DRAFT_TOKENS),
+            accepted=metrics.get(_M_SPEC_ACCEPTED),
+            drafts=metrics.get(_M_SPEC_DRAFTS),
+        )
 
         # Rate keys are namespaced by router: the same model name can be
         # registered with more than one router on a node.
@@ -453,6 +499,53 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             f"{base_url}:{model.name}:prompt", metrics.get(_M_PROMPT_TOKENS, 0.0)
         )
         model.tokens_per_sec = model.generation_tokens_per_sec + model.prompt_tokens_per_sec
+
+
+    def _slots_kv_pct(
+        self, client: httpx.Client, base_url: str, model: RouterModel, budget: Budget
+    ) -> float | None:
+        """Context in use across the model's slots, from `/slots`, for builds
+        that no longer publish `kv_cache_usage_ratio`.
+
+        Reached only through `_enrich_active_model`, so the same two gates
+        hold: an allowlisted router and a model that is ACTIVE and busy.
+
+        IN-FLIGHT CONTEXT, which is not quite what the old ratio measured: that
+        counted cache cells, including a finished request's prompt kept for
+        reuse. A slot here counts only while it is processing, prompt plus
+        tokens decoded so far, over its `n_ctx`.
+        """
+        if budget.spent:
+            return None
+        try:
+            resp = client.get(
+                f"{base_url}/slots",
+                params={"model": model.name},
+                timeout=budget.timeout(self._timeout),
+            )
+            resp.raise_for_status()
+            slots = resp.json()
+        except Exception:  # noqa: BLE001 — /slots can be disabled with --no-slots
+            log.debug("slots fetch failed for model %s", model.name, exc_info=True)
+            return None
+        if not isinstance(slots, list):
+            return None
+        total = used = 0
+        for slot in slots:
+            if not isinstance(slot, dict):
+                continue
+            n_ctx = slot.get("n_ctx")
+            if not isinstance(n_ctx, int) or n_ctx <= 0:
+                continue
+            total += n_ctx
+            if slot.get("is_processing"):
+                decoded = sum(
+                    t.get("n_decoded", 0)
+                    for t in slot.get("next_token") or []
+                    if isinstance(t, dict) and isinstance(t.get("n_decoded"), int)
+                )
+                used += int(slot.get("n_prompt_tokens") or 0) + decoded
+        return 100.0 * min(used, total) / total if total else None
 
 
 def _label_for(base_url: str) -> str:

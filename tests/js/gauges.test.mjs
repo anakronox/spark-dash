@@ -48,10 +48,10 @@ const node = (over = {}) => ({
     { domain: 'wireless', sensor: 'phy0', celsius: 44, limit_c: null },
   ],
   runtimes: {
-    llama_cpp: [{ generation_tokens_per_sec: 12, models: [{ prompt_tokens_per_sec: 100 }, { prompt_tokens_per_sec: null }] }],
+    llama_cpp: [{ generation_tokens_per_sec: 12, models: [{ prompt_tokens_per_sec: 100, kv_cache_pct: 40 }, { prompt_tokens_per_sec: null, kv_cache_pct: null }] }],
     vllm: [],
     sglang: [],
-    tensorfold: [{ generation_tokens_per_sec: 31, prompt_tokens_per_sec: 400 }],
+    tensorfold: [{ generation_tokens_per_sec: 31, prompt_tokens_per_sec: 400, kv_cache_pct: 12 }],
   },
   ...over,
 });
@@ -69,6 +69,7 @@ test('live readings are the quantities the charts plot', () => {
   assert.equal(liveValue('memory_used_percent', n), 45);
   assert.equal(liveValue('tokens_per_second', n), 43); // routers + engines, decode only
   assert.equal(liveValue('prompt_tokens_per_second', n), 500);
+  assert.equal(liveValue('kv_cache_percent', n), 40); // the fullest model, router or engine
   assert.equal(liveValue('system_temperature', n), 87.1); // the hottest, GPU included
   assert.equal(liveValue('package_temperature', n), 87.1);
   assert.equal(liveValue('storage_temperature', n), 58.9);

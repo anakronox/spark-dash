@@ -434,6 +434,13 @@ Per model: `model`, `router`. Per router: `router`.
 | `llama_model_tokens_per_second` | the two added together; legacy, kept so history is not orphaned |
 | `llama_model_kv_cache_percent`, `llama_model_requests_running`, `llama_model_requests_waiting` | active models only — emitting 0 for a sleeping one is indistinguishable from idle-but-loaded |
 
+**KV on current llama.cpp is in-flight context.** b11977 no longer publishes
+`kv_cache_usage_ratio`, so the agent reads `/slots` (busy models only, the same
+gate as `/metrics`): prompt plus decoded tokens of the slots processing, over
+the slots' total `n_ctx`. Unlike the old ratio it does not count a finished
+request's prompt kept for reuse. Older builds still report the ratio, and it
+is preferred.
+
 ### Inference — engines (vLLM, SGLang, TensorFold)
 
 One family per engine, `sparkdash_vllm_*`, `sparkdash_sglang_*` and
@@ -449,6 +456,32 @@ and stored history are written against.
 | `{engine}_requests_running`, `{engine}_requests_waiting` | |
 | `{engine}_kv_cache_percent` | **vLLM and TensorFold only.** The family exists for SGLang and never carries samples: SGLang publishes `cache_hit_rate`, which is prefix-cache hits rather than occupancy — a different question with the same 0–1 shape |
 | `endpoint_reachable` | `runtime`, `endpoint` — 0 for a configured endpoint that did not answer |
+
+### Inference — prefix cache and speculative decoding
+
+One family with a `runtime` label, labelled `runtime`, `server` and `model`.
+New in 2026-10 with no history to keep, so the per-engine pattern above does
+not apply, and one family is what lets a ratio take `rate()` (see 3 below).
+Counters, emitted only where the engine reports them: no draft series for an
+engine without speculative decoding, rather than a zero.
+
+| metric | meaning |
+|---|---|
+| `model_prefix_cache_hit_tokens_total` | prompt tokens served from the prefix cache |
+| `model_prefix_cache_query_tokens_total` | prompt tokens looked up, hits included |
+| `model_spec_draft_tokens_total` | draft tokens proposed |
+| `model_spec_accepted_tokens_total` | draft tokens the target model kept |
+| `model_spec_drafts_total` | verification steps; llama.cpp and vLLM only |
+
+| engine | prefix cache | speculative decoding |
+|---|---|---|
+| llama.cpp | `prompt_tokens_cached_total`; lookups are it plus `prompt_tokens_total`, which **excludes** cached tokens | draft tokens, accepted, steps |
+| vLLM | `prefix_cache_hits_total` / `prefix_cache_queries_total` | draft tokens, accepted, steps |
+| TensorFold | not published | draft tokens and accepted; no steps, so no acceptance length |
+| SGLang | `cache_hit_rate` gauge: live figure only, no counter, no history | `spec_accept_length` gauge, likewise |
+
+llama.cpp and TensorFold were read from this cluster on 2026-10-30; the vLLM
+and SGLang names come from their documentation.
 
 ### The three that will catch you out
 

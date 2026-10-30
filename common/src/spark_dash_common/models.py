@@ -343,7 +343,49 @@ class ModelState(StrEnum):
 SCRAPEABLE_STATES = frozenset({ModelState.ACTIVE})
 
 
-class RouterModel(BaseModel):
+class ServingStats(BaseModel):
+    """Prefix-cache and speculative-decoding figures, shared by a llama.cpp
+    model and an engine instance (GitHub issue #2).
+
+    The `_total` fields are the engine's own counters, exported so history can
+    take windowed ratios in PromQL. The derived figures are LIFETIME ratios
+    over those counters, since the engine started: a single poll window is too
+    short, because one request can be all of it.
+
+    Every field is optional and absent means not reported. A model that never
+    drafted has no acceptance rate, which is not 0%.
+    """
+
+    prefix_hit_tokens_total: int | None = Field(
+        default=None, ge=0, description="Prompt tokens served from the prefix cache."
+    )
+    prefix_query_tokens_total: int | None = Field(
+        default=None, ge=0, description="Prompt tokens looked up in it, hits included."
+    )
+    spec_draft_tokens_total: int | None = Field(
+        default=None, ge=0, description="Draft tokens proposed for verification."
+    )
+    spec_accepted_tokens_total: int | None = Field(
+        default=None, ge=0, description="Draft tokens the target model kept."
+    )
+    spec_drafts_total: int | None = Field(
+        default=None, ge=0, description="Verification steps. Not every engine counts them."
+    )
+
+    prefix_hit_pct: float | None = Field(
+        default=None, description="Share of prompt tokens served from the prefix cache, %."
+    )
+    spec_accept_pct: float | None = Field(
+        default=None, description="Share of draft tokens accepted, %."
+    )
+    spec_accept_len: float | None = Field(
+        default=None,
+        description="Mean tokens produced per verification step: 1 + accepted "
+        "÷ steps, the convention vLLM and SGLang report.",
+    )
+
+
+class RouterModel(ServingStats):
     """One model registered with a router, in whatever state it's in.
 
     Covers every registered model, not just resident ones: "4 registered, 1
@@ -442,7 +484,7 @@ class LlamaRouterMetrics(BaseModel):
         return len(self.models)
 
 
-class EngineMetrics(BaseModel):
+class EngineMetrics(ServingStats):
     """One engine instance, scraped from its native Prometheus endpoint.
 
     Shared by vLLM and SGLang because they answer the same questions in the

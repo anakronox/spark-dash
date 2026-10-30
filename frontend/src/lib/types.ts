@@ -151,7 +151,23 @@ export interface RdmaPort {
   errors: number;
 }
 
-export interface RouterModel {
+/** Prefix-cache and speculative-decoding figures (GitHub issue #2), on a
+ *  router model and an engine instance alike. The percentages are LIFETIME
+ *  ratios, since the engine started; the charts take windowed ones. Null is
+ *  "not reported", never 0: a model that never drafted has no acceptance. */
+export interface ServingStats {
+  prefix_hit_tokens_total?: number | null;
+  prefix_query_tokens_total?: number | null;
+  spec_draft_tokens_total?: number | null;
+  spec_accepted_tokens_total?: number | null;
+  spec_drafts_total?: number | null;
+  prefix_hit_pct?: number | null;
+  spec_accept_pct?: number | null;
+  /** Mean tokens per verification step, 1 + accepted ÷ steps. */
+  spec_accept_len?: number | null;
+}
+
+export interface RouterModel extends ServingStats {
   name: string;
   state: ModelState;
   raw_status: string;
@@ -196,7 +212,7 @@ export interface LlamaRouterMetrics {
 /** One vLLM or SGLang instance. They answer the same questions in the same
  *  shape — only the metric NAMES differ, and those are the agent's problem —
  *  so one type covers both rather than two identical ones drifting apart. */
-export interface EngineMetrics {
+export interface EngineMetrics extends ServingStats {
   model: string;
   /** host:port. Nothing fronts these engines, so this is its own endpoint. */
   /** False when the configured endpoint did not answer. Reported rather

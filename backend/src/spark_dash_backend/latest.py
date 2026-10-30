@@ -20,7 +20,17 @@ from .prometheus import HISTORY_QUERIES, PrometheusClient, PrometheusError
 
 #: The metrics this serves. Everything else on the card is live.
 LATEST_METRICS: frozenset[str] = frozenset(
-    {"cpu_clock", "swap_io", "psi_cpu_some", "psi_io_some", "disk_busy"}
+    {
+        "cpu_clock",
+        "swap_io",
+        "psi_cpu_some",
+        "psi_io_some",
+        "disk_busy",
+        # Windowed ratios: the snapshot carries lifetime ones, and a dial must
+        # read what the line beside it plots.
+        "prefix_cache_hit_percent",
+        "spec_accept_percent",
+    }
 )
 
 #: Four scrapes at 15s: the shortest window `rate()` is reliable over, and the

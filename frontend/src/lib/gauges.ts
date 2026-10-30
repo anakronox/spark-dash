@@ -31,14 +31,18 @@ export const PEAK_SCALED = new Set([
   'temperature_headroom',
 ]);
 
-/** Where the five metrics the snapshot does not carry come from: Prometheus's
- *  latest sample, through /api/latest. Everything else is read live. */
+/** Where the metrics the snapshot does not carry come from: Prometheus's
+ *  latest sample, through /api/latest. Everything else is read live. The two
+ *  ratios are here although the snapshot has lifetime ones: the chart plots
+ *  them over its window, and a dial must agree with the line beside it. */
 export const PROMETHEUS_ONLY = new Set([
   'cpu_clock',
   'swap_io',
   'psi_cpu_some',
   'psi_io_some',
   'disk_busy',
+  'prefix_cache_hit_percent',
+  'spec_accept_percent',
 ]);
 
 const sum = (xs: (number | null | undefined)[]) => xs.reduce<number>((a, x) => a + (x ?? 0), 0);
@@ -64,6 +68,17 @@ function prefill(n: NodeSnapshot): number {
     sum((rt?.llama_cpp ?? []).flatMap((r) => r.models.map((m) => m.prompt_tokens_per_sec))) +
     sum(ENGINE_RUNTIMES.flatMap((e) => (rt?.[e] ?? []).map((v) => v.prompt_tokens_per_sec)))
   );
+}
+
+/** The fullest KV cache on this node, over the router models and every
+ *  engine: what the KV chart plots. */
+function kvMax(n: NodeSnapshot): number | null {
+  const rt = n.runtimes;
+  const all = [
+    ...(rt?.llama_cpp ?? []).flatMap((r) => r.models.map((m) => m.kv_cache_pct)),
+    ...ENGINE_RUNTIMES.flatMap((e) => (rt?.[e] ?? []).map((v) => v.kv_cache_pct)),
+  ].filter((x): x is number => x != null);
+  return maxOf(all);
 }
 
 function domainMax(n: NodeSnapshot, domain: string): number | null {
@@ -100,6 +115,8 @@ export function liveValue(key: string, n: NodeSnapshot): number | null {
       return decode(n);
     case 'prompt_tokens_per_second':
       return prefill(n);
+    case 'kv_cache_percent':
+      return kvMax(n);
     // The GPU is in `temperatures` too, as the exporter's headline counts it.
     case 'system_temperature':
       return maxOf((n.temperatures ?? []).map((t) => t.celsius));

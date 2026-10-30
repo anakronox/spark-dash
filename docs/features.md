@@ -29,6 +29,13 @@ becomes "97 GiB held by these two vLLM shards".
   surface is stored whether or not this UI draws it.
 - **Decode and prefill counted separately.** Combined, they once read 47,672
   tok/s while the model was generating 48.
+- **Prefix-cache hits and speculative decoding.** The Models table's column
+  menu adds `prefix hit`, `accept` and `accept len` (mean tokens per
+  verification step), since the engine started. System Activity charts `KV
+  cache` (the fullest model per node), `Prefix hits` and `Draft accept` over
+  the chart's window. llama.cpp and vLLM report all three; TensorFold has no
+  prefix cache and no step count; SGLang's are live figures only. On current
+  llama.cpp, KV is the context of requests in flight.
 - **Time to first token** in the header, p50 and p95 for the busiest model,
   with every model and its speculative-decoding acceptance on hover. From the
   engines' own histograms, and from the gateway's for llama.cpp, which keeps

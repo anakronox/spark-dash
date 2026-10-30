@@ -49,6 +49,10 @@
     tokensPerSec: number | null;
     promptTokensPerSec: number | null;
     kvCachePct: number | null;
+    /** Issue #2, lifetime ratios since the engine started. */
+    prefixHitPct: number | null;
+    specAcceptPct: number | null;
+    specAcceptLen: number | null;
     running: number;
     waiting: number;
     sizeBytes: number | null;
@@ -174,6 +178,9 @@
             tokensPerSec: m.generation_tokens_per_sec,
             promptTokensPerSec: m.prompt_tokens_per_sec,
             kvCachePct: m.kv_cache_pct,
+            prefixHitPct: m.prefix_hit_pct ?? null,
+            specAcceptPct: m.spec_accept_pct ?? null,
+            specAcceptLen: m.spec_accept_len ?? null,
             running: m.requests_running,
             waiting: m.requests_waiting,
             sizeBytes: m.size_bytes,
@@ -206,6 +213,9 @@
             promptTokensPerSec: v.prompt_tokens_per_sec,
             // Null on an SGLang row, deliberately — see EngineMetrics.
             kvCachePct: v.kv_cache_pct,
+            prefixHitPct: v.prefix_hit_pct ?? null,
+            specAcceptPct: v.spec_accept_pct ?? null,
+            specAcceptLen: v.spec_accept_len ?? null,
             running: v.requests_running,
             waiting: v.requests_waiting,
             ...spread(footprint.get(`${node.cluster ?? node.node_id}/${runtime}/${v.model}`)),
@@ -244,6 +254,9 @@
     { key: 'tok', value: (r) => r.tokensPerSec },
     { key: 'pre', value: (r) => r.promptTokensPerSec },
     { key: 'kv', value: (r) => r.kvCachePct },
+    { key: 'hit', value: (r) => r.prefixHitPct },
+    { key: 'acc', value: (r) => r.specAcceptPct },
+    { key: 'alen', value: (r) => r.specAcceptLen },
     { key: 'run', value: (r) => r.running },
     { key: 'wait', value: (r) => r.waiting },
     { key: 'size', value: (r) => r.sizeBytes },
@@ -274,6 +287,12 @@
        through the column menu like any other. */
     { key: 'pre', label: 'prefill', right: true, width: 10 },
     { key: 'kv', label: 'kv', right: true, width: 8 },
+    /* Issue #2. Off until ticked: the table's widths were hard-won, and most
+       models here neither cache prefixes nor draft. Lifetime ratios, so the
+       header tooltip says so; the charts take windowed ones. */
+    { key: 'hit', label: 'prefix hit', right: true, width: 11, optional: true },
+    { key: 'acc', label: 'accept', right: true, width: 9, optional: true },
+    { key: 'alen', label: 'accept len', right: true, width: 11, optional: true },
     { key: 'run', label: 'run', right: true, width: 7 },
     { key: 'wait', label: 'wait', right: true, width: 8 },
     /* SIZE AND LOAD SHIPPED WITHOUT THESE TWO LINES (T1, T2) and rendered
@@ -455,6 +474,18 @@
   {:else if c.key === 'kv'}
     <td class={NUM}>
       {row.state === 'active' && row.kvCachePct != null ? `${num(row.kvCachePct)}%` : '—'}
+    </td>
+  {:else if c.key === 'hit'}
+    <td class={NUM} title="prompt tokens served from the prefix cache, since the engine started">
+      {row.state === 'active' && row.prefixHitPct != null ? `${num(row.prefixHitPct)}%` : '—'}
+    </td>
+  {:else if c.key === 'acc'}
+    <td class={NUM} title="speculative draft tokens accepted, since the engine started">
+      {row.state === 'active' && row.specAcceptPct != null ? `${num(row.specAcceptPct)}%` : '—'}
+    </td>
+  {:else if c.key === 'alen'}
+    <td class={NUM} title="mean tokens per verification step: 1 + accepted ÷ steps">
+      {row.state === 'active' && row.specAcceptLen != null ? row.specAcceptLen.toFixed(2) : '—'}
     </td>
   {:else if c.key === 'run'}
     <td class={NUM}>{row.state === 'active' ? row.running : '—'}</td>
