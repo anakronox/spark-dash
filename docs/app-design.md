@@ -219,8 +219,8 @@ the survivors.
 |---|---|---|
 | good | `#0ca30c` | PSI LOW, clock PASS, temp < 70°C |
 | warning | `#fab219` | PSI MOD, temp 70-80°C, mem > 85% |
-| serious | `#ec835a` | PSI HIGH, clock LOCKED |
-| critical | `#d03b3b` | PSI CRITICAL, clock THROTTLED, temp > 80°C |
+| serious | `#f08a57` | PSI HIGH, clock LOCKED |
+| critical | `#e16364` | PSI CRITICAL, clock THROTTLED, temp > 80°C |
 
 Every status indicator ships **icon + label alongside the color** — never color
 alone. On the light surface `warning` and `serious` are deliberately sub-3:1, so

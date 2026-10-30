@@ -149,10 +149,11 @@
      sole carrier of meaning — every status ships with an icon and a word. */
   --good: #0ca30c;
   --warning: #fab219;
-  --serious: #ec835a;
-  /* 3.62 -> 4.62. Status tokens are text here — StatusPill, Vitals,
-     ConnectionState and the header all colour words with them. */
-  --critical: #d85b5b;
+  --serious: #f08a57;
+  /* 3.62 -> 4.62 on --panel, then 4.17 -> 4.63 on --panel-raised (CB), where
+     node cards print their state. Status tokens are text here — StatusPill,
+     Vitals, ConnectionState and the header all colour words with them. */
+  --critical: #e16364;
 
   /* Categorical chart slots, for the multi-metric history charts.
      The first three ARE the node hues above — one palette, extended, so a
@@ -441,8 +442,8 @@
 
   --good: #35b87a;
   --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #e56a6a;
+  --serious: #ed8658;
+  --critical: #e36869;
 
   /* The dark theme's validated set, unchanged. A cooler surface is exactly the
      kind of change that can fail contrast without touching the palette, which
@@ -479,10 +480,10 @@
   --series-2: #701452;  /* h 345 — other GPU workloads */
   --series-3: #e01fa3;  /* h 346 — SM / third series */
 
-  --good: #147a3d;
+  --good: #13793c;
   --warning: #8a6100;
-  --serious: #b8531c;
-  --critical: #b3352c;
+  --serious: #af4c0c;
+  --critical: #aa2a33;
 
   /* The light theme's validated set. Its two accepted contrast allowances
      (amber and pink, discharged by the always-present chart legend) apply here
@@ -535,10 +536,10 @@
        --serious   2.57 -> 4.63
        --critical  4.68            already passing, left alone
      Hue is held in every case; only lightness moves. */
-  --good: #0a860a;
-  --warning: #9a6a03;
-  --serious: #c84917;
-  --critical: #d03b3b;
+  --good: #047e05;
+  --warning: #916406;
+  --serious: #ab4402;
+  --critical: #c9323e;
 
   /* Categorical chart slots, for the multi-metric history charts.
      The first three ARE the node hues above — one palette, extended, so a
@@ -616,16 +617,16 @@
 
   --ink: #4c4f69;
   --ink-2: #5c5f77;
-  --ink-muted: #686b81;
+  --ink-muted: #63667c;
 
   --series-1: #1b61ec;
   --series-2: #c42195;
   --series-3: #04568b;
 
-  --good: #54754d;
-  --warning: #96611e;
-  --serious: #ba4601;
-  --critical: #d20f39;
+  --good: #4f7048;
+  --warning: #915c18;
+  --serious: #a93901;
+  --critical: #cf062f;
 
   --chart-1: #e547b2;  /* L 0.65  h 343 */
   --chart-2: #203ac9;  /* L 0.44  h 267 */
@@ -653,10 +654,10 @@
   --series-2: #d961d2;
   --series-3: #12e3e3;
 
-  --good: #859900;
-  --warning: #b58900;
-  --serious: #bf7f69;
-  --critical: #b4837d;
+  --good: #8fa41c;
+  --warning: #c0941c;
+  --serious: #ea7e2f;
+  --critical: #f47272;
 
   --chart-1: #25a898;  /* L 0.66  h 182 */
   --chart-2: #5762f7;  /* L 0.58  h 274 */
@@ -677,17 +678,17 @@
   --track: #eee8d5;
 
   --ink: #073642;
-  --ink-2: #586e75;
-  --ink-muted: #586e75;
+  --ink-2: #4a5f66;
+  --ink-muted: #546a71;
 
   --series-1: #2e60ee;
   --series-2: #bd1d96;
   --series-3: #01578a;
 
-  --good: #6b744b;
-  --warning: #8c6a0e;
-  --serious: #c4440a;
-  --critical: #d52928;
+  --good: #4a710b;
+  --warning: #836202;
+  --serious: #b14102;
+  --critical: #ca1531;
 
   --chart-1: #900171;  /* L 0.44  h 341 */
   --chart-2: #e249b7;  /* L 0.65  h 341 */
@@ -715,10 +716,10 @@
   --series-2: #e85fc2;
   --series-3: #12e3e3;
 
-  --good: #7f9c6d;
+  --good: #96b484;
   --warning: #ffc66d;
-  --serious: #ae8d75;
-  --critical: #ff6b68;
+  --serious: #f5942a;
+  --critical: #ff8a88;
 
   --chart-1: #e04dc2;  /* L 0.66  h 337 */
   --chart-2: #5a8ff3;  /* L 0.66  h 262 */
@@ -747,8 +748,8 @@
   --series-3: #4b7d82;
 
   --good: #067d17;
-  --warning: #877304;
-  --serious: #c55028;
+  --warning: #837002;
+  --serious: #bb4e00;
   --critical: #d1242f;
 
   --chart-1: #da4dc8;  /* L 0.65  h 333 */
@@ -777,10 +778,10 @@
   --series-2: #bf33b3;
   --series-3: #02578b;
 
-  --good: #577967;
-  --warning: #936a1a;
-  --serious: #c2410c;
-  --critical: #d1105a;
+  --good: #4d6e5d;
+  --warning: #875f05;
+  --serious: #ab4803;
+  --critical: #cc042e;
 
   --chart-1: #7584f0;  /* L 0.65  h 275 */
   --chart-2: #153cc9;  /* L 0.44  h 265 */
@@ -808,10 +809,10 @@
   --series-2: #ad2bb3;
   --series-3: #5d767f;
 
-  --good: #4b7d00;
+  --good: #497902;
   --warning: #8a6100;
-  --serious: #b8531c;
-  --critical: #b3352c;
+  --serious: #b04e05;
+  --critical: #ae2e36;
 
   --chart-1: #8c0779;  /* L 0.44  h 336 */
   --chart-2: #0c8cbb;  /* L 0.60  h 232 */
@@ -839,10 +840,10 @@
   --series-2: #ac3ecd;
   --series-3: #5d767f;
 
-  --good: #15803d;
+  --good: #0f7d3a;
   --warning: #8a6100;
-  --serious: #c2410c;
-  --critical: #c53030;
+  --serious: #b14b03;
+  --critical: #c7303c;
 
   --chart-1: #3534c8;  /* L 0.44  h 273 */
   --chart-2: #6866ff;  /* L 0.60  h 278 */
@@ -872,8 +873,8 @@
 
   --good: #5fbf7a;
   --warning: #e8b04a;
-  --serious: #e8865a;
-  --critical: #e86a5f;
+  --serious: #e88956;
+  --critical: #e66860;
 
   --chart-1: #ae66ff;  /* L 0.66  h 302 */
   --chart-2: #029682;  /* L 0.60  h 179 */
@@ -903,7 +904,7 @@
 
   --good: #006b00;
   --warning: #7a4f00;
-  --serious: #a33a00;
+  --serious: #a64500;
   --critical: #b00000;
 
   --chart-1: #042583;  /* L 0.32  h 264 */

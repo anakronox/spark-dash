@@ -8554,6 +8554,28 @@ could not be dragged back to its layout or the charts dismissed.
   now takes `margin-bottom: -16px` when it holds a zone; without one the node
   grid ends bare and the page gap was already right.
 
+### CB — Status colours readable on node cards, and apart from each other — **built 2026-10-30**
+
+- [x] **CB1. Serious and critical told apart.** In solarized they were ΔE 3.0
+  apart (`#bf7f69`, `#b4837d`): two dusty pinks, and critical, the worst state,
+  the hardest to see. Now an orange and a red (`#ea7e2f`, `#f47272`). Seven
+  more themes had the pair under ΔE 7. New floor: every pair of status
+  colours at least ΔE 8 (the chart palettes' CVD target), and no theme's
+  serious/critical separation lower than it was.
+- [x] **CB2. 4.5:1 on `--panel-raised` too.** The AA test checked text against
+  `--panel` only, and node cards inside a cluster frame are raised. 13 of 18
+  themes had a status colour or the muted tier under 4.5 there; solarized's
+  were all about 4.0. Fixed by moving lightness only, keeping hue and chroma,
+  except where separation needed a hue step (serious 40–65, critical 22–32 in
+  OKLCH, so critical stays red rather than crimson). Most themes moved under
+  ΔE 3; solarized and darcula, whose originals were near-grey, took a chroma
+  floor. solarized-light's `--ink-2` darkened to stay above its muted tier.
+- [x] **CB3. The default theme is checked.** `theme_tokens()` skipped `:root`,
+  so the default's `critical` sat at 4.17:1 on raised cards unnoticed. The
+  guards fail 21 cases on the old stylesheet.
+- [ ] Not done: card edges (panel against page 1.12:1, rule 1.37:1 in
+  solarized) and the 9–10px type, both proposed alongside.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

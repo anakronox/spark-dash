@@ -152,7 +152,10 @@ def theme_tokens() -> dict[str, dict[str, str]]:
     for name, body in blocks:
         tok = {k: v.strip() for k, v in re.findall(r"(--[a-z0-9-]+):\s*([^;]+);", body)}
         if not name:
+            # The default theme is checked too: until CB it was skipped here,
+            # and its `critical` sat at 4.17:1 on the node cards unnoticed.
             base = tok
+            out["dark"] = tok
             continue
         out[name] = {**base, **tok}
     return out
@@ -160,18 +163,42 @@ def theme_tokens() -> dict[str, dict[str, str]]:
 
 @pytest.mark.parametrize("name", sorted(theme_tokens()))
 def test_text_and_status_clear_aa_on_every_theme(name):
-    """Body text, the muted tier and the status ramp, against the panel they
-    are actually drawn on. The status colours count as text here because they
-    ARE text on this page — a health reason and a runtime name are printed in
-    them, not just dotted."""
+    """Body text, the muted tier and the status ramp, against both surfaces
+    they are drawn on. The status colours count as text here because they ARE
+    text on this page — a health reason and a runtime name are printed in
+    them, not just dotted.
+
+    `--panel-raised` too (CB): a node card inside a cluster frame is raised,
+    and its "warning CPU 95°C" was 4.0:1 in solarized while the panel check
+    passed. 13 of 18 themes had something under 4.5 there."""
     tokens = theme_tokens()[name]
-    panel = tokens["--panel"]
     failures = [
-        (t, tokens[t], round(contrast(tokens[t], panel), 2))
+        (t, tokens[t], surface, round(contrast(tokens[t], tokens[surface]), 2))
+        for surface in ("--panel", "--panel-raised")
         for t in TEXT_TOKENS
-        if contrast(tokens[t], panel) < TEXT_MIN
+        if contrast(tokens[t], tokens[surface]) < TEXT_MIN
     ]
-    assert not failures, f"{name}: below {TEXT_MIN}:1 on {panel} -> {failures}"
+    assert not failures, f"{name}: below {TEXT_MIN}:1 -> {failures}"
+
+
+#: Minimum ΔE between any two status colours, unsimulated. The chart palettes'
+#: CVD target. Serious and critical are the pair that drifts: in solarized they
+#: were 3.0 apart, a dusty pink and a dusty brown, and the worst state on the
+#: page was the hardest to see (CB).
+STATUS_PAIR_FLOOR = 8.0
+STATUSES = ("--good", "--warning", "--serious", "--critical")
+
+
+@pytest.mark.parametrize("name", sorted(theme_tokens()))
+def test_status_colours_are_apart_from_each_other(name):
+    tokens = theme_tokens()[name]
+    close = [
+        (a, b, round(d, 1))
+        for i, a in enumerate(STATUSES)
+        for b in STATUSES[i + 1:]
+        if (d := delta_e(tokens[a], tokens[b])) < STATUS_PAIR_FLOOR
+    ]
+    assert not close, f"{name}: status colours under dE {STATUS_PAIR_FLOOR} -> {close}"
 
 
 HIGH_CONTRAST = ("contrast", "contrast-light")
