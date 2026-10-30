@@ -8721,8 +8721,8 @@ speculative-decoding acceptance rate, length and totals.
   corner chips, `mirrorRange` and CJ's `mirrorSplits`, `niceBelow` and arrows.
   `metric.dashed` takes a list. The log axis is now asinh from zero up, with
   decades thinned to 24px, and applies to any chart passed `log`.
-- [ ] README's screenshot still shows the mirrored chart; its alt text matches
-  that image until it is retaken.
+- [x] README's screenshot retaken after the deploy (dashed network lines, the
+  Models table's prefix hit and accept columns), alt text to match.
 
 ### J — Single-host profile (everything on one GB10)
 
