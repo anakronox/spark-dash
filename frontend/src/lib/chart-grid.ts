@@ -171,6 +171,34 @@ export function mirrorRange(min: number | null, max: number | null): [number, nu
   return [-Math.max(down, big * 0.2) * 1.1, Math.max(up, big * 0.2) * 1.1];
 }
 
+/** The largest 1, 2 or 5 times a power of ten that is at most `x`. */
+export function niceBelow(x: number): number {
+  if (!(x > 0)) return 0;
+  const p = 10 ** Math.floor(Math.log10(x));
+  for (const m of [5, 2, 1]) if (m * p <= x) return m * p;
+  return p;
+}
+
+/** Gridlines for a mirrored linear axis: zero, then even steps out to each
+ *  side, and AT LEAST ONE ON EACH SIDE. Each side is scaled to its own peak
+ *  (mirrorRange), so a quiet direction's half can be shorter than one step;
+ *  uPlot then labelled only 0 and the busy side, and with the zero line near
+ *  the top the axis read as inverted: 0 above, 2.5Mb/s below (Brian,
+ *  2026-10-30). The quiet side gets one tick at its own nice value instead.
+ *  The caller thins these to the room it has. */
+export function mirrorSplits(min: number, max: number): number[] {
+  const up = Math.max(max, 0);
+  const down = Math.max(-min, 0);
+  const step = niceStep(Math.max(up, down) / 4);
+  const out = [0];
+  for (const [extent, sign] of [[up, 1], [down, -1]] as const) {
+    const n = Math.floor(extent / step + 1e-9);
+    if (n > 0) for (let k = 1; k <= n; k++) out.push(sign * k * step);
+    else if (niceBelow(extent) > 0) out.push(sign * niceBelow(extent));
+  }
+  return out.sort((a, b) => a - b);
+}
+
 /** Gridlines for a mirrored log axis: zero, then each power of ten from
  *  1 kb/s out to the range on both sides. uPlot's own asinh splits put a line
  *  at every 1-9 of each decade, and their labels piled into one another. The

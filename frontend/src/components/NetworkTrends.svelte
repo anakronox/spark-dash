@@ -426,6 +426,14 @@
   /* One menu for the card, so both divisions' tables share a column set and a
      storage key. Two menus would be two controls in two corners of one card —
      the arrangement NetworkPanel already rejected for the same reason. */
+  /* What a group chart adds up, on hover rather than as a paragraph under
+     the charts: two lines of text there cost the plots their height
+     (Brian, 2026-10-30). */
+  const SUM_NOTE =
+    "Each node's interfaces in a group are added together. A ConnectX port is two " +
+    'interfaces, and multicast reaching it counts on both. Open the table for one ' +
+    "interface's own chart.";
+
   const linkCols = new ColumnView('network-history.links', NETWORK_COLUMNS);
 
   /* Signal columns, flagged ONCE for the shared view.
@@ -931,7 +939,7 @@
         >
           {#each summary.charts as c, i (c.key)}
             {@const note = DIVISIONS.find((d) => d.key === c.division)?.note}
-            <div class="cell" title={note}>
+            <div class="cell" title={`${note ? `${note}\n\n` : ''}${SUM_NOTE}`}>
               <MetricChart
                 showTime={(!exceptions.length || exceptionRows === 0) && onLastRow(i, summary.charts.length, groupCols)}
                 metric={{ ...c.metric, label: `${c.metric.label} · ${c.links} interface${c.links === 1 ? '' : 's'}` }}
@@ -949,11 +957,6 @@
             </div>
           {/each}
         </div>
-        <p class="note dim sum-note">
-          Each node's interfaces in a group are added together. A ConnectX port is two
-          interfaces, and multicast reaching it counts on both. Open the table for one
-          interface's own chart.
-        </p>
         {#if exceptions.length}
           {@const pages = pagesFor('exceptions')}
           {@const folded = exceptionRows === 0}

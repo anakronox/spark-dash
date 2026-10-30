@@ -11,6 +11,8 @@ import {
   crossesDay,
   fitRange,
   mirrorRange,
+  mirrorSplits,
+  niceBelow,
   decadeSplits,
   niceStep,
   gaugeCols,
@@ -187,3 +189,22 @@ test('gauges before the first measure keep every panel on one row', () => {
 
 console.log(`${passed}/${passed + failed} passed`);
 if (failed) process.exit(1);
+
+
+test('a mirrored linear axis labels both sides, the quiet one at its own scale', () => {
+  // The RoCE chart Brian saw: received near zero, sent 2.5 Mb/s. Its range is
+  // about [-2.75M, 0.55M]; uPlot labelled only 0 and -2.5M, reading inverted.
+  const [lo, hi] = mirrorRange(-2.5e6, 1e3);
+  const s = mirrorSplits(lo, hi);
+  assert.ok(s.includes(0));
+  assert.ok(s.some((v) => v > 0), `no tick above zero: ${s}`);
+  assert.ok(s.some((v) => v < 0), `no tick below zero: ${s}`);
+  assert.deepEqual(mirrorSplits(-1000, 1000), [-1000, -500, 0, 500, 1000]);
+});
+
+test('niceBelow rounds down to 1, 2 or 5', () => {
+  assert.equal(niceBelow(0.55e6), 0.5e6);
+  assert.equal(niceBelow(1900), 1000);
+  assert.equal(niceBelow(2), 2);
+  assert.equal(niceBelow(0), 0);
+});

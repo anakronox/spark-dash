@@ -289,10 +289,12 @@ narrower than the metric's minimum span (25 points for GPU utilization, 20 for
 other percentages, 15°C, 50W, 500MHz), with **Full** for the fixed axes.
 Network Activity draws a chart per interface group, a line per node: received
 above zero, sent below, each side reaching its own peak but keeping a fifth of
-the height. Its **log** axis is asinh, linear inside 1 kb/s, with gridlines on
+the height. Its tick labels carry the direction, `↑` received and `↓` sent, and
+the linear axis labels both sides where there is room. Its **log** axis is asinh, linear inside 1 kb/s, with gridlines on
 decades. A node's interfaces in a group are added together, and a ConnectX
 port is two interfaces, so multicast reaching it counts on both (about
-40 kb/s here, against 200 Gb/s links).
+40 kb/s here, against 200 Gb/s links). That is said on hover over a chart, not
+under them.
 
 **Optional cards are the exception, on purpose.** A card whose data may not
 exist on this install is off the page and out of the `+ element` menu while

@@ -8691,6 +8691,20 @@ speculative-decoding acceptance rate, length and totals.
 - [ ] Not done: SGLang `token_usage` as its KV (still unchecked against a
   server, as before); TensorFold acceptance length (no step counter).
 
+### CJ — Network axes say which way; the summing note moves to hover — **built 2026-10-30**
+
+- [x] **CJ1. Direction on the tick labels.** Each side of a mirrored chart
+  scales to its own peak, so on RoCE, received near zero and sent 2.5 Mb/s, the
+  zero line sat near the top. uPlot labelled only 0 and -2.5M, printed unsigned:
+  "0.0Mb/s" above "2.5Mb/s", which read as an inverted axis. Labels now carry
+  `↑` received and `↓` sent, and `mirrorSplits` gives the linear axis at least
+  one tick on each side (the quiet side at its own nice value), thinned to 24px
+  like the log axis.
+- [x] **CJ2. The group note leaves the card.** Two lines under the group
+  charts ("each node's interfaces in a group are added together…") now ride
+  in each chart's tooltip after its group's own note. Measured in the
+  preview: the card shrank to its content, 9.5px spare.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

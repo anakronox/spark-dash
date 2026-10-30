@@ -29,6 +29,7 @@
     decadeSplits,
     fitRange,
     mirrorRange,
+    mirrorSplits,
     niceStep,
     stampOf,
     timeLabels,
@@ -227,19 +228,24 @@
        The prefix rides on the unit so the axis still says what it measures. */
     /* A LOG AXIS IS THE EXCEPTION: its gridlines are 1k, 10k, 1M apart, and
        one divisor would print 0.001M. Each label takes its own prefix. */
+    /* THE DIRECTION ON THE LABEL, on a mirrored chart. Unsigned, "2.5Mb/s"
+       under a "0" read as an inverted axis; ↑ is received, ↓ is sent, the
+       same arrows as the in/out key in the corner. */
+    const dir = (v: number) => (!metric.mirror || v === 0 ? '' : v > 0 ? '↑' : '↓');
     if (metric.si && log) {
       return values.map((v) => {
         const a = Math.abs(v);
         const { div, prefix } = siScale(a);
         const n = a / div;
-        return `${n < 10 && n % 1 ? n.toFixed(1) : n.toFixed(0)}${prefix}${metric.unit}`;
+        return `${dir(v)}${n < 10 && n % 1 ? n.toFixed(1) : n.toFixed(0)}${prefix}${metric.unit}`;
       });
     }
     if (metric.si) {
       const { div, prefix } = siScale(Math.max(...values.map(Math.abs), 1));
       const fine = div > 1 && values.some((v) => v !== 0 && Math.abs(v) / div < 10);
       return values.map(
-        (v) => `${((metric.mirror ? Math.abs(v) : v) / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`,
+        (v) =>
+          `${dir(v)}${((metric.mirror ? Math.abs(v) : v) / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`,
       );
     }
     const d = decimalsFor(values);
@@ -551,12 +557,14 @@
              offer 0, 0.25, 0.5, 0.75, 1 — three gridlines for values a boolean
              cannot take. */
           ...(metric.states ? { splits: () => [0, 1] } : {}),
-          /* Decades only on a mirrored log axis, thinned outward from zero so
-             no two labels sit closer than 24px. */
-          ...(metric.mirror && log
+          /* A mirrored axis picks its own splits, thinned outward from zero so
+             no two labels sit closer than 24px: decades on a log axis, and on
+             a linear one even steps with at least one on each side
+             (mirrorSplits). */
+          ...(metric.mirror
             ? {
                 splits: (u: uPlot, _i: number, min: number, max: number) => {
-                  const all = decadeSplits(min, max);
+                  const all = log ? decadeSplits(min, max) : mirrorSplits(min, max);
                   const kept = [0];
                   for (const side of [all.filter((v) => v > 0), all.filter((v) => v < 0).reverse()]) {
                     let last = u.valToPos(0, 'y');
