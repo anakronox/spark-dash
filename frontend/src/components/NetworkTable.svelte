@@ -116,11 +116,11 @@
      the WHOLE PAGE: every button, Alerts and Settings included, silently
      stopped responding. Reported 2026-08-28.
 
-     The equality guard in `force` cannot help. It stops a value being rewritten
+     The equality guard in `flag` cannot help. It stops a value being rewritten
      with itself; it cannot arbitrate between two callers that genuinely want
      different values.
 
-     So the decision belongs where the shared view does — NetworkTrends forces
+     So the decision belongs where the shared view does — NetworkTrends flags
      once, across every division's rows. A component must not write state it
      does not own on evidence it alone can see. */
   $effect(() => dropSortWhenHidden(view, (k) => cols.visible().some((c) => c.key === k)));

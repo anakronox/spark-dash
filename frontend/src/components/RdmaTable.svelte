@@ -188,10 +188,10 @@
    *
    * `err` and `drop` read zero every day, which is exactly why someone
    * switches them off — and their first non-zero value is the thing they needed
-   * to know. Hiding a stat on a monitoring dashboard is hiding a signal, so the
-   * signal wins: the column comes back on its own, and the menu says why. */
+   * to know. A column switched off stays off (BZ); the menu says it is not
+   * zero. */
   const rdmaTripped = $derived(rdma.some((p) => p.errors > 0) ? ['err'] : []);
-  $effect(() => rdmaCols.force(rdmaTripped));
+  $effect(() => rdmaCols.flag(rdmaTripped));
 
   $effect(() => dropSortWhenHidden(rdmaView, (k) => rdmaCols.isVisible(k)));
 

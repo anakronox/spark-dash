@@ -18,8 +18,8 @@
   /* THE MENU ITSELF LIVES IN PickMenu since the metric picker needed one too.
      This is the adapter: it turns column views into a list of items, and keeps
      the two facts that are specific to columns -- a required column is locked
-     and says "always", and a column forced visible because it is the only one
-     left says so in warning colour. */
+     and says "always", and a signal column switched off while it is not zero
+     says so in warning colour. */
   import type { ColumnView } from '../lib/columns.svelte';
   import PickMenu from './PickMenu.svelte';
   import type { PickGroup } from './PickMenu.svelte';
@@ -41,14 +41,14 @@
     groups.map((g) => ({
       label: g.label,
       items: g.view.columns.map((col) => {
-        const forced = g.view.isForced(col.key);
+        const flagged = g.view.isFlagged(col.key);
         return {
           key: col.key,
           label: col.label,
           checked: !g.view.isOff(col.key),
           disabled: col.required,
-          note: col.required ? 'always' : forced ? 'shown — not zero' : undefined,
-          warn: !col.required && forced,
+          note: col.required ? 'always' : flagged ? 'hidden — not zero' : undefined,
+          warn: !col.required && flagged,
         };
       }),
     })),

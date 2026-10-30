@@ -1412,7 +1412,7 @@ tables being under-specified for the space now available.
   notes from building it:
 
   - **The checkbox reflects the CHOICE, not the state.** A forced-back `drop`
-    column shows an unchecked box with "shown — not zero" beside it, rather than
+    column (forcing removed in BZ) showed an unchecked box with "shown — not zero" beside it, rather than
     silently re-checking itself. A switch that flips itself is a switch you
     cannot trust, and the reader needs to be able to see both what they asked
     for and what is overriding it.
@@ -8530,6 +8530,20 @@ could not be dragged back to its layout or the charts dismissed.
   section to `docs/deployment.md`, "Adding a node, or an engine on one". The
   README keeps a minimal `cluster.yml`, which `test_distribution` parses.
   The clone command names the GitHub URL instead of a placeholder.
+
+### BZ — Network err/drop stay off when switched off; the updater-off row dates its count — **built 2026-10-30**
+
+- [x] **BZ1. Network `err` and `drop` are no longer forced back.** BU kept the
+  AW behaviour for them; extended now, on request. A column switched off stays
+  off in every network table (links, RDMA). The menu still marks it: the
+  unticked box reads "hidden — not zero" in warning colour while it has a
+  non-zero value, so the count is not lost without a trace. `ColumnView.force`
+  became `flag` and no longer affects what renders.
+- [x] **BZ2. The updater-off line says how old the count is.** A Spark whose
+  DGX Dashboard updater is off read "not refreshing: its DGX Dashboard updater
+  is off" and nothing else until the count passed six hours. Its count is
+  frozen from that moment, so the line now ends "…, last counted N ago" at any
+  age. `docs/fleet-updates-setup.md` quotes the wording.
 
 ### J — Single-host profile (everything on one GB10)
 

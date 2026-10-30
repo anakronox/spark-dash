@@ -179,6 +179,11 @@ test('the CAUSE outranks the symptom, and shows before the count has aged', () =
   assert.ok(refreshStopped(off));
   assert.equal(statusOf(off, NOW).text, 'not checking for updates');
   assert.match(lineOf(off, NOW), /not refreshing: its DGX Dashboard updater is off/);
+  // and how old the frozen count is, young or not (BZ)
+  assert.match(lineOf(off, NOW), /updater is off, last counted 30 min ago/);
+  const longOff = spark({ updates: counted(4 * 24), dashboard_auto_update: false });
+  assert.match(lineOf(longOff, NOW), /updater is off, last counted 4 d ago/);
+  assert.doesNotMatch(lineOf(longOff, NOW), /last counted .* last counted/, 'said once');
 });
 
 test('unknown is not off: a Spark we could not read is left alone', () => {

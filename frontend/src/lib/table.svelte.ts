@@ -60,12 +60,12 @@ export interface ColumnDef {
   /** Identity — cannot be switched off. A table of numbers with no idea which
    *  node or process they belong to is unreadable. */
   required?: boolean;
-  /** Carries an alert. Switched off it comes back on its own the moment it has
-   *  something to say — see ColumnView.force. */
+  /** Carries an alert. Switched off it stays off, and the column menu says
+   *  when it is not zero — see ColumnView.flag. */
   signal?: boolean;
   /** Off until the reader switches it on. Stored as an explicit "+key" rather
    *  than by absence, because absence already means on for every other
-   *  column. With `signal` it also shows itself when it has something to say. */
+   *  column. */
   optional?: boolean;
   /** Default width, in `ch`. The starting point a reader sees before touching
    *  anything, and what double-clicking a drag handle restores.

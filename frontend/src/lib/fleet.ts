@@ -347,9 +347,12 @@ export function lineOf(n: FleetNode, now: number = Date.now()): string {
   // Appended to whatever the row ends up saying, not only to the reassuring
   // case: a count of 158 taken a fortnight ago is also worth knowing about.
   // Defined before the branches below, because every one of them returns.
+  // With the updater off the count is frozen from the moment it stopped, so
+  // its age is worth saying however young it still is (BZ).
   const stale = staleOf(n, now);
   const age = refreshStopped(n)
-    ? ' · not refreshing: its DGX Dashboard updater is off'
+    ? ' · not refreshing: its DGX Dashboard updater is off' +
+      (n.updates?.as_of ? `, last counted ${agoOf(n.updates.as_of, now)}` : '')
     : stale
       ? ` · last counted ${stale.text}`
       : '';

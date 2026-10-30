@@ -115,9 +115,10 @@ Spark stops seeing new packages entirely, and this tool, which reads the same
 lists, goes blind with it. **Leave the DGX Dashboard's updates enabled.**
 
 You will be told if one isn't. A Spark in that state reads *not checking for
-updates* on its row rather than a reassuring count, `/health` lists it under
-`updates_not_refreshing`, and any count more than six hours old says *last
-counted N ago* instead of claiming to be current.
+updates* on its row rather than a reassuring count, its detail line says *not
+refreshing: its DGX Dashboard updater is off, last counted N ago*, and
+`/health` lists it under `updates_not_refreshing`. Any count more than six
+hours old says *last counted N ago* instead of claiming to be current.
 
 While an update installs, this tool pauses that updater so two installers never
 fight over the package manager, and puts it back exactly as it found it the

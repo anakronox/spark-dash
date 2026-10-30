@@ -172,10 +172,10 @@ export class ColumnView {
   #table: string;
   #columns: ColumnDef[];
 
-  /** Columns shown despite being switched off, because they have something to
-   *  say right now. Deliberately NOT persisted — this is a fact about the
-   *  current data, not a preference. */
-  forced = $state<string[]>([]);
+  /** Columns that have something to say right now — `err` or `drop` above
+   *  zero. Deliberately NOT persisted — this is a fact about the current data,
+   *  not a preference. */
+  flagged = $state<string[]>([]);
 
   constructor(table: string, columns: ColumnDef[]) {
     this.#table = table;
@@ -198,19 +198,19 @@ export class ColumnView {
     return this.#columns.find((c) => c.key === key)?.optional ?? false;
   }
 
-  /** Shown despite being switched off. The menu says so, because a column
-   *  appearing on its own is otherwise indistinguishable from a bug. */
-  isForced(key: string): boolean {
-    return this.isOff(key) && this.forced.includes(key);
+  /** Switched off while it has something to say. It STAYS off (BZ); the menu
+   *  says so beside the unticked box, which is all the reader agreed to. */
+  isFlagged(key: string): boolean {
+    return this.isOff(key) && this.flagged.includes(key);
   }
 
   /** What actually renders. */
   visible(): ColumnDef[] {
-    return this.#columns.filter((c) => !this.isOff(c.key) || this.forced.includes(c.key));
+    return this.#columns.filter((c) => !this.isOff(c.key));
   }
 
   isVisible(key: string): boolean {
-    return !this.isOff(key) || this.forced.includes(key);
+    return !this.isOff(key);
   }
 
   toggle(key: string) {
@@ -254,19 +254,19 @@ export class ColumnView {
     return this.#columns.filter((c) => this.isOff(c.key)).length;
   }
 
-  /** Force these columns back into view.
+  /** Mark these columns as having something to say.
    *
    * For columns marked `signal` — `err` and `drop`. They read zero every day,
-   * which is exactly why someone switches them off, and their first non-zero
-   * value is the thing they needed to know. This is a monitoring dashboard:
-   * hiding a stat is hiding a signal, and the signal wins.
+   * which is exactly why someone switches them off. Until BZ a non-zero value
+   * forced the column back into view; now a column switched off stays off and
+   * only the menu says it is not zero.
    *
    * The equality guard matters. This is driven from an $effect fed by derived
    * data, so assigning an equal-but-new array on every frame would re-run the
    * effect forever.
    */
-  force(keys: string[]) {
-    if (keys.length === this.forced.length && keys.every((k, i) => k === this.forced[i])) return;
-    this.forced = keys;
+  flag(keys: string[]) {
+    if (keys.length === this.flagged.length && keys.every((k, i) => k === this.flagged[i])) return;
+    this.flagged = keys;
   }
 }
