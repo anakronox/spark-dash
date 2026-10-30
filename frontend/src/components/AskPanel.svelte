@@ -161,7 +161,7 @@
     padding: 0;
     border: none;
     border-left: 1px solid var(--rule);
-    background: var(--panel);
+    background: var(--page);
     color: var(--ink);
   }
 
@@ -176,6 +176,9 @@
     height: 100%;
     overflow-y: auto;
     padding: 18px 20px 28px;
+    /* Over the global `.panel` card fill, which this wrapper would
+       otherwise take: the body is the page, and cards lift off it (CE). */
+    background: var(--page);
   }
 
   header {

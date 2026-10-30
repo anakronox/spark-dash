@@ -415,7 +415,9 @@
     padding: 0;
     border: none;
     border-left: 1px solid var(--rule);
-    background: var(--panel);
+    /* --page, so the cards inside lift off it as they do on the dashboard
+       (CE): with both at --panel only a border told them apart. */
+    background: var(--page);
     color: var(--ink);
     font-size: var(--text-body);
   }
@@ -427,6 +429,9 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    /* Over the global `.panel` card fill, which this wrapper would
+       otherwise take: the body is the page, and cards lift off it (CE). */
+    background: var(--page);
   }
   .top {
     display: flex;

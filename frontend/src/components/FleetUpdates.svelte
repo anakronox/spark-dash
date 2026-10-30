@@ -838,7 +838,9 @@
     padding: 0;
     border: none;
     border-left: 1px solid var(--rule);
-    background: var(--panel);
+    /* --page, so the cards inside lift off it as they do on the dashboard
+       (CE): with both at --panel only a border told them apart. */
+    background: var(--page);
     color: var(--ink);
     /* The body sets no size; every component names its own. This one is
        almost all body text, so it is named once here. */
@@ -856,6 +858,9 @@
     height: 100%;
     overflow-y: auto;
     padding: 18px 20px 28px;
+    /* Over the global `.panel` card fill, which this wrapper would
+       otherwise take: the body is the page, and cards lift off it (CE). */
+    background: var(--page);
   }
 
   header {
@@ -866,7 +871,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--panel);
+    background: var(--page);
     padding-bottom: 8px;
   }
 

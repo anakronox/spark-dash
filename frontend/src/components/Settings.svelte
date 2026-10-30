@@ -2324,6 +2324,10 @@
     padding: 16px 22px 0;
     overflow-y: auto;
     min-width: 0;
+    /* --page under the header and rail's --panel, so the node cards lift off
+       it as they do on the dashboard (CE). The save bar matches: on a short
+       pane a --panel bar read as a stripe across the middle. */
+    background: var(--page);
   }
   /* Room at the end, except where the save bar sits there. */
   .pane::after { content: ''; flex: none; height: 10px; }
@@ -2377,7 +2381,7 @@
     bottom: 0;
     margin: 0 -22px;
     padding: 10px 22px;
-    background: var(--panel);
+    background: var(--page);
     border-top: 1px solid var(--rule);
     align-items: center;
   }
@@ -2420,6 +2424,7 @@
     padding: 10px 12px;
     border-radius: var(--radius);
     border: 1px solid var(--rule);
+    background: var(--panel);
   }
 
   .node-head { display: flex; align-items: baseline; gap: 8px; font-size: var(--text-body); flex-wrap: wrap; }

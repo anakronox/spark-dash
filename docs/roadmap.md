@@ -8594,6 +8594,22 @@ could not be dragged back to its layout or the charts dismissed.
   contrast ratios compress near black, so the same perceived step reads as a
   smaller ratio there.
 
+### CE — Flyout panels: cards lift off the body — **built 2026-10-30**
+
+- [x] **CE1. The body is the page, cards are the panel.** Settings, Reports,
+  Updates, Alerts, Ask and Get started drew their body in `--panel` and the
+  cards inside it (Settings' node cards, update rows, alert rows) in `--panel`
+  too, so only a border told them apart. Each flyout's content wrapper is
+  `div.panel`, which also picks up the global `.panel` card fill: setting
+  the dialog's background alone changed nothing visible. Now each wrapper
+  is `--page`, as on the dashboard. Settings keeps its header and rail on
+  `--panel` as the frame; its pane and save bar are `--page` (a `--panel`
+  save bar on a short pane read as a stripe), and `.node` takes `--panel`.
+- [x] **CE2. AA on `--page`.** Text now sits on the page in six panels. In
+  the light themes the page is the darker surface: darcula-light's warning
+  was 4.42:1 there, now `#806d02` at 4.61:1. The guard checks `--page`
+  beside `--panel` and `--panel-raised`.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

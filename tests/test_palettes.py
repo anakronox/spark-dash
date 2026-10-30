@@ -170,11 +170,15 @@ def test_text_and_status_clear_aa_on_every_theme(name):
 
     `--panel-raised` too (CB): a node card inside a cluster frame is raised,
     and its "warning CPU 95°C" was 4.0:1 in solarized while the panel check
-    passed. 13 of 18 themes had something under 4.5 there."""
+    passed. 13 of 18 themes had something under 4.5 there.
+
+    `--page` too (CE): the header's facts sit on it, and so does the body of
+    every flyout panel. In the light themes the page is the DARKER surface,
+    so text loses contrast there: darcula-light's warning was 4.42:1."""
     tokens = theme_tokens()[name]
     failures = [
         (t, tokens[t], surface, round(contrast(tokens[t], tokens[surface]), 2))
-        for surface in ("--panel", "--panel-raised")
+        for surface in ("--page", "--panel", "--panel-raised")
         for t in TEXT_TOKENS
         if contrast(tokens[t], tokens[surface]) < TEXT_MIN
     ]
