@@ -640,7 +640,7 @@
 
 :root[data-theme='solarized'] {
   color-scheme: dark;
-  --page: #00212b;
+  --page: #001820;  /* panel lifts 1.12 -> 1.21:1 (CC) */
   --panel: #002b36;
   --panel-raised: #073642;
   --rule: #0e4250;

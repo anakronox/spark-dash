@@ -8573,8 +8573,16 @@ could not be dragged back to its layout or the charts dismissed.
 - [x] **CB3. The default theme is checked.** `theme_tokens()` skipped `:root`,
   so the default's `critical` sat at 4.17:1 on raised cards unnoticed. The
   guards fail 21 cases on the old stylesheet.
-- [ ] Not done: card edges (panel against page 1.12:1, rule 1.37:1 in
-  solarized) and the 9–10px type, both proposed alongside.
+- [ ] Not done: the 9–10px type, proposed alongside. Card edges: see CC.
+
+### CC — Solarized's page a step darker — **built 2026-10-30**
+
+- [x] **CC1. Cards lift off the page.** `--page` `#00212b` to `#001820`, same
+  hue, OKLCH L 0.23 to 0.195. Card fill against the page 1.12 to 1.21:1, the
+  rule 1.53 to 1.66:1; the muted text in the header, drawn on the page, 6.27
+  to 6.82:1. Card edges were left as they were (CB's open item): judged fine
+  once the page darkened. Solarized only; the other dark themes still sit at
+  about 1.12:1.
 
 ### J — Single-host profile (everything on one GB10)
 
