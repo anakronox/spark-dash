@@ -8581,8 +8581,18 @@ could not be dragged back to its layout or the charts dismissed.
   hue, OKLCH L 0.23 to 0.195. Card fill against the page 1.12 to 1.21:1, the
   rule 1.53 to 1.66:1; the muted text in the header, drawn on the page, 6.27
   to 6.82:1. Card edges were left as they were (CB's open item): judged fine
-  once the page darkened. Solarized only; the other dark themes still sit at
-  about 1.12:1.
+  once the page darkened. Catppuccin and Darcula followed in CD.
+
+### CD — Catppuccin's and Darcula's page a step darker — **built 2026-10-30**
+
+- [x] **CD1. Same lift as CC, matched on lightness rather than ratio.**
+  Catppuccin `#181825` to Crust `#11111b`, its own palette's darkest base
+  (card fill against page 1.07 to 1.14:1); Darcula `#232323` to `#1b1b1b`
+  (1.11 to 1.22:1). The card-to-page OKLCH L gap roughly doubles in all three:
+  solarized 0.037 to 0.073, catppuccin 0.027 to 0.060, darcula 0.033 to
+  0.067. Matching CC's 1.21:1 in catppuccin would need `#080810`, near black:
+  contrast ratios compress near black, so the same perceived step reads as a
+  smaller ratio there.
 
 ### J — Single-host profile (everything on one GB10)
 

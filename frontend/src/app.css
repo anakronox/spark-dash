@@ -578,7 +578,7 @@
 
 :root[data-theme='catppuccin'] {
   color-scheme: dark;
-  --page: #181825;
+  --page: #11111b;  /* Crust; panel lifts 1.07 -> 1.14:1 (CD) */
   --panel: #1e1e2e;
   --panel-raised: #313244;
   --rule: #313244;
@@ -702,7 +702,7 @@
 
 :root[data-theme='darcula'] {
   color-scheme: dark;
-  --page: #232323;
+  --page: #1b1b1b;  /* panel lifts 1.11 -> 1.22:1 (CD) */
   --panel: #2b2b2b;
   --panel-raised: #3c3f41;
   --rule: #3f4244;
