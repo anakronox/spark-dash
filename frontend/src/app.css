@@ -426,7 +426,7 @@
   /* CHROME ONLY. Same validated chart slots as dark, a cooler ground — the
      cheap, taste-driven kind of variant, and the surface-contrast check is the
      one thing it can break on its own, so it is re-run rather than assumed. */
-  --page: #0d1117;
+  --page: #070b10;
   --panel: #12181f;
   --panel-raised: #1a222c;
   --rule: #2a3441;
@@ -466,7 +466,7 @@
      and no way to opt out of a cool near-white.
 
      Warm ground, warm rules, same light chart slots. */
-  --page: #f4f1e9;
+  --page: #e8e5dd;
   --panel: #fbf9f4;
   --panel-raised: #f0ece1;
   --rule: #ddd6c7;
@@ -480,10 +480,10 @@
   --series-2: #701452;  /* h 345 — other GPU workloads */
   --series-3: #e01fa3;  /* h 346 — SM / third series */
 
-  --good: #13793c;
-  --warning: #8a6100;
-  --serious: #af4c0c;
-  --critical: #aa2a33;
+  --good: #0b7539;
+  --warning: #865e00;
+  --serious: #aa4702;
+  --critical: #a5242f;
 
   /* The light theme's validated set. Its two accepted contrast allowances
      (amber and pink, discharged by the always-present chart legend) apply here
@@ -501,7 +501,7 @@
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --page: #f9f9f7;
+  --page: #e8e8e6;
   --panel: #fcfcfb;
   --panel-raised: #f2f1ec;
   --rule: #e1e0d9;
@@ -536,10 +536,10 @@
        --serious   2.57 -> 4.63
        --critical  4.68            already passing, left alone
      Hue is held in every case; only lightness moves. */
-  --good: #047e05;
-  --warning: #916406;
-  --serious: #ab4402;
-  --critical: #c9323e;
+  --good: #037804;
+  --warning: #8a5f05;
+  --serious: #a54103;
+  --critical: #c22a38;
 
   /* Categorical chart slots, for the multi-metric history charts.
      The first three ARE the node hues above — one palette, extended, so a
@@ -609,24 +609,24 @@
 
 :root[data-theme='catppuccin-light'] {
   color-scheme: light;
-  --page: #e6e9ef;
+  --page: #dadde3;
   --panel: #eff1f5;
   --panel-raised: #e6e9ef;
   --rule: #ccd0da;
   --track: #dce0e8;
 
   --ink: #4c4f69;
-  --ink-2: #5c5f77;
-  --ink-muted: #63667c;
+  --ink-2: #54576f;
+  --ink-muted: #5c5f75;
 
   --series-1: #1b61ec;
   --series-2: #c42195;
   --series-3: #04568b;
 
-  --good: #4f7048;
-  --warning: #915c18;
-  --serious: #a93901;
-  --critical: #cf062f;
+  --good: #486841;
+  --warning: #88540b;
+  --serious: #923001;
+  --critical: #c2042b;
 
   --chart-1: #e547b2;  /* L 0.65  h 343 */
   --chart-2: #203ac9;  /* L 0.44  h 267 */
@@ -671,7 +671,7 @@
 
 :root[data-theme='solarized-light'] {
   color-scheme: light;
-  --page: #eee8d5;
+  --page: #e8e2cf;
   --panel: #fdf6e3;
   --panel-raised: #eee8d5;
   --rule: #e2dbc6;
@@ -679,16 +679,16 @@
 
   --ink: #073642;
   --ink-2: #4a5f66;
-  --ink-muted: #546a71;
+  --ink-muted: #51676e;
 
   --series-1: #2e60ee;
   --series-2: #bd1d96;
   --series-3: #01578a;
 
-  --good: #4a710b;
-  --warning: #836202;
-  --serious: #b14102;
-  --critical: #ca1531;
+  --good: #476e05;
+  --warning: #7e5e05;
+  --serious: #ad4003;
+  --critical: #c60d2e;
 
   --chart-1: #900171;  /* L 0.44  h 341 */
   --chart-2: #e249b7;  /* L 0.65  h 341 */
@@ -733,7 +733,7 @@
 
 :root[data-theme='darcula-light'] {
   color-scheme: light;
-  --page: #f2f3f5;
+  --page: #eaebed;
   --panel: #ffffff;
   --panel-raised: #f7f8fa;
   --rule: #dfe1e5;
@@ -747,10 +747,10 @@
   --series-2: #c435b3;
   --series-3: #4b7d82;
 
-  --good: #067d17;
-  --warning: #806d02;
-  --serious: #bb4e00;
-  --critical: #d1242f;
+  --good: #047a16;
+  --warning: #7b6804;
+  --serious: #b04a03;
+  --critical: #cd1e2b;
 
   --chart-1: #da4dc8;  /* L 0.65  h 333 */
   --chart-2: #891f69;  /* L 0.44  h 343 */
@@ -764,7 +764,7 @@
 
 :root[data-theme='cyberpunk-light'] {
   color-scheme: light;
-  --page: #f1ecfb;
+  --page: #e8e3f2;
   --panel: #fbf9ff;
   --panel-raised: #ece4fb;
   --rule: #dbd0f2;
@@ -795,7 +795,7 @@
 
 :root[data-theme='forest-light'] {
   color-scheme: light;
-  --page: #ecf2e8;
+  --page: #e2e8de;
   --panel: #f8fbf6;
   --panel-raised: #edf3e9;
   --rule: #d1dec9;
@@ -809,10 +809,10 @@
   --series-2: #ad2bb3;
   --series-3: #5d767f;
 
-  --good: #497902;
-  --warning: #8a6100;
-  --serious: #b04e05;
-  --critical: #ae2e36;
+  --good: #447202;
+  --warning: #865e00;
+  --serious: #a9490c;
+  --critical: #a52530;
 
   --chart-1: #8c0779;  /* L 0.44  h 336 */
   --chart-2: #0c8cbb;  /* L 0.60  h 232 */
@@ -826,7 +826,7 @@
 
 :root[data-theme='slate-light'] {
   color-scheme: light;
-  --page: #eef1f5;
+  --page: #e3e6ea;
   --panel: #f8fafc;
   --panel-raised: #eef2f6;
   --rule: #d5dce5;
@@ -840,10 +840,10 @@
   --series-2: #ac3ecd;
   --series-3: #5d767f;
 
-  --good: #0f7d3a;
-  --warning: #8a6100;
-  --serious: #b14b03;
-  --critical: #c7303c;
+  --good: #027634;
+  --warning: #865e00;
+  --serious: #aa4802;
+  --critical: #c12937;
 
   --chart-1: #3534c8;  /* L 0.44  h 273 */
   --chart-2: #6866ff;  /* L 0.60  h 278 */
@@ -857,7 +857,7 @@
 
 :root[data-theme='paper-dark'] {
   color-scheme: dark;
-  --page: #17140f;
+  --page: #13100b;
   --panel: #211d17;
   --panel-raised: #2b261e;
   --rule: #3a3328;

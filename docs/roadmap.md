@@ -8620,6 +8620,24 @@ could not be dragged back to its layout or the charts dismissed.
   tab gets it trimmed, and browsers collapse a tab title's spaces anyway.
   The rules moved to `lib/title.ts` so they run under node.
 
+### CG — Every theme's cards lift off its page — **built 2026-10-30**
+
+- [x] **CG1. Ten more themes brought to CD's step.** light, paper,
+  catppuccin-light, slate-light, slate, forest-light, cyberpunk-light,
+  darcula-light, paper-dark and solarized-light had cards 0.009–0.043 OKLCH L
+  above the page. Each page darkened, hue and chroma kept, to a 0.060 gap
+  (catppuccin's). `light` moved most: `#f9f9f7` to `#e8e8e6`.
+- [x] **CG2. Text kept at 4.5:1 on the darker pages.** In seven light themes
+  a status colour, and in two the muted tier, fell under 4.5:1 on the new
+  page; each darkened by lightness only, ΔE 0.8–2.8. Darkening squeezed
+  serious against critical under CB's ΔE 8 floor in light, paper,
+  catppuccin-light, forest-light and solarized-light; CB's search re-run with
+  the page as a third surface. catppuccin-light's `--ink-2` darkened to stay
+  above its muted tier.
+- [x] **CG3. Guard.** `test_cards_lift_off_the_page`: every theme but the two
+  high-contrast ones (structure drawn with rules there) has its cards at
+  least 0.05 L above the page. Ten failures on the old stylesheet.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

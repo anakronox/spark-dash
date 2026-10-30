@@ -19,6 +19,7 @@ from palette_check import (
     check,
     contrast,
     delta_e,
+    oklch,
     parse_themes,
 )
 
@@ -264,3 +265,19 @@ def test_node_colours_are_apart_from_each_other(theme: ThemeBlock):
     head = theme.slots[:4]
     worst = min(delta_e(a, b) for i, a in enumerate(head) for b in head[i + 1:])
     assert worst >= NODE_SLOT_FLOOR, f"{theme.name}: two node colours {worst:.1f} dE apart"
+
+
+#: Minimum OKLCH lightness step from the page up to a card, so cards lift off
+#: it (CC–CG). Measured on lightness rather than contrast ratio because ratios
+#: compress near black: catppuccin's step reads like solarized's at 1.14:1
+#: against 1.21:1. Ten themes sat at 0.009–0.043 before CG.
+CARD_LIFT_FLOOR = 0.05
+
+
+@pytest.mark.parametrize("name", sorted(theme_tokens()))
+def test_cards_lift_off_the_page(name):
+    if name in HIGH_CONTRAST:
+        pytest.skip("structure is drawn with rules there, not surface lift")
+    tokens = theme_tokens()[name]
+    gap = oklch(tokens["--panel"])[0] - oklch(tokens["--page"])[0]
+    assert gap >= CARD_LIFT_FLOOR, f"{name}: cards sit {gap:.3f} L above the page"
