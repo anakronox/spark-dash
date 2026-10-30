@@ -1326,3 +1326,26 @@ def test_no_component_copies_state_with_structuredClone():
     for path in sorted((FRONTEND / "components").glob("*.svelte")):
         src = without_comments(path.read_text())
         assert "structuredClone(" not in src, f"{path.name} copies state with structuredClone"
+
+
+def test_plots_grow_into_a_held_card_and_cannot_loop():
+    """CL: room in a held chart card goes to the plots, not to margins. It
+    writes layout from a measurement, so the guards that stop it looping are
+    pinned: only while held exceeds natural, only with every row shown, only
+    for chart canvases (gauges stay top-aligned, BX), only upward, and never
+    past MAX_PLOT_PX."""
+    src = without_comments(SECTION.read_text())
+    i = src.index("const charts = slotEl.querySelectorAll('.uplot').length;")
+    block = src[i : i + 600]
+    assert "held > naturalRows" in block
+    assert "tops.length >= rowsTotal" in block, "paged rows come back first, then plots grow"
+    assert "charts === plots.length" in block, "a gauge card would lose its shared line"
+    assert "current < MAX_PLOT_PX" in block and "Math.min(MAX_PLOT_PX, current + grow)" in block
+    assert "grow >= 1" in block, "a zero or negative step is a no-op, never a shrink"
+
+
+def test_there_is_no_reset_footer():
+    """CL: Settings → Appearance has the reset, with a confirm; the one-click
+    footer duplicated it."""
+    app = (FRONTEND / "App.svelte").read_text()
+    assert "<footer" not in app and "layout.reset()" not in app

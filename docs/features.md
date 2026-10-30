@@ -203,7 +203,8 @@ nothing is configured on the server.
 - **Node chips on the Activity cards** hide or show a node on every chart
   (System Activity; shift-click shows only that node). On a cluster too big
   for the chips to fit beside the controls they fold into a **nodes** menu.
-  **Reset layout** puts it back to the layout you picked.
+  **Settings → Appearance → Reset layout** puts it back to the layout you
+  picked.
 - **Settings** opens as a wide panel with a section on each tab of its left
   rail, each integration's state shown beside its name; drag the panel's left
   edge to make it wider or narrower.

@@ -8724,6 +8724,22 @@ speculative-decoding acceptance rate, length and totals.
 - [x] README's screenshot retaken after the deploy (dashed network lines, the
   Models table's prefix hit and accept columns), alt text to match.
 
+### CL — Charts grow into a held card; the reset footer goes — **built 2026-10-30**
+
+- [x] **CL1. Room in a held chart card goes to the plots.** With every row
+  shown, spare room was centred around the charts, so taking CJ's note off
+  Network Activity added margins rather than chart (Brian, from the README
+  screenshot). `measure()` now raises the stored plot height by an equal share
+  of the spare pixels per chart row, after the existing rule that brings paged
+  rows back. Same guards as that rule: only while held exceeds natural, only
+  upward, only by pixels that fit, never past MAX_PLOT_PX; chart canvases
+  only, since gauge cards stay top-aligned (BX). Measured in the preview with
+  Network Activity held at 30 modules: plot height 180 to 284 in one pass,
+  unchanged three seconds later, 0.75px of margin left.
+- [x] **CL2. No reset footer.** A one-click "reset layout" at the foot of the
+  page duplicated Settings → Appearance → Reset layout, which confirms first
+  and returns to the page's preset.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

@@ -596,12 +596,6 @@
     'flex flex-wrap items-baseline justify-between gap-x-[14px] gap-y-1 text-label';
   const CLUSTER_H2 = 'text-label font-medium tracking-[0.14em] uppercase text-ink-2';
 
-  const FOOTER =
-    'flex items-baseline justify-between gap-3 text-micro tracking-[0.1em] ' +
-    'uppercase pt-1 border-t border-rule';
-  const RESET =
-    'text-micro tracking-[0.1em] uppercase text-ink-muted px-[5px] py-[2px] ' +
-    'rounded-sm hover:text-ink';
 </script>
 
 <svelte:window bind:innerWidth={viewportWidth} />
@@ -1161,17 +1155,8 @@
     <p class={notice()}>Waiting for the first frame…</p>
   {/if}
 
-  <!-- Only when it has something in it. The footer carries a top border, so
-       with its text gone and the reset button absent — which is the usual
-       state — it would draw a rule across the bottom of the page with nothing
-       underneath it. `justify-end` because the button is now the only thing
-       here: under `justify-between` a lone child goes to the LEFT, moving a
-       control that has always sat on the right. -->
-  {#if !layout.isDefault}
-    <footer class="{FOOTER} justify-end">
-      <button class={RESET} onclick={() => layout.reset()}>reset layout</button>
-    </footer>
-  {/if}
+  <!-- NO FOOTER (CL). It held a one-click "reset layout", which Settings
+       already has with a confirm and a return to the page's preset. -->
 </div>
 
 <!-- One zone renderer for every zone in every band, so the drop affordances

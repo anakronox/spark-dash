@@ -33,6 +33,7 @@
     MIN_ROWS,
     MAX_ROWS,
     MIN_PLOT_PX,
+    MAX_PLOT_PX,
   } from '../lib/layout.svelte';
   import CardGrip from './CardGrip.svelte';
   import { isCopy } from '../lib/layout.svelte';
@@ -471,6 +472,29 @@
           const rows = tops.length + extra;
           if (rows >= rowsTotal) layout.resetPlotRows(id);
           else layout.setPlotRows(id, rows);
+        }
+      }
+
+      /* AND THEN THE PLOTS GROW INTO IT (CL). With every row shown, room left
+         in a held card was split above and below the charts, so taking text
+         off Network Activity added margins, not chart (Brian, 2026-10-30).
+         When the held card is a module or more taller than its content, each
+         chart row takes an equal share of the spare pixels.
+
+         The same four reasons it cannot loop: it only RAISES the plot height,
+         only while held exceeds natural, only by pixels that fit (natural
+         lands inside the held span, so the next pass finds under a module and
+         stops), and never past MAX_PLOT_PX.
+
+         CHARTS ONLY. A gauge panel's box is a plot here too, but gauge cards
+         are top-aligned so side-by-side ones share a line (BX); growing their
+         box would undo that. */
+      const charts = slotEl.querySelectorAll('.uplot').length;
+      if (held > naturalRows && tops.length >= rowsTotal && charts === plots.length) {
+        const current = layout.plotHeight(id);
+        const grow = Math.floor((held * unit - GAP_PX - natural) / tops.length);
+        if (grow >= 1 && current < MAX_PLOT_PX) {
+          layout.setPlotHeight(id, Math.min(MAX_PLOT_PX, current + grow));
         }
       }
       return;
