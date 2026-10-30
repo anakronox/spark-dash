@@ -466,11 +466,11 @@
      and no way to opt out of a cool near-white.
 
      Warm ground, warm rules, same light chart slots. */
-  --page: #e8e5dd;
-  --panel: #fbf9f4;
-  --panel-raised: #f0ece1;
-  --rule: #ddd6c7;
-  --track: #ebe6da;
+  --page: #dddad3;
+  --panel: #f0eee9;
+  --panel-raised: #e8e4d9;
+  --rule: #cac3b5;
+  --track: #e9e4d8;
 
   --ink: #241f18;
   --ink-2: #393229;
@@ -480,10 +480,10 @@
   --series-2: #701452;  /* h 345 — other GPU workloads */
   --series-3: #e01fa3;  /* h 346 — SM / third series */
 
-  --good: #0b7539;
-  --warning: #865e00;
-  --serious: #aa4702;
-  --critical: #a5242f;
+  --good: #046d34;
+  --warning: #7d5803;
+  --serious: #9f410c;
+  --critical: #9b1727;
 
   /* The light theme's validated set. Its two accepted contrast allowances
      (amber and pink, discharged by the always-present chart legend) apply here
@@ -491,21 +491,21 @@
      inherited silently. */
   --chart-1: #dc3eb9;  /* L 0.64  h 338 */
   --chart-2: #7b0995;  /* L 0.43  h 318 */
-  --chart-3: #3e8dff;  /* L 0.65  h 258 */
+  --chart-3: #3787f8;  /* L 0.63  h 258 */
   --chart-4: #4609f6;  /* L 0.47  h 276 */
   --chart-5: #00849e;  /* L 0.57  h 218 */
   --chart-6: #844fdc;  /* L 0.56  h 296 */
-  --chart-7: #1a9e95;  /* L 0.63  h 187 */
+  --chart-7: #0d9990;  /* L 0.62  h 187 */
   --chart-8: #09618d;  /* L 0.47  h 239 */
 }
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --page: #e8e8e6;
-  --panel: #fcfcfb;
-  --panel-raised: #f2f1ec;
-  --rule: #e1e0d9;
-  --track: #eceae3;
+  --page: #dbdbd9;
+  --panel: #eeeeed;
+  --panel-raised: #e6e5e0;
+  --rule: #c5c4bd;
+  --track: #e6e5de;
 
   --ink: #0b0b0b;
   --ink-2: #353433;
@@ -536,10 +536,10 @@
        --serious   2.57 -> 4.63
        --critical  4.68            already passing, left alone
      Hue is held in every case; only lightness moves. */
-  --good: #037804;
-  --warning: #8a5f05;
-  --serious: #a54103;
-  --critical: #c22a38;
+  --good: #016f02;
+  --warning: #7f5704;
+  --serious: #983700;
+  --critical: #b81e30;
 
   /* Categorical chart slots, for the multi-metric history charts.
      The first three ARE the node hues above — one palette, extended, so a
@@ -552,12 +552,12 @@
      visible title and a named legend entry). */
   --chart-1: #f623b0;  /* L 0.66  h 347 */
   --chart-2: #841a84;  /* L 0.44  h 328 */
-  --chart-3: #2395ff;  /* L 0.66  h 252 */
+  --chart-3: #0e8af3;  /* L 0.63  h 252 */
   --chart-4: #3500f6;  /* L 0.46  h 272 */
   --chart-5: #008da7;  /* L 0.59  h 217 */
   --chart-6: #6135c1;  /* L 0.47  h 291 */
   --chart-7: #b06adc;  /* L 0.65  h 311 */
-  --chart-8: #1a9e8d;  /* L 0.63  h 181 */
+  --chart-8: #0d9988;  /* L 0.61  h 181 */
 }
 
 /* A DARK AND A LIGHT FOR EVERY FAMILY (roadmap BM). The blocks above are
@@ -609,11 +609,11 @@
 
 :root[data-theme='catppuccin-light'] {
   color-scheme: light;
-  --page: #dadde3;
-  --panel: #eff1f5;
-  --panel-raised: #e6e9ef;
-  --rule: #ccd0da;
-  --track: #dce0e8;
+  --page: #d8dbe1;
+  --panel: #eceef2;
+  --panel-raised: #e2e5eb;
+  --rule: #c0c4ce;
+  --track: #e1e5ed;
 
   --ink: #4c4f69;
   --ink-2: #54576f;
@@ -671,29 +671,29 @@
 
 :root[data-theme='solarized-light'] {
   color-scheme: light;
-  --page: #e8e2cf;
-  --panel: #fdf6e3;
-  --panel-raised: #eee8d5;
-  --rule: #e2dbc6;
-  --track: #eee8d5;
+  --page: #e1dbc8;
+  --panel: #f5eedb;
+  --panel-raised: #eae4d2;
+  --rule: #cbc4af;
+  --track: #eae4d2;
 
   --ink: #073642;
-  --ink-2: #4a5f66;
-  --ink-muted: #51676e;
+  --ink-2: #465b62;
+  --ink-muted: #4d6269;
 
   --series-1: #2e60ee;
   --series-2: #bd1d96;
   --series-3: #01578a;
 
-  --good: #476e05;
-  --warning: #7e5e05;
-  --serious: #ad4003;
-  --critical: #c60d2e;
+  --good: #436900;
+  --warning: #795a02;
+  --serious: #a63d01;
+  --critical: #c0042b;
 
   --chart-1: #900171;  /* L 0.44  h 341 */
   --chart-2: #e249b7;  /* L 0.65  h 341 */
   --chart-3: #133cc9;  /* L 0.44  h 265 */
-  --chart-4: #7d82ef;  /* L 0.65  h 279 */
+  --chart-4: #797eea;  /* L 0.64  h 279 */
   --chart-5: #085491;  /* L 0.44  h 250 */
   --chart-6: #2f7bef;  /* L 0.60  h 259 */
   --chart-7: #6817b7;  /* L 0.44  h 299 */
@@ -733,11 +733,11 @@
 
 :root[data-theme='darcula-light'] {
   color-scheme: light;
-  --page: #eaebed;
-  --panel: #ffffff;
-  --panel-raised: #f7f8fa;
-  --rule: #dfe1e5;
-  --track: #ebecf0;
+  --page: #dadbdd;
+  --panel: #eeeeee;
+  --panel-raised: #e3e4e6;
+  --rule: #c2c4c8;
+  --track: #e3e4e8;
 
   --ink: #080808;
   --ink-2: #2b2d30;
@@ -747,28 +747,28 @@
   --series-2: #c435b3;
   --series-3: #4b7d82;
 
-  --good: #047a16;
-  --warning: #7b6804;
-  --serious: #b04a03;
-  --critical: #cd1e2b;
+  --good: #036f13;
+  --warning: #705e01;
+  --serious: #a04201;
+  --critical: #c0011f;
 
   --chart-1: #da4dc8;  /* L 0.65  h 333 */
   --chart-2: #891f69;  /* L 0.44  h 343 */
-  --chart-3: #5d8bf1;  /* L 0.65  h 264 */
+  --chart-3: #5885eb;  /* L 0.63  h 264 */
   --chart-4: #3534c8;  /* L 0.44  h 273 */
   --chart-5: #087ba5;  /* L 0.55  h 232 */
-  --chart-6: #7c83ef;  /* L 0.65  h 278 */
-  --chart-7: #1662ae;  /* L 0.49  h 253 */
-  --chart-8: #2b98de;  /* L 0.65  h 243 */
+  --chart-6: #7a7eeb;  /* L 0.64  h 279 */
+  --chart-7: #0a5ba6;  /* L 0.47  h 253 */
+  --chart-8: #1d8fd5;  /* L 0.62  h 243 */
 }
 
 :root[data-theme='cyberpunk-light'] {
   color-scheme: light;
-  --page: #e8e3f2;
-  --panel: #fbf9ff;
-  --panel-raised: #ece4fb;
-  --rule: #dbd0f2;
-  --track: #ece4fb;
+  --page: #ddd8e7;
+  --panel: #efedf3;
+  --panel-raised: #e8e0f7;
+  --rule: #c9bedf;
+  --track: #e8e0f7;
 
   --ink: #1a0f33;
   --ink-2: #2e2150;
@@ -778,28 +778,28 @@
   --series-2: #bf33b3;
   --series-3: #02578b;
 
-  --good: #4d6e5d;
-  --warning: #875f05;
-  --serious: #ab4803;
-  --critical: #cc042e;
+  --good: #466554;
+  --warning: #7d5700;
+  --serious: #a0410b;
+  --critical: #bf022a;
 
-  --chart-1: #7584f0;  /* L 0.65  h 275 */
+  --chart-1: #707fea;  /* L 0.64  h 275 */
   --chart-2: #153cc9;  /* L 0.44  h 265 */
   --chart-3: #8a1e66;  /* L 0.44  h 345 */
   --chart-4: #e149b9;  /* L 0.65  h 340 */
   --chart-5: #08519d;  /* L 0.44  h 255 */
-  --chart-6: #4494e2;  /* L 0.65  h 250 */
+  --chart-6: #3c8cda;  /* L 0.63  h 251 */
   --chart-7: #8f4271;  /* L 0.49  h 345 */
   --chart-8: #6e65fe;  /* L 0.60  h 280 */
 }
 
 :root[data-theme='forest-light'] {
   color-scheme: light;
-  --page: #e2e8de;
-  --panel: #f8fbf6;
-  --panel-raised: #edf3e9;
-  --rule: #d1dec9;
-  --track: #e3ecdd;
+  --page: #d7ddd3;
+  --panel: #edf0eb;
+  --panel-raised: #e1e7dd;
+  --rule: #bcc9b4;
+  --track: #dfe8d9;
 
   --ink: #122012;
   --ink-2: #253625;
@@ -809,28 +809,28 @@
   --series-2: #ad2bb3;
   --series-3: #5d767f;
 
-  --good: #447202;
-  --warning: #865e00;
-  --serious: #a9490c;
-  --critical: #a52530;
+  --good: #3f6a01;
+  --warning: #7e5804;
+  --serious: #a1410a;
+  --critical: #991626;
 
   --chart-1: #8c0779;  /* L 0.44  h 336 */
   --chart-2: #0c8cbb;  /* L 0.60  h 232 */
   --chart-3: #0246b9;  /* L 0.44  h 261 */
-  --chart-4: #a26ff2;  /* L 0.65  h 299 */
+  --chart-4: #a16ef1;  /* L 0.65  h 299 */
   --chart-5: #d035a6;  /* L 0.60  h 341 */
   --chart-6: #6b66fe;  /* L 0.60  h 279 */
   --chart-7: #07568b;  /* L 0.44  h 246 */
-  --chart-8: #4890ef;  /* L 0.65  h 256 */
+  --chart-8: #428ae9;  /* L 0.63  h 256 */
 }
 
 :root[data-theme='slate-light'] {
   color-scheme: light;
-  --page: #e3e6ea;
-  --panel: #f8fafc;
-  --panel-raised: #eef2f6;
-  --rule: #d5dce5;
-  --track: #e5eaf0;
+  --page: #d8dbdf;
+  --panel: #edeff1;
+  --panel-raised: #e1e5e9;
+  --rule: #bec5ce;
+  --track: #e0e5eb;
 
   --ink: #0f172a;
   --ink-2: #1e293b;
@@ -840,18 +840,18 @@
   --series-2: #ac3ecd;
   --series-3: #5d767f;
 
-  --good: #027634;
-  --warning: #865e00;
-  --serious: #aa4802;
-  --critical: #c12937;
+  --good: #006e30;
+  --warning: #7e5804;
+  --serious: #9a3d06;
+  --critical: #b81d30;
 
   --chart-1: #3534c8;  /* L 0.44  h 273 */
   --chart-2: #6866ff;  /* L 0.60  h 278 */
   --chart-3: #0a8cbb;  /* L 0.60  h 231 */
   --chart-4: #7f178e;  /* L 0.44  h 322 */
-  --chart-5: #7186f1;  /* L 0.65  h 273 */
+  --chart-5: #6c81eb;  /* L 0.64  h 273 */
   --chart-6: #14679a;  /* L 0.49  h 242 */
-  --chart-7: #1691ff;  /* L 0.65  h 252 */
+  --chart-7: #028af7;  /* L 0.63  h 252 */
   --chart-8: #14509e;  /* L 0.44  h 257 */
 }
 

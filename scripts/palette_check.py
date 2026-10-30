@@ -82,18 +82,18 @@ CONTRAST_MIN = 3.0
 #:
 #: A contrast WARN is not dismissable on its own — it obligates visible labels
 #: or a table view. The light theme's amber and pink sit under 3:1 against its
-#: near-white surface, and what discharges that is the chart legend, which is
+#: off-white surface, and what discharges that is the chart legend, which is
 #: always present and names every series. Recorded here rather than left as an
 #: unexplained pass, so that if the legend ever became optional this allowance
 #: is the thing that has to be revisited.
 CONTRAST_ALLOWANCES: dict[str, dict[str, str]] = {
     "paper": {
-        "--chart-4": "amber on warm near-white; discharged by the always-present chart legend",
-        "--chart-5": "pink on warm near-white; discharged by the always-present chart legend",
+        "--chart-4": "amber on warm off-white; discharged by the always-present chart legend",
+        "--chart-5": "pink on warm off-white; discharged by the always-present chart legend",
     },
     "light": {
-        "--chart-4": "amber on near-white; discharged by the always-present chart legend",
-        "--chart-5": "pink on near-white; discharged by the always-present chart legend",
+        "--chart-4": "amber on off-white; discharged by the always-present chart legend",
+        "--chart-5": "pink on off-white; discharged by the always-present chart legend",
     }
 }
 

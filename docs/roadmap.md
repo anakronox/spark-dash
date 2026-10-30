@@ -8638,6 +8638,23 @@ could not be dragged back to its layout or the charts dismissed.
   high-contrast ones (structure drawn with rules there) has its cards at
   least 0.05 L above the page. Ten failures on the old stylesheet.
 
+### CH — Light themes dimmed off white — **built 2026-10-30**
+
+- [x] **CH1. One surface scale for every light theme.** Cards sat at OKLCH L
+  0.96–1.00 (darcula-light pure `#ffffff`) and glared; in several themes the
+  border was lighter than the page, so card edges vanished. Now, hue and
+  chroma kept: cards 0.95, page 0.89, inner cards and tracks 0.92, borders
+  0.82. Chosen from a preview of light and paper against the current values.
+  contrast-light keeps its white.
+- [x] **CH2. What the darker surfaces moved.** Status colours and, in
+  solarized-light, `--ink-2` and the muted tier darkened by lightness to stay
+  at 4.5:1 on all three surfaces. Fourteen chart slots darkened to keep 3:1
+  on the cards; darcula-light's chart-6 and chart-7 then re-separated
+  (adjacent ΔE 15), and cyberpunk-light's `good` moved ΔE 0.2 to stay 12
+  from a series colour.
+- [x] **CH3. Guard.** `test_light_cards_do_not_glare`: a light theme's cards
+  at most L 0.96, and its borders darker than its page.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

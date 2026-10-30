@@ -281,3 +281,18 @@ def test_cards_lift_off_the_page(name):
     tokens = theme_tokens()[name]
     gap = oklch(tokens["--panel"])[0] - oklch(tokens["--page"])[0]
     assert gap >= CARD_LIFT_FLOOR, f"{name}: cards sit {gap:.3f} L above the page"
+
+
+#: Brightest a light theme's card may be (CH). At 0.96–1.00 they glared, and
+#: borders lighter than the page left card edges invisible. Contrast-light's
+#: white is the point of it.
+LIGHT_CARD_CEILING = 0.96
+
+
+@pytest.mark.parametrize("name", sorted(theme_tokens()))
+def test_light_cards_do_not_glare(name):
+    tokens = theme_tokens()[name]
+    if name in HIGH_CONTRAST or contrast("#000000", tokens["--panel"]) < contrast("#ffffff", tokens["--panel"]):
+        pytest.skip("dark theme, or high contrast")
+    assert oklch(tokens["--panel"])[0] <= LIGHT_CARD_CEILING, f"{name}: cards at L {oklch(tokens['--panel'])[0]:.3f}"
+    assert oklch(tokens["--rule"])[0] < oklch(tokens["--page"])[0], f"{name}: card borders lighter than the page"
