@@ -91,8 +91,8 @@ plain numbers. Keep a copy of the card on each view: trends in one, the
 present in the other.
 
 **Network traffic, a chart per group.** RoCE, management, Wi-Fi and the rest
-each get one chart with a line per node, received above the zero line and sent
-below it. The links span six orders of magnitude, so a **log** switch keeps a
+each get one chart with two lines per node in the node's colour, received
+solid and sent dashed, both rising from zero. The links span six orders of magnitude, so a **log** switch keeps a
 12 Mb/s management spike from flattening the 100 kb/s lines beside it. Errors,
 drops and an RDMA port changing state get a chart of their own when they
 happen. A **gauges** view shows each node's traffic in each group now, as a

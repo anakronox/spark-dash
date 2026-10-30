@@ -787,12 +787,12 @@ export interface GroupChart {
 }
 
 /** Sum columns sample by sample. A sample is null only when every input is. */
-function sumColumns(cols: (number | null)[][], sign: 1 | -1): (number | null)[] {
+function sumColumns(cols: (number | null)[][]): (number | null)[] {
   const len = Math.max(0, ...cols.map((c) => c.length));
   const out: (number | null)[] = new Array(len).fill(null);
   for (const c of cols) {
     c.forEach((v, i) => {
-      if (v != null) out[i] = (out[i] ?? 0) + sign * v;
+      if (v != null) out[i] = (out[i] ?? 0) + v;
     });
   }
   return out;
@@ -822,7 +822,7 @@ export function summarise(
         mine.map((c) => c.columns[c.names.indexOf(d)]).filter((col): col is (number | null)[] => col != null);
       names.push(`${node} in`, `${node} out`);
       nodes.push(node, node);
-      columns.push(sumColumns(dir(DIRECTIONS.rx), 1), sumColumns(dir(DIRECTIONS.tx), -1));
+      columns.push(sumColumns(dir(DIRECTIONS.rx)), sumColumns(dir(DIRECTIONS.tx)));
     }
     charts.push({
       key: `${g.key}${SEP}group`,
@@ -832,7 +832,10 @@ export function summarise(
         label: g.label,
         unit: 'b/s',
         si: true,
-        mirror: true,
+        /* SENT DASHED, both directions above zero (CK). AO3 mirrored them, out
+           below the line, and the axis then read as inverted wherever one
+           side was quiet; Brian picked this over separate in/out charts. */
+        dashed: names.filter((n) => n.endsWith(' out')),
       },
       names,
       nodes,

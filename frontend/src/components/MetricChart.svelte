@@ -28,8 +28,6 @@
     crossesDay,
     decadeSplits,
     fitRange,
-    mirrorRange,
-    mirrorSplits,
     niceStep,
     stampOf,
     timeLabels,
@@ -70,7 +68,7 @@
      *  fixed one below. */
     fit?: boolean;
     /** A log-like y axis (uPlot's asinh: linear near zero, logarithmic past
-     *  1 kb/s, so a mirrored chart keeps its negative side). Network Activity's
+     *  1 kb/s, so zero stays on the axis). Network Activity's
      *  group charts only, where one 12 Mb/s spike otherwise flattens every
      *  100 kb/s line beside it. */
     log?: boolean;
@@ -127,7 +125,9 @@
    * [5, 3] rather than a finer dash: at 132px tall with a 2px stroke, a
    * [2, 2] pattern reads as a lighter solid line rather than as a dashed one.
    */
-  const dashOf = (name: string) => (metric.dashed === name ? [5, 3] : []);
+  const isDashed = (name: string) =>
+    Array.isArray(metric.dashed) ? metric.dashed.includes(name) : metric.dashed === name;
+  const dashOf = (name: string) => (isDashed(name) ? [5, 3] : []);
 
   let host = $state<HTMLDivElement | null>(null);
   let chart: uPlot | null = null;
@@ -187,8 +187,7 @@
         // nobody asks how many a port is.
         (metric.states[Math.round(v)] ?? String(v))
       : metric.si
-        ? // A mirrored chart's out side is negative only to sit below the line.
-          bitRate(metric.mirror ? Math.abs(v) : v)
+        ? bitRate(v)
         : `${Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(1)}${metric.unit}`;
 
   /* 11px, up from 10. These are eight small charts rather than one large one,
@@ -228,25 +227,18 @@
        The prefix rides on the unit so the axis still says what it measures. */
     /* A LOG AXIS IS THE EXCEPTION: its gridlines are 1k, 10k, 1M apart, and
        one divisor would print 0.001M. Each label takes its own prefix. */
-    /* THE DIRECTION ON THE LABEL, on a mirrored chart. Unsigned, "2.5Mb/s"
-       under a "0" read as an inverted axis; ↑ is received, ↓ is sent, the
-       same arrows as the in/out key in the corner. */
-    const dir = (v: number) => (!metric.mirror || v === 0 ? '' : v > 0 ? '↑' : '↓');
     if (metric.si && log) {
       return values.map((v) => {
         const a = Math.abs(v);
         const { div, prefix } = siScale(a);
         const n = a / div;
-        return `${dir(v)}${n < 10 && n % 1 ? n.toFixed(1) : n.toFixed(0)}${prefix}${metric.unit}`;
+        return `${n < 10 && n % 1 ? n.toFixed(1) : n.toFixed(0)}${prefix}${metric.unit}`;
       });
     }
     if (metric.si) {
       const { div, prefix } = siScale(Math.max(...values.map(Math.abs), 1));
       const fine = div > 1 && values.some((v) => v !== 0 && Math.abs(v) / div < 10);
-      return values.map(
-        (v) =>
-          `${dir(v)}${((metric.mirror ? Math.abs(v) : v) / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`,
-      );
+      return values.map((v) => `${(v / div).toFixed(fine ? 1 : 0)}${prefix}${metric.unit}`);
     }
     const d = decimalsFor(values);
     const labels = values.map((v) => v.toFixed(d));
@@ -319,7 +311,7 @@
     const top = ceiling ?? Math.ceil(headroom / niceStep(peak / 4)) * niceStep(peak / 4);
     const candidates = [0, top / 4, top / 2, (top * 3) / 4, top];
     // A log axis labels decades, and "100kb/s" is wider than "45Mb/s".
-    if (log) candidates.push(...decadeSplits(-top, top));
+    if (log) candidates.push(...decadeSplits(0, top));
     return Math.ceil(Math.max(...ticks(candidates).map(textWidth))) + AXIS_PAD;
   });
 
@@ -401,45 +393,47 @@
     ctx.restore();
   }
 
-  /** A mirrored chart's zero line, brighter than the grid: it is the divide
-   *  between the two directions. Beneath the series, like the annotations. */
-  function drawZero(u: uPlot) {
-    if (!metric.mirror) return;
-    const y = Math.round(u.valToPos(0, 'y', true)) + 0.5;
+  /** "— in ┄ out" in the plot's top-right corner, on a chip of the panel
+   *  colour, when a chart draws direction by dash (CK). The dash is the only
+   *  thing that says which line is which, so it is keyed on the chart rather
+   *  than only in the hover tooltip. */
+  function drawKey(u: uPlot) {
+    if (!Array.isArray(metric.dashed) || !metric.dashed.length) return;
     const ctx = u.ctx;
+    const r = devicePixelRatio || 1;
     ctx.save();
-    ctx.strokeStyle = cssVar('--ink-muted');
-    ctx.globalAlpha = 0.6;
-    ctx.lineWidth = devicePixelRatio || 1;
-    ctx.beginPath();
-    ctx.moveTo(u.bbox.left, y);
-    ctx.lineTo(u.bbox.left + u.bbox.width, y);
-    ctx.stroke();
+    ctx.font = `${10 * r}px ui-monospace, monospace`;
+    ctx.textBaseline = 'middle';
+    const seg = 14 * r;
+    const gap = 4 * r;
+    const parts = [
+      { text: 'in', dash: [] as number[] },
+      { text: 'out', dash: [5 * r, 3 * r] },
+    ];
+    const widths = parts.map((p) => seg + gap + ctx.measureText(p.text).width);
+    const total = widths.reduce((a, w) => a + w, 0) + gap * 2 * (parts.length - 1);
+    const right = u.bbox.left + u.bbox.width - 4 * r;
+    const y = u.bbox.top + 8 * r;
+    ctx.fillStyle = cssVar('--panel');
+    ctx.fillRect(right - total - 4 * r, y - 7 * r, total + 8 * r, 14 * r);
+    let x = right - total;
+    parts.forEach((p, i) => {
+      ctx.strokeStyle = cssVar('--ink-muted');
+      ctx.lineWidth = 2 * r;
+      ctx.setLineDash(p.dash);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + seg, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = cssVar('--ink-muted');
+      ctx.textAlign = 'left';
+      ctx.fillText(p.text, x + seg + gap, y);
+      x += widths[i] + gap * 2;
+    });
     ctx.restore();
   }
 
-  /** "in" and "out" in the plot's right-hand corners, on a chip of the panel
-   *  colour so they stay readable over a line and clear of the tick labels. */
-  function drawSides(u: uPlot) {
-    if (!metric.mirror) return;
-    const ctx = u.ctx;
-    const r = devicePixelRatio || 1;
-    const right = u.bbox.left + u.bbox.width - 4 * r;
-    ctx.save();
-    ctx.font = `${10 * r}px ui-monospace, monospace`;
-    ctx.textAlign = 'right';
-    const chip = (text: string, y: number, base: CanvasTextBaseline) => {
-      const w = ctx.measureText(text).width;
-      ctx.fillStyle = cssVar('--panel');
-      ctx.fillRect(right - w - 3 * r, base === 'top' ? y - r : y - 12 * r, w + 6 * r, 13 * r);
-      ctx.fillStyle = cssVar('--ink-muted');
-      ctx.textBaseline = base;
-      ctx.fillText(text, right, y);
-    };
-    chip('in ↑', u.bbox.top + 2 * r, 'top');
-    chip('out ↓', u.bbox.top + u.bbox.height - 2 * r, 'bottom');
-    ctx.restore();
-  }
 
   function build() {
     if (!host) return;
@@ -481,8 +475,8 @@
         // BENEATH the series, not over them. `drawClear` fires after the canvas
         // is cleared and before anything is plotted, so the data always sits on
         // top of its own annotations.
-        drawClear: [drawAnnotations, drawZero],
-        draw: [drawSides],
+        drawClear: [drawAnnotations],
+        draw: [drawKey],
         setCursor: [
           (u: uPlot) => {
             const idx = u.cursor.idx;
@@ -501,17 +495,15 @@
                itself. The gridlines still land on 0 and 1 because the splits
                below say so — this only moves the frame outward. */
             { range: () => [-0.12, 1.12] as [number, number] }
-          : metric.mirror
-          ? log
-            ? /* asinh, not log: log has no zero and no negatives. Linear
-                 inside 1 kb/s, logarithmic past it. */
-              {
-                distr: 4,
-                asinh: 1000,
-                log: 10,
-                range: (_u, min, max) => mirrorRange(min, max).map((v) => v * 1.5) as [number, number],
-              }
-            : { range: (_u, min, max) => mirrorRange(min, max) }
+          : log
+          ? /* asinh, not log: log has no zero. Linear inside 1 kb/s,
+               logarithmic past it, from zero up. */
+            {
+              distr: 4,
+              asinh: 1000,
+              log: 10,
+              range: (_u, _min, max) => [0, max > 0 ? max * 1.5 : 1000] as [number, number],
+            }
           : fit && metric.minSpan
           ? /* Fitted to whatever is drawn: uPlot passes the min and max of the
                visible series, so hiding a node refits to the rest. */
@@ -557,26 +549,21 @@
              offer 0, 0.25, 0.5, 0.75, 1 — three gridlines for values a boolean
              cannot take. */
           ...(metric.states ? { splits: () => [0, 1] } : {}),
-          /* A mirrored axis picks its own splits, thinned outward from zero so
-             no two labels sit closer than 24px: decades on a log axis, and on
-             a linear one even steps with at least one on each side
-             (mirrorSplits). */
-          ...(metric.mirror
+          /* Decades only on a log axis, thinned upward from zero so no two
+             labels sit closer than 24px. */
+          ...(log
             ? {
                 splits: (u: uPlot, _i: number, min: number, max: number) => {
-                  const all = log ? decadeSplits(min, max) : mirrorSplits(min, max);
                   const kept = [0];
-                  for (const side of [all.filter((v) => v > 0), all.filter((v) => v < 0).reverse()]) {
-                    let last = u.valToPos(0, 'y');
-                    for (const v of side) {
-                      const at = u.valToPos(v, 'y');
-                      if (Math.abs(at - last) >= 24) {
-                        kept.push(v);
-                        last = at;
-                      }
+                  let last = u.valToPos(0, 'y');
+                  for (const v of decadeSplits(min, max).filter((d) => d > 0)) {
+                    const at = u.valToPos(v, 'y');
+                    if (Math.abs(at - last) >= 24) {
+                      kept.push(v);
+                      last = at;
                     }
                   }
-                  return kept.sort((a, b) => a - b);
+                  return kept;
                 },
                 /* uPlot's default filter for a log axis blanks the splits it
                    would not have labelled itself, as null, and a null
@@ -646,8 +633,7 @@
       identity,
       identities?.join('|'),
       log,
-      metric.mirror,
-      metric.dashed,
+      [metric.dashed].flat().join('|'),
       metric.states?.join('|'),
       theme,
       width,
@@ -753,7 +739,7 @@
                  draw. -->
             <span
               class="swatch"
-              class:dashed={metric.dashed === name}
+              class:dashed={isDashed(name)}
               style:background-color={colourOf(name, i)}
             ></span>
             <span class="who">{name}</span>

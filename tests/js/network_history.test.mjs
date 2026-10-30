@@ -108,15 +108,15 @@ test('one chart per division, in division order', () => {
   assert.deepEqual(charts.map((c) => c.links), [3, 1]);
 });
 
-test("a node's interfaces add up; in is positive and out negative", () => {
+test("a node's interfaces add up, both directions above zero (CK)", () => {
   const [roce] = summarise(twoNodeGrid().groups, ['sparketa', 'sparkjr']).charts;
   assert.deepEqual(roce.names, ['sparketa in', 'sparketa out', 'sparkjr in', 'sparkjr out']);
   assert.deepEqual(roce.nodes, ['sparketa', 'sparketa', 'sparkjr', 'sparkjr']);
   assert.deepEqual(roce.columns, [
     [101, 200],
-    [-12, -20],
+    [12, 20],
     [300, 400],
-    [-30, -40],
+    [30, 40],
   ]);
 });
 
@@ -129,15 +129,15 @@ test('a sample is missing only when every interface of that node is', () => {
   });
   const grid = buildGrid(names, columns, ['sparky'], null, true);
   const [chart] = summarise(grid.groups, ['sparky']).charts;
-  assert.deepEqual(chart.columns, [[null, 1], [null, -1]]);
+  assert.deepEqual(chart.columns, [[null, 1], [null, 1]]);
 });
 
-test('the group chart is mirrored, in bits, and says so', () => {
+test('the group chart draws sent dashed, in bits, never mirrored (CK)', () => {
   const [roce] = summarise(twoNodeGrid().groups, ['sparketa', 'sparkjr']).charts;
-  assert.equal(roce.metric.mirror, true);
+  assert.equal('mirror' in roce.metric, false, 'out below a zero line read as an inverted axis');
   assert.equal(roce.metric.si, true);
   assert.equal(roce.metric.unit, 'b/s');
-  assert.equal(roce.metric.dashed, undefined, 'direction is position now, not dash');
+  assert.deepEqual(roce.metric.dashed, ['sparketa out', 'sparkjr out'], 'every node\'s out, and no in');
 });
 
 test('fault charts pass through as exceptions, never summed away', () => {

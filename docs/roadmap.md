@@ -8705,6 +8705,25 @@ speculative-decoding acceptance rate, length and totals.
   in each chart's tooltip after its group's own note. Measured in the
   preview: the card shrank to its content, 9.5px spare.
 
+### CK — Network charts stop mirroring: sent is dashed, both above zero — **built 2026-10-30**
+
+- [x] **CK1. AO3's mirror reversed.** Out below a zero line, each side scaled
+  to its own peak, read as an inverted axis wherever one direction was quiet,
+  and CJ's arrows on the tick labels only explained it. Brian: "far more
+  logical ways to represent in/out traffic simultaneously than an inversion."
+  Offered separate in and out charts or one chart with sent dashed; he chose
+  dashed. Each node keeps its colour, received solid, sent dashed [5, 3], both
+  from zero; a "— in ┄ out" key is drawn in the plot's corner, since the dash
+  is the only thing saying which line is which. AO3 had rejected the dash as
+  unreadable small; at the group charts' size it reads, measured in linear and
+  log.
+- [x] **CK2. What went with it.** `metric.mirror`, the zero divider, the
+  corner chips, `mirrorRange` and CJ's `mirrorSplits`, `niceBelow` and arrows.
+  `metric.dashed` takes a list. The log axis is now asinh from zero up, with
+  decades thinned to 24px, and applies to any chart passed `log`.
+- [ ] README's screenshot still shows the mirrored chart; its alt text matches
+  that image until it is retaken.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
