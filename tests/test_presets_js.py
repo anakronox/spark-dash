@@ -85,8 +85,20 @@ def test_a_preset_replaces_the_layout_and_keeps_the_rest(out):
 def test_the_page_title_reaches_the_header_and_the_tab():
     """BL: the reader's name for the page, kept in this browser."""
     src = (ROOT / "frontend" / "src")
-    store = (src / "lib" / "title.svelte.ts").read_text()
+    store = (src / "lib" / "title.ts").read_text()
     assert "DEFAULT_TITLE = 'spark-dash'" in store
     app = (src / "App.svelte").read_text()
     assert "{pageTitle.custom}</h1>" in app and "document.title = pageTitle.text" in app
     assert "pageTitle.set(" in (src / "components" / "Settings.svelte").read_text()
+
+
+def test_the_page_title_keeps_its_spaces(out):
+    """CF: leading and repeated spaces survive; only whitespace is the default."""
+    t = out["title"]
+    assert t["lead"] == "   lab" and t["inner"] == "lab   one" and t["trail"] == "lab  "
+    assert t["blank"] == "", "only spaces means the default title"
+    assert t["lines"] == "lab one", "still one line"
+    assert t["capped"] == t["max"]
+    app = (ROOT / "frontend" / "src" / "App.svelte").read_text()
+    assert "whitespace-pre-wrap [overflow-wrap:anywhere]\">{pageTitle.custom}</h1>" in app, (
+        "the header must render the spaces, not collapse them")

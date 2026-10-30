@@ -8610,6 +8610,16 @@ could not be dragged back to its layout or the charts dismissed.
   was 4.42:1 there, now `#806d02` at 4.61:1. The guard checks `--page`
   beside `--panel` and `--panel-raised`.
 
+### CF — The page title keeps its spaces — **built 2026-10-30**
+
+- [x] **CF1. Leading and repeated spaces survive.** `cleanTitle` trimmed both
+  ends and collapsed every run of whitespace, so a title could not be
+  indented or spaced out. Now only line breaks and tabs become spaces, the
+  40-character cap stays, and a title of only spaces still means the
+  default. The header renders it with `white-space: pre-wrap`; the browser
+  tab gets it trimmed, and browsers collapse a tab title's spaces anyway.
+  The rules moved to `lib/title.ts` so they run under node.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

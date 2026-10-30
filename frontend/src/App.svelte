@@ -107,7 +107,8 @@
   }
   const layout = new Layout();
   $effect(() => {
-    document.title = pageTitle.text;
+    // Trimmed for the tab: browsers drop its leading spaces anyway.
+    document.title = pageTitle.text.trim();
   });
   /* The Clients card is on the page exactly while the feature is on (AM6a).
      Brian, 2026-09-29: on, it is a card like any other; off, it is not there
@@ -611,7 +612,7 @@
       <!-- The reader's name for the page when they have given one (BL); the
            wordmark otherwise. -->
       {#if pageTitle.custom}
-        <h1 class="{H1} [overflow-wrap:anywhere]">{pageTitle.custom}</h1>
+        <h1 class="{H1} whitespace-pre-wrap [overflow-wrap:anywhere]">{pageTitle.custom}</h1>
       {:else}
         <h1 class={H1}>spark<span class={MUTED}>-dash</span></h1>
       {/if}

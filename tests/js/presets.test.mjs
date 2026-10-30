@@ -1,6 +1,7 @@
 /* Layout presets (roadmap BK), run against an in-memory localStorage and
  * printed as JSON for tests/test_presets_js.py. */
 
+import { cleanTitle, MAX_TITLE } from '../../frontend/src/lib/title.ts';
 import { PRESETS, PRESET_KEY, DEFAULT_PRESET, applyPreset, currentPreset, seedFirstVisit } from '../../frontend/src/lib/presets.ts';
 
 class Mem {
@@ -45,5 +46,14 @@ console.log(JSON.stringify({
   freshThemed: dump(freshThemed),
   arranged: dump(arranged),
   switched: dump(switched),
+  title: {
+    lead: cleanTitle('   lab'),
+    inner: cleanTitle('lab   one'),
+    trail: cleanTitle('lab  '),
+    blank: cleanTitle('   '),
+    lines: cleanTitle('lab\none'),
+    capped: cleanTitle(' '.repeat(5) + 'x'.repeat(60)).length,
+    max: MAX_TITLE,
+  },
   current: [currentPreset(switched), currentPreset(new Mem()), currentPreset(new Mem({ [PRESET_KEY]: 'gone' }))],
 }));
