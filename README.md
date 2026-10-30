@@ -5,7 +5,7 @@ one node to a home cluster. GPU and system health, temperatures, network, and
 live metrics for the LLMs running on them: llama.cpp router, vLLM, SGLang and
 TensorFold.
 
-![The spark-dash dashboard in compact view: a pooled two-node cluster and a standalone node in their own frames, beside the Clients card listing five callers with their requests and tokens; Temperatures as gauges, a dial per node for the package zones, GPU and storage averaged and the network chips at their hottest, each dial marked where it would turn amber and red; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic, received above the line and sent below; and the GPU process and model tables](Screenshot.jpg)
+![The spark-dash dashboard in compact view, solarized theme: a pooled two-node cluster and a standalone node in their own frames, beside the Clients card with its callers' requests and tokens; System Activity as gauges, a dial per node for GPU utilisation, GPU temperature and memory used; Temperatures as gauges, processor, GPU and network averaged per node, each dial marked where it would turn amber and red; System Activity charting a metric per chart and a line per node; Network Activity charting RoCE and management traffic, received above the line and sent below; and the GPU process and model tables](Screenshot.jpg)
 
 ## What you get
 
