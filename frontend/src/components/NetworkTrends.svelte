@@ -41,10 +41,16 @@
   import { gaugeCols as gaugeColsFor, gridCols, onLastRow } from '../lib/chart-grid';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
-  import type { Annotation } from '../lib/history';
+  import type { Annotation, HistorySeries } from '../lib/history';
   import {
     NETWORK_METRICS,
     PORT_STATE,
+    CONGESTION,
+    RETRIES,
+    PRESSURE_CHARTS,
+    type PressureRow,
+    pressureCharts,
+    withPressure,
     buildGrid,
     buildRows,
     DIVISIONS,
@@ -312,6 +318,9 @@
      wire. Packing it into the same name space would need a third slot in every
      key for the benefit of one caller. */
   let rdma = $state<Port[]>([]);
+  /* RoCE congestion and retries (CS): per node, so kept out of the
+     per-interface name space like the ports. */
+  let pressure = $state<PressureRow[]>([]);
 
   const range = $derived(RANGES.find((r) => r.key === rangeKey) ?? RANGES[0]);
   const slots = $derived(new Map(nodeIds.map((id, i) => [id, i])));
@@ -415,7 +424,40 @@
       };
     }),
   );
+  /* The RoCE pressure charts (CS), each one switchable. Stored as what is
+     HIDDEN, so a chart added later arrives shown and one unticked stays off. */
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the component.
+  const PRESSURE_KEY = instanceKey('spark-dash.network-pressure-hidden.v1', instance);
+  let hiddenPressure = $state<string[]>(
+    (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PRESSURE_KEY) ?? '[]');
+        return Array.isArray(saved) ? saved.filter((k) => typeof k === 'string') : [];
+      } catch {
+        return [];
+      }
+    })(),
+  );
+  function togglePressure(key: string) {
+    hiddenPressure = hiddenPressure.includes(key)
+      ? hiddenPressure.filter((k) => k !== key)
+      : [...hiddenPressure, key];
+    try {
+      localStorage.setItem(PRESSURE_KEY, JSON.stringify(hiddenPressure));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+  const pressureKey = (key: string) => `__pressure:${key}`;
+
   const idleItem = $derived([
+    ...PRESSURE_CHARTS.map((c) => ({
+      key: pressureKey(c.key),
+      label: c.label,
+      checked: !hiddenPressure.includes(c.key),
+      disabled: !shownGroups.includes('fabric'),
+      note: shownGroups.includes('fabric') ? undefined : 'RoCE hidden',
+    })),
     {
       key: '__idle',
       label: 'Idle links',
@@ -497,7 +539,11 @@
      zero line and out below. Fault and port-state charts exist only when
      something happened, and are about one interface, so they stay
      per-interface, under the group charts. */
-  const summary = $derived(summarise(groups, nodeIds));
+  const summarised = $derived(summarise(groups, nodeIds));
+  const summary = $derived({
+    ...summarised,
+    charts: withPressure(summarised.charts, pressureCharts(pressure, nodeIds, active, hiddenPressure)),
+  });
   const exceptions = $derived(
     unacknowledged(summary.exceptions, x, ackedAt, parseInt(range.step, 10) || 60),
   );
@@ -533,7 +579,7 @@
      reading a later `const` there throws before the first frame. */
   const exceptionRows = $derived(Math.max(0, plotRows - groupRows));
   $effect.pre(() => {
-    /* The group charts are never paged, there are at most four. Whatever rows
+    /* The group charts are never paged, there are at most six (four groups and the two RoCE pressure charts). Whatever rows
        they leave go to the exceptions under them; with none left they fold to
        their heading, which still counts them, so they cannot hold the card
        taller than the reader dragged it. */
@@ -630,7 +676,13 @@
          to appear. */
       const responses = await Promise.all(
         NETWORK_METRICS.map(async (metric) => {
-          const resp = await fetchHistory(metric, range.minutes, range.step, controller.signal);
+          /* The pressure charts are extras: one failing must not blank the
+             traffic charts the card is for. */
+          const optional = metric === CONGESTION || metric === RETRIES;
+          const resp = await fetchHistory(metric, range.minutes, range.step, controller.signal).catch((err) => {
+            if (!optional || (err as Error).name === 'AbortError') throw err;
+            return { series: [] as HistorySeries[] };
+          });
           return { metric, resp };
         }),
       );
@@ -671,11 +723,14 @@
          instant — so it goes through `toColumnar` and `snapGrid` with
          everything else and is separated out here. */
       const portRows = [];
+      const pressureRows: PressureRow[] = [];
       const linkNames = [];
       const linkColumns = [];
       for (let i = 0; i < tagged.length; i++) {
         if (tagged[i].metric === PORT_STATE) {
           portRows.push({ labels: tagged[i].series.labels, column: snapped.columns[i] });
+        } else if (tagged[i].metric === CONGESTION || tagged[i].metric === RETRIES) {
+          pressureRows.push({ metric: tagged[i].metric, labels: tagged[i].series.labels, column: snapped.columns[i] });
         } else {
           linkNames.push(columnar.names[i]);
           linkColumns.push(snapped.columns[i]);
@@ -686,6 +741,7 @@
          until the node stacks are redeployed — the one column the Fabric
          division exists to explain. */
       rdma = pairPorts(ports(portRows), livePairs);
+      pressure = pressureRows;
       names = linkNames;
       columns = linkColumns;
     } catch (err) {
@@ -694,6 +750,7 @@
       names = [];
       columns = [];
       rdma = [];
+      pressure = [];
       x = [];
     } finally {
       if (inflight === controller) loading = false;
@@ -724,7 +781,12 @@
            legend beside it does not shift when the view changes. -->
       <PickMenu
         groups={[{ items: groupItems }, { label: 'Charts', items: idleItem }]}
-        ontoggle={(key) => (key === '__idle' ? writeFlag(QUIET_KEY, (includeQuiet = !includeQuiet)) : toggleGroup(key))}
+        ontoggle={(key) =>
+          key === '__idle'
+            ? writeFlag(QUIET_KEY, (includeQuiet = !includeQuiet))
+            : key.startsWith('__pressure:')
+              ? togglePressure(key.slice('__pressure:'.length))
+              : toggleGroup(key)}
         onmove={(key, dir) => itemOrder.step(ORDER_CARD, orderKeys(), shownInOrder, key, dir)}
         disabled={mode === 'ports'}
         what="Interface groups"
@@ -961,10 +1023,10 @@
         >
           {#each summary.charts as c, i (c.key)}
             {@const note = DIVISIONS.find((d) => d.key === c.division)?.note}
-            <div class="cell" title={`${note ? `${note}\n\n` : ''}${SUM_NOTE}`}>
+            <div class="cell" title={c.note ?? `${note ? `${note}\n\n` : ''}${SUM_NOTE}`}>
               <MetricChart
                 showTime={(!exceptions.length || exceptionRows === 0) && onLastRow(i, summary.charts.length, groupCols)}
-                metric={{ ...c.metric, label: `${c.metric.label} · ${c.links} interface${c.links === 1 ? '' : 's'}` }}
+                metric={{ ...c.metric, label: `${c.metric.label} · ${c.caption ?? `${c.links} interface${c.links === 1 ? '' : 's'}`}` }}
                 {x}
                 columns={c.columns}
                 names={c.names}
@@ -974,7 +1036,7 @@
                 syncKey="spark-dash-network"
                 annotations={showEvents ? annotations : []}
                 height={plotHeight}
-                log={logScale}
+                log={logScale && c.metric.si === true}
               />
             </div>
           {/each}

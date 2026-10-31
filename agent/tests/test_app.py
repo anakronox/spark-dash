@@ -651,6 +651,27 @@ def test_rdma_port_info_reports_no_pairing_as_empty_not_missing():
     assert 'interface=""' in line
 
 
+def test_rdma_hw_counters_are_exported_one_series_per_counter():
+    """CS: one family, the sysfs name as a label, so the history queries pick
+    congestion and retries out by name."""
+    snap = make_snapshot(
+        rdma=[
+            RdmaPort(
+                device="roceP2p1s0f0",
+                port=1,
+                state="ACTIVE",
+                hw_counters={"np_ecn_marked_roce_packets": 12, "out_of_sequence": 0},
+            ),
+            RdmaPort(device="mlx5_0", port=1, state="ACTIVE"),
+        ]
+    )
+    text = render(snap)
+    rows = [ln for ln in text.splitlines() if ln.startswith("sparkdash_rdma_hw_counter_total{")]
+    assert len(rows) == 2
+    assert any('counter="np_ecn_marked_roce_packets"' in r and r.endswith(" 12.0") for r in rows)
+    assert all('device="roceP2p1s0f0"' in r for r in rows)
+
+
 def test_metrics_content_type_matches_the_generator(client):
     """Regression: the endpoint advertised OpenMetrics while serving the
     plain-text format. Prometheus honours the header, parses strictly, and

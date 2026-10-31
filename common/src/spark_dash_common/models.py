@@ -251,6 +251,14 @@ class RdmaPort(BaseModel):
     rx_bytes_total: int = 0
     tx_bytes_total: int = 0
     errors: int = 0
+    hw_counters: dict[str, int] = Field(
+        default_factory=dict,
+        description="RoCE congestion and retry counters from the port's "
+        "hw_counters/, by their sysfs names (np_ecn_marked_roce_packets, "
+        "rp_cnp_handled, out_of_sequence, ...). Cumulative since the driver "
+        "loaded. Only the counters the agent reads and the driver has: empty "
+        "on native InfiniBand and on an older agent.",
+    )
 
     @property
     def active(self) -> bool:

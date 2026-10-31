@@ -100,7 +100,10 @@ each get one chart with two lines per node in the node's colour, received
 solid and sent dashed, both rising from zero. The links span six orders of magnitude, so a **log** switch keeps a
 12 Mb/s management spike from flattening the 100 kb/s lines beside it. Errors,
 drops and an RDMA port changing state get a chart of their own when they
-happen. A **gauges** view shows each node's traffic in each group now, as a
+happen. Beside the RoCE chart, **RoCE congestion** (ECN-marked packets and
+slow-down requests) and **RoCE retries** (resends, out-of-order packets, ack
+timeouts) count per step what fabric latency rises with; the hardware keeps no
+latency counter itself. Either can be switched off in the groups menu. A **gauges** view shows each node's traffic in each group now, as a
 share of the rate its links negotiated. The table lists every interface, worst first, and opens any one's own
 chart; past a dozen links the card opens as the table.
 

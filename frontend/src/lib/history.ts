@@ -69,6 +69,9 @@ export interface MetricSpec {
    * a reader cannot paste into a shell has stopped being the name of the
    * thing. */
   verbatim?: boolean;
+  /** What the on-chart key calls the solid and the dashed line. Defaults to
+   *  in and out, which is what every dashed chart meant until CS. */
+  dashedKey?: [string, string];
   /** Sub-series drawn inside one chart, keyed by the name in `names`.
    *
    * The `false` entry is drawn solid and the `true` entry dashed, both in the

@@ -46,6 +46,11 @@ import {
   summarise,
   lastEvent,
   unacknowledged,
+  CONGESTION,
+  RETRIES,
+  NETWORK_METRICS,
+  pressureCharts,
+  withPressure,
 } from '../../frontend/src/lib/network-history.ts';
 import { sparkPath } from '../../frontend/src/lib/sparkline.ts';
 
@@ -960,6 +965,58 @@ test('the monitored flag does not filter anything', () => {
 });
 
 let failed = 0;
+
+/* RoCE pressure (CS): congestion and retries, one line per node. */
+const prow = (metric, node, counter, column) => ({ metric, labels: counter ? { node, counter } : { node }, column });
+const PRESSURE = [
+  prow(CONGESTION, 'sparkjr', 'np_ecn_marked_roce_packets', [0, 2, 0]),
+  prow(CONGESTION, 'sparkjr', 'rp_cnp_handled', [0, 0, 1]),
+  prow(CONGESTION, 'sparketa', 'np_ecn_marked_roce_packets', [0, 0, 0]),
+  prow(RETRIES, 'sparketa', null, [0, 0, 0]),
+  prow(RETRIES, 'sparkjr', null, [null, 3, 0]),
+];
+
+test('the card fetches both pressure queries', () => {
+  assert.ok(NETWORK_METRICS.includes(CONGESTION) && NETWORK_METRICS.includes(RETRIES));
+});
+
+test('congestion is marked and slowed per node, slowed dashed, in node order', () => {
+  const [cong, retries] = pressureCharts(PRESSURE, ['sparketa', 'sparkjr'], null);
+  assert.equal(cong.metric.label, 'RoCE congestion');
+  assert.deepEqual(cong.names, ['sparketa marked', 'sparkjr marked', 'sparkjr slowed']);
+  assert.deepEqual(cong.nodes, ['sparketa', 'sparkjr', 'sparkjr']);
+  assert.deepEqual(cong.metric.dashed, ['sparkjr slowed']);
+  assert.deepEqual(cong.columns[2], [0, 0, 1]);
+  assert.equal(cong.division, 'fabric');
+  assert.deepEqual(retries.names, ['sparketa', 'sparkjr']);
+  assert.deepEqual(retries.columns[1], [null, 3, 0]);
+});
+
+test('a flat zero is drawn: it is the answer, not an idle link', () => {
+  const charts = pressureCharts([prow(RETRIES, 'sparky', null, [0, 0])], ['sparky'], null);
+  assert.equal(charts.length, 1);
+  assert.equal(charts[0].metric.label, 'RoCE retries');
+});
+
+test('no rows means no chart: an older agent has not measured a clean fabric', () => {
+  assert.deepEqual(pressureCharts([], ['sparky'], null), []);
+  assert.deepEqual(pressureCharts(PRESSURE.filter((r) => r.metric === RETRIES), ['sparkjr'], null).map((c) => c.metric.label), ['RoCE retries']);
+});
+
+test('a node solo and an unticked chart both apply', () => {
+  const [cong] = pressureCharts(PRESSURE, ['sparketa', 'sparkjr'], ['sparketa']);
+  assert.deepEqual(cong.names, ['sparketa marked']);
+  assert.deepEqual(pressureCharts(PRESSURE, ['sparketa', 'sparkjr'], null, ['congestion']).map((c) => c.metric.label), ['RoCE retries']);
+});
+
+test('pressure charts follow the RoCE chart, and need it', () => {
+  const g = (division) => ({ key: division, division });
+  const p = pressureCharts(PRESSURE, ['sparkjr'], null);
+  assert.deepEqual(withPressure([g('management'), g('fabric'), g('wifi')], p).map((c) => c.key),
+    ['management', 'fabric', 'fabric\u0000congestion', 'fabric\u0000retries', 'wifi']);
+  assert.deepEqual(withPressure([g('management')], p).map((c) => c.key), ['management']);
+});
+
 for (const [label, fn] of tests) {
   try {
     fn();

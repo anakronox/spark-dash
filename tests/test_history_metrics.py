@@ -114,7 +114,7 @@ def test_network_queries_are_rated_and_in_bits():
         expr = HISTORY_QUERIES[key]
         assert "rate(" in expr, f"{key} plots a counter without rate(): {expr!r}"
         assert expr.startswith("8 * "), f"{key} is not converted to bits: {expr!r}"
-    for key in ("network_errors", "network_drops"):
+    for key in ("network_errors", "network_drops", "rdma_congestion", "rdma_retries"):
         expr = HISTORY_QUERIES[key]
         # `increase()`, not `rate()`. Nobody asks how many errors per second.
         # Measured: the rate form put a real burst at 0.0002/s, and the axis
@@ -207,6 +207,9 @@ def test_network_queries_keep_their_second_dimension():
         "network_drops": "by (node, interface)",
         "rdma_port_state": "by (node, device, port, interface)",
         "network_link_up": "by (node, interface)",
+        # Per node by design (CS): drawn as fabric-wide charts, one line per node.
+        "rdma_congestion": "by (node, counter)",
+        "rdma_retries": "by (node)",
     }
     assert set(required) == set(network_keys()), (
         "a network query was added or removed without saying what its key is"

@@ -407,8 +407,8 @@
     const seg = 14 * r;
     const gap = 4 * r;
     const parts = [
-      { text: 'in', dash: [] as number[] },
-      { text: 'out', dash: [5 * r, 3 * r] },
+      { text: metric.dashedKey?.[0] ?? 'in', dash: [] as number[] },
+      { text: metric.dashedKey?.[1] ?? 'out', dash: [5 * r, 3 * r] },
     ];
     const widths = parts.map((p) => seg + gap + ctx.measureText(p.text).width);
     const total = widths.reduce((a, w) => a + w, 0) + gap * 2 * (parts.length - 1);

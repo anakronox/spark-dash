@@ -27,6 +27,33 @@ log = logging.getLogger(__name__)
 # accumulates dozens of these, and they'd bury the NICs that matter.
 _VIRTUAL_PREFIXES = ("lo", "veth", "docker", "br-", "virbr", "tap", "tun", "cni", "flannel")
 
+#: RoCE counters from each port's hw_counters/, the ones that say a link is
+#: slowing down or resending (roadmap CS). There is no latency counter; these
+#: are what latency rises with.
+#:
+#: CONGESTION: a switch marks packets ECN when its queue builds; the receiver
+#: counts them and answers with a CNP; the sender counts the CNPs it slowed
+#: down for. On a direct cable with no switch nothing marks, so these stay 0.
+CONGESTION_COUNTERS = (
+    "np_ecn_marked_roce_packets",
+    "np_cnp_sent",
+    "rp_cnp_handled",
+)
+#: RETRIES: packets resent or arriving out of order, acks that timed out, and
+#: receives with no buffer posted (which make the sender retry).
+RETRY_COUNTERS = (
+    "out_of_sequence",
+    "packet_seq_err",
+    "implied_nak_seq_err",
+    "local_ack_timeout_err",
+    "roce_adp_retrans",
+    "roce_adp_retrans_to",
+    "rnr_nak_retry_err",
+    "req_transport_retries_exceeded",
+    "out_of_buffer",
+)
+HW_COUNTERS = CONGESTION_COUNTERS + RETRY_COUNTERS
+
 
 class NetworkCollector(Collector[list[NetworkInterface]]):
     """Physical interfaces, with throughput derived between samples.
@@ -238,6 +265,7 @@ class RdmaCollector(Collector[list[RdmaPort]]):
                             + _read_int(counters / "port_xmit_discards")
                             + _read_int(counters / "link_downed")
                         ),
+                        hw_counters=_hw_counters(port_dir / "hw_counters"),
                     )
                 )
 
@@ -263,6 +291,22 @@ class RdmaCollector(Collector[list[RdmaPort]]):
             return 0, 0
         stats = self._sys_path / "class" / "net" / netdev / "statistics"
         return _read_int(stats / "rx_bytes"), _read_int(stats / "tx_bytes")
+
+
+def _hw_counters(root: Path) -> dict[str, int]:
+    """The counters in HW_COUNTERS this driver provides.
+
+    A counter the driver lacks is LEFT OUT, not reported as 0: an older
+    firmware without `roce_adp_retrans` has not seen zero retransmits, it
+    cannot say.
+    """
+    out: dict[str, int] = {}
+    for name in HW_COUNTERS:
+        try:
+            out[name] = int((root / name).read_text().strip())
+        except (OSError, ValueError):
+            continue
+    return out
 
 
 def _read_text(path: Path) -> str:

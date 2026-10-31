@@ -432,6 +432,29 @@ HISTORY_QUERIES: dict[str, str] = {
         " * on (node, device, port) group_left(interface)"
         " sparkdash_rdma_port_info)"
     ),
+    # RoCE congestion and retries (CS): what latency on the fabric rises with,
+    # since the hardware keeps no latency counter. Counts per step, by
+    # `increase()`, for the reason the fault queries above give.
+    #
+    # PER NODE, NOT PER INTERFACE, unlike every other query on this card: they
+    # are drawn as two charts under the RoCE group's throughput, one line per
+    # node, and a fabric-wide "is anything slowing down" is the question. The
+    # per-port series stay in Prometheus for the day a table column wants them.
+    #
+    # Congestion keeps its two counters apart: ECN-marked packets RECEIVED
+    # (a switch queue building on the way in) and CNPs HANDLED (this node told
+    # to slow its sending). `np_cnp_sent` is the receiver's answer to the first
+    # and would only repeat it. On a direct cable nothing marks, so both stay 0.
+    "rdma_congestion": (
+        "sum by (node, counter) (increase(sparkdash_rdma_hw_counter_total"
+        '{counter=~"np_ecn_marked_roce_packets|rp_cnp_handled"}[{window}]))'
+    ),
+    "rdma_retries": (
+        "sum by (node) (increase(sparkdash_rdma_hw_counter_total"
+        '{counter=~"out_of_sequence|packet_seq_err|implied_nak_seq_err|'
+        "local_ack_timeout_err|roce_adp_retrans|roce_adp_retrans_to|"
+        'rnr_nak_retry_err|req_transport_retries_exceeded|out_of_buffer"}[{window}]))'
+    ),
     "disk_busy": (
         f"100 * max by (node) (rate(node_disk_io_time_seconds_total"
         f"{{{_NODES}}}[{{window}}]))"

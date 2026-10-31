@@ -20,9 +20,12 @@ export const ERRORS = 'network_errors';
 export const DROPS = 'network_drops';
 export const PORT_STATE = 'rdma_port_state';
 export const LINK_UP = 'network_link_up';
+/** RoCE congestion and retries, per node rather than per interface (CS). */
+export const CONGESTION = 'rdma_congestion';
+export const RETRIES = 'rdma_retries';
 
-/** The four queries, in one place, so a fetch loop and a test agree. */
-export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS, PORT_STATE, LINK_UP] as const;
+/** The queries, in one place, so a fetch loop and a test agree. */
+export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS, PORT_STATE, LINK_UP, CONGESTION, RETRIES] as const;
 
 /** Sub-series names. Short: they are the tooltip's left column, repeated on
  *  every row, and "receive" would push the numbers off the edge. */
@@ -784,6 +787,10 @@ export interface GroupChart {
   columns: (number | null)[][];
   /** Interfaces summed, for the caption. */
   links: number;
+  /** Replaces the "N interfaces" caption, for a chart that sums no links. */
+  caption?: string;
+  /** Replaces the division's note on hover. */
+  note?: string;
 }
 
 /** Sum columns sample by sample. A sample is null only when every input is. */
@@ -887,4 +894,121 @@ export function unacknowledged(
 ): LinkChart[] {
   if (ackedAt == null) return exceptions;
   return exceptions.filter((c) => lastEvent(c, x) - step >= ackedAt);
+}
+
+
+/* ---------------------------------------------------------- RoCE pressure
+ *
+ * CS: what latency on the fabric rises with. The ConnectX keeps no latency
+ * counter; it does count the congestion signals and the resends, and those
+ * are what a slow fabric is made of. Two charts under the RoCE throughput,
+ * one line per node, drawn when they are zero too: a flat zero is the
+ * answer "nothing on the fabric slowed down or resent", which is the
+ * question.
+ *
+ * On a direct cable nothing marks ECN, so congestion only moves on links
+ * through a switch. Measured 2026-10-31: every counter 0 on all three nodes,
+ * with 7.3M RDMA writes received on sparketa.
+ */
+
+/** A row from one of the two pressure queries, after the x-axis snap. */
+export interface PressureRow {
+  metric: string;
+  labels: Record<string, string>;
+  column: (number | null)[];
+}
+
+/** The congestion counters' line names. Sysfs names are what the tooltip
+ *  would otherwise print, and `rp_cnp_handled` explains nothing. */
+const CONGESTION_LINES: Record<string, string> = {
+  np_ecn_marked_roce_packets: 'marked',
+  rp_cnp_handled: 'slowed',
+};
+
+export const PRESSURE_CHARTS = [
+  {
+    key: 'congestion',
+    metric: CONGESTION,
+    label: 'RoCE congestion',
+    caption: 'ECN marks and CNPs',
+    note:
+      'Packets a switch marked as congested on the way in (marked), and times a node ' +
+      'was told to slow its sending (slowed, dashed). Counts per step. Direct cables ' +
+      'have no switch to mark them, so these stay at 0 there.',
+  },
+  {
+    key: 'retries',
+    metric: RETRIES,
+    label: 'RoCE retries',
+    caption: 'resends and timeouts',
+    note:
+      'RDMA packets resent, arriving out of order, or acked too late, and receives with ' +
+      'no buffer posted. Counts per step. Anything above 0 is traffic that waited.',
+  },
+] as const;
+
+export type PressureKey = (typeof PRESSURE_CHARTS)[number]['key'];
+
+/** The two pressure charts, for the nodes being drawn. A chart whose query
+ *  returned nothing is left out: those agents predate CS, and a zero line
+ *  would claim a clean fabric nobody measured. */
+export function pressureCharts(
+  rows: PressureRow[],
+  nodeOrder: string[],
+  activeNodes: string[] | null,
+  hidden: readonly string[] = [],
+): GroupChart[] {
+  const wanted = (node: string) => activeNodes === null || activeNodes.includes(node);
+  const out: GroupChart[] = [];
+  for (const spec of PRESSURE_CHARTS) {
+    if (hidden.includes(spec.key)) continue;
+    const mine = rows.filter((r) => r.metric === spec.metric && wanted(r.labels.node ?? ''));
+    if (!mine.length) continue;
+    const seen = [...new Set(mine.map((r) => r.labels.node ?? ''))];
+    const order = [...nodeOrder.filter((n) => seen.includes(n)), ...seen.filter((n) => !nodeOrder.includes(n)).sort()];
+    const lines = spec.metric === CONGESTION ? Object.entries(CONGESTION_LINES) : [['', '']];
+    const names: string[] = [];
+    const nodes: string[] = [];
+    const columns: (number | null)[][] = [];
+    for (const node of order) {
+      for (const [counter, word] of lines) {
+        const cols = mine
+          .filter((r) => r.labels.node === node && (!counter || r.labels.counter === counter))
+          .map((r) => r.column);
+        if (!cols.length) continue;
+        names.push(word ? `${node} ${word}` : node);
+        nodes.push(node);
+        columns.push(sumColumns(cols));
+      }
+    }
+    out.push({
+      key: `fabric${SEP}${spec.key}`,
+      division: 'fabric',
+      metric: {
+        key: `fabric${SEP}${spec.key}`,
+        label: spec.label,
+        // A count per step, like the fault charts: "3" is what happened.
+        unit: '',
+        dashed: names.filter((n) => n.endsWith(' slowed')),
+        dashedKey: ['marked', 'slowed'],
+      },
+      names,
+      nodes,
+      columns,
+      links: 0,
+      caption: spec.caption,
+      note: spec.note,
+    });
+  }
+  return out;
+}
+
+/** The pressure charts placed straight after the RoCE throughput chart, so
+ *  they follow it wherever the reader has dragged the group. With no RoCE
+ *  throughput chart drawn (the group hidden, or a node solo with no RoCE)
+ *  they are not drawn either. */
+export function withPressure(charts: GroupChart[], pressure: GroupChart[]): GroupChart[] {
+  const at = charts.findIndex((c) => c.division === 'fabric');
+  if (at < 0 || !pressure.length) return charts;
+  return [...charts.slice(0, at + 1), ...pressure, ...charts.slice(at + 1)];
 }

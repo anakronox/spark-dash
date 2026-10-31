@@ -392,6 +392,11 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         rx = _g("rdma_receive_bytes_total", "Bytes received", rl)
         tx = _g("rdma_transmit_bytes_total", "Bytes transmitted", rl)
         errs = _g("rdma_errors_total", "Receive errors, discards and link downs", rl)
+        hw = _g(
+            "rdma_hw_counter_total",
+            "RoCE congestion and retry counters from hw_counters/, by sysfs name",
+            [*rl, "counter"],
+        )
         info = _g(
             "rdma_port_info",
             "Always 1; carries link layer, negotiated rate and the paired "
@@ -406,6 +411,8 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             rx.add_metric(labels, float(port.rx_bytes_total))
             tx.add_metric(labels, float(port.tx_bytes_total))
             errs.add_metric(labels, float(port.errors))
+            for name, value in sorted(port.hw_counters.items()):
+                hw.add_metric([*labels, name], float(value))
             # An info-style metric: the rate string is what reveals a link that
             # negotiated below its rated speed, and it can't be a gauge value.
             #
@@ -432,7 +439,7 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
                 [*labels, port.link_layer, port.rate, port.interface], 1.0
             )
 
-        yield from (active, rdma_monitored, rx, tx, errs, info)
+        yield from (active, rdma_monitored, rx, tx, errs, hw, info)
 
 
 def _temp_band_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:

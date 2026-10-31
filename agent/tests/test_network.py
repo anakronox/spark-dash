@@ -260,6 +260,23 @@ class TestRdmaCollector:
         """The normal case on a standalone node."""
         assert RdmaCollector(tmp_path / "sys").collect() == []
 
+    def test_hw_counters_are_read_by_name(self, tmp_path):
+        """Congestion and retry counters (CS), read from hw_counters/. One the
+        list does not name is ignored; one the driver lacks is left out rather
+        than reported as zero, since that driver cannot say."""
+        root = self._build(tmp_path)
+        hw = root / "class" / "infiniband" / "roceP2p1s0f0" / "ports" / "1" / "hw_counters"
+        hw.mkdir()
+        (hw / "np_ecn_marked_roce_packets").write_text("12\n")
+        (hw / "out_of_sequence").write_text("0\n")
+        (hw / "rx_write_requests").write_text("7286744\n")
+        (hw / "packet_seq_err").write_text("garbled\n")
+        port = RdmaCollector(root).collect()[0]
+        assert port.hw_counters == {"np_ecn_marked_roce_packets": 12, "out_of_sequence": 0}
+
+    def test_no_hw_counters_directory_is_empty(self, tmp_path):
+        assert RdmaCollector(self._build(tmp_path)).collect()[0].hw_counters == {}
+
     def test_missing_counters_do_not_raise(self, tmp_path):
         port = tmp_path / "class" / "infiniband" / "roceP2p1s0f0" / "ports" / "1"
         port.mkdir(parents=True)

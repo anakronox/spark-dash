@@ -104,6 +104,11 @@ METRICS: dict[str, tuple[str, str]] = {
     "network_drops": ("count", "receive plus transmit drops per step, per interface (usually backpressure)"),
     "network_link_up": ("0/1", "1 if the interface was up for the whole step"),
     "rdma_port_state": ("0/1", "1 if the RDMA port was ACTIVE for the whole step"),
+    "rdma_congestion": ("count", "RoCE congestion events per step, per node; the `counter` label says which: "
+                                 "np_ecn_marked_roce_packets (packets a switch marked on the way in) or "
+                                 "rp_cnp_handled (times this node was told to slow its sending). 0 on direct cables"),
+    "rdma_retries": ("count", "RoCE retransmits, out-of-order packets, ack timeouts and receive-buffer misses per "
+                              "step, per node. Nonzero means RDMA traffic was being resent, which is latency"),
     "monitoring_bytes": ("bytes", "resident memory of Prometheus, Alertmanager and the monitoring host's exporter; no node"),
     "gpu_workload_sm": ("%", "share of GPU compute (SM) time per workload: per node, runtime (llama.cpp, vllm, "
                              "comfyui, ...; 'unrecognised' for the rest) and model. Says WHAT was using the GPU "
@@ -287,7 +292,7 @@ def list_metrics() -> dict:
     return {
         "metrics": [{"name": k, "unit": u, "means": what} for k, (u, what) in METRICS.items()],
         "note": "Every series has a `node` label except monitoring_bytes; network_* and "
-                "rdma_port_state are per interface. Times are UTC.",
+                "rdma_port_state are per interface; rdma_congestion and rdma_retries per node. Times are UTC.",
     }
 
 

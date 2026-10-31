@@ -8847,6 +8847,39 @@ meant rebuilding them by hand (Brian).
   centred chart card. Measured in the preview at 2560px: Network 17px, System
   Activity 21px; card heights unchanged after three seconds.
 
+### CS — RoCE congestion and retries on the Network card — **built 2026-10-31**
+
+Asked for: latency across the RoCE links. The ConnectX-7 keeps no latency
+counter, so three readings were weighed. Ping over the RoCE addresses
+measured 0.11-1.1 ms (avg 0.36-0.43 ms, sparkjr to both peers), which is the
+kernel stack and interrupt moderation, about 100x an RDMA round trip: not
+built. A real RDMA probe (`ib_write_lat`, installed on the hosts) needs a
+responder per node, `/dev/infiniband` in the agent, and the dashboard sending
+traffic on the fabric for the first time: not built yet, a spike if wanted.
+Built: the port counters latency rises with.
+
+- [x] **CS1.** The agent reads 12 counters from each port's `hw_counters/`
+  (congestion: `np_ecn_marked_roce_packets`, `np_cnp_sent`, `rp_cnp_handled`;
+  retries: sequence errors, ack timeouts, adaptive retransmits, RNR and
+  transport retry failures, `out_of_buffer`) into `RdmaPort.hw_counters`,
+  exported as `sparkdash_rdma_hw_counter_total{counter}`. A counter the
+  driver lacks is left out, not 0.
+- [x] **CS2.** History `rdma_congestion` (by node and counter: marked,
+  slowed) and `rdma_retries` (by node), `increase()` per step like the fault
+  charts. In the agent tools' METRICS.
+- [x] **CS3.** Two charts after the RoCE throughput chart in charts view, one
+  line per node, drawn at zero too: a flat zero is the answer. Not drawn
+  when the query returns nothing (agents before CS). Each switchable in the
+  groups menu, stored as the hidden list so an unticked one stays off.
+  Excluded from the log switch.
+- Measured 2026-10-31: every one of these counters is 0 on all three nodes,
+  with 7.3M RDMA writes received on sparketa. The 10.100.136/137 links are
+  direct cables, where nothing marks ECN; congestion can only move on the f1
+  ports through the switch.
+- Not built: per-link columns in the table (the per-port series are kept for
+  it), a congestion or retry alert, PFC pause counters (ethtool, not sysfs),
+  the RDMA probe.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
