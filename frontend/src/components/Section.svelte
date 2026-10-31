@@ -1128,8 +1128,12 @@
     display: flex;
     flex-direction: column;
   }
+  /* The padding is the gap when there is no spare room to centre with (CR):
+     Network Activity's group heading then sat 5px under the card header,
+     while System Activity, with room to spare, had 17. */
   .slot.plots:not(.scrolling) > :global(section.panel:not([data-top]) > header + *) {
     margin-top: auto;
+    padding-top: 8px;
   }
   .slot.plots:not(.scrolling) > :global(section.panel:not([data-top]) > :last-child) {
     margin-bottom: auto;

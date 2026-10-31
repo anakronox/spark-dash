@@ -8838,6 +8838,15 @@ meant rebuilding them by hand (Brian).
 - [ ] Not built: keeping layouts on the server, so a new browser could pick
   one without a file. The backend stays stateless for view preference.
 
+### CR — A gap under a chart card's header, spare room or not — **built 2026-10-31**
+
+- [x] **CR1.** A chart card centres its content in spare room, so the gap
+  under the header was half that room: 17px on System Activity, 5px on
+  Network Activity with none to spare, its group heading against the header
+  (Brian's screenshot). 8px of padding now sits above the content of every
+  centred chart card. Measured in the preview at 2560px: Network 17px, System
+  Activity 21px; card heights unchanged after three seconds.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
