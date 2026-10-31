@@ -356,6 +356,9 @@
     observed_interfaces: string[];
     /** Interfaces excluded from alerting, by name. */
     ignored_interfaces: string[];
+    /** RoCE addresses this node probes for RDMA round-trip time (spike, CS).
+     *  Optional: a backend that predates it sends none. */
+    rdma_peers?: string[];
     runtimes: { llama_routers: RuntimeRef[] } & Record<EngineRuntime, RuntimeRef[]>;
   }
 
@@ -505,6 +508,13 @@
       lines.push('    ignore:');
       for (const name of ignored) lines.push(`      - ${name}`);
     }
+    // Also a sibling of `runtimes:`, for the same reason.
+    const peers = (n.rdma_peers ?? []).map((p) => p.trim()).filter(Boolean);
+    if (peers.length) {
+      lines.push('  rdma_probe:');
+      lines.push('    peers:');
+      for (const peer of peers) lines.push(`      - ${peer}`);
+    }
     return lines.join('\n');
   }
 
@@ -588,6 +598,7 @@
               .filter((r) => r.port != null)
               .map((r) => ({ port: r.port, scrape_metrics: !!r.scrape_metrics })),
             ignored_interfaces: n.ignored_interfaces ?? [],
+            rdma_peers: (n.rdma_peers ?? []).map((p) => p.trim()).filter(Boolean),
             ...Object.fromEntries(
               ENGINE_RUNTIMES.map((runtime) => [
                 runtime,
@@ -627,6 +638,7 @@
         config_fetched_at: null,
         observed_interfaces: [],
         ignored_interfaces: [],
+        rdma_peers: [],
         runtimes: {
           llama_routers: [],
           ...(Object.fromEntries(
@@ -1447,6 +1459,41 @@
                   Nothing to list until this node reports its interfaces.
                 </p>
               {/if}
+            </details>
+
+            <details class="rt" open={(n.rdma_peers ?? []).length > 0}>
+              <summary class="eyebrow dim">
+                RDMA probe peers
+                <span class="count">{(n.rdma_peers ?? []).length || 'none'}</span>
+              </summary>
+              <!-- Spike (CS). The peers' RoCE addresses, pinned the way the
+                   inference stack pins its NCCL peers. The agent probes only
+                   these; none listed means no probe on this node. -->
+              <p class="hint dim">
+                RoCE addresses of this node's peers, e.g. 10.100.136.2. Each peer
+                needs its own entry so its agent is listening.
+              </p>
+              {#each n.rdma_peers ?? [] as _, pi (pi)}
+                <div class="rt-row">
+                  <input
+                    class="in"
+                    type="text"
+                    inputmode="decimal"
+                    placeholder="10.100.136.2"
+                    aria-label="RDMA probe peer address"
+                    bind:value={n.rdma_peers![pi]}
+                  />
+                  <button
+                    class="mini"
+                    aria-label="Remove RDMA probe peer"
+                    onclick={() => (n.rdma_peers = (n.rdma_peers ?? []).filter((_, j) => j !== pi))}
+                  >×</button>
+                </div>
+              {/each}
+              <button
+                class="mini add"
+                onclick={() => (n.rdma_peers = [...(n.rdma_peers ?? []), ''])}
+              >+ peer</button>
             </details>
 
             <details class="rt" open={engineCount(n) > 0}>
