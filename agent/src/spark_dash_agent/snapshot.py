@@ -32,6 +32,7 @@ from spark_dash_common.thresholds import TempThresholds
 from spark_dash_agent.collectors.cpu import CpuCollector, read_critical_trip_c
 from spark_dash_agent.collectors.disk import DiskCollector
 from spark_dash_agent.collectors.engine import SPECS, EngineCollector
+from spark_dash_agent.collectors.fans import FanCollector
 from spark_dash_agent.collectors.gpu import LLM_RUNTIMES, GpuCollector
 from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.collectors.memory import MemoryCollector, detect_unified_memory
@@ -275,6 +276,7 @@ class SnapshotBuilder:
         self._disk = DiskCollector(settings.root_path)
         self._network = NetworkCollector(settings.sys_path)
         self._thermal = ThermalCollector(settings.sys_path)
+        self._fans = FanCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
 
         # The CPU's critical trip doesn't change while the machine runs, so
@@ -438,6 +440,7 @@ class SnapshotBuilder:
         network = self._network.safe_collect(errors) or []
         rdma = self._rdma.safe_collect(errors) or []
         temperatures = self._thermal.safe_collect(errors) or []
+        fans = self._fans.safe_collect(errors) or []
         apply_interface_policy(network, rdma, self._ignored_interfaces())
         # Tell the router collector which models are actually working, so it
         # only scrapes those. `/metrics?model=` resets the router's idle timer,
@@ -547,6 +550,7 @@ class SnapshotBuilder:
             cpu=cpu,
             processes=processes,
             temperatures=temperatures,
+            fans=fans,
             network=network,
             rdma=rdma,
             # Keyed by runtime name, which is also the field name on

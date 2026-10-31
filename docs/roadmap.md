@@ -8740,6 +8740,28 @@ speculative-decoding acceptance rate, length and totals.
   page duplicated Settings → Appearance → Reset layout, which confirms first
   and returns to the page's preset.
 
+### CM — Fan speeds, where the firmware declares fans — **built 2026-10-31**
+
+GitHub issue #1 asked for fan speeds, read from `acpi_fan` hwmon chips.
+
+- [x] **CM1. It is the BIOS, not the OS.** `acpi_fan` binds only to ACPI fan
+  devices (`PNP0C0B`, `ACPI000B`). Measured 2026-10-31: sparky (ASUS GX10,
+  BIOS GX10DGX.0106.2026.0707.0731, kernel 7.0.0-1024) declares none, before
+  and after its OS update, and lm-sensors has nothing either. Sparketa (NVIDIA
+  DGX Spark) had none on BIOS 5.36_0ACUM018 and two after its update to
+  0ACUM028: `PNP0C0B:00` and `:01`, about 2150 rpm at 48 °C.
+- [x] **CM2. Collected from every hwmon chip with a `fan*_input`**, not only
+  `acpi_fan`, so another board's driver needs no change. `FanSensor` on the
+  snapshot, `sparkdash_fan_rpm{sensor}`. A failed read leaves that fan out of
+  the poll; 0 rpm is a stopped fan. The fans are cooling devices too, but
+  their `cur_state` read 0/100 at 2150 rpm, so it is not read.
+- [x] **CM3. Node card and history.** `fan 2147/2183 rpm` on the vitals strip,
+  every fan so one that stops reads 0 beside one that spins; left out on a
+  board with none. `fan_speed` charts the fastest per node, its dial scaled
+  to the node's 24h peak since the hardware reports no maximum.
+- [ ] Not built: a stopped-fan alert or a fan term in health. 0 rpm at idle
+  may be normal on this hardware; unmeasured.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

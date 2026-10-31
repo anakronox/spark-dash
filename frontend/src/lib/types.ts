@@ -86,6 +86,12 @@ export interface ProcessInfo {
   decoder_pct: number;
 }
 
+/** One fan, where the firmware declares it (GitHub issue #1). */
+export interface FanSensor {
+  sensor: string;
+  rpm: number;
+}
+
 export interface TempSensor {
   /** `package`, `storage`, `network`, `wireless`, `gpu`, or `other` for a chip
    *  the agent's classifier doesn't recognise — never dropped. */
@@ -308,6 +314,8 @@ export interface NodeSnapshot {
   processes: ProcessInfo[];
   network: NetworkInterface[];
   temperatures: TempSensor[];
+  /** Empty on a board whose firmware declares no fans, which is the ASUS GX10. */
+  fans?: FanSensor[];
   rdma: RdmaPort[];
   runtimes: Runtimes;
   errors: Record<string, string>;

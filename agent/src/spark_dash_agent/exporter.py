@@ -46,6 +46,7 @@ class SnapshotMetricsCollector:
         yield from _cpu_metrics(snap, node)
         yield from _temp_band_metrics(snap, node)
         yield from _thermal_metrics(snap, node)
+        yield from _fan_metrics(snap, node)
         yield from _network_metrics(snap, node)
         yield from _process_metrics(snap, node)
         yield from _runtime_metrics(snap, node)
@@ -527,6 +528,17 @@ def _thermal_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
     )
     source.add_metric([node, hottest.domain, hottest.sensor], 1.0)
     yield source
+
+
+def _fan_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:
+    """One series per fan. Absent, not zero, on a board that declares none:
+    0 rpm is what a stopped fan reports."""
+    if not snap.fans:
+        return
+    rpm = _g("fan_rpm", "Fan speed, as the kernel's hwmon reports it", ["node", "sensor"])
+    for fan in snap.fans:
+        rpm.add_metric([node, fan.sensor], float(fan.rpm))
+    yield rpm
 
 
 def _process_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:

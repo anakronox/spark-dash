@@ -197,6 +197,7 @@
           disk={node.disk}
           tempBands={node.temp_bands}
           temperatures={node.temperatures ?? []}
+          fans={node.fans ?? []}
           tokensPerSec={nodeTokensPerSec}
         />
       </div>
@@ -209,6 +210,7 @@
         disk={node.disk}
         tempBands={node.temp_bands}
         temperatures={node.temperatures ?? []}
+        fans={node.fans ?? []}
         tokensPerSec={nodeTokensPerSec}
       />
     {/if}

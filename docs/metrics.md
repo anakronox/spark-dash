@@ -370,6 +370,14 @@ The 7 `acpitz` zones are also published by node_exporter **twice** — once as
 The agent reads them once, from `/sys/class/thermal`, because only the zones
 carry the trip point the limit comes from.
 
+### Fans
+
+| metric | labels | meaning |
+|---|---|---|
+| `fan_rpm` | `sensor` | one per fan, from every hwmon chip with a `fan*_input`. Only where the firmware declares fans: the NVIDIA DGX Spark from BIOS 5.36_0ACUM028 (two `acpi_fan`, about 2150 rpm idle). The ASUS GX10 declares none, so it has no series. A stopped fan reads 0 |
+
+The history series `fan_speed` is the fastest fan per node.
+
 No fan, power, voltage or current sensors exist on this hardware. lm-sensors
 sees three chips and every one is temperature-only.
 

@@ -20,8 +20,8 @@ TensorFold.
 - **Pooled clusters treated as one machine**, with free memory summed only
   where a single model could use it.
 - **Every sensor and every link:** 18–23 temperature sensors per node, each
-  against its own limit, and every interface and RoCE port with its negotiated
-  rate, errors and drops.
+  against its own limit, fan speeds where the firmware declares fans, and every
+  interface and RoCE port with its negotiated rate, errors and drops.
 - **35 alert rules** with push notifications to ntfy, Slack, Discord or
   Telegram, set up from the UI.
 - **History for 180 days** in Prometheus, live updates every 1–2 seconds, and a

@@ -84,7 +84,7 @@ async def latest(prom: PrometheusClient, keys: list[str]) -> dict:
 #: node's own peak over PEAK_RANGE, so the needle reads "how near its recent
 #: best", and the scale end says what that best was.
 PEAK_METRICS: frozenset[str] = frozenset(
-    {"tokens_per_second", "prompt_tokens_per_second", "swap_io", "temperature_headroom"}
+    {"tokens_per_second", "prompt_tokens_per_second", "swap_io", "temperature_headroom", "fan_speed"}
 )
 
 PEAK_RANGE = "24h"

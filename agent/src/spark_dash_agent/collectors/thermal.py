@@ -21,10 +21,9 @@ Measured on this hardware, and the whole basis of `classify()`:
     mlx5            0000:01:00.0      asic        105.0    network
     mt7925_phy0     phy0              -           -        wireless
 
-WHAT IS NOT HERE, because it does not exist on this hardware: fans, power,
-voltage and current. lm-sensors sees three chips and all three are
-temperature-only. Nothing in this file should grow an airflow or wattage story
-without someone first checking that the sensors appeared.
+WHAT IS NOT HERE: power, voltage and current, which this hardware does not
+expose. Fans appeared on the NVIDIA DGX Spark with BIOS 5.36_0ACUM028 and are
+read by `fans.py`, not here: an `acpi_fan` chip has no temperature inputs.
 """
 
 from __future__ import annotations

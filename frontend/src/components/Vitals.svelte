@@ -6,6 +6,7 @@
   import type {
     CpuMetrics,
     DiskMetrics,
+    FanSensor,
     GpuMetrics,
     MemoryMetrics,
     PsiMetrics,
@@ -28,6 +29,9 @@
      *  hottest thing in the machine — measured over 24h here, `acpitz` zone0
      *  peaked at 95.4 °C while the GPU read 72.0 °C at the same instant. */
     temperatures: TempSensor[];
+    /** Empty where the firmware declares no fans; the reading is then left
+     *  out rather than shown as a dash on every GX10. */
+    fans: FanSensor[];
     tokensPerSec: number;
   }
   const {
@@ -38,6 +42,7 @@
     disk,
     tempBands,
     temperatures,
+    fans,
     tokensPerSec,
   }: Props = $props();
 
@@ -179,6 +184,16 @@
       {hot ? `${num(hot.celsius)}°C` : '—'}
     </dd>
   </div>
+  <!-- Every fan, not the fastest, so one that stops reads 0 beside one that
+       still spins. Untoned: the hardware reports no minimum or maximum. -->
+  {#if fans?.length}
+    <div class="v">
+      <dt>fan</dt>
+      <dd class="num" title={fans.map((f) => `${f.sensor}: ${f.rpm} rpm`).join('\n')}>
+        {fans.map((f) => num(f.rpm)).join('/')}<span class="state">rpm</span>
+      </dd>
+    </div>
+  {/if}
   <div class="v">
     <dt>power</dt>
     <dd class="num">{gpu?.power_w != null ? `${num(gpu.power_w)}W` : '—'}</dd>

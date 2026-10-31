@@ -666,6 +666,23 @@ class TempSensor(BaseModel):
         return None if self.limit_c is None else self.limit_c - self.celsius
 
 
+class FanSensor(BaseModel):
+    """One fan's speed, as the kernel's hwmon reports it (GitHub issue #1).
+
+    Only where the firmware declares the fan. The NVIDIA DGX Spark does from
+    BIOS 5.36_0ACUM028 (two ACPI fans, `acpi_fan`, ~2150 rpm at idle on
+    sparketa 2026-10-31); the ASUS GX10 declares none, so its list is empty.
+
+    No limit and no tone: the hardware reports no minimum or maximum, and 0 rpm
+    is a real reading of a stopped fan, not a missing one.
+    """
+
+    #: Stable and unique within a node: chip, device, input, e.g.
+    #: `acpi_fan PNP0C0B:00 fan1`.
+    sensor: str
+    rpm: int
+
+
 class ConfigStatus(BaseModel):
     """Where a node's runtime config came from, and when it last arrived.
 
@@ -790,6 +807,9 @@ class NodeSnapshot(BaseModel):
     #: Every temperature sensor on the box, classified by domain. Empty on a
     #: host with no readable sensors, which is any macOS dev machine.
     temperatures: list[TempSensor] = Field(default_factory=list)
+    #: Every fan the firmware declares. Empty on a board that declares none,
+    #: which is the ASUS GX10.
+    fans: list[FanSensor] = Field(default_factory=list)
     network: list[NetworkInterface] = Field(default_factory=list)
     rdma: list[RdmaPort] = Field(default_factory=list)
     runtimes: Runtimes = Field(default_factory=Runtimes)

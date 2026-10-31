@@ -97,6 +97,7 @@ METRICS: dict[str, tuple[str, str]] = {
     "storage_temperature": ("°C", "the hottest NVMe drive"),
     "network_temperature": ("°C", "the hottest NIC"),
     "temperature_headroom": ("°C", "degrees left before the sensor closest to its limit reaches it"),
+    "fan_speed": ("rpm", "the fastest fan on the node; absent where the firmware declares no fans"),
     "network_rx_bits": ("bit/s", "received, per interface"),
     "network_tx_bits": ("bit/s", "sent, per interface"),
     "network_errors": ("count", "receive plus transmit errors per step, per interface (usually physical)"),
@@ -753,6 +754,8 @@ FLOOR_SHARE = 0.05
 UNIT_FLOOR: dict[str, float] = {
     "%": 0.5, "°C": 0.5, "W": 1.0, "MHz": 20.0, "bytes": 64 * 2**20, "pages/s": 1.0,
     "tok/s": 1.0, "bit/s": 1e5, "count": 1.0, "0/1": 0.5,
+    # A fan at rest wanders about 5 rpm (sparketa, 2142-2152 over 5 s).
+    "rpm": 50.0,
 }
 
 

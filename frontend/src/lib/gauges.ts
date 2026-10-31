@@ -29,6 +29,7 @@ export const PEAK_SCALED = new Set([
   'prompt_tokens_per_second',
   'swap_io',
   'temperature_headroom',
+  'fan_speed',
 ]);
 
 /** Where the metrics the snapshot does not carry come from: Prometheus's
@@ -132,6 +133,8 @@ export function liveValue(key: string, n: NodeSnapshot): number | null {
         .map((t) => (t.limit_c as number) - t.celsius);
       return left.length ? Math.min(...left) : null;
     }
+    case 'fan_speed':
+      return maxOf((n.fans ?? []).map((f) => f.rpm));
     default:
       return null;
   }

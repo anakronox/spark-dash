@@ -294,6 +294,10 @@ HISTORY_QUERIES: dict[str, str] = {
         "min by (node) (sparkdash_temperature_limit_celsius"
         " - on(node, domain, sensor) sparkdash_temperature_celsius)"
     ),
+    # The fastest fan on the node: how hard it is cooling. A node whose
+    # firmware declares no fans (the ASUS GX10) has no series and no line.
+    # The node card lists every fan, so one that stops still shows there.
+    "fan_speed": "max by (node) (sparkdash_fan_rpm)",
     # --- Network, per INTERFACE rather than per node ----------------------
     #
     # THE ONLY HISTORY QUERIES WITH A SECOND DIMENSION. Every other entry here

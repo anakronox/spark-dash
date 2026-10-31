@@ -47,6 +47,9 @@ no separate VRAM. So:
 - Never average temperatures to judge risk: risk is the hottest point. The
   dashboard's averages are an overview only, and its colours always come
   from the sensor closest to its limit.
+- Fan speeds (`fan_speed`, rpm) exist only where the firmware declares fans:
+  the NVIDIA DGX Spark from BIOS 5.36_0ACUM028, never the ASUS GX10. No
+  series means no fans reported, not stopped fans; a stopped fan reads 0.
 
 ## Clocks
 NVML reports a 3003 MHz maximum that this part never reaches. Under load the

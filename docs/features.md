@@ -66,6 +66,11 @@ chips become one line. An average never hides a hot sensor: its warning and
 critical colours still come from whichever sensor is closest to its limit.
 Switch the card to **gauges** for a dial per node in each group.
 
+**Fans, where the firmware declares them.** Each fan's speed shows on the node
+card as `fan 2147/2183 rpm`, and **Fan speed** charts the fastest per node.
+The NVIDIA DGX Spark reports two fans from BIOS 5.36_0ACUM028; the ASUS GX10
+reports none at any OS version, so the reading and the line are left out there.
+
 **Alerting you can trust.** 35 rules, with push notifications via
 [ntfy](https://ntfy.sh) — no account, no API key — and to **Slack, Discord and
 Telegram**, all set up from **Settings → Notifications**: ntfy's topic made and

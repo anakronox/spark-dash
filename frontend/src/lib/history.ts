@@ -183,6 +183,10 @@ export const METRICS: MetricSpec[] = [
      No scaleMax: the interesting end is near zero, and a fixed ceiling sized
      for a cold machine would flatten the approach to it. */
   { key: 'temperature_headroom', label: 'Thermal headroom', unit: '°C' },
+  /* The fastest fan on the node. Only nodes whose firmware declares fans have
+     a line (the NVIDIA DGX Spark from BIOS 0ACUM028; never the ASUS GX10).
+     No scaleMax: the hardware reports no maximum speed. */
+  { key: 'fan_speed', label: 'Fan speed', unit: 'rpm' },
 ];
 
 export interface RangeSpec {

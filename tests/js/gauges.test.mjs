@@ -47,6 +47,10 @@ const node = (over = {}) => ({
     { domain: 'network', sensor: 'mlx5 asic', celsius: 56, limit_c: 105 },
     { domain: 'wireless', sensor: 'phy0', celsius: 44, limit_c: null },
   ],
+  fans: [
+    { sensor: 'acpi_fan PNP0C0B:00 fan1', rpm: 2147 },
+    { sensor: 'acpi_fan PNP0C0B:01 fan1', rpm: 2183 },
+  ],
   runtimes: {
     llama_cpp: [{ generation_tokens_per_sec: 12, models: [{ prompt_tokens_per_sec: 100, kv_cache_pct: 40 }, { prompt_tokens_per_sec: null, kv_cache_pct: null }] }],
     vllm: [],
@@ -54,6 +58,12 @@ const node = (over = {}) => ({
     tensorfold: [{ generation_tokens_per_sec: 31, prompt_tokens_per_sec: 400, kv_cache_pct: 12 }],
   },
   ...over,
+});
+
+test('fan speed is the fastest fan, and absent on a board without fans', () => {
+  assert.equal(liveValue('fan_speed', node()), 2183);
+  assert.equal(liveValue('fan_speed', node({ fans: [] })), null);
+  assert.equal(liveValue('fan_speed', node({ fans: undefined })), null);
 });
 
 test('every charted metric is either live or served by /api/latest', () => {
