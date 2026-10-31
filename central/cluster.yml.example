@@ -166,7 +166,7 @@ nodes:
     #     - enP2p1s0f1np1   # 200Gb f1, cabled to the switch and pulled
     #     - enp1s0f1np1
 
-    # RDMA round-trip probe (spike) — OPTIONAL. The RoCE addresses of this
+    # RDMA round-trip probe — OPTIONAL. The RoCE addresses of this
     # node's peers, pinned the way the inference stack pins its NCCL peers.
     # The agent ping-pongs each one over RDMA every 30 s and exports the
     # round trip in microseconds. Leave it out and the agent probes nothing.

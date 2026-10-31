@@ -8878,7 +8878,7 @@ Built: the port counters latency rises with.
   ports through the switch.
 - Not built: per-link columns in the table (the per-port series are kept for
   it), a congestion or retry alert, PFC pause counters (ethtool, not sysfs).
-- [x] **CS4 (spike, `spike/rdma-devices`, image tag `spike-rdma-probe`).**
+- [x] **CS4.** Built on `spike/rdma-devices`, merged 2026-11-01.
   RDMA round-trip probe. `ibv_rc_pingpong`, not perftest: perftest burns
   0.43 s of CPU per run calibrating its clock. A listener per RDMA device on
   18515+, peers pinned per node in cluster.yml (`rdma_probe.peers`, editable

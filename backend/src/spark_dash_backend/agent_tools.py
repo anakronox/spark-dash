@@ -107,7 +107,7 @@ METRICS: dict[str, tuple[str, str]] = {
     "rdma_congestion": ("count", "RoCE congestion events per step, per node; the `counter` label says which: "
                                  "np_ecn_marked_roce_packets (packets a switch marked on the way in) or "
                                  "rp_cnp_handled (times this node was told to slow its sending). 0 on direct cables"),
-    "rdma_rtt": ("us", "RDMA round trip in microseconds, the node's WORST probed link per step (spike: only nodes "
+    "rdma_rtt": ("us", "RDMA round trip in microseconds, the node's WORST probed link per step (only nodes "
                        "with rdma_probe peers in cluster.yml). A direct GB10 cable reads 4.5-6.5"),
     "rdma_retries": ("count", "RoCE retransmits, out-of-order packets, ack timeouts and receive-buffer misses per "
                               "step, per node. Nonzero means RDMA traffic was being resent, which is latency"),

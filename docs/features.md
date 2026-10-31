@@ -103,7 +103,9 @@ drops and an RDMA port changing state get a chart of their own when they
 happen. Beside the RoCE chart, **RoCE congestion** (ECN-marked packets and
 slow-down requests) and **RoCE retries** (resends, out-of-order packets, ack
 timeouts) count per step what fabric latency rises with; the hardware keeps no
-latency counter itself. Either can be switched off in the groups menu. A **gauges** view shows each node's traffic in each group now, as a
+latency counter itself. With peers set in Settings > Nodes, **RoCE round
+trip** charts the real RDMA round trip on each link, each node's slowest,
+in microseconds. Each of the three can be switched off in the groups menu. A **gauges** view shows each node's traffic in each group now, as a
 share of the rate its links negotiated. The table lists every interface, worst first, and opens any one's own
 chart; past a dozen links the card opens as the table.
 

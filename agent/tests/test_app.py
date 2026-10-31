@@ -675,7 +675,7 @@ def test_rdma_hw_counters_are_exported_one_series_per_counter():
 
 
 def test_rdma_probe_rtt_is_exported_per_peer_and_failures_are_absent():
-    """Spike CS: one series per peer; a failed probe has no number to give."""
+    """CS: one series per peer; a failed probe has no number to give."""
     snap = make_snapshot(
         rdma=[
             RdmaPort(

@@ -89,7 +89,7 @@ services:
     # and the process table would show bare numbers.
     pid: "host"
 
-    # RDMA VERBS DEVICES, for the RoCE latency probe (spike, roadmap CS).
+    # RDMA VERBS DEVICES, for the RoCE latency probe (roadmap CS).
     #
     # A bind mount and cgroup rules rather than `devices:`, so ONE file still
     # deploys to every node: `devices:` refuses to start when the path is
@@ -187,7 +187,7 @@ services:
 
     ports:
       - "9500:9500"
-      # RDMA probe listeners, one per RDMA device in sorted order (spike, CS).
+      # RDMA probe listeners, one per RDMA device in sorted order (CS).
       # Only bound while cluster.yml lists rdma_probe peers for this node;
       # four covers a GB10's ConnectX-7.
       - "18515-18518:18515-18518"

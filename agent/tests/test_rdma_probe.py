@@ -1,4 +1,4 @@
-"""The RDMA probe's pure parts (spike, CS): which address a port probes from,
+"""The RDMA probe's pure parts (CS): which address a port probes from,
 who its neighbours are, and what the client printed."""
 
 from pathlib import Path

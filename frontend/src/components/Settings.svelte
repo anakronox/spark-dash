@@ -356,7 +356,7 @@
     observed_interfaces: string[];
     /** Interfaces excluded from alerting, by name. */
     ignored_interfaces: string[];
-    /** RoCE addresses this node probes for RDMA round-trip time (spike, CS).
+    /** RoCE addresses this node probes for RDMA round-trip time (CS).
      *  Optional: a backend that predates it sends none. */
     rdma_peers?: string[];
     runtimes: { llama_routers: RuntimeRef[] } & Record<EngineRuntime, RuntimeRef[]>;
@@ -1466,7 +1466,7 @@
                 RDMA probe peers
                 <span class="count">{(n.rdma_peers ?? []).length || 'none'}</span>
               </summary>
-              <!-- Spike (CS). The peers' RoCE addresses, pinned the way the
+              <!-- CS. The peers' RoCE addresses, pinned the way the
                    inference stack pins its NCCL peers. The agent probes only
                    these; none listed means no probe on this node. -->
               <p class="hint dim">

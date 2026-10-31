@@ -251,6 +251,14 @@ nothing else. What follows is why, and it applies equally to a fourth:
   Access service token. One tool writes: `add_note` (BB17) adds a line to
   the timeline, behind its own switch, off by default, each note marked as
   an agent's and bounded in number and length.
+- **The RDMA round-trip probe (roadmap CS4)** is the one feature that sends
+  traffic on the fabric. Off on a node unless `cluster.yml` lists
+  `rdma_probe.peers` for it, and it only ever reaches those addresses: 100
+  ping-pongs of 64 bytes to each every 30 s, through a listener per RDMA
+  device on TCP 18515-18518 that answers anyone who connects, and
+  `GET /rdma/listeners` on the agent saying which address is on which port.
+  Peers must be private IPv4 literals. The agent gets the four uverbs
+  devices only; the root-only umad devices stay refused.
 - **Notifications (roadmap BF)** write one file, the ntfy topic Alertmanager
   posts to, from Settings. The topic is a secret on ntfy.sh, so the status
   never carries it; `GET /api/notifications/topic` returns it on request, to

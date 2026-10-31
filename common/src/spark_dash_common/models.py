@@ -209,7 +209,7 @@ class NetworkInterface(BaseModel):
 
 
 class RdmaProbe(BaseModel):
-    """One RDMA round-trip probe to a peer on this port's link (spike, CS)."""
+    """One RDMA round-trip probe to a peer on this port's link (CS)."""
 
     peer: str = Field(description="The peer's RoCE IPv4 address.")
     peer_node: str = ""

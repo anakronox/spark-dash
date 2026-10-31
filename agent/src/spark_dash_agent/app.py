@@ -248,7 +248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/rdma/listeners")
     def rdma_listeners() -> Response:
         """Which RoCE address this node's probe listener answers on which
-        port (spike, CS). 404 when this node has no peers configured."""
+        port (CS). 404 when this node has no peers configured."""
         if builder.rdma_probe is None or not builder.rdma_probe.active:
             return Response(status_code=404)
         return JSONResponse(builder.rdma_probe.listeners())

@@ -1,4 +1,4 @@
-"""RDMA round-trip probe over each RoCE link (spike, roadmap CS).
+"""RDMA round-trip probe over each RoCE link (roadmap CS).
 
 The ConnectX keeps no latency counter, and ping over the RoCE addresses
 measures the kernel stack: 0.11-1.1 ms against a 6-7 us RDMA round trip,

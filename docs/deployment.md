@@ -565,6 +565,41 @@ the key is `mcp.key` beside it, owner-only, as the assistant's is.
 [service token](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/)
 and add its two headers to the client, or connect on the LAN address.
 
+### RoCE round trip — optional
+
+**Off until you list peers.** The agent measures the RDMA round trip on each
+RoCE link with `ibv_rc_pingpong`: 100 ping-pongs of 64 bytes every 30 s to
+each peer you list, charted on the Network card as **RoCE round trip**, each
+node's slowest link. A direct cable between two GB10s reads about 5 µs;
+ping over the same addresses reads 0.1-1 ms, because it measures the kernel,
+which RDMA skips.
+
+**Peers are pinned, the way the inference stack pins its NCCL peers.** In
+Settings > Nodes, add each peer's RoCE address under **RDMA probe peers**,
+on both nodes of a link, or in `cluster.yml`:
+
+```yaml
+  - id: sparkjr
+    rdma_probe:
+      peers: [10.100.136.2, 10.100.137.2]
+  - id: sparketa
+    rdma_probe:
+      peers: [10.100.136.1, 10.100.137.1]
+```
+
+A peer's agent must be listening, so list the link on both ends. A peer
+with no RoCE address on a subnet this node shares is reported, not probed.
+
+**The node stack passes the RDMA devices** (`node/compose.yaml`): four
+`device_cgroup_rules` for the uverbs devices, a bind mount of
+`/dev/infiniband`, and ports `18515-18518`. A bind mount rather than
+`devices:`, so the same file still starts on a machine without RDMA.
+The agent stays on its bridge network.
+
+**What it costs, measured 2026-11-01:** about 2 MiB per node for the idle
+listeners, under 0.1% of one core (6 ms of CPU per run), and 5 MB on the
+image. On the wire, about 40 b/s per link.
+
 ### Client stats — optional
 
 **This is optional, and off until you give it a gateway.** It shows which

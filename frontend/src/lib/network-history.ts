@@ -23,7 +23,7 @@ export const LINK_UP = 'network_link_up';
 /** RoCE congestion and retries, per node rather than per interface (CS). */
 export const CONGESTION = 'rdma_congestion';
 export const RETRIES = 'rdma_retries';
-/** RDMA round trip, the worst probed link per node (spike, CS). */
+/** RDMA round trip, the worst probed link per node (CS). */
 export const RTT = 'rdma_rtt';
 
 /** The queries, in one place, so a fetch loop and a test agree. */

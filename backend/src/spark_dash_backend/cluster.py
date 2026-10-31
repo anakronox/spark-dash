@@ -112,7 +112,7 @@ class ClusterNode:
     runtimes: NodeRuntimes = field(default_factory=NodeRuntimes)
     interfaces: InterfacePolicy = field(default_factory=InterfacePolicy)
     #: RoCE addresses this node's agent probes for RDMA round-trip time
-    #: (spike, CS). Pinned, the way an inference stack pins its NCCL peers;
+    #: (CS). Pinned, the way an inference stack pins its NCCL peers;
     #: empty means no probe on this node.
     rdma_peers: tuple[str, ...] = ()
 

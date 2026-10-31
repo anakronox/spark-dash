@@ -141,7 +141,7 @@ class NodeWrite(BaseModel):
     #: absent because the node is down must not have its exclusion dropped by
     #: whoever next opens the editor.
     ignored_interfaces: list[str] = Field(default_factory=list)
-    #: RDMA probe peers (spike, CS). None, which is what the editor sends
+    #: RDMA probe peers (CS). None, which is what the editor sends
     #: today, KEEPS the node's current peers: a field the form does not show
     #: must not be erased by saving it.
     rdma_peers: list[str] | None = None
@@ -1070,7 +1070,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 match.interfaces.as_dict() if match else InterfacePolicy().as_dict()
             ),
             # Also a sibling of `runtimes`, for the same reason. Empty peers
-            # means the agent runs no RDMA probe at all (spike, CS).
+            # means the agent runs no RDMA probe at all (CS).
             "rdma_probe": {"peers": list(match.rdma_peers) if match else []},
         }
 

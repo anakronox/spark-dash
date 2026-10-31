@@ -1035,7 +1035,7 @@ class TestGateway:
 
 
 class TestRdmaProbePeers:
-    """Spike CS: the probe's peers are pinned per node in cluster.yml."""
+    """CS: the probe's peers are pinned per node in cluster.yml."""
 
     TEXT = (
         "nodes:\n- id: sparkjr\n  host: 192.168.50.63\n"

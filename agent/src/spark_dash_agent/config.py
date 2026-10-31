@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     # running from source, which is correct — there's no commit to name.
     agent_version: str = "unknown"
 
-    #: RDMA round-trip probe (spike, CS). Which peers to probe comes from
+    #: RDMA round-trip probe (CS). Which peers to probe comes from
     #: cluster.yml only; a node with none listed probes nothing.
     rdma_probe_interval_s: float = 30.0
     #: First of the TCP ports the per-device listeners use, one per RDMA

@@ -59,7 +59,7 @@ class NodeConfig:
     #: weights with no API of its own is accounted for even though nothing on
     #: this node polls it. Empty for a standalone node.
     cluster_collected_runtimes: list[str] = field(default_factory=list)
-    #: RoCE addresses to probe for round-trip time (spike, CS). Empty means no
+    #: RoCE addresses to probe for round-trip time (CS). Empty means no
     #: probe at all on this node.
     rdma_peers: list[str] = field(default_factory=list)
 
