@@ -89,6 +89,25 @@ services:
     # and the process table would show bare numbers.
     pid: "host"
 
+    # RDMA VERBS DEVICES, for the RoCE latency probe (spike, roadmap CS).
+    #
+    # A bind mount and cgroup rules rather than `devices:`, so ONE file still
+    # deploys to every node: `devices:` refuses to start when the path is
+    # missing, and a bind mount of a missing path gives an empty directory,
+    # where the agent finds no devices and does not probe. Tested 2026-10-31.
+    #
+    # Only the four uverbs minors (231:192-195). umad, the fabric management
+    # devices, stay refused: "Operation not permitted" from inside, tested.
+    # No `network_mode: host`: RDMA here is `netns shared`, and an RDMA
+    # ping-pong ran between two bridge-networked containers across the
+    # sparkjr-sparketa cable at 6.8-7.4 us per round trip. No IPC_LOCK
+    # either: the default 8 MiB locked-memory limit covers a probe.
+    device_cgroup_rules:
+      - 'c 231:192 rmw'
+      - 'c 231:193 rmw'
+      - 'c 231:194 rmw'
+      - 'c 231:195 rmw'
+
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -108,6 +127,8 @@ services:
       # plain bind exposes the root filesystem and nothing beneath it, which
       # makes that failure impossible rather than merely unlikely.
       - /:/host/root:ro
+      # See device_cgroup_rules above.
+      - /dev/infiniband:/dev/infiniband
 
     environment:
       # GLIBC ARENAS, CAPPED. Left alone, glibc opens a malloc arena per thread
