@@ -103,9 +103,8 @@ class Settings(BaseSettings):
     # running from source, which is correct — there's no commit to name.
     agent_version: str = "unknown"
 
-    #: RDMA round-trip probe (spike, CS). Off by default: it sends traffic on
-    #: the fabric, where everything else here only reads.
-    rdma_probe: bool = False
+    #: RDMA round-trip probe (spike, CS). Which peers to probe comes from
+    #: cluster.yml only; a node with none listed probes nothing.
     rdma_probe_interval_s: float = 30.0
     #: First of the TCP ports the per-device listeners use, one per RDMA
     #: device in sorted order. Published in the compose file.

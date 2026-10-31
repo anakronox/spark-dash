@@ -5,7 +5,7 @@ from pathlib import Path
 
 from spark_dash_agent.collectors.rdma_probe import (
     RdmaProber,
-    neighbours,
+    closest,
     parse_rtt,
     roce_v2_ipv4_gids,
 )
@@ -38,17 +38,26 @@ def test_the_v2_ipv4_gid_is_chosen_and_routable_beats_link_local(tmp_path):
     assert gids == {"rocep1s0f0": (3, "10.100.136.1"), "roceP2p1s0f1": (5, "192.168.55.63")}
 
 
-def test_neighbours_are_complete_entries_on_that_interface_only(tmp_path):
-    arp = tmp_path / "1" / "net" / "arp"
-    arp.parent.mkdir(parents=True)
-    arp.write_text(
-        "IP address       HW type     Flags       HW address            Mask     Device\n"
-        "10.100.136.2     0x1         0x2         4c:bb:47:80:39:be     *        enp1s0f0np0\n"
-        "192.168.251.1    0x1         0x0         1c:0b:8b:12:29:45     *        enp1s0f0np0\n"
-        "192.168.55.1     0x1         0x2         1c:0b:8b:12:29:45     *        enp1s0f1np1\n"
-    )
-    assert neighbours(tmp_path, "enp1s0f0np0") == ["10.100.136.2"]
-    assert neighbours(tmp_path / "nowhere", "enp1s0f0np0") == []
+def test_a_peer_is_probed_from_the_local_address_nearest_it(tmp_path):
+    gids = roce_v2_ipv4_gids(_sys(tmp_path))
+    assert closest(gids, "10.100.136.2").device == "rocep1s0f0"
+    assert closest(gids, "192.168.55.62").device == "roceP2p1s0f1"
+    # Not on any link this node has.
+    assert closest(gids, "172.16.0.9") is None
+
+
+def test_no_peers_means_no_probe_and_listing_peers_starts_it(tmp_path, monkeypatch):
+    prober = RdmaProber(_sys(tmp_path), "sparkjr", port_base=18515, peer_agent_port=9500, interval_s=30)
+    started = []
+    monkeypatch.setattr(prober, "_start", lambda: started.append(1) or setattr(prober, "_stop", object()))
+    monkeypatch.setattr(prober, "_halt", lambda: started.append(0) or setattr(prober, "_stop", None))
+    prober.configure([])
+    assert not prober.active and started == []
+    prober.configure(["10.100.136.2"])
+    prober.configure(["10.100.136.2"])
+    assert prober.active and started == [1]
+    prober.configure([])
+    assert not prober.active and started == [1, 0]
 
 
 def test_the_client_summary_line_is_microseconds_per_round_trip():
@@ -58,7 +67,7 @@ def test_the_client_summary_line_is_microseconds_per_round_trip():
 
 
 def test_listeners_name_each_address_and_its_port(tmp_path):
-    prober = RdmaProber(_sys(tmp_path), tmp_path, "sparkjr", port_base=18515, peer_agent_port=9500, interval_s=30)
+    prober = RdmaProber(_sys(tmp_path), "sparkjr", port_base=18515, peer_agent_port=9500, interval_s=30)
     prober._gids = roce_v2_ipv4_gids(tmp_path)
     got = prober.listeners()
     assert got["node"] == "sparkjr"

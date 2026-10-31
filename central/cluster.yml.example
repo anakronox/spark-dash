@@ -166,6 +166,18 @@ nodes:
     #     - enP2p1s0f1np1   # 200Gb f1, cabled to the switch and pulled
     #     - enp1s0f1np1
 
+    # RDMA round-trip probe (spike) — OPTIONAL. The RoCE addresses of this
+    # node's peers, pinned the way the inference stack pins its NCCL peers.
+    # The agent ping-pongs each one over RDMA every 30 s and exports the
+    # round trip in microseconds. Leave it out and the agent probes nothing.
+    # A peer needs its own entry here too, so its agent is listening; and the
+    # node stack must pass /dev/infiniband (see node/compose.yaml).
+    #
+    # rdma_probe:
+    #   peers:
+    #     - 10.100.136.2
+    #     - 10.100.137.2
+
   # A CLUSTER WORKER NEEDS NO `runtimes:` BLOCK AT ALL.
   #
   # In distributed inference one node runs the API and the others are workers

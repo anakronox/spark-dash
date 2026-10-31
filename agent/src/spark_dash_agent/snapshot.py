@@ -280,17 +280,12 @@ class SnapshotBuilder:
         self._thermal = ThermalCollector(settings.sys_path)
         self._fans = FanCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
-        self.rdma_probe: RdmaProber | None = (
-            RdmaProber(
-                settings.sys_path,
-                settings.proc_path,
-                self._node_id,
-                port_base=settings.rdma_probe_port_base,
-                peer_agent_port=settings.rdma_probe_peer_agent_port,
-                interval_s=settings.rdma_probe_interval_s,
-            )
-            if settings.rdma_probe
-            else None
+        self.rdma_probe = RdmaProber(
+            settings.sys_path,
+            self._node_id,
+            port_base=settings.rdma_probe_port_base,
+            peer_agent_port=settings.rdma_probe_peer_agent_port,
+            interval_s=settings.rdma_probe_interval_s,
         )
 
         # The CPU's critical trip doesn't change while the machine runs, so
@@ -453,7 +448,10 @@ class SnapshotBuilder:
         cpu = self._cpu.safe_collect(errors)
         network = self._network.safe_collect(errors) or []
         rdma = self._rdma.safe_collect(errors) or []
-        if self.rdma_probe is not None:
+        # Peers from cluster.yml only, like the interface ignore list: a node
+        # not in the file probes nothing.
+        self.rdma_probe.configure(self._applied.rdma_peers if self._applied else [])
+        if self.rdma_probe.active:
             # Results older than three intervals are dropped: a peer that went
             # away should stop being drawn, not hold its last number.
             probes = self.rdma_probe.results(3 * self._settings.rdma_probe_interval_s)

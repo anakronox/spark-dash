@@ -111,6 +111,10 @@ class ClusterNode:
     node_exporter_port: int = 9100
     runtimes: NodeRuntimes = field(default_factory=NodeRuntimes)
     interfaces: InterfacePolicy = field(default_factory=InterfacePolicy)
+    #: RoCE addresses this node's agent probes for RDMA round-trip time
+    #: (spike, CS). Pinned, the way an inference stack pins its NCCL peers;
+    #: empty means no probe on this node.
+    rdma_peers: tuple[str, ...] = ()
 
 
 class ClusterConfigError(ValueError):
@@ -191,6 +195,21 @@ def parse_runtimes(raw: object, host: str) -> NodeRuntimes:
             engines[runtime] = urls
 
     return NodeRuntimes(llama_routers=routers, engines=engines)
+
+
+def parse_rdma_probe(raw: object) -> tuple[str, ...]:
+    """Parse `rdma_probe: {peers: [...]}` into the peer addresses.
+
+    Anything malformed is no probe: it sends traffic on the fabric, so the
+    unclear case is the one that does nothing. Checked again on write by
+    `validate_cluster`.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict) or not isinstance(raw.get("peers") or [], list):
+        log.warning("ignoring unparseable `rdma_probe:` block: %r", raw)
+        return ()
+    return tuple(str(p).strip() for p in raw.get("peers") or [] if str(p).strip())
 
 
 def parse_interfaces(raw: object) -> InterfacePolicy:
@@ -279,6 +298,7 @@ def parse_cluster(text: str) -> list[ClusterNode]:
                 node_exporter_port=int(entry.get("node_exporter_port") or 9100),
                 runtimes=parse_runtimes(entry.get("runtimes"), host),
                 interfaces=parse_interfaces(entry.get("interfaces")),
+                rdma_peers=parse_rdma_probe(entry.get("rdma_probe")),
             )
         )
 
@@ -332,6 +352,24 @@ def validate_cluster(nodes: list[ClusterNode]) -> None:
         for port in (n.agent_port, n.node_exporter_port):
             if not 1 <= port <= 65535:
                 raise ClusterConfigError(f"node {n.node_id!r}: port {port} out of range")
+        for peer in n.rdma_peers:
+            # An address the agent will send RDMA traffic and an HTTP request
+            # to, so a literal private IPv4 and nothing else: a hostname
+            # cannot name a RoCE link.
+            if not _is_private_ipv4(peer):
+                raise ClusterConfigError(
+                    f"node {n.node_id!r}: rdma_probe peer {peer!r} must be a private IPv4 address"
+                )
+
+
+def _is_private_ipv4(text: str) -> bool:
+    import ipaddress
+
+    try:
+        ip = ipaddress.IPv4Address(text)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_link_local
 
 
 def dump_cluster(nodes: list[ClusterNode], *, preserve: Mapping | None = None) -> str:
@@ -380,6 +418,8 @@ def dump_cluster(nodes: list[ClusterNode], *, preserve: Mapping | None = None) -
             entry["runtimes"] = runtimes
         if n.interfaces.ignore:
             entry["interfaces"] = {"ignore": list(n.interfaces.ignore)}
+        if n.rdma_peers:
+            entry["rdma_probe"] = {"peers": list(n.rdma_peers)}
         out.append(entry)
 
     doc: dict = {}

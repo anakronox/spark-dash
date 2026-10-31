@@ -59,6 +59,9 @@ class NodeConfig:
     #: weights with no API of its own is accounted for even though nothing on
     #: this node polls it. Empty for a standalone node.
     cluster_collected_runtimes: list[str] = field(default_factory=list)
+    #: RoCE addresses to probe for round-trip time (spike, CS). Empty means no
+    #: probe at all on this node.
+    rdma_peers: list[str] = field(default_factory=list)
 
     @property
     def vllm(self) -> list[str]:
@@ -216,12 +219,20 @@ class RemoteConfig:
             if str(r).strip()
         ]
 
+        raw_probe = payload.get("rdma_probe")
+        rdma_peers = (
+            [str(p).strip() for p in (raw_probe.get("peers") or []) if str(p).strip()]
+            if isinstance(raw_probe, dict)
+            else []
+        )
+
         updated = NodeConfig(
             llama_routers=routers,
             metrics_allowlist=allowlist,
             engines=engines,
             ignored_interfaces=ignored,
             cluster_collected_runtimes=cluster_collected,
+            rdma_peers=rdma_peers,
         )
         if updated != self._runtimes:
             log.info(

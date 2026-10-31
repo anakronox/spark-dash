@@ -226,9 +226,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # why this cannot be verified on a dev laptop and is checked on a node.
     ProcessCollector(registry=registry)
 
-    if builder.rdma_probe is not None:
-        builder.rdma_probe.start()
-
     app = FastAPI(
         title="spark-dash-agent",
         summary=f"Per-node metrics agent for {builder.node_id}",
@@ -251,9 +248,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/rdma/listeners")
     def rdma_listeners() -> Response:
         """Which RoCE address this node's probe listener answers on which
-        port (spike, CS). 404 when the probe is off, which is what tells a
-        neighbour's agent there is nothing here to probe."""
-        if builder.rdma_probe is None:
+        port (spike, CS). 404 when this node has no peers configured."""
+        if builder.rdma_probe is None or not builder.rdma_probe.active:
             return Response(status_code=404)
         return JSONResponse(builder.rdma_probe.listeners())
 

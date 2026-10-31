@@ -1032,3 +1032,64 @@ class TestGateway:
         with pytest.raises(ClusterConfigError, match="SPARK_NODES"):
             write_gateway(path, GatewayConfig(url="http://g.invalid"))
         assert not path.exists()
+
+
+class TestRdmaProbePeers:
+    """Spike CS: the probe's peers are pinned per node in cluster.yml."""
+
+    TEXT = (
+        "nodes:\n- id: sparkjr\n  host: 192.168.50.63\n"
+        "  rdma_probe:\n    peers:\n      - 10.100.136.2\n      - 10.100.137.2\n"
+        "- id: sparky\n  host: 192.168.50.61\n"
+    )
+
+    def _client(self, tmp_path):
+        from fastapi.testclient import TestClient
+        from spark_dash_backend.app import create_app
+        from spark_dash_backend.config import Settings
+
+        path = tmp_path / "cluster.yml"
+        path.write_text(self.TEXT)
+        app = create_app(
+            Settings(spark_nodes="sparkjr=192.168.50.63", cluster_config=path, prometheus_targets_dir=None)
+        )
+        return TestClient(app), path
+
+    def test_parsed_and_absent_means_none(self, tmp_path):
+        nodes = by_id(parse_cluster(self.TEXT))
+        assert nodes["sparkjr"].rdma_peers == ("10.100.136.2", "10.100.137.2")
+        assert nodes["sparky"].rdma_peers == ()
+
+    def test_a_malformed_block_is_no_probe(self):
+        text = "nodes:\n- id: sparkjr\n  host: 192.168.50.63\n  rdma_probe: [10.100.136.2]\n"
+        assert parse_cluster(text)[0].rdma_peers == ()
+
+    def test_the_agent_is_served_them_beside_runtimes(self, tmp_path):
+        client, _ = self._client(tmp_path)
+        with client as c:
+            jr = c.get("/api/agent-config", params={"node": "sparkjr"}).json()
+            sparky = c.get("/api/agent-config", params={"node": "sparky"}).json()
+        assert jr["rdma_probe"] == {"peers": ["10.100.136.2", "10.100.137.2"]}
+        assert "rdma_probe" not in jr["runtimes"]
+        assert sparky["rdma_probe"] == {"peers": []}
+
+    def test_saving_from_the_editor_keeps_peers_it_does_not_show(self, tmp_path):
+        """The form has no field for them yet. Saving it must not erase them."""
+        client, path = self._client(tmp_path)
+        with client as c:
+            nodes = c.get("/api/cluster/config").json()["nodes"]
+            for n in nodes:
+                n.pop("rdma_peers", None)
+            resp = c.put("/api/cluster/config", json={"nodes": nodes})
+        assert resp.status_code == 200, resp.text
+        assert by_id(load_cluster(path))["sparkjr"].rdma_peers == ("10.100.136.2", "10.100.137.2")
+
+    def test_a_peer_must_be_a_private_ipv4_literal(self, tmp_path):
+        client, _ = self._client(tmp_path)
+        with client as c:
+            nodes = c.get("/api/cluster/config").json()["nodes"]
+            nodes[0]["rdma_peers"] = ["sparketa.lan"]
+            bad_name = c.put("/api/cluster/config", json={"nodes": nodes})
+            nodes[0]["rdma_peers"] = ["8.8.8.8"]
+            public = c.put("/api/cluster/config", json={"nodes": nodes})
+        assert bad_name.status_code == 400 and public.status_code == 400

@@ -1,31 +1,29 @@
 """RDMA round-trip probe over each RoCE link (spike, roadmap CS).
 
 The ConnectX keeps no latency counter, and ping over the RoCE addresses
-measures the kernel stack: 0.11-1.1 ms against a 2-7 us RDMA round trip,
+measures the kernel stack: 0.11-1.1 ms against a 6-7 us RDMA round trip,
 measured 2026-10-31. So the agent runs a real RDMA ping-pong, with
 `ibv_rc_pingpong` from ibverbs-utils.
 
 NOT PERFTEST. `ib_write_lat` spends 0.43 s of CPU per run calibrating the
-clock, whatever the iteration count; `ibv_rc_pingpong` has no calibration and
-ran 1000 round trips in 0.01 s.
+clock, whatever the iteration count; `ibv_rc_pingpong` has no calibration.
+Measured in the agent: 100 round trips, 6 ms of CPU, 20 ms wall.
 
 HOW IT RUNS:
 
+- PEERS ARE PINNED in cluster.yml (`rdma_probe: {peers: [...]}`), the way an
+  inference stack pins its NCCL peers, and nothing else is probed. A node
+  with no peers listed runs no listener and no prober.
 - A LISTENER per RDMA device: an `ibv_rc_pingpong` server on its own TCP port
   (PORT_BASE + the device's index), restarted after each client. It sits in
-  accept() between probes and costs nothing.
+  accept() between probes: four of them held about 2 MB, measured.
 - `/rdma/listeners` on the agent says which address is served on which port.
-- A PROBER thread, every interval: for each RoCE port, its neighbours from the
-  host's ARP table. A neighbour is probed only once its own agent has listed
-  the address, so nothing is sent to a host that is not one of ours. A
-  neighbour that is not an agent is asked again after an hour.
+- A PROBER thread, every interval: each peer, from the local RoCE address
+  closest to it.
 
 The TCP handshake goes to the peer's address on the link itself; the agent's
 published port answers on every host address. RDMA uses the devices'
 `netns shared` mode, so the agent stays on its bridge network.
-
-OFF unless RDMA_PROBE=1. The dashboard otherwise only reads, and this sends
-traffic on the fabric.
 """
 
 from __future__ import annotations
@@ -53,8 +51,8 @@ RUN_TIMEOUT_S = 5.0
 #: A listener nobody connected to is restarted after this, so one that a
 #: client abandoned mid-handshake cannot hold its port forever.
 LISTENER_RECYCLE_S = 300.0
-NOT_AN_AGENT_RETRY_S = 3600.0
-AGENT_RETRY_S = 300.0
+#: How long a peer's port list is trusted before asking again.
+LISTENERS_TTL_S = 300.0
 
 _RESULT = re.compile(r"(\d+) iters in [\d.]+ seconds = ([\d.]+) usec/iter")
 
@@ -79,7 +77,7 @@ class ProbeResult:
 
 
 def roce_v2_ipv4_gids(sys_path: Path) -> list[Gid]:
-    """One RoCE v2 IPv4 GID per active port, link-local last.
+    """One RoCE v2 IPv4 GID per port, link-local last.
 
     A port can carry several addresses (sparkjr's enP2p1s0f1np1 has a
     169.254 one beside its real one); the routable one is what peers use.
@@ -113,23 +111,21 @@ def roce_v2_ipv4_gids(sys_path: Path) -> list[Gid]:
     return out
 
 
-def neighbours(proc_path: Path, netdev: str) -> list[str]:
-    """Complete ARP entries on one interface, from the HOST's table.
+def closest(gids: list[Gid], peer: str, min_bits: int = 16) -> Gid | None:
+    """The local address sharing the longest prefix with the peer.
 
-    `/proc/1/net/arp` and not `/proc/net/arp`: the latter resolves through the
-    reading process's own network namespace, which is the container's. With
-    `pid: host`, pid 1 is the host's init.
+    The kernel's own prefix length is in the host's network namespace, which
+    the agent cannot read from its bridge network; the longest shared prefix
+    picks the same port on every subnet here. Under 16 shared bits is no
+    match: such a peer is not on any link this node has.
     """
-    try:
-        lines = (proc_path / "1" / "net" / "arp").read_text().splitlines()[1:]
-    except OSError:
-        return []
-    out = []
-    for line in lines:
-        parts = line.split()
-        if len(parts) >= 6 and parts[5] == netdev and parts[2] == "0x2":
-            out.append(parts[0])
-    return sorted(set(out))
+    want = int(ipaddress.IPv4Address(peer))
+    best, best_bits = None, min_bits - 1
+    for g in gids:
+        bits = 32 - (int(ipaddress.IPv4Address(g.ipv4)) ^ want).bit_length()
+        if bits > best_bits:
+            best, best_bits = g, bits
+    return best
 
 
 def parse_rtt(output: str) -> float | None:
@@ -139,10 +135,11 @@ def parse_rtt(output: str) -> float | None:
 
 
 class RdmaProber:
+    """Listeners and prober, started and stopped by the peer list."""
+
     def __init__(
         self,
         sys_path: Path,
-        proc_path: Path,
         node_id: str,
         *,
         port_base: int,
@@ -150,16 +147,35 @@ class RdmaProber:
         interval_s: float,
     ) -> None:
         self._sys = sys_path
-        self._proc = proc_path
         self._node_id = node_id
         self._port_base = port_base
         self._peer_agent_port = peer_agent_port
         self._interval_s = interval_s
         self._lock = threading.Lock()
         self._results: dict[tuple[str, int, str], ProbeResult] = {}
-        self._peers: dict[str, tuple[float, dict | None]] = {}
-        self._stop = threading.Event()
+        self._listeners_of: dict[str, tuple[float, dict]] = {}
+        self._peers: tuple[str, ...] = ()
         self._gids: list[Gid] = []
+        self._stop: threading.Event | None = None
+        self._children: set[subprocess.Popen] = set()
+
+    @property
+    def active(self) -> bool:
+        return self._stop is not None
+
+    def configure(self, peers: list[str]) -> None:
+        """Start, stop or retarget. Called on every snapshot; a no-op when the
+        list has not changed."""
+        wanted = tuple(sorted(set(peers)))
+        if wanted == self._peers:
+            return
+        self._peers = wanted
+        with self._lock:
+            self._results = {k: v for k, v in self._results.items() if k[2] in wanted}
+        if wanted and not self.active:
+            self._start()
+        elif not wanted and self.active:
+            self._halt()
 
     # --- listeners -----------------------------------------------------------
 
@@ -181,99 +197,117 @@ class RdmaProber:
             },
         }
 
-    def _listen_forever(self, gid: Gid, tcp_port: int) -> None:
+    def _run(self, cmd: list[str], timeout: float) -> tuple[str, str] | None:
+        """One child process, killed on timeout or when the probe stops.
+        None when it timed out."""
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)  # noqa: S603 — fixed binary, our own arguments
+        with self._lock:
+            self._children.add(proc)
+        try:
+            out, err = proc.communicate(timeout=timeout)
+            return out, err
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            return None
+        finally:
+            with self._lock:
+                self._children.discard(proc)
+
+    def _listen_forever(self, gid: Gid, tcp_port: int, stop: threading.Event) -> None:
         cmd = [PINGPONG, "-d", gid.device, "-i", str(gid.port), "-g", str(gid.index),
                "-p", str(tcp_port), "-n", str(ITERATIONS), "-s", str(SIZE)]
-        while not self._stop.is_set():
+        while not stop.is_set():
             try:
-                subprocess.run(cmd, capture_output=True, timeout=LISTENER_RECYCLE_S, check=False)
-            except subprocess.TimeoutExpired:
-                continue
+                self._run(cmd, LISTENER_RECYCLE_S)
             except OSError:
                 log.warning("rdma probe: cannot run %s", PINGPONG, exc_info=True)
-                self._stop.wait(60)
+                stop.wait(60)
 
     # --- prober --------------------------------------------------------------
 
     def _peer_listeners(self, ip: str, now: float) -> dict | None:
-        cached = self._peers.get(ip)
+        cached = self._listeners_of.get(ip)
         if cached and now < cached[0]:
             return cached[1]
-        info = None
         try:
-            with urllib.request.urlopen(  # noqa: S310 — a fixed http URL to a neighbour
+            with urllib.request.urlopen(  # noqa: S310 — a pinned peer, plain http on the LAN
                 f"http://{ip}:{self._peer_agent_port}/rdma/listeners", timeout=1.0
             ) as resp:
                 info = json.load(resp)
-        except Exception:  # noqa: BLE001 — anything but an answer means "not an agent"
-            info = None
-        ok = bool(info and ip in info.get("listeners", {}))
-        self._peers[ip] = (now + (AGENT_RETRY_S if ok else NOT_AN_AGENT_RETRY_S), info if ok else None)
-        return info if ok else None
-
-    def _netdev(self, device: str) -> str | None:
-        try:
-            names = sorted(p.name for p in (self._sys / "class" / "infiniband" / device / "device" / "net").iterdir())
-        except OSError:
+        except Exception:  # noqa: BLE001 — retried next round
             return None
-        return names[0] if names else None
+        if ip not in info.get("listeners", {}):
+            return None
+        self._listeners_of[ip] = (now + LISTENERS_TTL_S, info)
+        return info
 
-    def _probe(self, gid: Gid, peer_ip: str, info: dict) -> ProbeResult:
-        target = info["listeners"][peer_ip]
-        cmd = [PINGPONG, "-d", gid.device, "-i", str(gid.port), "-g", str(gid.index),
-               "-p", str(target["port"]), "-n", str(ITERATIONS), "-s", str(SIZE), peer_ip]
+    def _probe(self, peer: str, now: float) -> ProbeResult:
+        gid = closest(self._gids, peer)
+        if gid is None:
+            return ProbeResult("", 0, peer, "", None, "no local RoCE address near this peer")
+        info = self._peer_listeners(peer, now)
+        if info is None:
+            return ProbeResult(gid.device, gid.port, peer, "", None, "peer agent not listening")
         node = str(info.get("node", ""))
-        try:
-            run = subprocess.run(cmd, capture_output=True, text=True, timeout=RUN_TIMEOUT_S, check=False)
-        except subprocess.TimeoutExpired:
-            return ProbeResult(gid.device, gid.port, peer_ip, node, None, "timed out")
-        rtt = parse_rtt(run.stdout)
+        cmd = [PINGPONG, "-d", gid.device, "-i", str(gid.port), "-g", str(gid.index),
+               "-p", str(info["listeners"][peer]["port"]), "-n", str(ITERATIONS), "-s", str(SIZE), peer]
+        ran = self._run(cmd, RUN_TIMEOUT_S)
+        if ran is None:
+            return ProbeResult(gid.device, gid.port, peer, node, None, "timed out")
+        rtt = parse_rtt(ran[0])
         if rtt is None:
             # Refused is the usual case: another node is probing the same
             # listener this second. The next round tries again.
-            err = (run.stderr.strip().splitlines() or ["no result"])[-1][:120]
-            return ProbeResult(gid.device, gid.port, peer_ip, node, None, err)
-        return ProbeResult(gid.device, gid.port, peer_ip, node, rtt)
+            err = (ran[1].strip().splitlines() or ["no result"])[-1][:120]
+            return ProbeResult(gid.device, gid.port, peer, node, None, err)
+        return ProbeResult(gid.device, gid.port, peer, node, rtt)
 
-    def _round(self) -> None:
-        now = time.time()
-        for gid in self._gids:
-            netdev = self._netdev(gid.device)
-            if not netdev:
-                continue
-            for ip in neighbours(self._proc, netdev):
-                if ip == gid.ipv4:
-                    continue
-                info = self._peer_listeners(ip, now)
-                if not info:
-                    continue
-                result = self._probe(gid, ip, info)
-                with self._lock:
-                    self._results[(gid.device, gid.port, ip)] = result
-
-    def _probe_forever(self) -> None:
-        while not self._stop.is_set():
-            # Jittered, so two nodes probing the same listener through a
-            # switch do not collide every round.
-            if self._stop.wait(self._interval_s * random.uniform(0.8, 1.2)):  # noqa: S311
+    def _probe_forever(self, stop: threading.Event) -> None:
+        while not stop.is_set():
+            # Jittered, so two nodes probing one listener through a switch do
+            # not collide every round.
+            if stop.wait(self._interval_s * random.uniform(0.8, 1.2)):  # noqa: S311
                 return
-            try:
-                self._round()
-            except Exception:  # noqa: BLE001 — a probe must never take the agent down
-                log.warning("rdma probe round failed", exc_info=True)
+            now = time.time()
+            for peer in self._peers:
+                try:
+                    result = self._probe(peer, now)
+                except Exception:  # noqa: BLE001 — a probe must never take the agent down
+                    log.warning("rdma probe to %s failed", peer, exc_info=True)
+                    continue
+                with self._lock:
+                    self._results[(result.device, result.port, peer)] = result
 
     def results(self, max_age_s: float) -> list[ProbeResult]:
         cutoff = time.time() - max_age_s
         with self._lock:
             return [r for r in self._results.values() if r.at >= cutoff]
 
-    def start(self) -> None:
+    def _start(self) -> None:
+        stop = threading.Event()
+        self._stop = stop
         self._gids = roce_v2_ipv4_gids(self._sys)
         ports = self._device_ports()
         for gid in self._gids:
             threading.Thread(
-                target=self._listen_forever, args=(gid, ports[gid.device]),
+                target=self._listen_forever, args=(gid, ports[gid.device], stop),
                 name=f"rdma-listen-{gid.device}", daemon=True,
             ).start()
-        threading.Thread(target=self._probe_forever, name="rdma-probe", daemon=True).start()
-        log.info("rdma probe on: %s", ", ".join(f"{g.device}={g.ipv4}" for g in self._gids) or "no RoCE GIDs")
+        threading.Thread(target=self._probe_forever, args=(stop,), name="rdma-probe", daemon=True).start()
+        log.info(
+            "rdma probe on, peers %s; listening on %s",
+            ", ".join(self._peers),
+            ", ".join(f"{g.device}={g.ipv4}" for g in self._gids) or "nothing (no RoCE v2 IPv4 GIDs)",
+        )
+
+    def _halt(self) -> None:
+        if self._stop is not None:
+            self._stop.set()
+        self._stop = None
+        with self._lock:
+            for proc in list(self._children):
+                proc.kill()
+            self._results.clear()
+        self._gids = []
+        log.info("rdma probe off: no peers configured")

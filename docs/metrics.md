@@ -425,6 +425,7 @@ partition is disjoint, so aggregating at any level is safe.
 | `rdma_port_monitored` | `device`, `port` | derived from the paired netdev — one cable carries both |
 | `rdma_{receive,transmit}_bytes_total`, `rdma_errors_total` | `device`, `port` | read from the PAIRED interface — the same bytes `network_*_bytes_total` reports, not additional ones |
 | `rdma_hw_counter_total` | + `counter` | RoCE congestion and retry counters from the port's `hw_counters/`, by sysfs name: `np_ecn_marked_roce_packets`, `np_cnp_sent`, `rp_cnp_handled`, `out_of_sequence`, `packet_seq_err`, `implied_nak_seq_err`, `local_ack_timeout_err`, `roce_adp_retrans`, `roce_adp_retrans_to`, `rnr_nak_retry_err`, `req_transport_retries_exceeded`, `out_of_buffer`. A counter the driver lacks is absent, not 0 |
+| `rdma_probe_rtt_microseconds` | + `peer`, `peer_node` | mean RDMA round trip to a peer pinned in `cluster.yml` (`rdma_probe.peers`), 100 ping-pongs of 64 bytes by `ibv_rc_pingpong`; absent when the last probe failed. Spike, not on `:latest` |
 | `rdma_port_info` | + `link_layer`, `rate`, `interface` | always 1; the negotiated rate rides as a label because a string cannot be a gauge value. `interface` is the join key to the netdev the RoCE device shares a cable with — empty when there is no pairing |
 
 ### Inference — llama.cpp router mode

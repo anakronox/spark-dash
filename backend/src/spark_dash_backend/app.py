@@ -141,6 +141,10 @@ class NodeWrite(BaseModel):
     #: absent because the node is down must not have its exclusion dropped by
     #: whoever next opens the editor.
     ignored_interfaces: list[str] = Field(default_factory=list)
+    #: RDMA probe peers (spike, CS). None, which is what the editor sends
+    #: today, KEEPS the node's current peers: a field the form does not show
+    #: must not be erased by saving it.
+    rdma_peers: list[str] | None = None
 
     def engine_ports(self) -> dict[str, list[int]]:
         return {runtime: getattr(self, runtime, []) for runtime in ENGINE_RUNTIMES}
@@ -908,6 +912,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         },
                     },
                     "ignored_interfaces": list(c.interfaces.ignore),
+                    "rdma_peers": list(c.rdma_peers),
                 }
                 for c in cluster
             ],
@@ -934,6 +939,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         the whole list, so a partial update cannot leave the file describing a
         cluster nobody asked for.
         """
+        try:
+            current_peers = {c.node_id: c.rdma_peers for c in load_cluster(settings.cluster_config)}
+        except ClusterConfigError:
+            current_peers = {}
         nodes = [
             ClusterNode(
                 node_id=n.node_id.strip(),
@@ -957,6 +966,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 interfaces=InterfacePolicy(
                     ignore=[i.strip() for i in n.ignored_interfaces if i.strip()]
+                ),
+                rdma_peers=(
+                    tuple(p.strip() for p in n.rdma_peers if p.strip())
+                    if n.rdma_peers is not None
+                    else current_peers.get(n.node_id.strip(), ())
                 ),
             )
             for n in payload.nodes
@@ -1055,6 +1069,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "interfaces": (
                 match.interfaces.as_dict() if match else InterfacePolicy().as_dict()
             ),
+            # Also a sibling of `runtimes`, for the same reason. Empty peers
+            # means the agent runs no RDMA probe at all (spike, CS).
+            "rdma_probe": {"peers": list(match.rdma_peers) if match else []},
         }
 
     @app.get("/api/alerts/silences")

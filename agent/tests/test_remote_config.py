@@ -220,3 +220,18 @@ def test_status_says_env_when_the_node_is_absent_from_cluster_yml(monkeypatch, p
     source, at = rc.status(50.0)
     assert source == "env"
     assert at == 50.0
+
+
+def test_rdma_peers_are_read_beside_runtimes_and_absent_means_none(patched):
+    """Spike CS: the probe's peers are pinned centrally; no block, no probe."""
+    patched({**CONFIGURED, "rdma_probe": {"peers": ["10.100.136.2", " ", "10.100.137.2"]}})
+    cfg = RemoteConfig("http://backend:8080", "sparky").current(now=1000.0)
+    assert cfg is not None and cfg.rdma_peers == ["10.100.136.2", "10.100.137.2"]
+    # Not read as an engine, either.
+    assert "rdma_probe" not in cfg.engines
+
+
+def test_no_rdma_probe_block_means_no_peers(patched):
+    patched(CONFIGURED)
+    cfg = RemoteConfig("http://backend:8080", "sparky").current(now=1000.0)
+    assert cfg is not None and cfg.rdma_peers == []
