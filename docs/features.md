@@ -215,6 +215,11 @@ nothing is configured on the server.
   for the chips to fit beside the controls they fold into a **nodes** menu.
   **Settings → Appearance → Reset layout** puts it back to the layout you
   picked.
+- **Back up and restore the layout.** **Settings → Appearance → Back up
+  layout** saves the theme and everything about the page's arrangement (each
+  card's view, size, columns and order) to a JSON file. **Restore layout…**
+  loads one into this browser, or another, and reloads. Nothing secret is in
+  it, and it leaves the tour and acknowledged network events as they are.
 - **Settings** opens as a wide panel with a section on each tab of its left
   rail, each integration's state shown beside its name; drag the panel's left
   edge to make it wider or narrower.

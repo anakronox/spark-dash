@@ -61,6 +61,8 @@
     type ReportsMeta,
   } from '../lib/reports';
   import { probeLine, sameAddress, stateLine, viewOf } from '../lib/clients';
+  import { collect, fileName, parse, restore } from '../lib/backup';
+  import type { Backup } from '../lib/backup';
   import type { ProbeResult } from '../lib/clients';
 
 
@@ -984,6 +986,42 @@
     location.reload();
   }
 
+  /* BACK UP AND RESTORE (CQ): the theme and the whole layout as one file,
+     for another browser or after a reset. lib/backup.ts says what is in it. */
+  function backupLayout() {
+    const blob = new Blob([JSON.stringify(collect(localStorage), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName();
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  let restoreInput = $state<HTMLInputElement>();
+  /* Two presses, like Reset: choosing the file arms it and says what it
+     holds, the button beside it applies it. */
+  let restorePending = $state<{ name: string; backup: Backup } | null>(null);
+  let restoreError = $state('');
+  async function chooseRestore(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const parsed = parse(await file.text());
+    restorePending = parsed.ok ? { name: file.name, backup: parsed.backup } : null;
+    restoreError = parsed.ok ? '' : parsed.error;
+  }
+  function applyRestore() {
+    if (!restorePending) return;
+    restore(localStorage, restorePending.backup);
+    location.reload();
+  }
+  const savedOn = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? 'at an unknown time' : `on ${d.toLocaleString()}`;
+  };
+
   function watchedCount(n: ConfiguredNode): string {
     const rows = interfaceRows(n);
     return rows.length ? `${rows.filter((r) => isWatched(n, r.name)).length} of ${rows.length}` : 'none yet';
@@ -1204,7 +1242,7 @@
            sync them to. The dashboard is deliberately stateless server-side. -->
       <p class="note dim">
         The theme, the page's arrangement, each element's view and size, and column widths are kept
-        in this browser only.
+        in this browser only. Back them up to a file to move them to another browser or keep a copy.
       </p>
       <!-- Two presses, since the page cannot ask with confirm(): the first
            arms it and says what will go, the second does it. -->
@@ -1216,6 +1254,30 @@
           <span class="note dim">Puts every element back as the layout above set it; keeps the theme.</span>
         {/if}
       </div>
+      <div class="rt-row">
+        <button class="mini add" onclick={backupLayout}>Back up layout</button>
+        <button class="mini add" onclick={() => restoreInput?.click()}>Restore layout…</button>
+        <input
+          bind:this={restoreInput}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onchange={chooseRestore}
+        />
+      </div>
+      {#if restorePending}
+        <div class="rt-row">
+          <button class="mini add" onclick={applyRestore}>Restore {restorePending.name}</button>
+          <button class="mini" onclick={() => (restorePending = null)}>Cancel</button>
+          <span class="note dim">
+            Replaces this browser's theme and layout with the one saved {savedOn(restorePending.backup.created)},
+            then reloads.
+          </span>
+        </div>
+      {/if}
+      {#if restoreError}
+        <p class="note" data-tone="warning">{restoreError}</p>
+      {/if}
       {#if onguide || ontour}
         <div class="rt-row">
           {#if onguide}<button class="mini add" onclick={onguide}>Setup guide</button>{/if}

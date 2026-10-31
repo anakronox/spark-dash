@@ -8817,6 +8817,27 @@ GitHub issue #1 asked for fan speeds, read from `acpi_fan` hwmon chips.
   across rows to first (charts and the metric menu followed); Management out
   in front of RoCE (both Management panels moved).
 
+### CQ — Back up and restore the layout — **built 2026-10-31**
+
+The page had become customisable enough that losing a browser's settings
+meant rebuilding them by hand (Brian).
+
+- [x] **CQ1. One JSON file of every `spark-dash.` localStorage key**, copied
+  cards' `:kind#n` keys included: theme, arrangement, each card's view, size,
+  columns and order (`lib/backup.ts`). Left out, and left alone by a restore:
+  the tour and onboarding flags, acknowledged network events, the last
+  Settings pane and the chosen MCP client, which record what this browser has
+  done rather than how the page is set up. Nothing secret is stored in the
+  browser, so a file can be handed to another one.
+- [x] **CQ2. Restore replaces, it does not merge.** Layout keys the file lacks
+  are removed, so a preference at its default when the backup was taken is at
+  its default after it; then the page reloads, since each store reads its key
+  once. A file that is not a backup, from another format version, or carrying
+  any key outside the dashboard's own is refused whole, with the reason.
+  Two presses, like Reset: choosing the file says when it was saved.
+- [ ] Not built: keeping layouts on the server, so a new browser could pick
+  one without a file. The backend stays stateless for view preference.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
