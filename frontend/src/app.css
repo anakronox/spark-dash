@@ -987,20 +987,25 @@
     width: 100%;
   }
 
-  /* Moving a column by its header (CO, lib/column-drag.ts). The marker is an
-     inset shadow on the header the drop lands beside, so nothing is added to
-     a table that is being measured. */
-  th[data-drop='before'] {
+  /* Moving a column by its header (CO, lib/column-drag.ts) or a gauge panel
+     (CP, lib/panel-drag.ts). The marker is an inset shadow on whatever the
+     drop lands beside, so nothing is added to a layout being measured. */
+  [data-drop='before'] {
     box-shadow: inset 2px 0 0 var(--good);
   }
-  th[data-drop='after'] {
+  [data-drop='after'] {
     box-shadow: inset -2px 0 0 var(--good);
   }
-  th[data-col-dragging] {
+  [data-dragging] {
     opacity: 0.5;
   }
-  :root[data-col-drag],
-  :root[data-col-drag] * {
+  /* A gauge panel says it can be picked up. Headers do not: they are sort
+     buttons first, and a grab cursor there would hide that. */
+  [data-item-key] {
+    cursor: grab;
+  }
+  :root[data-reordering],
+  :root[data-reordering] * {
     cursor: grabbing !important;
     user-select: none;
   }

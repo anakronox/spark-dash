@@ -17,6 +17,7 @@
  */
 
 import { columnStore } from './columns.svelte';
+import { itemOrder } from './item-order.svelte';
 import { BASELINE_KEY, applyPreset, currentPreset } from './presets';
 
 const STORAGE_KEY = 'spark-dash.section-order.v1';
@@ -1220,6 +1221,7 @@ export class Layout {
        control that puts everything back, or a reader who forgets what they hid
        is stuck with a table they cannot explain. */
     columnStore.reset();
+    itemOrder.reset();
     this.setCompactCards(false);
     this.setOverflow('page');
     this.#savePlacement();
@@ -1270,6 +1272,7 @@ export class Layout {
       Object.keys(this.plotRows).length === 0 &&
       this.nodeOrder.length === 0 &&
       !columnStore.customised &&
+      !itemOrder.customised &&
       !this.compactCards &&
       this.overflow === 'page'
     );

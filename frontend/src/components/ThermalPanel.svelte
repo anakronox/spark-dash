@@ -43,6 +43,8 @@
   import ColumnMenu from './ColumnMenu.svelte';
   import PickMenu from './PickMenu.svelte';
   import { instanceKey } from '../lib/layout.svelte';
+  import { itemOrder, steps } from '../lib/item-order.svelte';
+  import { reorderablePanel } from '../lib/panel-drag';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { ColumnView } from '../lib/columns.svelte';
@@ -65,7 +67,12 @@
   const { nodes, maxRows = 8, instance = 'thermal' }: Props = $props();
 
   const rows = $derived(tempRows(nodes));
-  const allGroups = $derived(groupRows(rows));
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const ORDER_CARD = instanceKey('thermal.groups', instance);
+  /* In the reader's order (CP), dragged in the gauge view; the table follows. */
+  const allGroups = $derived(itemOrder.ordered(ORDER_CARD, groupRows(rows), (g) => g.key));
+  const allGroupKeys = () => allGroups.map((g) => g.key);
 
   /* WHICH GROUPS TO SHOW (Brian, 2026-10-12: the card was "just way too
      much"). The same picker as System Activity's metrics and Network
@@ -111,6 +118,10 @@
         checked: on,
         disabled: last,
         note: last ? 'last one' : undefined,
+        ...steps(
+          groups.map((x) => x.key),
+          g.key,
+        ),
       };
     }),
   );
@@ -406,6 +417,8 @@
       <PickMenu
         groups={[{ items: groupItems }]}
         ontoggle={toggleGroup}
+        onmove={(key, dir) =>
+          itemOrder.step(ORDER_CARD, allGroupKeys(), groups.map((g) => g.key), key, dir)}
         what="Sensor groups"
         of="Temperatures"
         text="groups"
@@ -460,7 +473,11 @@
       {#each groups as g, i (g.key)}
         {@const combo = comboOf('gauges', g.key)}
         {@const items = thermalItems(combineRows(g.rows, combo === 'average' ? 'average' : 'hottest'), colourOf)}
-        <section class="domain" class:divided={i % gaugeCols !== 0}>
+        <section
+          class="domain"
+          class:divided={i % gaugeCols !== 0}
+          use:reorderablePanel={{ card: ORDER_CARD, key: g.key, all: allGroupKeys }}
+        >
           <h3 class="head-row" title={g.note}>
             {g.label}
             <span class="count">{g.rows.length}</span>

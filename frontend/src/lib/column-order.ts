@@ -73,3 +73,28 @@ export function isNoOp(visible: string[], key: string, before: string | null): b
   const i = visible.indexOf(key);
   return before === key || (before === null ? i === visible.length - 1 : visible[i + 1] === before);
 }
+
+export interface ItemRect extends HeaderEdge {
+  top: number;
+  bottom: number;
+}
+
+/** A drop at (x, y) on a wrapping grid of panels (gauges, CP): the panel
+ *  under the pointer, or the nearest one when it is in a gap, then its left or
+ *  right half. Right half means in front of the next item, or null at the end.
+ *  `items` are in reading order; panels sharing a key (Network's in and out
+ *  of one group) are one item, so "next" skips the partner. */
+export function dropBeforeGrid(items: ItemRect[], x: number, y: number): string | null {
+  if (!items.length) return null;
+  const dist = (r: ItemRect) =>
+    Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+  // The pointer's own row first: empty space after a row's last panel means
+  // the end of that row, not the panel above it that happens to be closer.
+  const onRow = items.map((_, i) => i).filter((i) => items[i].top <= y && y <= items[i].bottom);
+  const pool = onRow.length ? onRow : items.map((_, i) => i);
+  let best = pool[0];
+  for (const i of pool) if (dist(items[i]) < dist(items[best])) best = i;
+  const r = items[best];
+  if (x < (r.left + r.right) / 2) return r.key;
+  return items.slice(best + 1).find((i) => i.key !== r.key)?.key ?? null;
+}

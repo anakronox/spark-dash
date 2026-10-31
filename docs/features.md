@@ -188,7 +188,9 @@ nothing is configured on the server.
   which columns. Column edges drag, and a faint line between headers marks each
   one. Drag a header to move its column; the column menu's ← → do the same
   from the keyboard. The first column, the row's name, stays first. Reset
-  layout puts every column back.
+  layout puts every column back. In gauge view, drag a gauge panel to move
+  its metric or group; the card's charts and table take the same order, and
+  the metric or group menu's ← → move it from the keyboard.
 - **Compact node cards.** **Settings → Appearance → Node elements → Compact** puts every node
   on one grid at the same width, each cluster and each standalone node in its
   own frame. When the frames fit in half the page, as on a wide monitor, the

@@ -12,6 +12,7 @@
   import PickMenu from './PickMenu.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
+  import { itemOrder, steps } from '../lib/item-order.svelte';
   import { gaugeCols, gridCols, onLastRow } from '../lib/chart-grid';
   import { METRICS, RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
   import type { Annotation, MetricSpec } from '../lib/history';
@@ -71,6 +72,9 @@
   // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
   // component: App keys each card by id, so a different instance is a different mount.
   const STORAGE_KEY = instanceKey('spark-dash.trend-metrics.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const ORDER_CARD = instanceKey('trends.metrics', instance);
   // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
   // component: App keys each card by id, so a different instance is a different mount.
   const EVENTS_KEY = instanceKey('spark-dash.trend-events.v1', instance);
@@ -203,18 +207,29 @@
 
   const range = $derived(RANGES.find((r) => r.key === rangeKey) ?? RANGES[0]);
   const slots = $derived(new Map(nodeIds.map((id, i) => [id, i])));
-  /* Kept in METRICS order rather than click order, so the stack doesn't
-     reshuffle as you toggle things on and off. */
-  const chosen = $derived(METRICS.filter((m) => selected.includes(m.key)));
+  /* The reader's order (CP), dragged in the gauge view; METRICS order until
+     then. Never click order, so the stack doesn't reshuffle as you toggle
+     things on and off. Charts and gauges both follow it. */
+  const metricsInOrder = $derived(itemOrder.ordered(ORDER_CARD, METRICS, (m) => m.key));
+  const chosen = $derived(metricsInOrder.filter((m) => selected.includes(m.key)));
+  const chosenKeys = $derived(chosen.map((m) => m.key));
+  const allKeys = () => metricsInOrder.map((m) => m.key);
 
   /* The last metric standing cannot be switched off, and says so, for the
      reason `toggle` already gives: an empty chart area reads as broken rather
      than as a choice. Locked in the list rather than silently refused. */
   const metricItems = $derived(
-    METRICS.map((m) => {
+    metricsInOrder.map((m) => {
       const on = selected.includes(m.key);
       const last = on && selected.length === 1;
-      return { key: m.key, label: m.label, checked: on, disabled: last, note: last ? 'last one' : undefined };
+      return {
+        key: m.key,
+        label: m.label,
+        checked: on,
+        disabled: last,
+        note: last ? 'last one' : undefined,
+        ...steps(chosenKeys, m.key),
+      };
     }),
   );
 
@@ -621,6 +636,7 @@
       <PickMenu
         groups={[{ items: metricItems }]}
         ontoggle={toggle}
+        onmove={(key, dir) => itemOrder.step(ORDER_CARD, allKeys(), chosenKeys, key, dir)}
         what="Metrics"
         of="System Activity"
         text="metrics"
@@ -763,6 +779,7 @@
           divided={i % cols !== 0}
           items={gaugeItems(m)}
           tiles={kindOf(m) === 'tile'}
+          reorder={{ card: ORDER_CARD, key: m.key, all: allKeys }}
         />
       {/each}
     </div>

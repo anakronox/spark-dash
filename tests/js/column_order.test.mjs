@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 
-import { applyOrder, dropBefore, isNoOp, moveBefore } from '../../frontend/src/lib/column-order.ts';
+import { applyOrder, dropBefore, dropBeforeGrid, isNoOp, moveBefore } from '../../frontend/src/lib/column-order.ts';
 
 let passed = 0;
 let failed = 0;
@@ -72,6 +72,30 @@ test('a drop that would leave the column where it is, is not a move', () => {
   assert.equal(isNoOp(shown, 'tok', null), true);
   assert.equal(isNoOp(shown, 'node', 'state'), false);
   assert.equal(isNoOp(shown, 'state', null), false);
+});
+
+// Gauge panels (CP): two rows of three, 100 wide, 50 tall, 10 apart.
+const cell = (key, col, row) => ({ key, left: col * 110, right: col * 110 + 100, top: row * 60, bottom: row * 60 + 50 });
+const GRID = [cell('a', 0, 0), cell('b', 1, 0), cell('c', 2, 0), cell('d', 0, 1), cell('e', 1, 1)];
+
+test('a grid drop lands by the panel under the pointer, left or right half', () => {
+  assert.equal(dropBeforeGrid(GRID, 120, 25), 'b'); // left half of b
+  assert.equal(dropBeforeGrid(GRID, 190, 25), 'c'); // right half of b
+  assert.equal(dropBeforeGrid(GRID, 300, 25), 'd'); // right half of c wraps to the next row
+  assert.equal(dropBeforeGrid(GRID, 200, 85), null); // right half of the last panel
+  assert.equal(dropBeforeGrid([], 0, 0), null);
+});
+
+test('a grid drop in a gap uses the nearest panel', () => {
+  assert.equal(dropBeforeGrid(GRID, 105, 25), 'b'); // the gap between a and b, nearer b's left
+  assert.equal(dropBeforeGrid(GRID, 320, 85), null); // empty space after e
+});
+
+test('panels sharing a key are one item: in and out of a network group', () => {
+  const pairs = [cell('roce', 0, 0), cell('roce', 1, 0), cell('mgmt', 2, 0), cell('mgmt', 0, 1)];
+  assert.equal(dropBeforeGrid(pairs, 80, 25), 'mgmt'); // right half of roce in: after the pair
+  assert.equal(dropBeforeGrid(pairs, 10, 85), 'mgmt'); // left half of mgmt out: still before mgmt
+  assert.equal(dropBeforeGrid(pairs, 80, 85), null);
 });
 
 console.log(`${passed}/${passed + failed} passed`);

@@ -10,6 +10,8 @@
   import Dial from './Dial.svelte';
   import { DIAL_GAP_PX, DIAL_LABEL_PX, dialFit } from '../lib/gauges';
   import type { GaugeItem } from '../lib/gauges';
+  import { reorderablePanel } from '../lib/panel-drag';
+  import type { PanelDrag } from '../lib/panel-drag';
 
   interface Props {
     title: string;
@@ -29,6 +31,8 @@
     /** Not first on its row: a hairline on the left, between it and the
      *  panel before, as Temperatures draws between its groups. */
     divided?: boolean;
+    /** Lets the panel be dragged to a new place on its card (CP). */
+    reorder?: PanelDrag;
   }
   const {
     title,
@@ -41,6 +45,7 @@
     sizeFor = 0,
     caption = true,
     divided = false,
+    reorder,
   }: Props = $props();
 
   // The box's 4px top padding comes off the height the dials can use.
@@ -53,7 +58,7 @@
   });
 </script>
 
-<figure class="gauge" class:divided aria-label={caption ? undefined : title}>
+<figure class="gauge" class:divided aria-label={caption ? undefined : title} use:reorderablePanel={reorder}>
   {#if caption}
   <figcaption>
     <span class="name" class:verbatim>{title}</span>

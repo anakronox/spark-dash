@@ -8795,6 +8795,28 @@ GitHub issue #1 asked for fan speeds, read from `acpi_fan` hwmon chips.
 - [x] **CO4. Keyboard:** ← → on each row of the column menu, which now lists
   columns in the order drawn, moving among the shown columns.
 
+### CP — Drag a gauge panel to move it — **built 2026-10-31**
+
+- [x] **CP1. One order per card, every view.** System Activity's metrics,
+  Temperatures' groups and Network Activity's groups keep a reader's order
+  (`spark-dash.card-order.v1`, keyed per card instance). It is dragged in the
+  gauge view and also orders that card's charts and table, so a metric sits
+  in the same place however the card is drawn. Charts are not draggable
+  themselves: a drag on a chart already pans and zooms it. Reset layout
+  clears it.
+- [x] **CP2. The drag** (`lib/panel-drag.ts`): the column drag on a wrapping
+  grid. The drop is the panel under the pointer, its left or right half, and
+  the pointer's own row wins over a nearer panel above, so empty space after
+  a row's last panel means the end of the row. A press on a control inside a
+  panel (Temperatures' hottest / avg) is that control's. Network's in and out
+  panels share their group's key and move as a pair.
+- [x] **CP3. Keyboard:** ← → on each shown row of the metric and group menus,
+  which list in the card's order.
+- Checked in the preview with real drags: Temperatures' Network group to
+  first (table followed, the hidden Wireless group kept its place); GPU power
+  across rows to first (charts and the metric menu followed); Management out
+  in front of RoCE (both Management panels moved).
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

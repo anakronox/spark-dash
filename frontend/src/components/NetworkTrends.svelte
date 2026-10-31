@@ -37,6 +37,7 @@
   import RdmaTable, { RDMA_COLUMNS } from './RdmaTable.svelte';
   import { TableView } from '../lib/table.svelte';
   import { DEFAULT_PLOT_PX, instanceKey } from '../lib/layout.svelte';
+  import { itemOrder, steps } from '../lib/item-order.svelte';
   import { gaugeCols as gaugeColsFor, gridCols, onLastRow } from '../lib/chart-grid';
   import NetworkTable, { NETWORK_COLUMNS } from './NetworkTable.svelte';
   import { RANGES, fetchAnnotations, fetchHistory, snapGrid, toColumnar } from '../lib/history';
@@ -171,6 +172,9 @@
   // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
   // component: App keys each card by id, so a different instance is a different mount.
   const LOG_KEY = instanceKey('spark-dash.network-log.v1', instance);
+  // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
+  // component: App keys each card by id, so a different instance is a different mount.
+  const ORDER_CARD = instanceKey('network.groups', instance);
   // svelte-ignore state_referenced_locally -- `instance` is fixed for the life of the
   // component: App keys each card by id, so a different instance is a different mount.
   const EVENTS_KEY = instanceKey('spark-dash.network-events.v1', instance);
@@ -367,7 +371,12 @@
     }
   }
 
-  const allGroups = $derived(grid.groups);
+  /* THE READER'S ORDER (CP), dragged in the gauge view, applied to charts,
+     table and gauges alike so a group sits in the same place in every view. */
+  const divisionOrder = $derived(itemOrder.ordered(ORDER_CARD, DIVISIONS, (d) => d.key));
+  const orderKeys = () => divisionOrder.map((d) => d.key);
+  const shownInOrder = $derived(orderKeys().filter((k) => shownGroups.includes(k)));
+  const allGroups = $derived(itemOrder.ordered(ORDER_CARD, grid.groups, (g) => g.key));
   const groups = $derived(allGroups.filter((g) => shownGroups.includes(g.key)));  const total = $derived(groups.reduce((n, g) => n + g.charts.length, 0));
 
   /* THE TABLE NEVER FILTERS. `includeQuiet` is a chart-grid concern — a flat
@@ -375,7 +384,11 @@
      that says, in the `why` column, that it is down. Hiding it there would be
      hiding the answer. */
   const allDivisions = $derived(
-    buildRows(names, columns, nodeIds, active, rdma, fabric, liveFacts),
+    itemOrder.ordered(
+      ORDER_CARD,
+      buildRows(names, columns, nodeIds, active, rdma, fabric, liveFacts),
+      (d) => d.key,
+    ),
   );
   const divisions = $derived(allDivisions.filter((d) => shownGroups.includes(d.key)));
 
@@ -387,7 +400,7 @@
      there. A group that would draw nothing in charts says "all idle" beside
      its name here, and the last row is the toggle that draws idle links. */
   const groupItems = $derived(
-    DIVISIONS.map((d) => {
+    divisionOrder.map((d) => {
       const n = allDivisions.find((x) => x.key === d.key)?.rows.length ?? 0;
       const on = shownGroups.includes(d.key);
       const last = on && shownGroups.length === 1;
@@ -398,6 +411,7 @@
         checked: on,
         disabled: last,
         note: last ? 'last one' : silent ? 'all idle' : undefined,
+        ...steps(shownInOrder, d.key),
       };
     }),
   );
@@ -533,9 +547,13 @@
      sent, as a share of the rate its links negotiated. From the live
      snapshot, like the ports view, so it moves every second or two. */
   const gaugeGroups = $derived(
-    linkLoads(
-      nodes.filter((n) => isActive(n.node_id)),
-      shownGroups,
+    itemOrder.ordered(
+      ORDER_CARD,
+      linkLoads(
+        nodes.filter((n) => isActive(n.node_id)),
+        shownGroups,
+      ),
+      (g) => g.key,
     ),
   );
   const gaugeColour = (id: string) => {
@@ -546,6 +564,8 @@
     gaugeGroups.flatMap((g) =>
       (['rx', 'tx'] as const).map((dir) => ({
         key: `${g.key}-${dir}`,
+        /* The order key: in and out move together (CP). */
+        group: g.key,
         title: `${g.label} ${dir === 'rx' ? 'in' : 'out'}`,
         note: `${g.loads.reduce((n, l) => n + l.links, 0)} interfaces`,
         ...linkItems(g, dir, gaugeColour),
@@ -705,6 +725,7 @@
       <PickMenu
         groups={[{ items: groupItems }, { label: 'Charts', items: idleItem }]}
         ontoggle={(key) => (key === '__idle' ? writeFlag(QUIET_KEY, (includeQuiet = !includeQuiet)) : toggleGroup(key))}
+        onmove={(key, dir) => itemOrder.step(ORDER_CARD, orderKeys(), shownInOrder, key, dir)}
         disabled={mode === 'ports'}
         what="Interface groups"
         of="Network Activity"
@@ -852,6 +873,7 @@
           items={p.items}
           tiles={p.tiles}
           sizeFor={Math.max(...gaugePanels.map((q) => q.items.length))}
+          reorder={{ card: ORDER_CARD, key: p.group, all: orderKeys }}
         />
       {/each}
     </div>

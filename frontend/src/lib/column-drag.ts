@@ -63,8 +63,8 @@ export function reorderable(th: HTMLElement, params: Params) {
         if (Math.abs(ev.clientX - startX) < DRAG_PX) return;
         dragging = true;
         row = edges();
-        th.dataset.colDragging = '';
-        document.documentElement.dataset.colDrag = '';
+        th.dataset.dragging = '';
+        document.documentElement.dataset.reordering = '';
       }
       ev.preventDefault();
       const before = dropBefore(row.edges, ev.clientX);
@@ -85,8 +85,8 @@ export function reorderable(th: HTMLElement, params: Params) {
       globalThis.removeEventListener('pointercancel', up);
       if (!dragging) return;
       clearMarks(row.els);
-      delete th.dataset.colDragging;
-      delete document.documentElement.dataset.colDrag;
+      delete th.dataset.dragging;
+      delete document.documentElement.dataset.reordering;
       // The click that follows this pointerup must not sort. Removed on the
       // next task in case it never comes (released outside the header).
       const swallow = (ce: Event) => {
