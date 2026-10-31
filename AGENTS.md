@@ -59,7 +59,8 @@ Run the suite before you call anything done; these fail loudly on purpose.
   closest to its limit.
 - **Read-only by default.** The dashboard does not act on processes or models.
   Each exception (silences, maintenance windows, DGX OS updates, agent notes,
-  the ntfy topic) is recorded in `docs/architecture.md`.
+  the ntfy topic, the RDMA probe, which sends traffic on the fabric) is
+  recorded in `docs/architecture.md`.
 - **Secrets are files beside the cluster file, never in it**: `cluster.yml` is
   served to the browser. `assistant.key` and `mcp.key` are 0600; the ntfy
   topic is `secrets/ntfy-url`, shared with Alertmanager by group.

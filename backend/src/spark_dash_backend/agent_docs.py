@@ -114,6 +114,12 @@ report written from the tools directly.
   timeout, not the engine taking that long.
 - **`unrecognised` in the workload series** is GPU work from a process the
   agent could not put a runtime to.
+- **RoCE series.** `rdma_rtt` is each node's slowest probed link in
+  microseconds, and exists only for nodes with `rdma_probe` peers set; a
+  direct GB10 cable reads 4.5-6.5. `rdma_congestion` and `rdma_retries` are
+  counts per step. Congestion stays 0 on direct cables, where no switch marks
+  packets, so a flat 0 there says nothing about load. Ping over a RoCE
+  address measures the kernel (0.1-1 ms), not RDMA.
 - **Load times** from `model_activity` are counted in scrape steps; each
   carries its own plus-or-minus.
 
