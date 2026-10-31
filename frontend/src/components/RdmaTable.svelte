@@ -45,6 +45,7 @@
    */
   import { bitRate } from '../lib/format';
   import ColumnGrip from './ColumnGrip.svelte';
+  import { reorderable } from '../lib/column-drag';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
@@ -334,7 +335,8 @@
         <thead>
           <tr>
             {#each rdmaCols.visible() as c (c.key)}
-              <th use:register={c.key} scope="col" class={c.right ? TH_R : TH} aria-sort={rdmaView.ariaSort(c.key)}>
+              <th use:register={c.key}
+                use:reorderable={{ view: rdmaCols, key: c.key }} scope="col" class={c.right ? TH_R : TH} aria-sort={rdmaView.ariaSort(c.key)}>
                 <SortButton view={rdmaView} id={c.key} label={c.label} />
                 <ColumnGrip
                   label={c.label}

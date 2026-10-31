@@ -8772,8 +8772,28 @@ GitHub issue #1 asked for fan speeds, read from `acpi_fan` hwmon chips.
   which borders only the slack column. Mocked up on the live page as the
   gauges' hairline (`--rule` at 0.6), which was too dim on the default dark
   theme.
-- [ ] Next: dragging a header to reorder columns, with keyboard moves in the
-  column menu and identity columns pinned first.
+- [x] Next: reordering, built as CO.
+
+### CO — Drag a header to move its column — **built 2026-10-31**
+
+- [x] **CO1. Order is a third per-table preference** beside hidden columns and
+  widths: `spark-dash.column-order.v1`, applied in `ColumnView.visible()`,
+  which headers and cells both iterate, so one move carries the whole column
+  in all six tables. Reset layout clears it. A stored key the table no longer
+  has is dropped; a column added since goes in after its default neighbour
+  (`lib/column-order.ts`, run under node).
+- [x] **CO2. Required columns stay first** (`model`, `process`, `interface`,
+  `rdma port`, `harness` and `client`, `sensor`): they already led every
+  table, and a row of numbers is unreadable before its name.
+- [x] **CO3. The drag** (`lib/column-drag.ts`): it starts after 5px, so a
+  click still sorts, and the click that ends a drag is swallowed, so a move
+  never re-sorts. The resize grip stops its own pointerdown, so an edge grab
+  never moves a column. Drop marker: a 2px `--good` inset on the header it
+  lands beside. Checked in the preview with real mouse drags: tok/s in front
+  of state, header and cells; server:port dragged by its label kept its
+  descending sort; the pinned model header did not move.
+- [x] **CO4. Keyboard:** ← → on each row of the column menu, which now lists
+  columns in the order drawn, moving among the shown columns.
 
 ### J — Single-host profile (everything on one GB10)
 

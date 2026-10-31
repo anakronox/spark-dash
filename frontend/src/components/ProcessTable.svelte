@@ -13,6 +13,7 @@
   import { gib, ratioPct } from '../lib/format';
   import ColumnMenu from './ColumnMenu.svelte';
   import ColumnGrip from './ColumnGrip.svelte';
+  import { reorderable } from '../lib/column-drag';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
@@ -360,6 +361,7 @@
           <tr>
             {#each cols.visible() as c (c.key)}
               <th use:register={c.key}
+                use:reorderable={{ view: cols, key: c.key }}
                 scope="col"
                 class={c.cls === 'share' ? SHARE_TH : c.right ? `${TH} text-right` : TH}
                 aria-sort={view.ariaSort(c.key)}

@@ -58,6 +58,7 @@
    * exactly the cost this exists to escape.
    */
   import ColumnGrip from './ColumnGrip.svelte';
+  import { reorderable } from '../lib/column-drag';
   import Pager from './Pager.svelte';
   import SortButton from './SortButton.svelte';
   import type { ColumnView } from '../lib/columns.svelte';
@@ -286,6 +287,7 @@
         {#each cols.visible() as c (c.key)}
           <th
             use:register={c.key}
+            use:reorderable={{ view: cols, key: c.key }}
             scope="col"
             class={c.right ? TH_R : TH}
             aria-sort={view.ariaSort(c.key)}

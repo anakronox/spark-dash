@@ -987,6 +987,24 @@
     width: 100%;
   }
 
+  /* Moving a column by its header (CO, lib/column-drag.ts). The marker is an
+     inset shadow on the header the drop lands beside, so nothing is added to
+     a table that is being measured. */
+  th[data-drop='before'] {
+    box-shadow: inset 2px 0 0 var(--good);
+  }
+  th[data-drop='after'] {
+    box-shadow: inset -2px 0 0 var(--good);
+  }
+  th[data-col-dragging] {
+    opacity: 0.5;
+  }
+  :root[data-col-drag],
+  :root[data-col-drag] * {
+    cursor: grabbing !important;
+    user-select: none;
+  }
+
   /* Shared primitives ------------------------------------------------------ */
 
   /* THE PAGER SITS AT THE BOTTOM OF THE CARD, not at the bottom of the

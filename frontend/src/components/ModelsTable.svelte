@@ -16,6 +16,7 @@
   import Pager from './Pager.svelte';
   import ColumnMenu from './ColumnMenu.svelte';
   import ColumnGrip from './ColumnGrip.svelte';
+  import { reorderable } from '../lib/column-drag';
   import SortButton from './SortButton.svelte';
   import { TableView, dropSortWhenHidden } from '../lib/table.svelte';
   import { ColumnView } from '../lib/columns.svelte';
@@ -555,6 +556,7 @@
             {#each cols.visible() as c (c.key)}
               <th
                 use:register={c.key}
+                use:reorderable={{ view: cols, key: c.key }}
                 scope="col"
                 class="{TH} {c.right ? 'text-right' : ''}"
                 aria-sort={view.ariaSort(c.key)}

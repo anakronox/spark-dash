@@ -39,6 +39,7 @@
    * at should be the current one. History is the chip row on System Activity.
    */
   import ColumnGrip from './ColumnGrip.svelte';
+  import { reorderable } from '../lib/column-drag';
   import ColumnMenu from './ColumnMenu.svelte';
   import PickMenu from './PickMenu.svelte';
   import { instanceKey } from '../lib/layout.svelte';
@@ -516,6 +517,7 @@
                 {#each cols.visible() as c (c.key)}
                   <th
                     use:register={c.key}
+                    use:reorderable={{ view: cols, key: c.key }}
                     scope="col"
                     class={c.right ? TH_R : TH}
                     aria-sort={view.ariaSort(c.key)}

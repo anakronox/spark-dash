@@ -15,10 +15,12 @@
  * monitor is not the one you want on a phone.
  */
 
+import { applyOrder, moveBefore } from './column-order';
 import type { ColumnDef } from './table.svelte';
 
 const KEY = 'spark-dash.section-columns.v1';
 const WIDTH_KEY = 'spark-dash.column-widths.v1';
+const ORDER_KEY = 'spark-dash.column-order.v1';
 
 /** Below this a column is unreadable and, worse, its drag handle is hard to
  *  grab again — so a width dragged to nothing has no easy way back. Enforced
@@ -59,9 +61,9 @@ function readWidths(): Record<string, Record<string, number>> {
   }
 }
 
-function read(): Record<string, string[]> {
+function read(key = KEY): Record<string, string[]> {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    const saved = JSON.parse(localStorage.getItem(key) ?? 'null');
     if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
     const out: Record<string, string[]> = {};
     for (const [table, keys] of Object.entries(saved)) {
@@ -96,6 +98,10 @@ class ColumnStore {
    */
   widths = $state<Record<string, Record<string, number>>>(readWidths());
 
+  /** table -> the movable columns' keys, in the reader's order (CO). Unknown
+   *  keys are dropped where a view applies it, as for `hidden`. */
+  order = $state<Record<string, string[]>>(read(ORDER_KEY));
+
   #save() {
     try {
       localStorage.setItem(KEY, JSON.stringify(this.hidden));
@@ -110,6 +116,23 @@ class ColumnStore {
     } catch {
       // Still applied for this session.
     }
+  }
+
+  #saveOrder() {
+    try {
+      localStorage.setItem(ORDER_KEY, JSON.stringify(this.order));
+    } catch {
+      // Still applied for this session.
+    }
+  }
+
+  getOrder(table: string): string[] {
+    return this.order[table] ?? [];
+  }
+
+  setOrder(table: string, keys: string[]) {
+    this.order = { ...this.order, [table]: keys };
+    this.#saveOrder();
   }
 
   get(table: string): string[] {
@@ -144,15 +167,18 @@ class ColumnStore {
     this.#saveWidths();
   }
 
-  /** RESETS BOTH. A column dragged to its minimum is hidden in every sense
-   *  that matters, so a reset that restored visibility but not width would
-   *  leave the reader stuck with the half they could not see. */
+  /** RESETS ALL THREE. A column dragged to its minimum is hidden in every
+   *  sense that matters, so a reset that restored visibility but not width
+   *  would leave the reader stuck with the half they could not see. Order
+   *  goes with them: a reset that left columns moved is not a reset. */
   reset() {
     this.hidden = {};
     this.widths = {};
+    this.order = {};
     try {
       localStorage.removeItem(KEY);
       localStorage.removeItem(WIDTH_KEY);
+      localStorage.removeItem(ORDER_KEY);
     } catch {
       // Still applied for this session.
     }
@@ -161,7 +187,8 @@ class ColumnStore {
   get customised(): boolean {
     return (
       Object.values(this.hidden).some((keys) => keys.length > 0) ||
-      Object.values(this.widths).some((w) => Object.keys(w).length > 0)
+      Object.values(this.widths).some((w) => Object.keys(w).length > 0) ||
+      Object.values(this.order).some((keys) => keys.length > 0)
     );
   }
 }
@@ -204,9 +231,44 @@ export class ColumnView {
     return this.isOff(key) && this.flagged.includes(key);
   }
 
-  /** What actually renders. */
+  /** Every column, in the reader's order: required ones first. */
+  ordered(): ColumnDef[] {
+    return applyOrder(this.#columns, columnStore.getOrder(this.#table));
+  }
+
+  /** What actually renders, in the reader's order. Headers and cells both
+   *  iterate this, which is why one reorder moves a whole column. */
   visible(): ColumnDef[] {
-    return this.#columns.filter((c) => !this.isOff(c.key));
+    return this.ordered().filter((c) => !this.isOff(c.key));
+  }
+
+  /** Move `key` in front of `before`, or to the end for null. Required
+   *  columns never move and nothing moves in front of them. */
+  move(key: string, before: string | null) {
+    const movable = this.ordered().filter((c) => !c.required).map((c) => c.key);
+    if (!movable.includes(key) || (before !== null && !movable.includes(before))) return;
+    columnStore.setOrder(this.#table, moveBefore(movable, key, before));
+  }
+
+  /** One place left (-1) or right (+1) among the SHOWN columns: the keyboard's
+   *  version of a drag, so a hidden column is never skipped over silently. */
+  step(key: string, dir: -1 | 1) {
+    const shown = this.visible().filter((c) => !c.required).map((c) => c.key);
+    const i = shown.indexOf(key);
+    if (i < 0) return;
+    if (dir < 0 && i > 0) this.move(key, shown[i - 1]);
+    else if (dir > 0 && i < shown.length - 1) this.move(key, shown[i + 2] ?? null);
+  }
+
+  /** Where `key` can go from here, for the menu's arrows. */
+  canStep(key: string, dir: -1 | 1): boolean {
+    const shown = this.visible().filter((c) => !c.required).map((c) => c.key);
+    const i = shown.indexOf(key);
+    return i >= 0 && (dir < 0 ? i > 0 : i < shown.length - 1);
+  }
+
+  get reordered(): boolean {
+    return columnStore.getOrder(this.#table).length > 0;
   }
 
   isVisible(key: string): boolean {

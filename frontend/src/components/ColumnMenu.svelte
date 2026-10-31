@@ -40,7 +40,8 @@
   const items = $derived<PickGroup[]>(
     groups.map((g) => ({
       label: g.label,
-      items: g.view.columns.map((col) => {
+      // In the order the table draws them, so the arrows read left to right.
+      items: g.view.ordered().map((col) => {
         const flagged = g.view.isFlagged(col.key);
         return {
           key: col.key,
@@ -49,6 +50,8 @@
           disabled: col.required,
           note: col.required ? 'always' : flagged ? 'hidden — not zero' : undefined,
           warn: !col.required && flagged,
+          canLeft: g.view.canStep(col.key, -1),
+          canRight: g.view.canStep(col.key, 1),
         };
       }),
     })),
@@ -56,19 +59,23 @@
 
   /* Toggling needs the view the key belongs to; keys are unique across a
      card's tables, so the first view that has the column is the one. */
+  function viewOf(key: string): ColumnView | undefined {
+    return groups.find((g) => g.view.columns.some((c) => c.key === key))?.view;
+  }
+
   function toggle(key: string) {
-    for (const g of groups) {
-      if (g.view.columns.some((c) => c.key === key)) {
-        g.view.toggle(key);
-        return;
-      }
-    }
+    viewOf(key)?.toggle(key);
+  }
+
+  function move(key: string, dir: -1 | 1) {
+    viewOf(key)?.step(key, dir);
   }
 </script>
 
 <PickMenu
   groups={items}
   ontoggle={toggle}
+  onmove={move}
   what="Columns"
   of={cardName}
   count={hiddenCount}

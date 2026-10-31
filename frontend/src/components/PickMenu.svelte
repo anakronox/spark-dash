@@ -30,6 +30,9 @@
     warn?: boolean;
     /** A colour key beside the label: a node's identity colour. */
     swatch?: string;
+    /** With `onmove`: which ways this row can move. Neither, no arrows. */
+    canLeft?: boolean;
+    canRight?: boolean;
   }
   export interface PickGroup {
     label?: string;
@@ -81,6 +84,9 @@
      *  that item alone. The node menus use it for what shift-click does on a
      *  chip. */
     onsolo?: (key: string) => void;
+    /** Move a row one place: the column menu's keyboard way to reorder what
+     *  a header drag reorders (CO). -1 is left, +1 right. */
+    onmove?: (key: string, dir: -1 | 1) => void;
   }
   const {
     groups,
@@ -97,6 +103,7 @@
     disabled = false,
     columns = 2,
     onsolo,
+    onmove,
   }: Props = $props();
 
   const hangsEnd = $derived(align ? align === 'end' : !text);
@@ -240,6 +247,29 @@
                   onsolo(item.key);
                 }}
               >only</button>
+            {/if}
+            {#if onmove && (item.canLeft || item.canRight)}
+              <!-- Inside the label like "only"; preventDefault keeps a press
+                   from toggling the checkbox. Disabled, not removed, at an
+                   end, so the arrows do not jump about as a column moves. -->
+              <button
+                class="solo"
+                aria-label={`Move ${item.label} left`}
+                disabled={!item.canLeft}
+                onclick={(e) => {
+                  e.preventDefault();
+                  onmove(item.key, -1);
+                }}
+              >←</button>
+              <button
+                class="solo"
+                aria-label={`Move ${item.label} right`}
+                disabled={!item.canRight}
+                onclick={(e) => {
+                  e.preventDefault();
+                  onmove(item.key, 1);
+                }}
+              >→</button>
             {/if}
           </label>
           {/if}
@@ -459,9 +489,14 @@
     opacity: 1;
   }
 
-  .solo:hover {
+  .solo:hover:not(:disabled) {
     color: var(--ink);
     border-color: var(--ink-muted);
+  }
+
+  .row:hover .solo:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
 
   .note {
