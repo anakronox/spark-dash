@@ -208,6 +208,20 @@ class NetworkInterface(BaseModel):
         return self.up and (self.rx_errors + self.tx_errors) == 0
 
 
+class RdmaProbe(BaseModel):
+    """One RDMA round-trip probe to a peer on this port's link (spike, CS)."""
+
+    peer: str = Field(description="The peer's RoCE IPv4 address.")
+    peer_node: str = ""
+    rtt_us: float | None = Field(
+        default=None,
+        description="Mean RDMA round trip in microseconds over 100 ping-pongs "
+        "of 64 bytes (ibv_rc_pingpong). None when the last probe failed.",
+    )
+    error: str = ""
+    at: float = 0.0
+
+
 class RdmaPort(BaseModel):
     """One RDMA port, from /sys/class/infiniband.
 
@@ -251,6 +265,11 @@ class RdmaPort(BaseModel):
     rx_bytes_total: int = 0
     tx_bytes_total: int = 0
     errors: int = 0
+    probes: list[RdmaProbe] = Field(
+        default_factory=list,
+        description="Round trips to the peers on this link, when the agent "
+        "runs with RDMA_PROBE=1. Empty otherwise.",
+    )
     hw_counters: dict[str, int] = Field(
         default_factory=dict,
         description="RoCE congestion and retry counters from the port's "

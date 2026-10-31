@@ -53,6 +53,12 @@ ENV AGENT_VERSION=${BUILD_VERSION} \
 # CUDA-related is installed here — this stays a small slim image.
 WORKDIR /app
 
+# ibv_rc_pingpong and the mlx5 user-space driver, for the RDMA probe (spike,
+# CS). Unused unless RDMA_PROBE=1 and the compose file passes the devices.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ibverbs-utils ibverbs-providers \
+    && rm -rf /var/lib/apt/lists/*
+
 # The venv is self-contained (see --no-editable above); no source is copied.
 COPY --from=builder /build/.venv /app/.venv
 

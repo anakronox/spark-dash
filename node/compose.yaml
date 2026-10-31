@@ -185,8 +185,15 @@ services:
 
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
 
+      # RDMA round-trip probe (spike, CS). Off unless set to 1: it sends
+      # traffic on the fabric, where the agent otherwise only reads.
+      - RDMA_PROBE=${RDMA_PROBE:-0}
+
     ports:
       - "9500:9500"
+      # RDMA probe listeners, one per RDMA device in sorted order (spike, CS).
+      # Only bound while RDMA_PROBE=1; four covers a GB10's ConnectX-7.
+      - "18515-18518:18515-18518"
 
     networks:
       - sparkdash

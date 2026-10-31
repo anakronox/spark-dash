@@ -23,6 +23,7 @@ from spark_dash_common.models import (
     NodeSnapshot,
     ProcessInfo,
     RdmaPort,
+    RdmaProbe,
     Runtimes,
     TempBands,
     TempSensor,
@@ -38,6 +39,7 @@ from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.collectors.memory import MemoryCollector, detect_unified_memory
 from spark_dash_agent.collectors.network import NetworkCollector, RdmaCollector
 from spark_dash_agent.collectors.psi import PsiCollector
+from spark_dash_agent.collectors.rdma_probe import RdmaProber
 from spark_dash_agent.collectors.thermal import ThermalCollector
 from spark_dash_agent.config import Settings
 from spark_dash_agent.remote_config import NodeConfig, RemoteConfig
@@ -278,6 +280,18 @@ class SnapshotBuilder:
         self._thermal = ThermalCollector(settings.sys_path)
         self._fans = FanCollector(settings.sys_path)
         self._rdma = RdmaCollector(settings.sys_path)
+        self.rdma_probe: RdmaProber | None = (
+            RdmaProber(
+                settings.sys_path,
+                settings.proc_path,
+                self._node_id,
+                port_base=settings.rdma_probe_port_base,
+                peer_agent_port=settings.rdma_probe_peer_agent_port,
+                interval_s=settings.rdma_probe_interval_s,
+            )
+            if settings.rdma_probe
+            else None
+        )
 
         # The CPU's critical trip doesn't change while the machine runs, so
         # read it once. The GPU's limits need an open NVML handle and so are
@@ -439,6 +453,16 @@ class SnapshotBuilder:
         cpu = self._cpu.safe_collect(errors)
         network = self._network.safe_collect(errors) or []
         rdma = self._rdma.safe_collect(errors) or []
+        if self.rdma_probe is not None:
+            # Results older than three intervals are dropped: a peer that went
+            # away should stop being drawn, not hold its last number.
+            probes = self.rdma_probe.results(3 * self._settings.rdma_probe_interval_s)
+            for port in rdma:
+                port.probes = [
+                    RdmaProbe(peer=r.peer, peer_node=r.peer_node, rtt_us=r.rtt_us, error=r.error, at=r.at)
+                    for r in sorted(probes, key=lambda r: r.peer)
+                    if r.device == port.device and r.port == port.port
+                ]
         temperatures = self._thermal.safe_collect(errors) or []
         fans = self._fans.safe_collect(errors) or []
         apply_interface_policy(network, rdma, self._ignored_interfaces())

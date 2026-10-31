@@ -27,6 +27,7 @@ from spark_dash_common.models import (
     PsiMetrics,
     PsiState,
     RdmaPort,
+    RdmaProbe,
     RouterModel,
     Runtimes,
     TempSensor,
@@ -99,6 +100,7 @@ class FakeBuilder:
         self.snapshot = snapshot or make_snapshot()
         self.build_count = 0
         self.node_id = self.snapshot.node_id
+        self.rdma_probe = None
 
     def build(self) -> NodeSnapshot:
         self.build_count += 1
@@ -670,6 +672,32 @@ def test_rdma_hw_counters_are_exported_one_series_per_counter():
     assert len(rows) == 2
     assert any('counter="np_ecn_marked_roce_packets"' in r and r.endswith(" 12.0") for r in rows)
     assert all('device="roceP2p1s0f0"' in r for r in rows)
+
+
+def test_rdma_probe_rtt_is_exported_per_peer_and_failures_are_absent():
+    """Spike CS: one series per peer; a failed probe has no number to give."""
+    snap = make_snapshot(
+        rdma=[
+            RdmaPort(
+                device="rocep1s0f0",
+                port=1,
+                state="ACTIVE",
+                probes=[
+                    RdmaProbe(peer="10.100.136.2", peer_node="sparketa", rtt_us=6.81),
+                    RdmaProbe(peer="10.100.136.3", peer_node="sparky", rtt_us=None, error="refused"),
+                ],
+            )
+        ]
+    )
+    rows = [ln for ln in render(snap).splitlines() if ln.startswith("sparkdash_rdma_probe_rtt_microseconds{")]
+    assert len(rows) == 1
+    assert 'peer="10.100.136.2"' in rows[0] and 'peer_node="sparketa"' in rows[0]
+    assert rows[0].endswith(" 6.81")
+
+
+def test_rdma_listeners_is_404_when_the_probe_is_off(client):
+    """What tells a neighbour's agent there is nothing here to probe."""
+    assert client.get("/rdma/listeners").status_code == 404
 
 
 def test_metrics_content_type_matches_the_generator(client):

@@ -392,6 +392,12 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
         rx = _g("rdma_receive_bytes_total", "Bytes received", rl)
         tx = _g("rdma_transmit_bytes_total", "Bytes transmitted", rl)
         errs = _g("rdma_errors_total", "Receive errors, discards and link downs", rl)
+        rtt = _g(
+            "rdma_probe_rtt_microseconds",
+            "Mean RDMA round trip to a peer on this port's link, 100 ping-pongs "
+            "of 64 bytes; absent when the last probe failed",
+            [*rl, "peer", "peer_node"],
+        )
         hw = _g(
             "rdma_hw_counter_total",
             "RoCE congestion and retry counters from hw_counters/, by sysfs name",
@@ -411,6 +417,9 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
             rx.add_metric(labels, float(port.rx_bytes_total))
             tx.add_metric(labels, float(port.tx_bytes_total))
             errs.add_metric(labels, float(port.errors))
+            for probe in port.probes:
+                if probe.rtt_us is not None:
+                    rtt.add_metric([*labels, probe.peer, probe.peer_node], probe.rtt_us)
             for name, value in sorted(port.hw_counters.items()):
                 hw.add_metric([*labels, name], float(value))
             # An info-style metric: the rate string is what reveals a link that
@@ -439,7 +448,7 @@ def _network_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamil
                 [*labels, port.link_layer, port.rate, port.interface], 1.0
             )
 
-        yield from (active, rdma_monitored, rx, tx, errs, hw, info)
+        yield from (active, rdma_monitored, rx, tx, errs, hw, rtt, info)
 
 
 def _temp_band_metrics(snap: NodeSnapshot, node: str) -> Iterable[GaugeMetricFamily]:

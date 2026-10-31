@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass
 
 from fastapi import FastAPI, Response
+from fastapi.responses import JSONResponse
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
@@ -225,6 +226,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # why this cannot be verified on a dev laptop and is checked on a node.
     ProcessCollector(registry=registry)
 
+    if builder.rdma_probe is not None:
+        builder.rdma_probe.start()
+
     app = FastAPI(
         title="spark-dash-agent",
         summary=f"Per-node metrics agent for {builder.node_id}",
@@ -243,6 +247,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/snapshot", response_model=NodeSnapshot)
     def snapshot() -> NodeSnapshot:
         return cache.get()
+
+    @app.get("/rdma/listeners")
+    def rdma_listeners() -> Response:
+        """Which RoCE address this node's probe listener answers on which
+        port (spike, CS). 404 when the probe is off, which is what tells a
+        neighbour's agent there is nothing here to probe."""
+        if builder.rdma_probe is None:
+            return Response(status_code=404)
+        return JSONResponse(builder.rdma_probe.listeners())
 
     @app.get("/health")
     def health() -> dict:
