@@ -210,6 +210,7 @@ def test_network_queries_keep_their_second_dimension():
         # Per node by design (CS): drawn as fabric-wide charts, one line per node.
         "rdma_congestion": "by (node, counter)",
         "rdma_retries": "by (node)",
+        "rdma_rtt": "max by (node)",
     }
     assert set(required) == set(network_keys()), (
         "a network query was added or removed without saying what its key is"

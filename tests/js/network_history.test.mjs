@@ -48,6 +48,7 @@ import {
   unacknowledged,
   CONGESTION,
   RETRIES,
+  RTT,
   NETWORK_METRICS,
   pressureCharts,
   withPressure,
@@ -1007,6 +1008,18 @@ test('a node solo and an unticked chart both apply', () => {
   const [cong] = pressureCharts(PRESSURE, ['sparketa', 'sparkjr'], ['sparketa']);
   assert.deepEqual(cong.names, ['sparketa marked']);
   assert.deepEqual(pressureCharts(PRESSURE, ['sparketa', 'sparkjr'], null, ['congestion']).map((c) => c.metric.label), ['RoCE retries']);
+});
+
+test('the round trip comes first, one line per node, in microseconds', () => {
+  const rows = [...PRESSURE, prow(RTT, 'sparkjr', null, [5.4, 6.5, null]), prow(RTT, 'sparketa', null, [4.8, 4.5, 4.6])];
+  const charts = pressureCharts(rows, ['sparketa', 'sparkjr'], null);
+  assert.deepEqual(charts.map((c) => c.metric.label), ['RoCE round trip', 'RoCE congestion', 'RoCE retries']);
+  const [rtt] = charts;
+  assert.equal(rtt.metric.unit, 'µs');
+  assert.equal(rtt.caption, 'worst link');
+  assert.deepEqual(rtt.names, ['sparketa', 'sparkjr']);
+  assert.deepEqual(rtt.columns[1], [5.4, 6.5, null]);
+  assert.ok(NETWORK_METRICS.includes(RTT));
 });
 
 test('pressure charts follow the RoCE chart, and need it', () => {

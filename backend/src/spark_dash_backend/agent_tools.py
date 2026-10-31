@@ -107,6 +107,8 @@ METRICS: dict[str, tuple[str, str]] = {
     "rdma_congestion": ("count", "RoCE congestion events per step, per node; the `counter` label says which: "
                                  "np_ecn_marked_roce_packets (packets a switch marked on the way in) or "
                                  "rp_cnp_handled (times this node was told to slow its sending). 0 on direct cables"),
+    "rdma_rtt": ("us", "RDMA round trip in microseconds, the node's WORST probed link per step (spike: only nodes "
+                       "with rdma_probe peers in cluster.yml). A direct GB10 cable reads 4.5-6.5"),
     "rdma_retries": ("count", "RoCE retransmits, out-of-order packets, ack timeouts and receive-buffer misses per "
                               "step, per node. Nonzero means RDMA traffic was being resent, which is latency"),
     "monitoring_bytes": ("bytes", "resident memory of Prometheus, Alertmanager and the monitoring host's exporter; no node"),
@@ -761,6 +763,9 @@ UNIT_FLOOR: dict[str, float] = {
     "tok/s": 1.0, "bit/s": 1e5, "count": 1.0, "0/1": 0.5,
     # A fan at rest wanders about 5 rpm (sparketa, 2142-2152 over 5 s).
     "rpm": 50.0,
+    # Back-to-back probes on one idle link differ by about 1 us (sparkjr to
+    # sparketa, 4.5-6.5 us, 2026-11-01).
+    "us": 1.0,
 }
 
 

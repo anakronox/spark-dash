@@ -23,9 +23,14 @@ export const LINK_UP = 'network_link_up';
 /** RoCE congestion and retries, per node rather than per interface (CS). */
 export const CONGESTION = 'rdma_congestion';
 export const RETRIES = 'rdma_retries';
+/** RDMA round trip, the worst probed link per node (spike, CS). */
+export const RTT = 'rdma_rtt';
 
 /** The queries, in one place, so a fetch loop and a test agree. */
-export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS, PORT_STATE, LINK_UP, CONGESTION, RETRIES] as const;
+export const NETWORK_METRICS = [RX, TX, ERRORS, DROPS, PORT_STATE, LINK_UP, CONGESTION, RETRIES, RTT] as const;
+
+/** The per-node RoCE queries, kept out of the per-interface name space. */
+export const PRESSURE_METRICS: readonly string[] = [CONGESTION, RETRIES, RTT];
 
 /** Sub-series names. Short: they are the tooltip's left column, repeated on
  *  every row, and "receive" would push the numbers off the edge. */
@@ -927,10 +932,22 @@ const CONGESTION_LINES: Record<string, string> = {
 
 export const PRESSURE_CHARTS = [
   {
+    key: 'rtt',
+    metric: RTT,
+    label: 'RoCE round trip',
+    caption: 'worst link',
+    unit: 'µs',
+    note:
+      'RDMA round trip to the peers set in Settings > Nodes, 100 ping-pongs of 64 bytes ' +
+      'every 30 s. Each node\'s slowest link. A direct cable between two GB10s reads ' +
+      'about 5 µs. Drawn only for nodes with peers set.',
+  },
+  {
     key: 'congestion',
     metric: CONGESTION,
     label: 'RoCE congestion',
     caption: 'ECN marks and CNPs',
+    unit: '',
     note:
       'Packets a switch marked as congested on the way in (marked), and times a node ' +
       'was told to slow its sending (slowed, dashed). Counts per step. Direct cables ' +
@@ -941,6 +958,7 @@ export const PRESSURE_CHARTS = [
     metric: RETRIES,
     label: 'RoCE retries',
     caption: 'resends and timeouts',
+    unit: '',
     note:
       'RDMA packets resent, arriving out of order, or acked too late, and receives with ' +
       'no buffer posted. Counts per step. Anything above 0 is traffic that waited.',
@@ -987,8 +1005,9 @@ export function pressureCharts(
       metric: {
         key: `fabric${SEP}${spec.key}`,
         label: spec.label,
-        // A count per step, like the fault charts: "3" is what happened.
-        unit: '',
+        // A count per step for congestion and retries, like the fault
+        // charts: "3" is what happened.
+        unit: spec.unit,
         dashed: names.filter((n) => n.endsWith(' slowed')),
         dashedKey: ['marked', 'slowed'],
       },

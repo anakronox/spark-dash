@@ -8877,8 +8877,18 @@ Built: the port counters latency rises with.
   direct cables, where nothing marks ECN; congestion can only move on the f1
   ports through the switch.
 - Not built: per-link columns in the table (the per-port series are kept for
-  it), a congestion or retry alert, PFC pause counters (ethtool, not sysfs),
-  the RDMA probe.
+  it), a congestion or retry alert, PFC pause counters (ethtool, not sysfs).
+- [x] **CS4 (spike, `spike/rdma-devices`, image tag `spike-rdma-probe`).**
+  RDMA round-trip probe. `ibv_rc_pingpong`, not perftest: perftest burns
+  0.43 s of CPU per run calibrating its clock. A listener per RDMA device on
+  18515+, peers pinned per node in cluster.yml (`rdma_probe.peers`, editable
+  in Settings > Nodes), 100 ping-pongs of 64 bytes every 30 s, exported as
+  `sparkdash_rdma_probe_rtt_microseconds`. History `rdma_rtt` is each node's
+  worst link; charted first of the three RoCE charts. Compose passes the four
+  uverbs devices by cgroup rule and bind mount, so one file still starts on a
+  node without RDMA. Measured 2026-11-01: 4.5-6.5 us on the sparkjr-sparketa
+  direct cables (ping: 360-430 us); per node under 0.1% of a core and about
+  2 MiB for the idle listeners; image +5 MB.
 
 ### J — Single-host profile (everything on one GB10)
 

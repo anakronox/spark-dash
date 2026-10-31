@@ -45,8 +45,7 @@
   import {
     NETWORK_METRICS,
     PORT_STATE,
-    CONGESTION,
-    RETRIES,
+    PRESSURE_METRICS,
     PRESSURE_CHARTS,
     type PressureRow,
     pressureCharts,
@@ -579,7 +578,7 @@
      reading a later `const` there throws before the first frame. */
   const exceptionRows = $derived(Math.max(0, plotRows - groupRows));
   $effect.pre(() => {
-    /* The group charts are never paged, there are at most six (four groups and the two RoCE pressure charts). Whatever rows
+    /* The group charts are never paged, there are at most seven (four groups and the three RoCE charts). Whatever rows
        they leave go to the exceptions under them; with none left they fold to
        their heading, which still counts them, so they cannot hold the card
        taller than the reader dragged it. */
@@ -678,7 +677,7 @@
         NETWORK_METRICS.map(async (metric) => {
           /* The pressure charts are extras: one failing must not blank the
              traffic charts the card is for. */
-          const optional = metric === CONGESTION || metric === RETRIES;
+          const optional = PRESSURE_METRICS.includes(metric);
           const resp = await fetchHistory(metric, range.minutes, range.step, controller.signal).catch((err) => {
             if (!optional || (err as Error).name === 'AbortError') throw err;
             return { series: [] as HistorySeries[] };
@@ -729,7 +728,7 @@
       for (let i = 0; i < tagged.length; i++) {
         if (tagged[i].metric === PORT_STATE) {
           portRows.push({ labels: tagged[i].series.labels, column: snapped.columns[i] });
-        } else if (tagged[i].metric === CONGESTION || tagged[i].metric === RETRIES) {
+        } else if (PRESSURE_METRICS.includes(tagged[i].metric)) {
           pressureRows.push({ metric: tagged[i].metric, labels: tagged[i].series.labels, column: snapped.columns[i] });
         } else {
           linkNames.push(columnar.names[i]);

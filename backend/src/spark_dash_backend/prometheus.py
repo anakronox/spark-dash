@@ -449,6 +449,12 @@ HISTORY_QUERIES: dict[str, str] = {
         "sum by (node, counter) (increase(sparkdash_rdma_hw_counter_total"
         '{counter=~"np_ecn_marked_roce_packets|rp_cnp_handled"}[{window}]))'
     ),
+    # RDMA round trip from the probe (spike, CS), the WORST link per node:
+    # the same rule as temperatures, where the hottest decides. `max_over_time`
+    # so a slow probe inside a long step survives the downsample.
+    "rdma_rtt": (
+        "max by (node) (max_over_time(sparkdash_rdma_probe_rtt_microseconds[{window}]))"
+    ),
     "rdma_retries": (
         "sum by (node) (increase(sparkdash_rdma_hw_counter_total"
         '{counter=~"out_of_sequence|packet_seq_err|implied_nak_seq_err|'
