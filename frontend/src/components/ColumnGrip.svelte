@@ -103,23 +103,36 @@
        motion-reduce and after- prefixes onto one pseudo-element utility.
 
      The comment you are reading is the actual finding. Originally the
-     reasoning — why 8px of grab area for a 2px cue, why invisible until
-     wanted — sat directly above the declarations it explained. Utilities have
+     reasoning — why 8px of grab area for a 2px cue — sat directly above the declarations it explained. Utilities have
      nowhere to put that, so it either floats up here away from the code it
      describes, or it is lost. */
+  /* VISIBLE AT REST (CN), so a reader can see where a column ends and where
+     to grab it. Hidden until hovered, nobody found it. The header labels'
+     colour: `--rule` at 0.6, the gauges' hairline, was too dim on the default
+     dark theme. Stops above the header's 6px bottom padding, so it divides
+     without boxing. Brightens to the 2px cue on hover, focus and drag. */
   .grip::after {
     content: '';
     position: absolute;
-    inset: 20% auto 20% 3px;
-    width: 2px;
-    background: var(--rule);
+    inset: 1px auto 7px 3px;
+    width: 1px;
+    background: var(--ink-muted);
+    opacity: 1;
+    transition:
+      opacity 0.12s ease,
+      background-color 0.12s ease;
+  }
+
+  /* None after the last column: every table ends in an empty slack column,
+     and a line there divides the header from nothing. Still grabbable. */
+  :global(th:nth-last-child(2)) > .grip:not(:hover):not(:focus-visible):not(.dragging)::after {
     opacity: 0;
-    transition: opacity 0.12s ease;
   }
 
   .grip:hover::after,
   .grip:focus-visible::after,
   .grip.dragging::after {
+    width: 2px;
     opacity: 1;
     background: var(--good);
   }

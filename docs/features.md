@@ -185,7 +185,8 @@ nothing is configured on the server.
   Activity showing RDMA ports, another showing charts.
 - **Each card has its own menus.** Which metrics, which interface or sensor
   groups, fitted or full axes, linear or log, charts or table or RDMA ports,
-  which columns. Column edges drag.
+  which columns. Column edges drag, and a faint line between headers marks each
+  one.
 - **Compact node cards.** **Settings → Appearance → Node elements → Compact** puts every node
   on one grid at the same width, each cluster and each standalone node in its
   own frame. When the frames fit in half the page, as on a wide monitor, the

@@ -120,6 +120,16 @@ def test_the_grip_keeps_the_column_grip_s_shift_contract():
     )
 
 
+def test_the_column_divider_shows_at_rest():
+    """CN: the resize line is the column divider, visible before any hover.
+    Hidden until hovered, nobody found where to grab."""
+    css = without_comments(COLUMN_GRIP.read_text())
+    rest = re.search(r"\.grip::after\s*\{([^}]*)\}", css)
+    assert rest, "the grip's resting line moved"
+    opacity = re.search(r"opacity:\s*([\d.]+)", rest.group(1))
+    assert opacity and float(opacity.group(1)) > 0, "the column divider is hidden at rest again"
+
+
 def test_a_gesture_can_never_reach_the_uncapped_sentinel():
     """MEASURED BUG, and the reason this guard exists: `0` means UNCAPPED, so
     arithmetic passing through it turned "as small as this card goes" into

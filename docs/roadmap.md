@@ -8762,6 +8762,19 @@ GitHub issue #1 asked for fan speeds, read from `acpi_fan` hwmon chips.
 - [ ] Not built: a stopped-fan alert or a fan term in health. 0 rpm at idle
   may be normal on this hardware; unmeasured.
 
+### CN — Column dividers visible at rest — **built 2026-10-31**
+
+- [x] **CN1. The resize line is the column divider.** It was invisible until
+  the pointer found its 8px grab area, so nobody knew where to grab (a user
+  suggestion). It now rests as a 1px line in the header labels' colour,
+  `--ink-muted`, stopping above the header's bottom padding; hover, focus and
+  drag still brighten it to the 2px `--good` cue. None after the last column,
+  which borders only the slack column. Mocked up on the live page as the
+  gauges' hairline (`--rule` at 0.6), which was too dim on the default dark
+  theme.
+- [ ] Next: dragging a header to reorder columns, with keyboard moves in the
+  column menu and identity columns pinned first.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
