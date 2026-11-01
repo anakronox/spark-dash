@@ -8890,6 +8890,25 @@ Built: the port counters latency rises with.
   direct cables (ping: 360-430 us); per node under 0.1% of a core and about
   2 MiB for the idle listeners; image +5 MB.
 
+### CT — Settings → Nodes grouped by cluster — **built 2026-11-01**
+
+Nodes in Settings were one flat grid, so which nodes formed a cluster was only
+in each card's cluster field.
+
+- [x] **CT1.** Each cluster gets the dashboard's dashed frame, headed with its
+  name and "N nodes clustered"; each standalone node has a frame of its own,
+  never one shared frame, since that would read as grouped. Frames sit side
+  by side, each as wide as its members, and wrap. Display only: the draft is
+  saved in cluster.yml order, which is each node's colour, shown as a bar
+  beside its name. Grouping is `lib/node-groups.ts`.
+- [x] **CT2.** The cluster field suggests existing names and moves the card on
+  commit (blur or Enter), not per keystroke, which would jump frames
+  mid-word. A name only one node uses is tagged "only member": a cluster of
+  one pools nothing and is nearly always a typo. "+ node in <cluster>" adds a
+  node with the name filled in.
+- Not built: filling RDMA probe peers from a cluster's members (the backend
+  does not know their RoCE addresses), dragging cards between frames.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

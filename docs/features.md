@@ -228,3 +228,7 @@ nothing is configured on the server.
 - **Settings** opens as a wide panel with a section on each tab of its left
   rail, each integration's state shown beside its name; drag the panel's left
   edge to make it wider or narrower.
+- **Settings → Nodes** frames each cluster's nodes together, as the dashboard
+  does, with each node's colour beside its name. Typing a cluster name moves
+  the node into that frame; a name no other node uses is flagged as the
+  likely typo it is.

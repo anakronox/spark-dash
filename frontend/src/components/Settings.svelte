@@ -31,6 +31,8 @@
   import type { Theme } from '../lib/theme.svelte';
   import type { Layout } from '../lib/layout.svelte';
   import { ENGINE_RUNTIMES } from '../lib/types';
+  import { nodeColorVar } from '../lib/theme';
+  import { clusterNames, groupNodes } from '../lib/node-groups';
   import type { FleetFeed } from '../lib/fleet.svelte';
   import type { ClientsFeed } from '../lib/clients.svelte';
   import type { AssistantFeed, McpStatus } from '../lib/assistant.svelte';
@@ -437,6 +439,11 @@
 
   const clone = (n: ConfiguredNode[]) => JSON.parse(JSON.stringify(n)) as ConfiguredNode[];
 
+  const groups = $derived(draft ? groupNodes(draft) : []);
+  /* The dashboard's cluster header, so a frame here reads as the same thing. */
+  const CLUSTER_HEAD = 'flex flex-wrap items-baseline gap-x-[14px] gap-y-1 text-label';
+  const CLUSTER_H2 = 'm-0 text-label font-medium tracking-[0.14em] uppercase text-ink-2';
+
   /** "did my edit reach spark3?" — answered here rather than over SSH.
    *
    * The SOURCE carries more than the age. A node on `env` is not managed
@@ -624,13 +631,13 @@
     }
   }
 
-  function addNode() {
+  function addNode(cluster: string | null = null) {
     draft = [
       ...(draft ?? []),
       {
         node_id: '',
         host: '',
-        cluster: null,
+        cluster,
         agent_port: 9500,
         node_exporter_port: 9100,
         in_inventory: false,
@@ -1313,10 +1320,34 @@
         <p class="note dim">Stored in <code>central/cluster/cluster.yml</code> on the monitoring host
           (<code>{cfg?.path}</code> inside the backend container).</p>
 
-        <div class="nodes">
-        {#each draft as n, i (i)}
+        <!-- CT: grouped as the dashboard frames them. Display only: the draft
+             keeps cluster.yml's order, which is each node's colour. -->
+        <datalist id="cluster-names">
+          {#each clusterNames(draft) as name (name)}<option value={name}></option>{/each}
+        </datalist>
+        <div class="groups">
+        {#each groups as g (g.key)}
+          <section class="frame" style:--n={g.members.length}>
+            <!-- A div: this file's bare `header` rule is the dialog's own. -->
+            <div class={CLUSTER_HEAD}>
+              <h3 class={CLUSTER_H2}>{g.cluster ?? 'standalone'}</h3>
+              <span class="dim">
+                {g.cluster && g.members.length > 1 ? `${g.members.length} nodes clustered` : '1 node'}
+              </span>
+              {#if g.cluster && g.members.length === 1}
+                <!-- A cluster of one pools nothing, and is almost always a
+                     typo in the name. -->
+                <span class="tag warn" title="No other node has this cluster name">only member</span>
+              {/if}
+              {#if g.cluster}
+                <button class="mini add push" onclick={() => addNode(g.cluster)}>+ node in {g.cluster}</button>
+              {/if}
+            </div>
+            <div class="members">
+        {#each g.members as { node: n, index: i } (i)}
           <div class="node">
             <div class="node-head">
+              <span class="swatch" style:background={nodeColorVar(i)} aria-hidden="true"></span>
               <input
                 class="in id"
                 placeholder="node-id"
@@ -1367,7 +1398,16 @@
               <label>cluster
                 <!-- A NAME, never a count: "pair" stops being true at three
                      nodes. Blank means standalone. -->
-                <input class="in" placeholder="(standalone)" bind:value={n.cluster} />
+                <!-- Committed on change, not per keystroke: the card moves
+                     to its cluster's frame, and mid-word it would jump
+                     frames and lose focus. -->
+                <input
+                  class="in"
+                  placeholder="(standalone)"
+                  list="cluster-names"
+                  value={n.cluster ?? ''}
+                  onchange={(e) => (n.cluster = (e.currentTarget as HTMLInputElement).value.trim() || null)}
+                />
               </label>
               <label>agent port
                 <input class="in num" type="number" min="1" max="65535" bind:value={n.agent_port} />
@@ -1528,10 +1568,13 @@
             </details>
           </div>
         {/each}
+            </div>
+          </section>
+        {/each}
         </div>
 
         <div class="actions savebar">
-          <button class="mini add" onclick={addNode}>+ node</button>
+          <button class="mini add" onclick={() => addNode()}>+ node</button>
           <!-- Kept, unlike the other notes: this is not background, it is what
                the button beside it will DO to a file the reader may have
                hand-edited. -->
@@ -2525,6 +2568,42 @@
 
 
 
+
+  /* CT: frames side by side as on the dashboard, each as wide as its
+     members, wrapping when the pane runs out. 26px is a frame's own padding
+     and border. */
+  .groups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .frame {
+    flex: var(--n) 1 calc(var(--n) * 340px + (var(--n) - 1) * 10px + 26px);
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+    padding: 12px 12px 14px;
+    border: 1px dashed var(--rule);
+    border-radius: var(--radius);
+  }
+
+  .frame .push { margin-left: auto; }
+
+  .members {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+
+  /* The node's colour on the dashboard: its line in cluster.yml. */
+  .swatch {
+    align-self: stretch;
+    width: 3px;
+    border-radius: 2px;
+  }
 
   .node {
     display: flex;
