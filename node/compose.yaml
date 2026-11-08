@@ -164,6 +164,10 @@ services:
       # which is exactly what lets this file deploy unchanged to all three
       # GX10s. The node asks what it serves instead of carrying it.
       - BACKEND_URL=${BACKEND_URL:-}
+      # The agents' shared token (Settings -> Nodes -> Router API keys): the
+      # same value on every node, like BACKEND_URL. Unset, routers are polled
+      # without keys, as before.
+      - AGENT_TOKEN=${AGENT_TOKEN:-}
 
       # The three below are now FALLBACKS, used only while a node is not yet
       # listed in cluster.yml on the monitoring VM. Once it is, central config

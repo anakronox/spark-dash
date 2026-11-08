@@ -271,7 +271,8 @@ scrape targets from it, so there's no second list to keep in sync.
   optionally a **cluster** name.
 - **`+ router`** adds a llama.cpp router by **port**. The **metrics** tick beside
   it opts that router in to `/metrics?model=`, which is what provides per-model
-  tokens/sec and KV-cache detail.
+  tokens/sec and KV-cache detail. A router started with `--api-key` also needs
+  its **key** there: see [router API keys](#router-api-keys--optional).
 - **`+ vLLM`**, **`+ SGLang`** and **`+ TensorFold`** add those engines the same way, by port.
 - **copy yaml** shows the YAML for that node if you would rather paste it
   somewhere than save from here.
@@ -318,6 +319,29 @@ Deploying from a registry instead of building on each host is the maintainer
 path — see [building and shipping
 images](#building-and-shipping-images). It needs
 `PULL_POLICY=always` in each `.env`, for reasons the compose files spell out.
+
+### Router API keys — optional
+
+A llama.cpp router started with `--api-key` or `--api-key-file` answers 401 on
+everything but `/health`, so without its key the dashboard shows it as
+unreachable. The keys are set centrally and the node stack stays the same on
+every node:
+
+1. **Make the agents' token, once.** ⚙ **settings** → **Nodes** → **Router API
+   keys** → **make token**. It is shown once: copy it.
+2. **Give every node the same token.** In each node's `.env` (or the node
+   stack's environment in your deploy tool), `AGENT_TOKEN=<token>`, and
+   redeploy the node stack. The value is the same on every node.
+3. **Set each router's key.** On the router's row, type its key and **set
+   key**. The router must be saved first. The agent picks it up with its next
+   config fetch (`CLUSTER_CONFIG_TTL_S`, a minute by default).
+
+The keys are kept in `central/cluster/router-keys.secrets.json` and the token
+in `central/cluster/agent.token`, both 0600 and never in `cluster.yml`; the
+browser sees only whether each is set and its last four characters. An agent
+receives only its own node's keys, and only when it presents the token. **new
+token** replaces the token at once, so update `AGENT_TOKEN` on every node
+after making one; **remove** stops all agents receiving keys.
 
 ### Reports — scheduled and on demand
 

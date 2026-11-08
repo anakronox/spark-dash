@@ -37,6 +37,16 @@
   import type { ClientsFeed } from '../lib/clients.svelte';
   import type { AssistantFeed, McpStatus } from '../lib/assistant.svelte';
   import { CLIENTS, clientOr, setupFor, type ClientId } from '../lib/mcpClients';
+  import {
+    checkKey,
+    clearRouterKey,
+    keyId,
+    newAgentToken,
+    removeAgentToken,
+    routerKeysStatus,
+    setRouterKey,
+    type RouterKeysStatus,
+  } from '../lib/routerKeys';
   import { applyPreset, currentPreset } from '../lib/presets';
   import PresetPicker from './PresetPicker.svelte';
   import { DEFAULT_TITLE, MAX_TITLE, pageTitle } from '../lib/title.svelte';
@@ -171,6 +181,55 @@
     }
   }
   const mcpUrl = () => `${location.origin}${mcp?.path ?? '/mcp'}`;
+
+  /* ROUTER API KEYS. For llama.cpp routers started with --api-key, which
+     answer 401 on everything but /health. A key is typed here, sent once and
+     never comes back; the browser knows only whether one is set and its end.
+     The agents' shared token is shown once, when made, for the node stack's
+     AGENT_TOKEN: the same value on every node. */
+  let rk = $state<RouterKeysStatus | null>(null);
+  let rkToken = $state<string | null>(null);
+  let rkDraft = $state<Record<string, string>>({});
+  let rkBusy = $state(false);
+  let rkError = $state<string | null>(null);
+  let rkBox = $state<HTMLInputElement | null>(null);
+
+  function loadRouterKeys() {
+    routerKeysStatus().then((s) => (rk = s)).catch(() => (rk = null));
+  }
+
+  async function rkAction(fn: () => Promise<RouterKeysStatus>) {
+    if (rkBusy) return;
+    rkBusy = true;
+    rkError = null;
+    try {
+      rk = await fn();
+      if (rk.token) {
+        rkToken = rk.token;
+        await tick();
+        rkBox?.select();
+      }
+    } catch (err) {
+      rkError = (err as Error).message;
+    } finally {
+      rkBusy = false;
+    }
+  }
+
+  function saveRouterKey(node: string, port: number) {
+    const id = keyId(node, port);
+    const value = rkDraft[id] ?? '';
+    const problem = checkKey(value);
+    if (problem) {
+      rkError = `${id}: ${problem}`;
+      return;
+    }
+    rkAction(async () => {
+      const out = await setRouterKey(node, port, value);
+      rkDraft = { ...rkDraft, [id]: '' };
+      return out;
+    });
+  }
 
   /* Which agent the snippet is written for, remembered in this browser. */
   const CLIENT_KEY = 'spark-dash.mcp-client.v1';
@@ -624,6 +683,8 @@
       // that.
       cfg = body;
       draft = clone(body.nodes);
+      // Saving drops the keys of routers removed or moved to another port.
+      loadRouterKeys();
     } catch (err) {
       saveError = (err as Error).message;
     } finally {
@@ -676,6 +737,9 @@
       aKey = '';
       mKey = mError = null;
       assistant?.mcpStatus().then((m) => (mcp = m)).catch(() => (mcp = null));
+      rkToken = rkError = null;
+      rkDraft = {};
+      loadRouterKeys();
       nTopic = null;
       nNote = nError = null;
       nArmed = false;
@@ -1456,6 +1520,32 @@
                            sleeping model on an autoload router. -->
                       metrics
                     </label>
+                    {@const rid = keyId(n.node_id, r.port)}
+                    {@const ks = rk?.keys[rid]}
+                    <!-- Write-only: a key typed here goes to the backend and
+                         never comes back. Applies to the SAVED router on this
+                         port, so a new router is saved first. -->
+                    <input
+                      class="in mono key"
+                      type="password"
+                      autocomplete="off"
+                      aria-label="Router API key"
+                      placeholder={ks?.set ? `key ${ks.hint}; type to replace` : 'API key, if it needs one'}
+                      value={rkDraft[rid] ?? ''}
+                      oninput={(e) => (rkDraft = { ...rkDraft, [rid]: (e.currentTarget as HTMLInputElement).value })}
+                    />
+                    <button
+                      class="mini"
+                      disabled={rkBusy || !n.node_id || !(rkDraft[rid] ?? '').trim()}
+                      onclick={() => saveRouterKey(n.node_id, r.port!)}
+                    >{ks?.set ? 'replace' : 'set'} key</button>
+                    {#if ks?.set}
+                      <button
+                        class="mini"
+                        disabled={rkBusy}
+                        onclick={() => rkAction(() => clearRouterKey(n.node_id, r.port!))}
+                      >clear key</button>
+                    {/if}
                   {/if}
                   <button
                     class="mini"
@@ -1584,6 +1674,47 @@
             {saving ? 'Saving…' : 'Save cluster'}
           </button>
         </div>
+        <div class="stack rkeys">
+          <h3 class="eyebrow dim">Router API keys</h3>
+          <!-- How a node's agent gets its routers' keys: with its config,
+               when it presents the agents' shared token. One token for every
+               node, so the node stack stays the same everywhere. -->
+          <label class="field">
+            <span class="dim">agent token</span>
+            {#if rkToken}
+              <input
+                class="in mono"
+                readonly
+                value={rkToken}
+                bind:this={rkBox}
+                onfocus={(e) => e.currentTarget.select()}
+              />
+            {:else}
+              <span class="note">
+                <span class="num">{rk?.token_hint ?? 'none'}</span>
+                <span class="dim">· shown only when made</span>
+              </span>
+            {/if}
+            <button class="mini" disabled={rkBusy} onclick={() => rkAction(newAgentToken)}
+              >{rk?.token_set ? 'new token' : 'make token'}</button
+            >
+            {#if rk?.token_set}
+              <button class="mini" disabled={rkBusy} onclick={() => rkAction(removeAgentToken)}>remove</button>
+            {/if}
+          </label>
+          {#if rkToken}
+            <p class="note" data-tone="warning">
+              Copy the token now: it is not shown again. Set it as <code>AGENT_TOKEN</code> in the node
+              stack, the same value on every node, and redeploy the nodes. A new token stops the old one at once.
+            </p>
+          {:else if !rk?.token_set && Object.keys(rk?.keys ?? {}).length}
+            <p class="note" data-tone="warning">
+              Router keys are set but there is no agent token, so no agent receives them.
+            </p>
+          {/if}
+          {#if rkError}<p class="note" data-tone="warning">{rkError}</p>{/if}
+        </div>
+
         {#if saveError}
           <!-- Verbatim from the backend: it is the validator talking, and
                "node 'a': hosts must be private" is far more actionable than a
@@ -2675,7 +2806,9 @@
   .in.num { max-width: 84px; }
 
   .rt { gap: 4px; margin-top: 4px; }
-  .rt-row { display: flex; align-items: center; gap: 6px; }
+  .rt-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .rt-row .key { width: 16em; }
+  .rkeys { margin-top: 12px; }
 
   .title-row {
     display: flex;

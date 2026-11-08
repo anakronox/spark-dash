@@ -12,6 +12,7 @@ import logging
 import socket
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from spark_dash_common.thresholds import TempThresholds
 
@@ -87,6 +88,12 @@ class Settings(BaseSettings):
     # which is how a deployment that has not migrated keeps working.
     backend_url: str = ""
     cluster_config_ttl_s: float = 60.0
+    # The agents' shared token, presented to the backend so its answer
+    # includes this node's llama.cpp router keys (set in Settings). ONE VALUE
+    # FOR EVERY NODE, like BACKEND_URL: it is not this node's identity, so the
+    # stack config stays identical everywhere. Unset, the agent fetches its
+    # config as before and polls every router without a key. Never logged.
+    agent_token: str = Field(default="", repr=False)
 
     # Temperature bands. Left unset — the normal case — they are DERIVED FROM
     # THE HARDWARE: the GPU's from NVML's slowdown threshold (86C on GB10), the
