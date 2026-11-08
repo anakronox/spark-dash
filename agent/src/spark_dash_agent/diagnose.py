@@ -9,8 +9,8 @@ namespace view the agent does:
       spark-dash-agent:latest python -m spark_dash_agent.diagnose
 
 With BACKEND_URL, NODE_ID and AGENT_TOKEN set as in the node stack, it asks
-the backend for this node's routers and their API keys instead, so a router
-started with --api-key is read as the agent reads it.
+the backend for this node's routers and engines and their API keys instead, so
+one started with an API key is read as the agent reads it.
 
 Read-only. Notably it does NOT touch /metrics?model=X — that would autoload
 sleeping models, which is the exact thing the agent exists to avoid.
@@ -128,6 +128,30 @@ def dump_routers(urls: list[str], keys: dict[str, str] | None = None) -> None:
                 print(f"  {path} -> {type(exc).__name__}")
 
 
+def dump_engines(engines: dict[str, list[str]], keys: dict[str, str] | None = None) -> None:
+    """What each vLLM, SGLang or TensorFold endpoint answers the agent: the
+    scrape, and the model listing a TensorFold row is named from. Status codes
+    only for the scrape, which is long."""
+    _section("ENGINES — /metrics and /v1/models")
+    if not any(engines.values()):
+        print("no engines configured centrally")
+        return
+
+    for runtime, urls in sorted(engines.items()):
+        for url in urls:
+            key = (keys or {}).get(url.rstrip("/"))
+            headers = {"Authorization": f"Bearer {key}"} if key else {}
+            base = url[: -len("/metrics")] if url.endswith("/metrics") else url.rstrip("/")
+            print(f"\n--- {runtime} {base}{' (with its API key)' if key else ''} ---")
+            for target, listing in ((url, False), (f"{base}/v1/models", True)):
+                try:
+                    resp = httpx.get(target, headers=headers, timeout=5.0)
+                    body = resp.text[:300] if listing else f"{len(resp.text)} bytes"
+                    print(f"  {target} -> HTTP {resp.status_code}: {body}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  {target} -> UNREACHABLE: {type(exc).__name__}: {exc}")
+
+
 def dump_network() -> None:
     """Raw network and RDMA sysfs, for confirming what this hardware exposes.
 
@@ -209,10 +233,11 @@ def dump_device() -> None:
         print(f"  unavailable: {type(exc).__name__}: {exc}")
 
 
-def _central_routers() -> tuple[list[str], dict[str, str]]:
-    """The routers and keys central config gives this node, as the agent sees
-    them: BACKEND_URL, NODE_ID and AGENT_TOKEN from the same environment. Empty
-    when there is no backend or the node is not in the cluster file."""
+def _central_config() -> tuple[list[str], dict[str, list[str]], dict[str, str]]:
+    """The routers, engines and keys central config gives this node, as the
+    agent sees them: BACKEND_URL, NODE_ID and AGENT_TOKEN from the same
+    environment. Empty when there is no backend or the node is not in the
+    cluster file."""
     try:
         import time
 
@@ -225,17 +250,18 @@ def _central_routers() -> tuple[list[str], dict[str, str]]:
         )
         cfg = remote.current(time.monotonic())
     except Exception:  # noqa: BLE001 — diagnostics must still run
-        return [], {}
-    return (cfg.llama_routers, cfg.router_keys) if cfg else ([], {})
+        return [], {}, {}
+    return (cfg.llama_routers, cfg.engines, cfg.router_keys) if cfg else ([], {}, {})
 
 
 def main() -> int:
     urls = [u.strip() for u in os.environ.get("LLAMA_ROUTER_URLS", "").split(",") if u.strip()]
-    central, keys = _central_routers()
+    central, engines, keys = _central_config()
     dump_device()
     dump_network()
     dump_processes()
     dump_routers(central or urls, keys)
+    dump_engines(engines, keys)
     print("\nPaste this output back to continue tuning detection.\n")
     return 0
 

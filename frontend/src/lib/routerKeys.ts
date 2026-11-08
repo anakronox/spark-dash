@@ -1,7 +1,8 @@
-/** llama.cpp router API keys and the agents' shared token. A key goes to the
- *  backend when set and never comes back: a router says only whether one is
- *  set and its last four characters. The token is shown once, when made, for
- *  the node stack's AGENT_TOKEN (the same value on every node). */
+/** API keys for llama.cpp routers and engines, and the agents' shared token.
+ *  A key goes to the backend when set and never comes back: Settings learns
+ *  only whether one is set and its last four characters. The token is shown
+ *  once, when made, for the node stack's AGENT_TOKEN (the same value on every
+ *  node). */
 import { fetchWithTimeout } from './request';
 
 export interface KeyState {
@@ -18,7 +19,7 @@ export interface RouterKeysStatus {
   token?: string;
 }
 
-/** How the backend names a router: its node and its port. */
+/** How the backend names a router or engine: its node and its port. */
 export const keyId = (node: string, port: number) => `${node}:${port}`;
 
 /** The same check the backend makes, so a bad paste is caught before it is
@@ -27,8 +28,8 @@ export const keyId = (node: string, port: number) => `${node}:${port}`;
 export function checkKey(value: string): string | null {
   const v = value.trim();
   if (!v) return 'the key is empty';
-  if (v.length > 512) return 'a router key is at most 512 characters';
-  if (!/^[\x21-\x7e]+$/.test(v)) return 'a router key is printable ASCII without spaces';
+  if (v.length > 512) return 'an API key is at most 512 characters';
+  if (!/^[\x21-\x7e]+$/.test(v)) return 'an API key is printable ASCII without spaces';
   return null;
 }
 

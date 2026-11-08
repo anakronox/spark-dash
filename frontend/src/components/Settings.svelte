@@ -1119,6 +1119,43 @@
   }
 </script>
 
+<!-- A router's or engine's API key. Write-only: a key typed here goes to the
+     backend and never comes back. Applies to the SAVED server on this port, so
+     a new one is saved first. -->
+{#snippet apiKey(node: string, port: number, label: string)}
+  {@const rid = keyId(node, port)}
+  {@const ks = rk?.keys[rid]}
+  <input
+    class="in mono key"
+    type="password"
+    autocomplete="off"
+    aria-label="{label} API key"
+    placeholder={ks?.set ? `key ${ks.hint}; type to replace` : 'API key, if it needs one'}
+    value={rkDraft[rid] ?? ''}
+    oninput={(e) => (rkDraft = { ...rkDraft, [rid]: (e.currentTarget as HTMLInputElement).value })}
+  />
+  <!-- Enabled with the box empty: a dimmed button here read as no button at
+       all. Empty, it says so on the row. -->
+  <button
+    class="mini save"
+    disabled={rkBusy || !node}
+    onclick={() => saveRouterKey(node, port)}
+  >{ks?.set ? 'replace' : 'set'} key</button>
+  {#if ks?.set}
+    <button
+      class="mini"
+      disabled={rkBusy}
+      onclick={() => rkAction(() => clearRouterKey(node, port), rid)}
+    >clear key</button>
+  {/if}
+{/snippet}
+
+{#snippet apiKeyError(node: string, port: number | null)}
+  {#if port != null && rkError && rkErrorAt === keyId(node, port)}
+    <p class="note" data-tone="warning">{rkError}</p>
+  {/if}
+{/snippet}
+
 <dialog
   bind:this={dialog}
   class="flyout"
@@ -1525,34 +1562,7 @@
                            sleeping model on an autoload router. -->
                       metrics
                     </label>
-                    {@const rid = keyId(n.node_id, r.port)}
-                    {@const ks = rk?.keys[rid]}
-                    <!-- Write-only: a key typed here goes to the backend and
-                         never comes back. Applies to the SAVED router on this
-                         port, so a new router is saved first. -->
-                    <input
-                      class="in mono key"
-                      type="password"
-                      autocomplete="off"
-                      aria-label="Router API key"
-                      placeholder={ks?.set ? `key ${ks.hint}; type to replace` : 'API key, if it needs one'}
-                      value={rkDraft[rid] ?? ''}
-                      oninput={(e) => (rkDraft = { ...rkDraft, [rid]: (e.currentTarget as HTMLInputElement).value })}
-                    />
-                    <!-- Enabled with the box empty: a dimmed button here read
-                         as no button at all. Empty, it says so on the row. -->
-                    <button
-                      class="mini save"
-                      disabled={rkBusy || !n.node_id}
-                      onclick={() => saveRouterKey(n.node_id, r.port!)}
-                    >{ks?.set ? 'replace' : 'set'} key</button>
-                    {#if ks?.set}
-                      <button
-                        class="mini"
-                        disabled={rkBusy}
-                        onclick={() => rkAction(() => clearRouterKey(n.node_id, r.port!), rid)}
-                      >clear key</button>
-                    {/if}
+                    {@render apiKey(n.node_id, r.port, 'Router')}
                   {/if}
                   <button
                     class="mini"
@@ -1560,9 +1570,7 @@
                     onclick={() => (n.runtimes.llama_routers = n.runtimes.llama_routers.filter((_, j) => j !== ri))}
                   >×</button>
                 </div>
-                {#if r.port != null && rkError && rkErrorAt === keyId(n.node_id, r.port)}
-                  <p class="note" data-tone="warning">{rkError}</p>
-                {/if}
+                {@render apiKeyError(n.node_id, r.port)}
               {/each}
               <button
                 class="mini add"
@@ -1651,6 +1659,7 @@
                       <span class="tag">off-node</span>
                     {:else}
                       <input class="in num" type="number" min="1" max="65535" aria-label="{ENGINE_UI[runtime].label} port" bind:value={v.port} />
+                      {@render apiKey(n.node_id, v.port, ENGINE_UI[runtime].label)}
                     {/if}
                     <button
                       class="mini"
@@ -1658,6 +1667,7 @@
                       onclick={() => (n.runtimes[runtime] = engineRefs(n, runtime).filter((_, j) => j !== vi))}
                     >×</button>
                   </div>
+                  {@render apiKeyError(n.node_id, v.port)}
                 {/each}
                 <button
                   class="mini add"
@@ -1685,8 +1695,8 @@
           </button>
         </div>
         <div class="stack rkeys">
-          <h3 class="eyebrow dim">Router API keys</h3>
-          <!-- How a node's agent gets its routers' keys: with its config,
+          <h3 class="eyebrow dim">API keys</h3>
+          <!-- How a node's agent gets its routers' and engines' keys: with its config,
                when it presents the agents' shared token. One token for every
                node, so the node stack stays the same everywhere. -->
           <label class="field">
@@ -1719,7 +1729,7 @@
             </p>
           {:else if !rk?.token_set && Object.keys(rk?.keys ?? {}).length}
             <p class="note" data-tone="warning">
-              Router keys are set but there is no agent token, so no agent receives them.
+              API keys are set but there is no agent token, so no agent receives them.
             </p>
           {/if}
           {#if rkError && rkErrorAt === null}<p class="note" data-tone="warning">{rkError}</p>{/if}
@@ -2817,7 +2827,8 @@
 
   .rt { gap: 4px; margin-top: 4px; }
   .rt-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .rt-row .key { width: 16em; }
+  /* Shrinks before the row wraps, so a narrow card keeps the × on its row. */
+  .rt-row .key { flex: 1 1 8em; min-width: 8em; max-width: 16em; }
   /* The key's buttons sit beside its box; only the row's last button, the
      ×, is pushed to the far edge. */
   .rt-row .mini { margin-left: 0; }

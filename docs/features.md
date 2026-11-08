@@ -24,11 +24,11 @@ becomes "97 GiB held by these two vLLM shards".
 **Per-model inference state.**
 
 - llama.cpp router: which models are loaded, sleeping or unloaded, slots in use,
-  KV-cache occupancy, and a timeline of every load and unload. A router started
-  with `--api-key` is read with its key, set in Settings → Nodes
-  ([router API keys](deployment.md#router-api-keys--optional)).
+  KV-cache occupancy, and a timeline of every load and unload.
 - vLLM, SGLang and TensorFold are scraped directly by Prometheus, so their full metric
   surface is stored whether or not this UI draws it.
+- A router or engine started with an API key is read with its key, set in
+  Settings → Nodes ([API keys](deployment.md#api-keys--optional)).
 - **Decode and prefill counted separately.** Combined, they once read 47,672
   tok/s while the model was generating 48.
 - **Prefix-cache hits and speculative decoding.** The Models table's column

@@ -171,10 +171,16 @@ class EngineCollector(Collector[list[EngineMetrics]]):
         *,
         timeout: float = 2.0,
         budget_s: float = 5.0,
+        api_keys: dict[str, str] | None = None,
     ) -> None:
         self._spec = spec
         self.name = spec.runtime
         self._endpoints = endpoints
+        #: Endpoint URL -> API key, for an engine started with one. Sent on the
+        #: scrape and on /v1/models: a keyed TensorFold answers /metrics
+        #: without it but lists its model only with it, and SGLang may key
+        #: /metrics too. Never logged.
+        self._keys = {u.rstrip("/"): k for u, k in (api_keys or {}).items() if k}
         self._timeout = timeout
         self._budget_s = budget_s
         self._rates = RateTracker()
@@ -201,6 +207,10 @@ class EngineCollector(Collector[list[EngineMetrics]]):
                     )
         return [m for m in results if m is not None]
 
+    def _headers(self, url: str) -> dict[str, str]:
+        key = self._keys.get(url.rstrip("/"))
+        return {"Authorization": f"Bearer {key}"} if key else {}
+
     def _collect_one(
         self, client: httpx.Client, url: str, budget: Budget
     ) -> EngineMetrics | None:
@@ -208,7 +218,9 @@ class EngineCollector(Collector[list[EngineMetrics]]):
         try:
             if budget.spent:
                 raise TimeoutError("collection budget spent before this endpoint")
-            resp = client.get(url, timeout=budget.timeout(self._timeout))
+            resp = client.get(
+                url, headers=self._headers(url), timeout=budget.timeout(self._timeout)
+            )
             resp.raise_for_status()
             values, model_name = parse_engine_metrics(resp.text)
         except Exception:  # noqa: BLE001 — one instance down shouldn't hide the rest
@@ -285,13 +297,18 @@ class EngineCollector(Collector[list[EngineMetrics]]):
         Only when the engine lists exactly ONE model: with several, nothing in
         the metrics says which one the numbers belong to, and guessing would put
         one model's load on another's row. `GET /v1/models` names no model, so
-        it is as read-only as the scrape itself.
+        it is as read-only as the scrape itself. A keyed engine answers it only
+        with its key (TensorFold: 401 without), so the key goes here too.
         """
         if budget.spent:
             return None
         base = url[: -len("/metrics")] if url.endswith("/metrics") else url.rstrip("/")
         try:
-            resp = client.get(f"{base}/v1/models", timeout=budget.timeout(self._timeout))
+            resp = client.get(
+                f"{base}/v1/models",
+                headers=self._headers(url),
+                timeout=budget.timeout(self._timeout),
+            )
             resp.raise_for_status()
             ids = [m.get("id") for m in resp.json().get("data", []) if isinstance(m, dict)]
         except Exception:  # noqa: BLE001 — a missing name costs the label, not the row

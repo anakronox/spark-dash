@@ -251,8 +251,8 @@ nothing else. What follows is why, and it applies equally to a fourth:
   Access service token. One tool writes: `add_note` (BB17) adds a line to
   the timeline, behind its own switch, off by default, each note marked as
   an agent's and bounded in number and length.
-- **llama.cpp router API keys (roadmap CU)** are the one secret the backend
-  hands out. Kept in `router-keys.secrets.json` beside the cluster file
+- **API keys for llama.cpp routers and engines (roadmap CU)** are the one
+  secret the backend hands out. Kept in `router-keys.secrets.json` beside the cluster file
   (0600), keyed by node and port; Settings writes them and reads back only
   whether each is set and its last four. `/api/agent-config` adds a node's
   own keys to its answer only when the request carries the agents' shared
@@ -262,7 +262,7 @@ nothing else. What follows is why, and it applies equally to a fourth:
   everywhere. It travels over the agent's plain-HTTP config fetch, so anyone
   who can read LAN traffic between a node and the VM can read the keys, as
   they could already read the routers' own traffic. The agent holds keys in
-  memory only and sends each router its own key and nothing else.
+  memory only and sends each router or engine its own key and nothing else.
 - **The RDMA round-trip probe (roadmap CS4)** is the one feature that sends
   traffic on the fabric. Off on a node unless `cluster.yml` lists
   `rdma_probe.peers` for it, and it only ever reaches those addresses: 100

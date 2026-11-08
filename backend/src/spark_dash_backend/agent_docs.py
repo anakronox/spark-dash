@@ -114,6 +114,9 @@ report written from the tools directly.
   up may have been started with `--api-key`: it then refuses everything but
   `/health` without its key. The user sets the key in Settings → Nodes, and
   the node needs `AGENT_TOKEN`; keys are never visible to tools.
+- **A TensorFold row named by its address** (`host:port`) while it serves
+  may be an engine started with an API key and none set: its metrics still
+  arrive, but its model listing needs the key. Set the same way.
 - **A p95 time to first token of exactly 300 s** is usually a client's own
   timeout, not the engine taking that long.
 - **`unrecognised` in the workload series** is GPU work from a process the

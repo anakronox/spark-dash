@@ -1,5 +1,5 @@
-"""llama.cpp router API keys and the agents' shared token: storage, the
-routes, and what /api/agent-config hands out (and to whom)."""
+"""API keys for llama.cpp routers and engines, and the agents' shared token:
+storage, the routes, and what /api/agent-config hands out (and to whom)."""
 
 from __future__ import annotations
 
@@ -27,6 +27,12 @@ nodes:
     runtimes:
       llama_routers:
         - port: 8108
+  - id: sparkjr
+    host: 192.168.50.63
+    runtimes:
+      tensorfold: [8003]
+      vllm: [8120]
+      sglang: [30000]
 """
 
 KEY = "a" * 64
@@ -97,6 +103,19 @@ class TestStorage:
         assert set(router_keys.read_keys(cluster)) == {"sparky:8108", "sparketa:8108"}
 
 
+    def test_engine_keys_map_by_metrics_url_and_survive_prune(self, cluster):
+        nodes = parse_cluster(GX10)
+        router_keys.write_keys(cluster, {"sparkjr:8003": KEY, "sparkjr:8120": OTHER, "sparkjr:30000": "s"})
+        jr = next(n for n in nodes if n.node_id == "sparkjr")
+        assert router_keys.keys_for(cluster, jr) == {
+            "http://192.168.50.63:8003/metrics": KEY,
+            "http://192.168.50.63:8120/metrics": OTHER,
+            "http://192.168.50.63:30000/metrics": "s",
+        }
+        router_keys.prune(cluster, nodes)
+        assert set(router_keys.read_keys(cluster)) == {"sparkjr:8003", "sparkjr:8120", "sparkjr:30000"}
+
+
 class TestRoutes:
     def test_set_shows_only_set_and_hint_never_the_key(self, client, cluster):
         r = client.put("/api/router-keys/sparky/8108", json={"key": KEY})
@@ -111,6 +130,12 @@ class TestRoutes:
         assert client.put("/api/router-keys/sparky/9999", json={"key": KEY}).status_code == 404
         assert client.put("/api/router-keys/nobody/8108", json={"key": KEY}).status_code == 404
         assert client.put("/api/router-keys/sparky/8108", json={"key": "with space x"}).status_code == 400
+
+    def test_an_engine_takes_a_key(self, client, cluster):
+        for port in (8003, 8120, 30000):
+            assert client.put(f"/api/router-keys/sparkjr/{port}", json={"key": KEY}).status_code == 200
+        assert client.put("/api/router-keys/sparkjr/8001", json={"key": KEY}).status_code == 404
+        assert set(router_keys.read_keys(cluster)) == {"sparkjr:8003", "sparkjr:8120", "sparkjr:30000"}
 
     def test_clear(self, client, cluster):
         client.put("/api/router-keys/sparky/8108", json={"key": KEY})
@@ -176,3 +201,10 @@ class TestAgentConfig:
         ]}
         assert client.put("/api/cluster/config", json=payload).status_code == 200
         assert set(json.loads((cluster.parent / router_keys.SECRETS_FILE).read_text())) == {"sparky:8001"}
+
+    def test_an_engine_only_node_gets_its_engine_keys(self, client):
+        client.put("/api/router-keys/sparkjr/8003", json={"key": KEY})
+        token = client.post("/api/agent-token").json()["token"]
+        got = client.get("/api/agent-config", params={"node": "sparkjr"},
+                         headers={"Authorization": f"Bearer {token}"}).json()
+        assert got["router_keys"] == {"http://192.168.50.63:8003/metrics": KEY}

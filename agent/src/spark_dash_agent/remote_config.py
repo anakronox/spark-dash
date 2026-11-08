@@ -62,10 +62,11 @@ class NodeConfig:
     #: RoCE addresses to probe for round-trip time (CS). Empty means no
     #: probe at all on this node.
     rdma_peers: list[str] = field(default_factory=list)
-    #: Router URL -> its API key, for llama.cpp routers started with
-    #: `--api-key`. Only sent by the backend to an agent presenting the shared
-    #: token. Kept out of repr so no log line can carry a key; still compared,
-    #: so a key set or cleared in Settings rebuilds the collector.
+    #: URL -> its API key, for llama.cpp routers and engines started with
+    #: one: a router's URL, an engine's /metrics URL. Named for the routers,
+    #: which had keys first. Only sent by the backend to an agent presenting
+    #: the shared token. Kept out of repr so no log line can carry a key; still
+    #: compared, so a key set or cleared in Settings rebuilds the collectors.
     router_keys: dict[str, str] = field(default_factory=dict, repr=False)
 
     @property
@@ -238,12 +239,12 @@ class RemoteConfig:
             else []
         )
 
-        # Keys for the routers this node polls, and nothing else. Absent unless
-        # the backend accepted the shared token.
+        # Keys for the routers and engines this node polls, and nothing else.
+        # Absent unless the backend accepted the shared token.
         raw_keys = payload.get("router_keys")
         keys = {}
         if isinstance(raw_keys, dict):
-            wanted = set(routers)
+            wanted = set(routers) | {u.rstrip("/") for v in engines.values() for u in v}
             keys = {
                 str(u).rstrip("/"): str(k)
                 for u, k in raw_keys.items()
@@ -274,7 +275,7 @@ class RemoteConfig:
                 )
             if keys:
                 # Which routers, never the keys.
-                log.info("API keys for router(s): %s", ", ".join(sorted(keys)))
+                log.info("API keys for: %s", ", ".join(sorted(keys)))
             if cluster_collected:
                 log.info(
                     "collected by a cluster peer, so not flagged here: %s",

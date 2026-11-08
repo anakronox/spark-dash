@@ -272,8 +272,9 @@ scrape targets from it, so there's no second list to keep in sync.
 - **`+ router`** adds a llama.cpp router by **port**. The **metrics** tick beside
   it opts that router in to `/metrics?model=`, which is what provides per-model
   tokens/sec and KV-cache detail. A router started with `--api-key` also needs
-  its **key** there: see [router API keys](#router-api-keys--optional).
-- **`+ vLLM`**, **`+ SGLang`** and **`+ TensorFold`** add those engines the same way, by port.
+  its **key** there: see [API keys](#api-keys--optional).
+- **`+ vLLM`**, **`+ SGLang`** and **`+ TensorFold`** add those engines the same
+  way, by port, each with its own key box for an engine started with a key.
 - **copy yaml** shows the YAML for that node if you would rather paste it
   somewhere than save from here.
 
@@ -320,14 +321,23 @@ path — see [building and shipping
 images](#building-and-shipping-images). It needs
 `PULL_POLICY=always` in each `.env`, for reasons the compose files spell out.
 
-### Router API keys — optional
+### API keys — optional
 
-A llama.cpp router started with `--api-key` or `--api-key-file` answers 401 on
-everything but `/health`, so without its key the dashboard shows it as
-unreachable. The keys are set centrally and the node stack stays the same on
-every node:
+For llama.cpp routers and engines started with an API key:
 
-1. **Make the agents' token, once.** ⚙ **settings** → **Nodes** → **Router API
+- **A llama.cpp router** started with `--api-key` or `--api-key-file` answers
+  401 on everything but `/health`, so without its key the dashboard shows it
+  as unreachable.
+- **TensorFold** started with a key still answers `/metrics`, but lists its
+  model only with the key, so without it the row is named by its address
+  instead of its model.
+- **vLLM and SGLang** label their metrics with the model, so they lose nothing
+  without the key unless their `/metrics` needs it too. Set one anyway if the
+  engine has one: the agent sends it on every request.
+
+The keys are set centrally and the node stack stays the same on every node:
+
+1. **Make the agents' token, once.** ⚙ **settings** → **Nodes** → **API
    keys** → **make token**. It is shown once: copy it.
 2. **Give every node the same token.** In each node's `.env` (or the node
    stack's environment in your deploy tool), `AGENT_TOKEN=<token>`, and
@@ -336,15 +346,16 @@ every node:
    needs the line `- AGENT_TOKEN=${AGENT_TOKEN:-}` in the agent's
    `environment:`, as in `node/compose.yaml`: a value in `.env` alone never
    reaches the container.
-3. **Set each router's key.** On the router's row, type its key and **set
-   key**. The router must be saved first. Any length up to 512 characters,
+3. **Set each router's or engine's key.** On its row, type the key and **set
+   key**. The router or engine must be saved first. Any length up to 512 characters,
    without spaces or non-ASCII characters; a key the page refuses says why
    under that row. The agent picks it up with its next config fetch
    (`CLUSTER_CONFIG_TTL_S`, a minute by default).
 
 **Checking it.** On the node, `curl -s localhost:9500/metrics | grep
 llama_router_up` shows 1 for the router, and `sparkdash_llama_models_known`
-counts its models. Still 0:
+counts its models. An engine's row in the model table carries its model's
+name rather than its address. If not:
 
 - **No `AGENT_TOKEN` in the container:** `docker exec sparkdash-agent sh -c
   'test -n "$AGENT_TOKEN" && echo set'` prints nothing. Check the stack's
@@ -352,12 +363,13 @@ counts its models. Still 0:
 - **The token was replaced:** **new token** stops the old one at once. Set the
   new one on every node.
 - **The wrong key:** `docker exec sparkdash-agent python -m
-  spark_dash_agent.diagnose` fetches the node's routers and keys as the agent
-  does and prints each router's answer to `/v1/models` with its key: a 401
-  there means the key set in Settings is not the router's.
+  spark_dash_agent.diagnose` fetches the node's routers, engines and keys as
+  the agent does and prints each one's answer to `/v1/models` with its key: a
+  401 there means the key set in Settings is not that server's.
 
-Only llama.cpp routers take a key. vLLM, SGLang and TensorFold are scraped by
-Prometheus directly and have no key setting here.
+Prometheus scrapes the engines' `/metrics` itself, without a key. A keyed
+TensorFold or vLLM answers it anyway; an engine whose `/metrics` needs the key
+loses its history (the live view still works), and that case is not handled.
 
 The keys are kept in `central/cluster/router-keys.secrets.json` and the token
 in `central/cluster/agent.token`, both 0600 and never in `cluster.yml`; the

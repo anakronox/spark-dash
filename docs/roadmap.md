@@ -8946,8 +8946,20 @@ router read as unreachable.
   overrode `.save`), so every Settings save button was a grey mini. Measured
   after deploy: sparky's 8108, keyed, `sparkdash_llama_router_up` 1 with 6
   models known.
-- Not built: keys for vLLM, SGLang or TensorFold, which Prometheus scrapes
-  directly; per-agent tokens (would make the node stack differ by node);
+- [x] **CU5, 2026-11-08: keys for engines.** Brian: no key setting for
+  TensorFold, and vLLM and SGLang should have one too. Measured on sparketa's
+  TensorFold (8003): `/metrics` 200 with no key or a wrong one, `/v1/models`
+  401 without the key, and that listing is where its row gets the model's
+  name. Each vLLM, SGLang and TensorFold row in Settings now has the router's
+  key box. Same file, same `node:port` naming (a port is one server on a
+  node), so no existing key moves; `/api/agent-config` still sends them as
+  `router_keys`, now including the engines' `/metrics` URLs, which an older
+  agent ignores. The agent sends an engine its key on the scrape and on
+  `/v1/models`; `diagnose` prints both answers per engine.
+- Not built: a key on Prometheus's own scrape of an engine. vLLM keys `/v1`
+  only and TensorFold answers `/metrics` without one; an engine whose
+  `/metrics` needs the key keeps its live view and loses its history.
+  Per-agent tokens (would make the node stack differ by node);
   keys held on the node instead (a file the agent reads from the host would
   need per-node provisioning and a path allowlist; central keeps one place to
   set and rotate them). The token travels over the agent's existing HTTP

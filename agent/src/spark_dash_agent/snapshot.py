@@ -329,6 +329,7 @@ class SnapshotBuilder:
                 spec,
                 runtimes.engines.get(runtime, []),
                 budget_s=self._settings.runtime_collect_budget_s,
+                api_keys=runtimes.router_keys,
             )
             for runtime, spec in SPECS.items()
         }

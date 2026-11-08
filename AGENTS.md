@@ -62,12 +62,13 @@ Run the suite before you call anything done; these fail loudly on purpose.
   the ntfy topic, the RDMA probe, which sends traffic on the fabric) is
   recorded in `docs/architecture.md`.
 - **Secrets are files beside the cluster file, never in it**: `cluster.yml` is
-  served to the browser. `assistant.key`, `mcp.key`, the llama.cpp router
-  keys (`router-keys.secrets.json`) and the agents' shared token
-  (`agent.token`) are 0600; the ntfy topic is `secrets/ntfy-url`, shared with
-  Alertmanager by group. A router key is write-only: the browser sees whether
-  one is set and its last four, and only an agent presenting `AGENT_TOKEN`
-  gets its own node's keys, from `/api/agent-config`.
+  served to the browser. `assistant.key`, `mcp.key`, the API keys of
+  llama.cpp routers and engines (`router-keys.secrets.json`, by node and
+  port) and the agents' shared token (`agent.token`) are 0600; the ntfy topic
+  is `secrets/ntfy-url`, shared with Alertmanager by group. An API key is
+  write-only: the browser sees whether one is set and its last four, and only
+  an agent presenting `AGENT_TOKEN` gets its own node's keys, from
+  `/api/agent-config`.
 - **Agent tools pick series by name**, never raw PromQL, unless that switch is
   on; every result is capped and says when it was cut.
 - **Relative mount paths in `central/compose.yaml` are deliberate**; a deploy

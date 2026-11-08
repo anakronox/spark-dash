@@ -1,9 +1,14 @@
-"""API keys for llama.cpp routers, and the token agents present to fetch them.
+"""API keys for llama.cpp routers and engines, and the token agents present
+to fetch them.
 
 WHY. A llama.cpp router started with `--api-key` / `--api-key-file` answers
 401 on everything but `/health`, `/v1/models` and `/metrics` included
 (measured on sparky's lab router, 2026-11-08). The agent polls exactly those,
 so a keyed router reads as unreachable unless the agent sends its key.
+A keyed TensorFold answers `/metrics` without one but `/v1/models` only with
+it (sparketa, 2026-11-08), and that listing is where the agent gets the model's
+name; vLLM keys `/v1` only, and SGLang may key `/metrics` too. So an engine's
+key goes on both of the agent's requests.
 
 WHERE THE KEYS LIVE. Set in Settings, per router, and kept centrally in a file
 beside the cluster file, 0600, as the channel secrets are: `cluster.yml` is
@@ -35,8 +40,9 @@ TOKEN_FILE = "agent.token"
 
 
 def key_id(node_id: str, port: int) -> str:
-    """How a router is named in the secrets file: its node and its port, which
-    is also how Settings names it (runtimes are written as ports)."""
+    """How a router or engine is named in the secrets file: its node and its
+    port, which is also how Settings names it (runtimes are written as ports).
+    A port is one server on a node, whichever runtime it is."""
     return f"{node_id}:{int(port)}"
 
 
@@ -82,38 +88,48 @@ def check_key(value: str) -> str:
     if not v:
         raise ClusterConfigError("the key is empty")
     if len(v) > 512:
-        raise ClusterConfigError("a router key is at most 512 characters")
+        raise ClusterConfigError("an API key is at most 512 characters")
     if not v.isascii() or not v.isprintable() or any(c.isspace() for c in v):
-        raise ClusterConfigError("a router key is printable ASCII without spaces")
+        raise ClusterConfigError("an API key is printable ASCII without spaces")
     return v
 
 
-def find_router(nodes: list[ClusterNode], node_id: str, port: int) -> ClusterNode | None:
-    """The node, if it has a llama.cpp router on that port."""
+def endpoints(node: ClusterNode) -> list[str]:
+    """Every URL the node's agent polls that can take a key: its llama.cpp
+    routers and its engines' /metrics endpoints."""
+    urls = [r.url for r in node.runtimes.llama_routers]
+    for engine_urls in node.runtimes.engines.values():
+        urls.extend(engine_urls)
+    return urls
+
+
+def find_endpoint(nodes: list[ClusterNode], node_id: str, port: int) -> ClusterNode | None:
+    """The node, if it has a router or an engine on that port."""
     node = next((n for n in nodes if n.node_id == node_id), None)
     if node is None:
         return None
-    if any(port_of(r.url) == port for r in node.runtimes.llama_routers):
+    if any(port_of(u) == port for u in endpoints(node)):
         return node
     return None
 
 
 def status(cluster_path: Path) -> dict[str, dict]:
-    """What Settings may see: per router, whether a key is set and its end."""
+    """What Settings may see: per router or engine, whether a key is set and
+    its end."""
     return {k: {"set": True, "hint": hint(v)} for k, v in read_keys(cluster_path).items()}
 
 
 def prune(cluster_path: Path, nodes: list[ClusterNode]) -> None:
-    """Drop the keys of routers no longer in the cluster file, so a router
-    removed in Settings does not leave its key behind."""
+    """Drop the keys of routers and engines no longer in the cluster file, so
+    one removed in Settings does not leave its key behind."""
     stored = read_keys(cluster_path)
     if not stored:
         return
     live = {
         key_id(n.node_id, p)
         for n in nodes
-        for r in n.runtimes.llama_routers
-        if (p := port_of(r.url)) is not None
+        for u in endpoints(n)
+        if (p := port_of(u)) is not None
     }
     keep = {k: v for k, v in stored.items() if k in live}
     if keep != stored:
@@ -121,14 +137,15 @@ def prune(cluster_path: Path, nodes: list[ClusterNode]) -> None:
 
 
 def keys_for(cluster_path: Path, node: ClusterNode) -> dict[str, str]:
-    """This node's router keys by router URL, as the agent names its routers."""
+    """This node's keys by the URL the agent polls: a router's URL, an
+    engine's /metrics URL."""
     stored = read_keys(cluster_path)
     out = {}
-    for r in node.runtimes.llama_routers:
-        port = port_of(r.url)
+    for url in endpoints(node):
+        port = port_of(url)
         key = stored.get(key_id(node.node_id, port)) if port is not None else None
         if key:
-            out[r.url] = key
+            out[url] = key
     return out
 
 
