@@ -1539,9 +1539,11 @@
                       value={rkDraft[rid] ?? ''}
                       oninput={(e) => (rkDraft = { ...rkDraft, [rid]: (e.currentTarget as HTMLInputElement).value })}
                     />
+                    <!-- Enabled with the box empty: a dimmed button here read
+                         as no button at all. Empty, it says so on the row. -->
                     <button
-                      class="mini"
-                      disabled={rkBusy || !n.node_id || !(rkDraft[rid] ?? '').trim()}
+                      class="mini save"
+                      disabled={rkBusy || !n.node_id}
                       onclick={() => saveRouterKey(n.node_id, r.port!)}
                     >{ks?.set ? 'replace' : 'set'} key</button>
                     {#if ks?.set}
@@ -2816,6 +2818,10 @@
   .rt { gap: 4px; margin-top: 4px; }
   .rt-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .rt-row .key { width: 16em; }
+  /* The key's buttons sit beside its box; only the row's last button, the
+     ×, is pushed to the far edge. */
+  .rt-row .mini { margin-left: 0; }
+  .rt-row .mini:last-child { margin-left: auto; }
   .rkeys { margin-top: 12px; }
 
   .title-row {
@@ -2865,7 +2871,9 @@
 
   .actions { display: flex; gap: 6px; margin-top: 4px; }
   .actions .mini { margin-left: 0; }
-  .save { color: var(--ink); border-color: var(--ink-muted); }
+  /* `.mini.save`, not `.save`: .mini comes later and set the same colour and
+     border, so the save buttons were drawn as plain grey minis. */
+  .mini.save { color: var(--ink); border-color: var(--ink-muted); }
 
 
   .mini {
