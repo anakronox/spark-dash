@@ -5,6 +5,9 @@ description = "Shared metric models and helpers for spark-dash"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.9",
+    # AES-GCM for the agents' sealed API keys (`sealed.py`). Already in the
+    # backend through mcp[crypto]; new to the agent.
+    "cryptography>=44",
 ]
 
 [build-system]

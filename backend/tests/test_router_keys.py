@@ -13,6 +13,7 @@ from spark_dash_backend import router_keys
 from spark_dash_backend.app import create_app
 from spark_dash_backend.cluster import ClusterConfigError, parse_cluster
 from spark_dash_backend.config import Settings
+from spark_dash_common.sealed import SealError, open_sealed, seal
 
 GX10 = """
 nodes:
@@ -208,3 +209,53 @@ class TestAgentConfig:
         got = client.get("/api/agent-config", params={"node": "sparkjr"},
                          headers={"Authorization": f"Bearer {token}"}).json()
         assert got["router_keys"] == {"http://192.168.50.63:8003/metrics": KEY}
+
+
+class TestSealed:
+    """CU6: keys sealed with the token, which is never sent."""
+
+    def test_seal_opens_only_with_the_token_and_for_its_node(self):
+        blob = seal("sda-token", "sparky", {"http://h:8108": KEY})
+        assert KEY not in str(blob) and "sda-token" not in str(blob)
+        assert open_sealed("sda-token", "sparky", blob) == {"http://h:8108": KEY}
+        for token, node in (("sda-other", "sparky"), ("sda-token", "sparketa")):
+            with pytest.raises(SealError):
+                open_sealed(token, node, blob)
+        tampered = dict(blob, data=blob["data"][:-4] + ("AAAA" if not blob["data"].endswith("AAAA") else "BBBB"))
+        with pytest.raises(SealError):
+            open_sealed("sda-token", "sparky", tampered)
+        for junk in (None, {}, {"v": 2}, {"v": 1, "nonce": "!", "data": "!"}):
+            with pytest.raises(SealError):
+                open_sealed("sda-token", "sparky", junk)
+
+    def test_sealed_answer_needs_no_token_and_opens_with_it(self, client):
+        client.put("/api/router-keys/sparkjr/8003", json={"key": KEY})
+        token = client.post("/api/agent-token").json()["token"]
+        r = client.get("/api/agent-config", params={"node": "sparkjr", "sealed": "1"})
+        body = r.json()
+        assert "router_keys" not in body and KEY not in r.text and token not in r.text
+        assert open_sealed(token, "sparkjr", body["sealed_keys"]) == {
+            "http://192.168.50.63:8003/metrics": KEY
+        }
+
+    def test_no_token_configured_means_nothing_sealed(self, client):
+        client.put("/api/router-keys/sparkjr/8003", json={"key": KEY})
+        body = client.get("/api/agent-config", params={"node": "sparkjr", "sealed": "1"}).json()
+        assert "sealed_keys" not in body and "router_keys" not in body
+
+    def test_required_stops_the_clear_answer_but_not_the_sealed(self, client, cluster):
+        client.put("/api/router-keys/sparkjr/8003", json={"key": KEY})
+        token = client.post("/api/agent-token").json()["token"]
+        auth = {"Authorization": f"Bearer {token}"}
+        assert "router_keys" in client.get("/api/agent-config", params={"node": "sparkjr"}, headers=auth).json()
+
+        on = client.put("/api/agent-token/sealed", json={"on": True}).json()
+        assert on["sealed_required"] is True and client.get("/api/router-keys").json()["sealed_required"]
+        assert router_keys.sealed_required(cluster)
+        plain = client.get("/api/agent-config", params={"node": "sparkjr"}, headers=auth)
+        assert "router_keys" not in plain.json() and KEY not in plain.text
+        sealed = client.get("/api/agent-config", params={"node": "sparkjr", "sealed": "1"}).json()
+        assert open_sealed(token, "sparkjr", sealed["sealed_keys"])
+
+        assert client.put("/api/agent-token/sealed", json={"on": False}).json()["sealed_required"] is False
+        assert "router_keys" in client.get("/api/agent-config", params={"node": "sparkjr"}, headers=auth).json()

@@ -259,9 +259,12 @@ nothing else. What follows is why, and it applies equally to a fourth:
   token (`agent.token`, 0600, made in Settings, set as `AGENT_TOKEN` in the
   node stack); without it the answer is the same, minus keys. The token is
   shared, not per node, so the node stack stays one file deployed unchanged
-  everywhere. It travels over the agent's plain-HTTP config fetch, so anyone
-  who can read LAN traffic between a node and the VM can read the keys, as
-  they could already read the routers' own traffic. The agent holds keys in
+  everywhere. By default the token and keys travel in clear over the agent's
+  plain-HTTP config fetch. With `AGENT_SEALED_KEYS` (CU6) the agent sends no
+  token and the backend answers with the keys sealed with it: AES-256-GCM
+  under an HKDF-SHA256 key from the token, the node id as associated data
+  (`spark_dash_common/sealed.py`). Settings can require it (`agent-keys.sealed`
+  beside the token), after which keys are never sent in clear. The agent holds keys in
   memory only and sends each router or engine its own key and nothing else.
 - **The RDMA round-trip probe (roadmap CS4)** is the one feature that sends
   traffic on the fabric. Off on a node unless `cluster.yml` lists

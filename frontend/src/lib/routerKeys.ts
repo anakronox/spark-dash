@@ -15,6 +15,8 @@ export interface RouterKeysStatus {
   keys: Record<string, KeyState>;
   token_set: boolean;
   token_hint: string | null;
+  /** On, keys go to agents only encrypted with the token (AGENT_SEALED_KEYS). */
+  sealed_required?: boolean;
   /** Only in the answer that made it. */
   token?: string;
 }
@@ -54,3 +56,5 @@ export const clearRouterKey = (node: string, port: number) =>
   send<RouterKeysStatus>('DELETE', routerPath(node, port));
 export const newAgentToken = () => send<RouterKeysStatus>('POST', '/api/agent-token');
 export const removeAgentToken = () => send<RouterKeysStatus>('DELETE', '/api/agent-token');
+export const setSealedRequired = (on: boolean) =>
+  send<RouterKeysStatus>('PUT', '/api/agent-token/sealed', { on });

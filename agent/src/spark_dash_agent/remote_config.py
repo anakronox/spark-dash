@@ -30,6 +30,7 @@ import logging
 from dataclasses import dataclass, field
 
 import httpx
+from spark_dash_common.sealed import SealError, open_sealed
 
 log = logging.getLogger(__name__)
 
@@ -98,10 +99,15 @@ class RemoteConfig:
         timeout_s: float = 5.0,
         ttl_s: float = 60.0,
         token: str = "",
+        sealed: bool = False,
     ) -> None:
         self._url = backend_url.rstrip("/")
         #: The agents' shared token (AGENT_TOKEN). Never logged.
         self._token = token.strip()
+        #: AGENT_SEALED_KEYS: ask for the keys sealed with the token, and
+        #: never send the token itself.
+        self._sealed = sealed and bool(self._token)
+        self._logged_seal_error = False
         self._node_id = node_id
         self._timeout_s = timeout_s
         self._ttl_s = ttl_s
@@ -158,9 +164,11 @@ class RemoteConfig:
             with httpx.Client(timeout=self._timeout_s) as client:
                 resp = client.get(
                     f"{self._url}/api/agent-config",
-                    params={"node": self._node_id},
+                    params={"node": self._node_id, **({"sealed": "1"} if self._sealed else {})},
                     headers=(
-                        {"Authorization": f"Bearer {self._token}"} if self._token else {}
+                        {"Authorization": f"Bearer {self._token}"}
+                        if self._token and not self._sealed
+                        else {}
                     ),
                 )
                 resp.raise_for_status()
@@ -242,6 +250,19 @@ class RemoteConfig:
         # Keys for the routers and engines this node polls, and nothing else.
         # Absent unless the backend accepted the shared token.
         raw_keys = payload.get("router_keys")
+        if self._sealed:
+            raw_keys = None
+            if "sealed_keys" in payload:
+                try:
+                    raw_keys = open_sealed(self._token, self._node_id, payload["sealed_keys"])
+                    self._logged_seal_error = False
+                except SealError as exc:
+                    if not self._logged_seal_error:
+                        log.warning(
+                            "%s: is AGENT_TOKEN the token made in Settings? "
+                            "Polling without keys.", exc,
+                        )
+                        self._logged_seal_error = True
         keys = {}
         if isinstance(raw_keys, dict):
             wanted = set(routers) | {u.rstrip("/") for v in engines.values() for u in v}
@@ -275,7 +296,11 @@ class RemoteConfig:
                 )
             if keys:
                 # Which routers, never the keys.
-                log.info("API keys for: %s", ", ".join(sorted(keys)))
+                log.info(
+                    "API keys%s for: %s",
+                    " (sealed)" if self._sealed else "",
+                    ", ".join(sorted(keys)),
+                )
             if cluster_collected:
                 log.info(
                     "collected by a cluster peer, so not flagged here: %s",

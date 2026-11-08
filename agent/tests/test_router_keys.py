@@ -11,6 +11,7 @@ import pytest
 from spark_dash_agent.collectors.engine import SPECS, EngineCollector
 from spark_dash_agent.collectors.llama_router import LlamaRouterCollector
 from spark_dash_agent.remote_config import RemoteConfig
+from spark_dash_common.sealed import seal
 
 KEY = "k" * 64
 TOKEN = "sda-shared-token-value"
@@ -38,7 +39,12 @@ def backend(monkeypatch):
         auth = request.headers.get("authorization")
         seen.append(auth)
         body = dict(CONFIG)
-        if auth == f"Bearer {TOKEN}":
+        if request.url.params.get("sealed") == "1":
+            body["sealed_keys"] = seal(TOKEN, request.url.params["node"], {
+                "http://192.168.50.61:8108": KEY,
+                "http://elsewhere:9999": "not-for-this-node",
+            })
+        elif auth == f"Bearer {TOKEN}":
             body["router_keys"] = {
                 "http://192.168.50.61:8108": KEY,
                 "http://192.168.50.61:8003/metrics": KEY,
@@ -77,6 +83,20 @@ class TestRemoteConfig:
         assert KEY not in caplog.text and TOKEN not in caplog.text
         assert KEY not in repr(cfg)
         assert "http://192.168.50.61:8108" in caplog.text  # which router has a key: fine
+
+
+    def test_sealed_never_sends_the_token_and_opens_the_keys(self, backend, caplog):
+        caplog.set_level(logging.DEBUG)
+        cfg = RemoteConfig("http://backend:8080", "sparky", token=TOKEN, sealed=True).current(now=1000.0)
+        assert backend == [None]
+        assert cfg is not None and cfg.router_keys == {"http://192.168.50.61:8108": KEY}
+        assert KEY not in caplog.text and TOKEN not in caplog.text and "(sealed)" in caplog.text
+
+    def test_sealed_with_the_wrong_token_polls_without_keys_and_says_so(self, backend, caplog):
+        cfg = RemoteConfig("http://backend:8080", "sparky", token="sda-wrong", sealed=True).current(now=1000.0)
+        assert backend == [None]
+        assert cfg is not None and cfg.router_keys == {}
+        assert "AGENT_TOKEN" in caplog.text
 
 
 class TestCollector:

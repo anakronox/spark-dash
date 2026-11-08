@@ -36,6 +36,7 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 from pydantic import BaseModel, Field
 from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
+from spark_dash_common.sealed import seal
 
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
@@ -238,9 +239,13 @@ class ChannelsWrite(BaseModel):
 
 
 class RouterKeyWrite(BaseModel):
-    """A llama.cpp router's API key, write-only: never sent back."""
+    """A router's or engine's API key, write-only: never sent back."""
 
     key: str = Field(min_length=1, max_length=512)
+
+
+class SealedRequired(BaseModel):
+    on: bool
 
 
 class NtfyWrite(BaseModel):
@@ -1014,7 +1019,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await api_cluster_config()
 
     @app.get("/api/agent-config")
-    async def api_agent_config(node: str, request: Request) -> dict:
+    async def api_agent_config(node: str, request: Request, sealed: bool = False) -> dict:
         """What a node should be polling.
 
         This is what makes the per-node stack identical everywhere: the agent
@@ -1086,21 +1091,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # means the agent runs no RDMA probe at all (CS).
             "rdma_probe": {"peers": list(match.rdma_peers) if match else []},
             # This node's API keys for its routers and engines, by the URL
-            # the agent polls, ONLY to a request carrying the agents' shared
-            # token (`agent.token`, the stack's AGENT_TOKEN). Without it, or
-            # with no token configured, the answer is what it always was.
-            # Named `router_keys` because routers had them first; an older
-            # agent keeps only its routers' and ignores the rest. Never logged.
-            **(
-                {"router_keys": router_keys.keys_for(settings.cluster_config, match)}
-                if match
-                and router_keys.endpoints(match)
-                and router_keys.token_matches(
-                    settings.cluster_config, request.headers.get("authorization")
-                )
-                else {}
-            ),
+            # the agent polls. Never logged. See `_agent_keys`.
+            **(_agent_keys(match, sealed, request) if match else {}),
         }
+
+    def _agent_keys(node: ClusterNode, sealed: bool, request: Request) -> dict:
+        """Sealed with the agents' token to an agent asking for them sealed
+        (AGENT_SEALED_KEYS), which sends no token. Otherwise in clear, ONLY to
+        a request carrying the token (`agent.token`, the stack's AGENT_TOKEN),
+        and never while sealed keys are required. Without a token configured
+        the answer is what it always was. In clear they are `router_keys`
+        because routers had them first; an older agent keeps only its
+        routers' and ignores the rest."""
+        path = settings.cluster_config
+        if not router_keys.endpoints(node):
+            return {}
+        token = router_keys.read_token(path)
+        if sealed:
+            if not token:
+                return {}
+            return {"sealed_keys": seal(token, node.node_id, router_keys.keys_for(path, node))}
+        if router_keys.sealed_required(path):
+            return {}
+        if router_keys.token_matches(path, request.headers.get("authorization")):
+            return {"router_keys": router_keys.keys_for(path, node)}
+        return {}
 
     # --- API keys for routers and engines, and the agents' shared token ---------------
 
@@ -1110,6 +1125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "keys": router_keys.status(settings.cluster_config),
             "token_set": stored is not None,
             "token_hint": assistant.key_hint(stored),
+            "sealed_required": router_keys.sealed_required(settings.cluster_config),
             # Only in the answer that made it: never stored where the browser
             # can read it again.
             **({"token": token} if token else {}),
@@ -1168,6 +1184,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except OSError as exc:
             raise HTTPException(status_code=500, detail=f"could not write the agent token: {exc}") from exc
         return _router_keys_status(made)
+
+    @app.put("/api/agent-token/sealed")
+    async def api_agent_keys_sealed(body: SealedRequired) -> dict:
+        """Require sealed keys (CU6): on, an agent presenting the token as a
+        bearer gets no keys; only one set to AGENT_SEALED_KEYS does."""
+        if not settings.cluster_config.exists():
+            raise HTTPException(status_code=409, detail="API keys need the cluster file; see Settings")
+        try:
+            await asyncio.to_thread(router_keys.set_sealed_required, settings.cluster_config, body.on)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not save the setting: {exc}") from exc
+        return _router_keys_status()
 
     @app.delete("/api/agent-token")
     async def api_agent_token_remove() -> dict:

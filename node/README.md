@@ -59,6 +59,7 @@ $EDITOR .env
 | Variable | Notes |
 |---|---|
 | `BACKEND_URL` | **The only required edit.** Where the agent fetches its runtime config from, and the same value on every node. |
+| `AGENT_SEALED_KEYS` | **Optional**, default `false`. `true` fetches the API keys encrypted with `AGENT_TOKEN`, which is then never sent. Needed once Settings → Nodes → API keys → require encrypted keys is on. See [API keys](../docs/deployment.md#api-keys--optional). |
 | `AGENT_TOKEN` | **Optional.** The agents' shared token, for llama.cpp routers and engines started with an API key: made once in Settings → Nodes → API keys, and the same value on every node. Unset, they are read without keys. See [API keys](../docs/deployment.md#api-keys--optional). |
 | `NODE_ID` | **Optional.** Defaults to the host's hostname. Set it only if that hostname is a poor label. Becomes the `node` label on every metric — keep it stable, since renaming orphans that node's history. |
 

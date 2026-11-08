@@ -1147,11 +1147,15 @@ name = "spark-dash-common"
 version = "0.1.0"
 source = { editable = "common" }
 dependencies = [
+    { name = "cryptography" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.9" }]
+requires-dist = [
+    { name = "cryptography", specifier = ">=44" },
+    { name = "pydantic", specifier = ">=2.9" },
+]
 
 [[package]]
 name = "sse-starlette"

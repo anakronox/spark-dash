@@ -246,7 +246,10 @@ def _central_config() -> tuple[list[str], dict[str, list[str]], dict[str, str]]:
 
         settings = Settings()
         remote = RemoteConfig(
-            settings.backend_url, settings.resolve_node_id(), token=settings.agent_token
+            settings.backend_url,
+            settings.resolve_node_id(),
+            token=settings.agent_token,
+            sealed=settings.agent_sealed_keys,
         )
         cfg = remote.current(time.monotonic())
     except Exception:  # noqa: BLE001 — diagnostics must still run

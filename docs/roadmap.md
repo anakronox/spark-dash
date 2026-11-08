@@ -8956,15 +8956,29 @@ router read as unreachable.
   `router_keys`, now including the engines' `/metrics` URLs, which an older
   agent ignores. The agent sends an engine its key on the scrape and on
   `/v1/models`; `diagnose` prints both answers per engine.
-- Not built: a key on Prometheus's own scrape of an engine. vLLM keys `/v1`
+- [x] **CU6, 2026-11-08: keys encrypted in transit, opt-in.** Brian's
+  security audit flagged the keys crossing the LAN in clear: the agent sent
+  the token as a bearer and got the keys back over the plain HTTP of
+  `BACKEND_URL`. With `AGENT_SEALED_KEYS=true` the agent sends no token and
+  asks with `sealed=1`; the backend answers with the node's keys sealed with
+  the token (AES-256-GCM, its key from HKDF-SHA256 over the token, the node id
+  as associated data, so a blob does not open as another node's and an
+  altered one does not open at all). Sealed keys are given with the setting
+  off too, so nodes switch first; **require encrypted keys** in Settings then
+  stops the clear answer, token or not, with a warning on the page naming the
+  `.env` and compose lines each node needs. An empty `AGENT_SEALED_KEYS`, as
+  the compose line passes when unset, reads as off rather than stopping the
+  agent. Chosen over TLS to the backend: no certificates or CA on the nodes,
+  same token. The agent image gains `cryptography`.
+- Not built: TLS between agents and backend, which would cover the rest of
+  their traffic (snapshots, config) and is not a secret today. A key on
+  Prometheus's own scrape of an engine. vLLM keys `/v1`
   only and TensorFold answers `/metrics` without one; an engine whose
   `/metrics` needs the key keeps its live view and loses its history.
   Per-agent tokens (would make the node stack differ by node);
   keys held on the node instead (a file the agent reads from the host would
   need per-node provisioning and a path allowlist; central keeps one place to
-  set and rotate them). The token travels over the agent's existing HTTP
-  fetch: on a LAN without TLS between node and backend, anyone who can read
-  that traffic can read the keys, as they could already read the routers'.
+  set and rotate them).
 
 ### J — Single-host profile (everything on one GB10)
 

@@ -274,6 +274,7 @@ class SnapshotBuilder:
             self._node_id,
             ttl_s=settings.cluster_config_ttl_s,
             token=settings.agent_token,
+            sealed=settings.agent_sealed_keys,
         )
         self._applied: NodeConfig | None = None
         self._disk = DiskCollector(settings.root_path)

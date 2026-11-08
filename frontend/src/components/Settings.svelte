@@ -45,6 +45,7 @@
     removeAgentToken,
     routerKeysStatus,
     setRouterKey,
+    setSealedRequired,
     type RouterKeysStatus,
   } from '../lib/routerKeys';
   import { applyPreset, currentPreset } from '../lib/presets';
@@ -1730,6 +1731,30 @@
           {:else if !rk?.token_set && Object.keys(rk?.keys ?? {}).length}
             <p class="note" data-tone="warning">
               API keys are set but there is no agent token, so no agent receives them.
+            </p>
+          {/if}
+          <label class="check">
+            <input
+              type="checkbox"
+              checked={rk?.sealed_required ?? false}
+              disabled={rkBusy || !rk}
+              onchange={(e) => {
+                const on = (e.currentTarget as HTMLInputElement).checked;
+                rkAction(() => setSealedRequired(on));
+              }}
+            />
+            require encrypted keys
+          </label>
+          {#if rk?.sealed_required}
+            <!-- Kept on screen while it is on: a node not yet switched gets no
+                 keys, and its rows read as unreachable with nothing else to
+                 say why. -->
+            <p class="note" data-tone="warning">
+              Keys are sent to agents only encrypted with the token, and the token no longer crosses the
+              network. Every node's stack needs <code>AGENT_SEALED_KEYS=true</code> in its <code>.env</code>
+              and <code>- AGENT_SEALED_KEYS=${'{'}AGENT_SEALED_KEYS:-false{'}'}</code> in the agent's
+              <code>environment:</code> in its compose file, then a redeploy. Until then that node gets no
+              keys, and its keyed routers and engines read as unreachable.
             </p>
           {/if}
           {#if rkError && rkErrorAt === null}<p class="note" data-tone="warning">{rkError}</p>{/if}

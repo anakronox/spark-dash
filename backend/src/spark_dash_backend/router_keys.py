@@ -15,6 +15,13 @@ beside the cluster file, 0600, as the channel secrets are: `cluster.yml` is
 served to the browser, so a key must never be in it, and the browser only ever
 learns whether one is set and its last four characters.
 
+SEALED (CU6). An agent with AGENT_SEALED_KEYS asks without the token and gets
+its keys sealed with it (`spark_dash_common.sealed`), so neither the token nor
+a key crosses the LAN in clear. Opt-in: with "require encrypted keys" on in
+Settings (`agent-keys.sealed` beside the token), the plain answer below is
+never given, token or not. Sealed keys are given whether or not it is on, so
+nodes can be switched before it is.
+
 HOW AN AGENT GETS ONE. With its config, from `/api/agent-config`, but only when
 the request carries the agents' shared token. One token for every node: the
 node stack stays byte-identical everywhere (one repo, one agent config), so
@@ -37,6 +44,7 @@ from .cluster import ClusterConfigError, ClusterNode
 
 SECRETS_FILE = "router-keys.secrets.json"
 TOKEN_FILE = "agent.token"
+SEALED_FILE = "agent-keys.sealed"
 
 
 def key_id(node_id: str, port: int) -> str:
@@ -188,3 +196,19 @@ def token_matches(cluster_path: Path, authorization: str | None) -> bool:
     if not expected or not presented:
         return False
     return secrets.compare_digest(presented.encode(), expected.encode())
+
+
+# --- sealed keys required --------------------------------------------------------------------
+
+def sealed_required(cluster_path: Path) -> bool:
+    """On, the backend sends keys only sealed: an agent presenting the token
+    as a bearer gets none."""
+    return (cluster_path.parent / SEALED_FILE).exists()
+
+
+def set_sealed_required(cluster_path: Path, on: bool) -> None:
+    flag = cluster_path.parent / SEALED_FILE
+    if on:
+        _write_owner_only(flag, "keys are sent to agents sealed only\n")
+    else:
+        flag.unlink(missing_ok=True)

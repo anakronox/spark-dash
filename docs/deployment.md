@@ -378,6 +378,28 @@ receives only its own node's keys, and only when it presents the token. **new
 token** replaces the token at once, so update `AGENT_TOKEN` on every node
 after making one; **remove** stops all agents receiving keys.
 
+**Encrypting the keys in transit.** By default the agent sends the token to
+the backend and gets the keys back in clear, over the plain HTTP of
+`BACKEND_URL`: anyone who can read traffic between a node and the monitoring
+host can read both. To stop that:
+
+1. **Switch every node.** In each node's `.env`, `AGENT_SEALED_KEYS=true`, and
+   redeploy. If your deploy tool keeps its own copy of the node compose file,
+   that copy needs `- AGENT_SEALED_KEYS=${AGENT_SEALED_KEYS:-false}` in the
+   agent's `environment:`, as in `node/compose.yaml`. The agent then sends no
+   token, and the backend answers with the keys encrypted with it (AES-256-GCM,
+   keyed from the token, bound to the node). This works with the setting below
+   still off, so nodes can be switched one at a time.
+2. **Require it.** ⚙ **settings** → **Nodes** → **API keys** → **require
+   encrypted keys**. The backend then never sends keys in clear, even to an
+   agent presenting the token. A node not yet switched gets no keys, and its
+   keyed routers and engines read as unreachable; the page says so while the
+   setting is on.
+
+The agent's log says `API keys (sealed) for: …` when it opened them, and warns
+if they would not open, which means its `AGENT_TOKEN` is not the token made in
+Settings. The setting is the file `central/cluster/agent-keys.sealed`.
+
 ### Reports — scheduled and on demand
 
 A report is a period, a set of nodes and the sections chosen, in order:
