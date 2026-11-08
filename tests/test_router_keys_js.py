@@ -47,5 +47,7 @@ def test_the_id_is_node_and_port(out):
 
 def test_the_check_matches_the_backends(out):
     assert out["ok"] is None
-    for bad in ("empty", "short", "long", "space", "unicode"):
+    # No minimum: a router's key is whatever its operator chose.
+    assert out["short"] is None
+    for bad in ("empty", "long", "space", "unicode"):
         assert out[bad], bad

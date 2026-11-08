@@ -76,12 +76,13 @@ def write_keys(cluster_path: Path, values: dict[str, str]) -> None:
 
 def check_key(value: str) -> str:
     """A key as llama.cpp compares it: one token, no whitespace (the router
-    trims its key file, the agent would send the spaces)."""
+    trims its key file, the agent would send the spaces). No minimum length:
+    the router's operator chose the key, and it is whatever it is."""
     v = value.strip()
     if not v:
         raise ClusterConfigError("the key is empty")
-    if len(v) < 8 or len(v) > 512:
-        raise ClusterConfigError("a router key is 8 to 512 characters")
+    if len(v) > 512:
+        raise ClusterConfigError("a router key is at most 512 characters")
     if not v.isascii() or not v.isprintable() or any(c.isspace() for c in v):
         raise ClusterConfigError("a router key is printable ASCII without spaces")
     return v

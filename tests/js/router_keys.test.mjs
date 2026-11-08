@@ -7,7 +7,7 @@ const out = {
   id: keyId('sparky', 8108),
   ok: checkKey('  ' + 'a'.repeat(64) + '\n'),
   empty: checkKey('   '),
-  short: checkKey('short'),
+  short: checkKey('abc'),
   long: checkKey('x'.repeat(513)),
   space: checkKey('has a space inside'),
   unicode: checkKey('ключ-ключ-ключ'),

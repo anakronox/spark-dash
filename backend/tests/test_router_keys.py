@@ -64,7 +64,9 @@ class TestStorage:
 
     def test_a_key_is_one_printable_token(self):
         assert router_keys.check_key(f"  {KEY}\n") == KEY
-        for bad in ("", "short", "has space inside it", "x" * 513, "ключ-ключ-ключ"):
+        # No minimum: a router's key is whatever its operator chose.
+        assert router_keys.check_key("abc") == "abc"
+        for bad in ("", "has space inside it", "x" * 513, "ключ-ключ-ключ"):
             with pytest.raises(ClusterConfigError):
                 router_keys.check_key(bad)
 

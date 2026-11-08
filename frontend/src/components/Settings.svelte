@@ -192,16 +192,20 @@
   let rkDraft = $state<Record<string, string>>({});
   let rkBusy = $state(false);
   let rkError = $state<string | null>(null);
+  /* The router row an error belongs to, shown there rather than under the
+     token, a screen away from the button that caused it. Null: the token's. */
+  let rkErrorAt = $state<string | null>(null);
   let rkBox = $state<HTMLInputElement | null>(null);
 
   function loadRouterKeys() {
     routerKeysStatus().then((s) => (rk = s)).catch(() => (rk = null));
   }
 
-  async function rkAction(fn: () => Promise<RouterKeysStatus>) {
+  async function rkAction(fn: () => Promise<RouterKeysStatus>, at: string | null = null) {
     if (rkBusy) return;
     rkBusy = true;
     rkError = null;
+    rkErrorAt = at;
     try {
       rk = await fn();
       if (rk.token) {
@@ -221,14 +225,15 @@
     const value = rkDraft[id] ?? '';
     const problem = checkKey(value);
     if (problem) {
-      rkError = `${id}: ${problem}`;
+      rkError = problem;
+      rkErrorAt = id;
       return;
     }
     rkAction(async () => {
       const out = await setRouterKey(node, port, value);
       rkDraft = { ...rkDraft, [id]: '' };
       return out;
-    });
+    }, id);
   }
 
   /* Which agent the snippet is written for, remembered in this browser. */
@@ -1543,7 +1548,7 @@
                       <button
                         class="mini"
                         disabled={rkBusy}
-                        onclick={() => rkAction(() => clearRouterKey(n.node_id, r.port!))}
+                        onclick={() => rkAction(() => clearRouterKey(n.node_id, r.port!), rid)}
                       >clear key</button>
                     {/if}
                   {/if}
@@ -1553,6 +1558,9 @@
                     onclick={() => (n.runtimes.llama_routers = n.runtimes.llama_routers.filter((_, j) => j !== ri))}
                   >×</button>
                 </div>
+                {#if r.port != null && rkError && rkErrorAt === keyId(n.node_id, r.port)}
+                  <p class="note" data-tone="warning">{rkError}</p>
+                {/if}
               {/each}
               <button
                 class="mini add"
@@ -1712,7 +1720,7 @@
               Router keys are set but there is no agent token, so no agent receives them.
             </p>
           {/if}
-          {#if rkError}<p class="note" data-tone="warning">{rkError}</p>{/if}
+          {#if rkError && rkErrorAt === null}<p class="note" data-tone="warning">{rkError}</p>{/if}
         </div>
 
         {#if saveError}

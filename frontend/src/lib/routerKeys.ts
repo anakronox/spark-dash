@@ -22,11 +22,12 @@ export interface RouterKeysStatus {
 export const keyId = (node: string, port: number) => `${node}:${port}`;
 
 /** The same check the backend makes, so a bad paste is caught before it is
- *  sent: one token of printable ASCII, 8 to 512 characters. */
+ *  sent: one token of printable ASCII, at most 512 characters. No minimum:
+ *  the router's key is whatever its operator chose. */
 export function checkKey(value: string): string | null {
   const v = value.trim();
   if (!v) return 'the key is empty';
-  if (v.length < 8 || v.length > 512) return 'a router key is 8 to 512 characters';
+  if (v.length > 512) return 'a router key is at most 512 characters';
   if (!/^[\x21-\x7e]+$/.test(v)) return 'a router key is printable ASCII without spaces';
   return null;
 }
