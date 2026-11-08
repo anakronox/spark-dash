@@ -227,9 +227,15 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         timeout: float = 2.0,
         budget_s: float = 5.0,
         metrics_allowlist: list[str] | None = None,
+        api_keys: dict[str, str] | None = None,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._base_urls = [u.rstrip("/") for u in base_urls if u]
+        # Per router, for llama.cpp started with `--api-key`: it answers 401
+        # on everything but /health without one, /v1/models included. From
+        # central config only; a router without an entry is polled as before.
+        # Never logged.
+        self._api_keys = {u.rstrip("/"): k for u, k in (api_keys or {}).items() if u and k}
         self._timeout = timeout
         self._budget_s = budget_s
 
@@ -281,6 +287,10 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         #: nothing, and the busy gate means it is not scraped then, which left
         #: the lifetime ratios "—" most of the day.
         self._serving_last: dict[str, dict] = {}
+
+    def _headers(self, base_url: str) -> dict[str, str]:
+        key = self._api_keys.get(base_url)
+        return {"Authorization": f"Bearer {key}"} if key else {}
 
     def set_busy_models(self, names: set[str]) -> None:
         """Which models have GPU work in flight, from NVML's per-process view.
@@ -387,7 +397,11 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
         if budget.spent:
             return {}
         try:
-            resp = client.get(f"{base_url}/props", timeout=budget.timeout(self._timeout))
+            resp = client.get(
+                f"{base_url}/props",
+                headers=self._headers(base_url),
+                timeout=budget.timeout(self._timeout),
+            )
             resp.raise_for_status()
             payload = resp.json()
         except Exception:  # noqa: BLE001 — optional enrichment
@@ -408,7 +422,9 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             return None
         try:
             resp = client.get(
-                f"{base_url}/v1/models", timeout=budget.timeout(self._timeout)
+                f"{base_url}/v1/models",
+                headers=self._headers(base_url),
+                timeout=budget.timeout(self._timeout),
             )
             resp.raise_for_status()
             payload = resp.json()
@@ -457,6 +473,7 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             resp = client.get(
                 f"{base_url}/metrics",
                 params={"model": model.name},
+                headers=self._headers(base_url),
                 timeout=budget.timeout(self._timeout),
             )
             resp.raise_for_status()
@@ -521,6 +538,7 @@ class LlamaRouterCollector(Collector[list[LlamaRouterMetrics]]):
             resp = client.get(
                 f"{base_url}/slots",
                 params={"model": model.name},
+                headers=self._headers(base_url),
                 timeout=budget.timeout(self._timeout),
             )
             resp.raise_for_status()

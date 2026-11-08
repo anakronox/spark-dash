@@ -273,6 +273,7 @@ class SnapshotBuilder:
             settings.backend_url,
             self._node_id,
             ttl_s=settings.cluster_config_ttl_s,
+            token=settings.agent_token,
         )
         self._applied: NodeConfig | None = None
         self._disk = DiskCollector(settings.root_path)
@@ -321,6 +322,7 @@ class SnapshotBuilder:
             timeout=self._settings.llama_router_timeout_s,
             budget_s=self._settings.runtime_collect_budget_s,
             metrics_allowlist=runtimes.metrics_allowlist,
+            api_keys=runtimes.router_keys,
         )
         self._engines = {
             runtime: EngineCollector(

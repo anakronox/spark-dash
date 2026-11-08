@@ -8909,6 +8909,39 @@ in each card's cluster field.
 - Not built: filling RDMA probe peers from a cluster's members (the backend
   does not know their RoCE addresses), dragging cards between frames.
 
+### CU — llama.cpp router API keys, set in Settings — **built 2026-11-08**
+
+A llama.cpp router started with `--api-key` / `--api-key-file` answers 401 on
+everything but `/health`: `/v1/models`, `/props`, `/slots` and `/metrics`
+included (measured on sparky's lab router, 2026-11-08, after the gateway in
+front of it got a key of its own). The agent polls exactly those, so the
+router read as unreachable.
+
+- [x] **CU1.** A key per router, typed in Settings → Nodes beside the router's
+  port. Write-only: kept in `router-keys.secrets.json` beside the cluster file,
+  0600, keyed by node and port, never in `cluster.yml` (which the browser
+  reads); Settings learns only whether one is set and its last four. A router
+  removed in Settings, or moved to another port, loses its key on save.
+- [x] **CU2.** The agent gets its routers' keys with its config from
+  `/api/agent-config`, and only when it presents the agents' **shared**
+  token. One token for every node, made in Settings (shown once, kept in
+  `agent.token` beside the cluster file, 0600) and set as `AGENT_TOKEN` in the
+  node stack. Shared rather than per node because the node stack is one
+  config deployed unchanged everywhere: a per-node identity would make it
+  differ by node. Without the token, or with none made, the answer is what it
+  was, minus keys, so an agent not yet updated keeps working.
+- [x] **CU3.** The agent sends a router its own key on every request to it
+  (`/v1/models`, `/props`, `/slots`, `/metrics`) and nothing to a router
+  without one. Keys stay in memory (the agent caches no config on disk), are
+  out of every log line and repr, and `diagnose` sends them too when it can
+  reach the backend.
+- Not built: per-agent tokens (would make the node stack differ by node);
+  keys held on the node instead (a file the agent reads from the host would
+  need per-node provisioning and a path allowlist; central keeps one place to
+  set and rotate them). The token travels over the agent's existing HTTP
+  fetch: on a LAN without TLS between node and backend, anyone who can read
+  that traffic can read the keys, as they could already read the routers'.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,

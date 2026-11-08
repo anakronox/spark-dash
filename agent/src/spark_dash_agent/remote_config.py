@@ -62,6 +62,11 @@ class NodeConfig:
     #: RoCE addresses to probe for round-trip time (CS). Empty means no
     #: probe at all on this node.
     rdma_peers: list[str] = field(default_factory=list)
+    #: Router URL -> its API key, for llama.cpp routers started with
+    #: `--api-key`. Only sent by the backend to an agent presenting the shared
+    #: token. Kept out of repr so no log line can carry a key; still compared,
+    #: so a key set or cleared in Settings rebuilds the collector.
+    router_keys: dict[str, str] = field(default_factory=dict, repr=False)
 
     @property
     def vllm(self) -> list[str]:
@@ -91,8 +96,11 @@ class RemoteConfig:
         *,
         timeout_s: float = 5.0,
         ttl_s: float = 60.0,
+        token: str = "",
     ) -> None:
         self._url = backend_url.rstrip("/")
+        #: The agents' shared token (AGENT_TOKEN). Never logged.
+        self._token = token.strip()
         self._node_id = node_id
         self._timeout_s = timeout_s
         self._ttl_s = ttl_s
@@ -148,7 +156,11 @@ class RemoteConfig:
         try:
             with httpx.Client(timeout=self._timeout_s) as client:
                 resp = client.get(
-                    f"{self._url}/api/agent-config", params={"node": self._node_id}
+                    f"{self._url}/api/agent-config",
+                    params={"node": self._node_id},
+                    headers=(
+                        {"Authorization": f"Bearer {self._token}"} if self._token else {}
+                    ),
                 )
                 resp.raise_for_status()
                 payload = resp.json()
@@ -226,6 +238,18 @@ class RemoteConfig:
             else []
         )
 
+        # Keys for the routers this node polls, and nothing else. Absent unless
+        # the backend accepted the shared token.
+        raw_keys = payload.get("router_keys")
+        keys = {}
+        if isinstance(raw_keys, dict):
+            wanted = set(routers)
+            keys = {
+                str(u).rstrip("/"): str(k)
+                for u, k in raw_keys.items()
+                if str(u).rstrip("/") in wanted and isinstance(k, str) and k
+            }
+
         updated = NodeConfig(
             llama_routers=routers,
             metrics_allowlist=allowlist,
@@ -233,6 +257,7 @@ class RemoteConfig:
             ignored_interfaces=ignored,
             cluster_collected_runtimes=cluster_collected,
             rdma_peers=rdma_peers,
+            router_keys=keys,
         )
         if updated != self._runtimes:
             log.info(
@@ -247,6 +272,9 @@ class RemoteConfig:
                 log.info(
                     "interfaces excluded from alerting: %s", ", ".join(ignored)
                 )
+            if keys:
+                # Which routers, never the keys.
+                log.info("API keys for router(s): %s", ", ".join(sorted(keys)))
             if cluster_collected:
                 log.info(
                     "collected by a cluster peer, so not flagged here: %s",

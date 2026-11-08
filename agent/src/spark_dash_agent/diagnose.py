@@ -8,6 +8,10 @@ namespace view the agent does:
       -e LLAMA_ROUTER_URLS=http://host:8080 \\
       spark-dash-agent:latest python -m spark_dash_agent.diagnose
 
+With BACKEND_URL, NODE_ID and AGENT_TOKEN set as in the node stack, it asks
+the backend for this node's routers and their API keys instead, so a router
+started with --api-key is read as the agent reads it.
+
 Read-only. Notably it does NOT touch /metrics?model=X — that would autoload
 sleeping models, which is the exact thing the agent exists to avoid.
 """
@@ -87,7 +91,7 @@ def dump_processes() -> None:
         print(f"  -> inferred runtime  : {infer_runtime(name, resolved, cwd)}")
 
 
-def dump_routers(urls: list[str]) -> None:
+def dump_routers(urls: list[str], keys: dict[str, str] | None = None) -> None:
     """Print each router's raw /v1/models payload.
 
     This is what the residency heuristic keys off. Safe to call: /v1/models
@@ -100,9 +104,11 @@ def dump_routers(urls: list[str]) -> None:
 
     for url in urls:
         base = url.rstrip("/")
-        print(f"\n--- {base}/v1/models ---")
+        key = (keys or {}).get(base)
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        print(f"\n--- {base}/v1/models{' (with its API key)' if key else ''} ---")
         try:
-            resp = httpx.get(f"{base}/v1/models", timeout=5.0)
+            resp = httpx.get(f"{base}/v1/models", headers=headers, timeout=5.0)
             print(f"  HTTP {resp.status_code}")
             try:
                 print(json.dumps(resp.json(), indent=2)[:4000])
@@ -115,7 +121,7 @@ def dump_routers(urls: list[str]) -> None:
         # model parameter so it cannot wake anything.
         for path in ("/props", "/slots"):
             try:
-                resp = httpx.get(f"{base}{path}", timeout=5.0)
+                resp = httpx.get(f"{base}{path}", headers=headers, timeout=5.0)
                 body = resp.text[:600]
                 print(f"\n  {path} -> HTTP {resp.status_code}: {body!r}")
             except Exception as exc:  # noqa: BLE001
@@ -203,12 +209,33 @@ def dump_device() -> None:
         print(f"  unavailable: {type(exc).__name__}: {exc}")
 
 
+def _central_routers() -> tuple[list[str], dict[str, str]]:
+    """The routers and keys central config gives this node, as the agent sees
+    them: BACKEND_URL, NODE_ID and AGENT_TOKEN from the same environment. Empty
+    when there is no backend or the node is not in the cluster file."""
+    try:
+        import time
+
+        from spark_dash_agent.config import Settings
+        from spark_dash_agent.remote_config import RemoteConfig
+
+        settings = Settings()
+        remote = RemoteConfig(
+            settings.backend_url, settings.resolve_node_id(), token=settings.agent_token
+        )
+        cfg = remote.current(time.monotonic())
+    except Exception:  # noqa: BLE001 — diagnostics must still run
+        return [], {}
+    return (cfg.llama_routers, cfg.router_keys) if cfg else ([], {})
+
+
 def main() -> int:
     urls = [u.strip() for u in os.environ.get("LLAMA_ROUTER_URLS", "").split(",") if u.strip()]
+    central, keys = _central_routers()
     dump_device()
     dump_network()
     dump_processes()
-    dump_routers(urls)
+    dump_routers(central or urls, keys)
     print("\nPaste this output back to continue tuning detection.\n")
     return 0
 

@@ -67,7 +67,7 @@ from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
 from spark_dash_backend.fleet_embedded import EmbeddedFleet
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
-from spark_dash_backend import agent_tools, assistant, channels, notifications, reports, setup
+from spark_dash_backend import agent_tools, assistant, channels, notifications, reports, router_keys, setup
 from spark_dash_backend.latency import latency, latency_over
 from spark_dash_backend.notes import NoteStore
 from spark_dash_backend.maintenance import (
@@ -235,6 +235,12 @@ class ChannelWrite(BaseModel):
 
 class ChannelsWrite(BaseModel):
     channels: list[ChannelWrite]
+
+
+class RouterKeyWrite(BaseModel):
+    """A llama.cpp router's API key, write-only: never sent back."""
+
+    key: str = Field(min_length=1, max_length=512)
 
 
 class NtfyWrite(BaseModel):
@@ -989,6 +995,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Is the cluster directory writable by the backend's user?",
             ) from exc
 
+        # A router removed here takes its API key with it; one whose port
+        # changed is a different router and needs its key set again.
+        try:
+            router_keys.prune(settings.cluster_config, nodes)
+        except OSError:
+            log.warning("could not prune router keys", exc_info=True)
+
         # The inventory caches on a TTL; drop it so the change is visible at
         # once rather than up to 30s later, which would read as a failed save.
         inventory.invalidate()
@@ -1001,7 +1014,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await api_cluster_config()
 
     @app.get("/api/agent-config")
-    async def api_agent_config(node: str) -> dict:
+    async def api_agent_config(node: str, request: Request) -> dict:
         """What a node should be polling.
 
         This is what makes the per-node stack identical everywhere: the agent
@@ -1072,7 +1085,96 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # Also a sibling of `runtimes`, for the same reason. Empty peers
             # means the agent runs no RDMA probe at all (CS).
             "rdma_probe": {"peers": list(match.rdma_peers) if match else []},
+            # This node's llama.cpp router keys, by router URL, ONLY to a
+            # request carrying the agents' shared token (`agent.token`, the
+            # stack's AGENT_TOKEN). Without it, or with no token configured,
+            # the answer is what it always was. Never logged.
+            **(
+                {"router_keys": router_keys.keys_for(settings.cluster_config, match)}
+                if match
+                and match.runtimes.llama_routers
+                and router_keys.token_matches(
+                    settings.cluster_config, request.headers.get("authorization")
+                )
+                else {}
+            ),
         }
+
+    # --- llama.cpp router API keys, and the agents' shared token ----------------------
+
+    def _router_keys_status(token: str | None = None) -> dict:
+        stored = router_keys.read_token(settings.cluster_config)
+        return {
+            "keys": router_keys.status(settings.cluster_config),
+            "token_set": stored is not None,
+            "token_hint": assistant.key_hint(stored),
+            # Only in the answer that made it: never stored where the browser
+            # can read it again.
+            **({"token": token} if token else {}),
+        }
+
+    def _keyed_router(node_id: str, port: int) -> None:
+        try:
+            nodes = load_cluster(settings.cluster_config)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if router_keys.find_router(nodes, node_id, port) is None:
+            raise HTTPException(
+                status_code=404, detail="no llama.cpp router on that port; save the node first"
+            )
+
+    @app.get("/api/router-keys")
+    async def api_router_keys() -> dict:
+        """Which routers have a key (and its end) and whether the agents' token
+        is set. Never a key or the token."""
+        return _router_keys_status()
+
+    @app.put("/api/router-keys/{node_id}/{port}")
+    async def api_router_key_write(node_id: str, port: int, body: RouterKeyWrite) -> dict:
+        """Set or replace one router's key."""
+        _keyed_router(node_id, port)
+        try:
+            value = router_keys.check_key(body.key)
+            stored = router_keys.read_keys(settings.cluster_config)
+            stored[router_keys.key_id(node_id, port)] = value
+            await asyncio.to_thread(router_keys.write_keys, settings.cluster_config, stored)
+        except ClusterConfigError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not write the router keys: {exc}") from exc
+        return _router_keys_status()
+
+    @app.delete("/api/router-keys/{node_id}/{port}")
+    async def api_router_key_clear(node_id: str, port: int) -> dict:
+        """Clear one router's key: the agent polls it without one again."""
+        stored = router_keys.read_keys(settings.cluster_config)
+        if stored.pop(router_keys.key_id(node_id, port), None) is not None:
+            try:
+                await asyncio.to_thread(router_keys.write_keys, settings.cluster_config, stored)
+            except OSError as exc:
+                raise HTTPException(status_code=500, detail=f"could not write the router keys: {exc}") from exc
+        return _router_keys_status()
+
+    @app.post("/api/agent-token")
+    async def api_agent_token_new() -> dict:
+        """A new shared agent token, replacing the old one, which stops working
+        at once. This answer is the only one that carries it."""
+        if not settings.cluster_config.exists():
+            raise HTTPException(status_code=409, detail="router keys need the cluster file; see Settings")
+        try:
+            made = await asyncio.to_thread(router_keys.new_token, settings.cluster_config)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not write the agent token: {exc}") from exc
+        return _router_keys_status(made)
+
+    @app.delete("/api/agent-token")
+    async def api_agent_token_remove() -> dict:
+        """Remove the token: no agent is sent router keys any more."""
+        try:
+            await asyncio.to_thread(router_keys.remove_token, settings.cluster_config)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"could not remove the agent token: {exc}") from exc
+        return _router_keys_status()
 
     @app.get("/api/alerts/silences")
     async def api_silences() -> dict:
