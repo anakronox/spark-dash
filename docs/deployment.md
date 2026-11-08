@@ -332,9 +332,32 @@ every node:
 2. **Give every node the same token.** In each node's `.env` (or the node
    stack's environment in your deploy tool), `AGENT_TOKEN=<token>`, and
    redeploy the node stack. The value is the same on every node.
+   If your deploy tool keeps its own copy of the node compose file, that copy
+   needs the line `- AGENT_TOKEN=${AGENT_TOKEN:-}` in the agent's
+   `environment:`, as in `node/compose.yaml`: a value in `.env` alone never
+   reaches the container.
 3. **Set each router's key.** On the router's row, type its key and **set
-   key**. The router must be saved first. The agent picks it up with its next
-   config fetch (`CLUSTER_CONFIG_TTL_S`, a minute by default).
+   key**. The router must be saved first. Any length up to 512 characters,
+   without spaces or non-ASCII characters; a key the page refuses says why
+   under that row. The agent picks it up with its next config fetch
+   (`CLUSTER_CONFIG_TTL_S`, a minute by default).
+
+**Checking it.** On the node, `curl -s localhost:9500/metrics | grep
+llama_router_up` shows 1 for the router, and `sparkdash_llama_models_known`
+counts its models. Still 0:
+
+- **No `AGENT_TOKEN` in the container:** `docker exec sparkdash-agent sh -c
+  'test -n "$AGENT_TOKEN" && echo set'` prints nothing. Check the stack's
+  `.env` and the compose line above, then redeploy.
+- **The token was replaced:** **new token** stops the old one at once. Set the
+  new one on every node.
+- **The wrong key:** `docker exec sparkdash-agent python -m
+  spark_dash_agent.diagnose` fetches the node's routers and keys as the agent
+  does and prints each router's answer to `/v1/models` with its key: a 401
+  there means the key set in Settings is not the router's.
+
+Only llama.cpp routers take a key. vLLM, SGLang and TensorFold are scraped by
+Prometheus directly and have no key setting here.
 
 The keys are kept in `central/cluster/router-keys.secrets.json` and the token
 in `central/cluster/agent.token`, both 0600 and never in `cluster.yml`; the

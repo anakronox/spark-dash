@@ -110,6 +110,10 @@ report written from the tools directly.
 - **llama.cpp has no time-to-first-token histogram.** Its models have a
   latency only through the gateway, when one is configured; the engines
   (vLLM, SGLang, TensorFold) report their own.
+- **A llama.cpp router listed but read as unreachable** while its node is
+  up may have been started with `--api-key`: it then refuses everything but
+  `/health` without its key. The user sets the key in Settings → Nodes, and
+  the node needs `AGENT_TOKEN`; keys are never visible to tools.
 - **A p95 time to first token of exactly 300 s** is usually a client's own
   timeout, not the engine taking that long.
 - **`unrecognised` in the workload series** is GPU work from a process the

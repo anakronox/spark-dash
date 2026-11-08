@@ -32,7 +32,9 @@ TensorFold.
 
 Optional, each off until you switch it on: one-button DGX OS updates, who is
 calling your models (via LiteLLM), questions answered by your own model,
-scheduled reports, and MCP tools for agents such as Claude Code.
+scheduled reports, MCP tools for agents such as Claude Code, and API keys for
+llama.cpp routers started with `--api-key`, set once in Settings and fetched
+by the node agents with a shared token.
 
 **[All features in detail →](docs/features.md)**
 
@@ -129,6 +131,7 @@ phone. That's the whole install.
 | Ask the dashboard | Any OpenAI-compatible model | [Asking the dashboard](docs/deployment.md#asking-the-dashboard--optional) |
 | Scheduled reports | Nothing | [Reports](docs/deployment.md#reports--scheduled-and-on-demand) |
 | Tools for agents (MCP) | Nothing; switch on in Settings | [Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional) |
+| Router API keys | A llama.cpp router started with `--api-key`; `AGENT_TOKEN` in the node stack | [Router API keys](docs/deployment.md#router-api-keys--optional) |
 
 ## Docs
 

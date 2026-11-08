@@ -8935,7 +8935,19 @@ router read as unreachable.
   without one. Keys stay in memory (the agent caches no config on disk), are
   out of every log line and repr, and `diagnose` sends them too when it can
   reach the backend.
-- Not built: per-agent tokens (would make the node stack differ by node);
+- [x] **CU4, 2026-11-08, after the first real use.** A key under 8
+  characters was refused before it was sent, and the reason appeared under
+  the token, below every node, so **set key** seemed to do nothing. The 8
+  minimum is gone (the router's operator chose the key); only whitespace,
+  non-ASCII and over 512 characters are refused, and the reason shows under
+  the router's row. The key buttons sat at the row's far edge in muted micro
+  text, half-faded while the box was empty: now beside the box, in the save
+  style, always enabled. That style had never applied (`.mini` came later and
+  overrode `.save`), so every Settings save button was a grey mini. Measured
+  after deploy: sparky's 8108, keyed, `sparkdash_llama_router_up` 1 with 6
+  models known.
+- Not built: keys for vLLM, SGLang or TensorFold, which Prometheus scrapes
+  directly; per-agent tokens (would make the node stack differ by node);
   keys held on the node instead (a file the agent reads from the host would
   need per-node provisioning and a path allowlist; central keeps one place to
   set and rotate them). The token travels over the agent's existing HTTP
