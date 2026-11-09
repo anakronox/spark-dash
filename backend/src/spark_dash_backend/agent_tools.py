@@ -1249,11 +1249,26 @@ def write_mcp(path: Path, config: McpConfig) -> None:
     _atomic_write(path, text)
 
 
+#: The key from the stack's secrets (a SOPS-encrypted .env in Dockhand). When set,
+#: it is the key: mcp.key is not read, and Settings cannot replace it.
+KEY_ENV = "SPARKDASH_MCP_KEY"
+
+
+class KeyFromStackError(RuntimeError):
+    """The key is set by the stack; a new one is made there, not in Settings."""
+
+
+def env_key() -> str | None:
+    return (os.environ.get(KEY_ENV) or "").strip() or None
+
+
 def key_path(cluster_path: Path) -> Path:
     return cluster_path.parent / KEY_FILE
 
 
 def read_key(cluster_path: Path) -> str | None:
+    if (stack := env_key()) is not None:
+        return stack
     try:
         return key_path(cluster_path).read_text().strip() or None
     except OSError:
@@ -1263,6 +1278,8 @@ def read_key(cluster_path: Path) -> str | None:
 def new_key(cluster_path: Path) -> str:
     """A fresh key, owner-only, written atomically. Returned once, for
     Settings to show; afterwards only its last four are."""
+    if env_key() is not None:
+        raise KeyFromStackError(f"the key comes from the stack ({KEY_ENV}): change it there and redeploy")
     key = "sdk-" + secrets.token_urlsafe(32)
     p = key_path(cluster_path)
     tmp = p.with_suffix(".tmp")

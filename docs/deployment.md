@@ -605,7 +605,9 @@ claude mcp add --transport http spark-dash http://<monitoring-host>:8080/mcp \
   --header "Authorization: Bearer <key>"
 ```
 
-**new key** replaces the key; the old one stops working at once.
+**new key** replaces the key; the old one stops working at once. With
+`SPARKDASH_MCP_KEY` set (below) there is no **new key**: change the key in the
+stack and redeploy.
 
 **The tools.** All read-only, and each is a read the page already makes:
 
@@ -640,7 +642,12 @@ capped (40 series, 60 rows, 240 points) and say when they were cut. Times are
 UTC.
 
 **Where it is kept.** The two switches are an `mcp:` block in `cluster.yml`;
-the key is `mcp.key` beside it, owner-only, as the assistant's is.
+the key is `mcp.key` beside it, owner-only, as the assistant's is. Or the
+stack supplies it: set `SPARKDASH_MCP_KEY` in the central stack's environment
+(a SOPS-encrypted `.env` in Dockhand, for one) and that value is the key,
+`mcp.key` is ignored, Settings shows its last four as "from the stack" and
+`POST /api/mcp/key` answers 409. Useful when the same key is also in a
+gateway's stack (LiteLLM), so both change in one place.
 
 **Behind Cloudflare Access**, an agent cannot sign in with Google; give it a
 [service token](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/)

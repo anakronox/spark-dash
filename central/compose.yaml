@@ -159,6 +159,9 @@ services:
       - PROMETHEUS_TARGETS_DIR=/etc/prometheus/targets/generated
       - LIVE_POLL_INTERVAL_S=${LIVE_POLL_INTERVAL_S:-2.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # MCP bearer key from the stack's secrets (SOPS). Unset: mcp.key beside
+      # the cluster file, made in Settings.
+      - SPARKDASH_MCP_KEY=${SPARKDASH_MCP_KEY:-}
 
     volumes:
       # Writable here — this is the service that renders the target files.

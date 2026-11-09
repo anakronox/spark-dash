@@ -2469,12 +2469,18 @@
             {:else}
               <span class="note">
                 <span class="num">{mcp.key_hint ?? 'none'}</span>
-                <span class="dim">· shown only when made</span>
+                {#if mcp.key_source === 'stack'}
+                  <span class="dim">· from the stack (<code>SPARKDASH_MCP_KEY</code>): change it there</span>
+                {:else}
+                  <span class="dim">· shown only when made</span>
+                {/if}
               </span>
             {/if}
-            <button class="mini" disabled={mBusy} onclick={() => mcpAction(() => assistant!.mcpNewKey())}
-              >new key</button
-            >
+            {#if mcp.key_source !== 'stack'}
+              <button class="mini" disabled={mBusy} onclick={() => mcpAction(() => assistant!.mcpNewKey())}
+                >new key</button
+              >
+            {/if}
           </label>
           {#if mKey}
             <p class="note" data-tone="warning">
