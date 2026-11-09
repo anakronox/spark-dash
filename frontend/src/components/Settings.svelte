@@ -1713,14 +1713,20 @@
             {:else}
               <span class="note">
                 <span class="num">{rk?.token_hint ?? 'none'}</span>
-                <span class="dim">· shown only when made</span>
+                {#if rk?.token_source === 'stack'}
+                  <span class="dim">· from the stack (<code>SPARKDASH_AGENT_TOKEN</code>): change it there</span>
+                {:else}
+                  <span class="dim">· shown only when made</span>
+                {/if}
               </span>
             {/if}
-            <button class="mini" disabled={rkBusy} onclick={() => rkAction(newAgentToken)}
-              >{rk?.token_set ? 'new token' : 'make token'}</button
-            >
-            {#if rk?.token_set}
-              <button class="mini" disabled={rkBusy} onclick={() => rkAction(removeAgentToken)}>remove</button>
+            {#if rk?.token_source !== 'stack'}
+              <button class="mini" disabled={rkBusy} onclick={() => rkAction(newAgentToken)}
+                >{rk?.token_set ? 'new token' : 'make token'}</button
+              >
+              {#if rk?.token_set}
+                <button class="mini" disabled={rkBusy} onclick={() => rkAction(removeAgentToken)}>remove</button>
+              {/if}
             {/if}
           </label>
           {#if rkToken}

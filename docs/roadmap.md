@@ -8022,6 +8022,13 @@ memory is one pool.
     secrets moved to SOPS-encrypted `.env` files in the stacks, and this
     key is also LiteLLM's `SPARKDASH_MCP_TOKEN`, so one place holds it.
     Unset or blank, nothing changes.
+  - [x] **BB20. The agents' token from the stack.** `SPARKDASH_AGENT_TOKEN`,
+    when set, is the agents' shared token: `agent.token` is not read,
+    Settings shows "from the stack" without **new token** or **remove**,
+    and `POST`/`DELETE /api/agent-token` are a 409. Sealed keys are sealed
+    with it like any token. Built 2026-11-09 with BB19, for the same reason:
+    the node stack's `AGENT_TOKEN` and the central stack's copy now live in
+    SOPS-encrypted `.env` files and change together.
 
 ### BC — Settings as a wide fly-out with a rail — **built 2026-10-16**
 

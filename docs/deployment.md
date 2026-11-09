@@ -378,6 +378,14 @@ receives only its own node's keys, and only when it presents the token. **new
 token** replaces the token at once, so update `AGENT_TOKEN` on every node
 after making one; **remove** stops all agents receiving keys.
 
+**The token from the stack.** Set `SPARKDASH_AGENT_TOKEN` in the central
+stack's environment (a SOPS-encrypted `.env` in Dockhand, for one) to the same
+value as the node stack's `AGENT_TOKEN`, and that is the token: `agent.token`
+is ignored, Settings shows its last four as "from the stack" without **new
+token** or **remove**, and `POST`/`DELETE /api/agent-token` answer 409. To
+change it, set a new value in both stacks and redeploy the central stack, then
+the nodes; until the nodes are redeployed they get their config without keys.
+
 **Encrypting the keys in transit.** By default the agent sends the token to
 the backend and gets the keys back in clear, over the plain HTTP of
 `BACKEND_URL`: anyone who can read traffic between a node and the monitoring
