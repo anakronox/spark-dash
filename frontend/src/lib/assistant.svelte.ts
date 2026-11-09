@@ -39,6 +39,8 @@ export interface McpStatus {
   note_count: number;
   key_set: boolean;
   key_hint: string | null;
+  /** "stack": SPARKDASH_MCP_KEY sets the key; Settings cannot replace it. */
+  key_source: 'stack' | 'file';
   path: string;
   error: string | null;
   /** Only in the answer that made a key; never again. */

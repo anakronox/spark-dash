@@ -8015,6 +8015,13 @@ memory is one pool.
     them. Each event carries the alert, the node, when, and a short
     `correlate` summary, so the receiver starts with context. **Deferred
     2026-10-16** (Brian): roadmapped, left out of this build.
+  - [x] **BB19. The key from the stack.** `SPARKDASH_MCP_KEY`, when set, is
+    the MCP key: `mcp.key` is not read, Settings shows "from the stack"
+    without **new key**, and `POST /api/mcp/key` is a 409. Built 2026-11-09
+    after the homelab's stack `.env` files were found readable in Forgejo:
+    secrets moved to SOPS-encrypted `.env` files in the stacks, and this
+    key is also LiteLLM's `SPARKDASH_MCP_TOKEN`, so one place holds it.
+    Unset or blank, nothing changes.
 
 ### BC — Settings as a wide fly-out with a rail — **built 2026-10-16**
 

@@ -2170,6 +2170,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "note_count": note_store.count(),
             "key_set": stored is not None,
             "key_hint": assistant.key_hint(stored),
+            # "stack": SPARKDASH_MCP_KEY sets it, and Settings cannot replace it.
+            "key_source": "stack" if agent_tools.env_key() else "file",
             "path": "/mcp",
             "error": error,
             # Only in the answer that made it: never stored where the
@@ -2413,6 +2415,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail="MCP tools need the cluster file; see Settings")
         try:
             made = await asyncio.to_thread(agent_tools.new_key, settings.cluster_config)
+        except agent_tools.KeyFromStackError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return _mcp_status(made)

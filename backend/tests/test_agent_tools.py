@@ -135,6 +135,26 @@ class TestTheKey:
         fresh = {**HEADERS, "Authorization": f"Bearer {new}"}
         assert api.post("/mcp", json=rpc("tools/list"), headers=fresh).status_code == 200
 
+    def test_a_key_from_the_stack_is_the_key_and_settings_cannot_replace_it(self, api, monkeypatch):
+        switch_on(api)
+        file_key = api.headers_with_key
+        stack = "sdk-from-the-stack-" + "x" * 32
+        monkeypatch.setenv(agent_tools.KEY_ENV, f"  {stack}\n")
+        status = api.get("/api/mcp/status").json()
+        assert status["key_source"] == "stack" and status["key_hint"] == f"…{stack[-4:]}"
+        assert api.post("/mcp", json=rpc("tools/list"), headers=file_key).status_code == 401
+        good = {**HEADERS, "Authorization": f"Bearer {stack}"}
+        assert api.post("/mcp", json=rpc("tools/list"), headers=good).status_code == 200
+        r = api.post("/api/mcp/key")
+        assert r.status_code == 409 and agent_tools.KEY_ENV in r.json()["detail"]
+        assert api.post("/mcp", json=rpc("tools/list"), headers=good).status_code == 200
+
+    def test_a_blank_stack_key_falls_back_to_the_file(self, api, monkeypatch):
+        monkeypatch.setenv(agent_tools.KEY_ENV, "   ")
+        body = switch_on(api)
+        assert body["key"].startswith("sdk-") and body["key_source"] == "file"
+        assert api.post("/mcp", json=rpc("tools/list"), headers=api.headers_with_key).status_code == 200
+
     def test_the_nodes_survive(self, api):
         switch_on(api, promql=True)
         api.put("/api/mcp/config", json={"enabled": False, "promql": False})
