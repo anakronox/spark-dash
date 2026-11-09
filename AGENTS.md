@@ -68,7 +68,8 @@ Run the suite before you call anything done; these fail loudly on purpose.
   them sealed (`agent-keys.sealed`) are 0600; the ntfy topic
   is `secrets/ntfy-url`, shared with Alertmanager by group. The MCP key
   may come from the stack instead (`SPARKDASH_MCP_KEY`, roadmap BB19), which
-  then wins over `mcp.key`. An API key is
+  then wins over `mcp.key`; so may the agents' token
+  (`SPARKDASH_AGENT_TOKEN`, BB20) over `agent.token`. An API key is
   write-only: the browser sees whether one is set and its last four, and only
   an agent presenting `AGENT_TOKEN` gets its own node's keys, from
   `/api/agent-config`, or with `AGENT_SEALED_KEYS` gets them encrypted with

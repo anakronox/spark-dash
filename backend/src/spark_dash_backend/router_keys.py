@@ -159,11 +159,34 @@ def keys_for(cluster_path: Path, node: ClusterNode) -> dict[str, str]:
 
 # --- the agents' shared token -----------------------------------------------------------------
 
+#: The token from the central stack's secrets (a SOPS-encrypted .env in Dockhand,
+#: the same value as the node stack's AGENT_TOKEN). When set it is the token:
+#: agent.token is not read, and Settings cannot replace or remove it (BB20).
+TOKEN_ENV = "SPARKDASH_AGENT_TOKEN"
+
+
+class TokenFromStackError(RuntimeError):
+    """The token is set by the stack; it is changed there, not in Settings."""
+
+
+def env_token() -> str | None:
+    return (os.environ.get(TOKEN_ENV) or "").strip() or None
+
+
+def _not_from_stack() -> None:
+    if env_token() is not None:
+        raise TokenFromStackError(
+            f"the agent token comes from the stack ({TOKEN_ENV}): change it there, "
+            "and AGENT_TOKEN in the node stack, then redeploy both")
+
+
 def token_path(cluster_path: Path) -> Path:
     return cluster_path.parent / TOKEN_FILE
 
 
 def read_token(cluster_path: Path) -> str | None:
+    if (stack := env_token()) is not None:
+        return stack
     try:
         return token_path(cluster_path).read_text().strip() or None
     except OSError:
@@ -174,12 +197,14 @@ def new_token(cluster_path: Path) -> str:
     """A fresh token, owner-only, written atomically. Returned once, for
     Settings to show; afterwards only its last four are. The old one stops
     working at once, so every node's AGENT_TOKEN must be updated with it."""
+    _not_from_stack()
     token = "sda-" + secrets.token_urlsafe(32)
     _write_owner_only(token_path(cluster_path), token + "\n")
     return token
 
 
 def remove_token(cluster_path: Path) -> None:
+    _not_from_stack()
     token_path(cluster_path).unlink(missing_ok=True)
 
 

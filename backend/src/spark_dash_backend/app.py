@@ -1125,6 +1125,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "keys": router_keys.status(settings.cluster_config),
             "token_set": stored is not None,
             "token_hint": assistant.key_hint(stored),
+            # "stack": SPARKDASH_AGENT_TOKEN sets it, and Settings cannot replace it.
+            "token_source": "stack" if router_keys.env_token() else "file",
             "sealed_required": router_keys.sealed_required(settings.cluster_config),
             # Only in the answer that made it: never stored where the browser
             # can read it again.
@@ -1181,6 +1183,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail="API keys need the cluster file; see Settings")
         try:
             made = await asyncio.to_thread(router_keys.new_token, settings.cluster_config)
+        except router_keys.TokenFromStackError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=500, detail=f"could not write the agent token: {exc}") from exc
         return _router_keys_status(made)
@@ -1202,6 +1206,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Remove the token: no agent is sent API keys any more."""
         try:
             await asyncio.to_thread(router_keys.remove_token, settings.cluster_config)
+        except router_keys.TokenFromStackError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except OSError as exc:
             raise HTTPException(status_code=500, detail=f"could not remove the agent token: {exc}") from exc
         return _router_keys_status()

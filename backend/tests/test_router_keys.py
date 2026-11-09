@@ -152,6 +152,31 @@ class TestRoutes:
         assert client.delete("/api/agent-token").json()["token_set"] is False
 
 
+    def test_a_token_from_the_stack_is_the_token_and_settings_cannot_change_it(self, client, monkeypatch):
+        made = client.post("/api/agent-token").json()["token"]
+        stack = "sda-from-the-stack-" + "y" * 32
+        monkeypatch.setenv(router_keys.TOKEN_ENV, f" {stack}\n")
+        status = client.get("/api/router-keys").json()
+        assert status["token_source"] == "stack" and status["token_hint"] == f"…{stack[-4:]}"
+        assert client.post("/api/agent-token").status_code == 409
+        r = client.delete("/api/agent-token")
+        assert r.status_code == 409 and router_keys.TOKEN_ENV in r.json()["detail"]
+        client.put("/api/router-keys/sparky/8108", json={"key": KEY})
+        old = client.get("/api/agent-config", params={"node": "sparky"},
+                         headers={"Authorization": f"Bearer {made}"}).json()
+        assert "router_keys" not in old
+        ok = client.get("/api/agent-config", params={"node": "sparky"},
+                        headers={"Authorization": f"Bearer {stack}"}).json()
+        assert ok["router_keys"] == {"http://192.168.50.61:8108": KEY}
+        sealed = client.get("/api/agent-config", params={"node": "sparky", "sealed": "1"}).json()
+        assert open_sealed(stack, "sparky", sealed["sealed_keys"]) == {"http://192.168.50.61:8108": KEY}
+
+    def test_a_blank_stack_token_falls_back_to_the_file(self, client, monkeypatch):
+        monkeypatch.setenv(router_keys.TOKEN_ENV, "  ")
+        made = client.post("/api/agent-token").json()
+        assert made["token"].startswith("sda-") and made["token_source"] == "file"
+
+
 class TestAgentConfig:
     def test_keys_only_with_the_shared_token(self, client):
         client.put("/api/router-keys/sparky/8108", json={"key": KEY})

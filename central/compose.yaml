@@ -162,6 +162,9 @@ services:
       # MCP bearer key from the stack's secrets (SOPS). Unset: mcp.key beside
       # the cluster file, made in Settings.
       - SPARKDASH_MCP_KEY=${SPARKDASH_MCP_KEY:-}
+      # The agents' shared token from the stack's secrets (BB20); the same value
+      # as AGENT_TOKEN in the node stack. Unset: agent.token, made in Settings.
+      - SPARKDASH_AGENT_TOKEN=${SPARKDASH_AGENT_TOKEN:-}
 
     volumes:
       # Writable here — this is the service that renders the target files.

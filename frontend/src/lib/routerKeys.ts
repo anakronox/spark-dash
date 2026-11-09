@@ -15,6 +15,8 @@ export interface RouterKeysStatus {
   keys: Record<string, KeyState>;
   token_set: boolean;
   token_hint: string | null;
+  /** "stack": SPARKDASH_AGENT_TOKEN sets the token; Settings cannot replace it. */
+  token_source?: 'stack' | 'file';
   /** On, keys go to agents only encrypted with the token (AGENT_SEALED_KEYS). */
   sealed_required?: boolean;
   /** Only in the answer that made it. */
