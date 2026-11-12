@@ -8994,6 +8994,43 @@ router read as unreachable.
   need per-node provisioning and a path allowlist; central keeps one place to
   set and rotate them).
 
+### CV — Believe `X-Forwarded-Proto` only from the proxy — **open**
+
+Whether a sudo password is accepted for an Update run hangs off one function,
+`_secure()` in `app.py`: `X-Forwarded-Proto`, else the scheme this server saw.
+Its docstring says "never true on trust", but the header is taken from **any**
+client. Anyone who can reach the backend directly over plain HTTP can send
+`X-Forwarded-Proto: https` and the password check passes, so a password can be
+accepted on a connection that was never encrypted.
+
+Found 2026-11-12 while preparing the first password run (hermeslockdown
+`docs/sparkdash-caddy.md`). The deployment closed the hole from the outside the
+same day: the backend now binds `127.0.0.1:8080`, and the only way in is Caddy
+on 443 (`https://sparkdash.indielab.tech`, also behind the Cloudflare tunnel),
+which sets `X-Forwarded-Proto` itself and does not pass a client's value on.
+This entry is the second layer, so the code is right on its own, not only
+because of how one deployment is wired.
+
+- [ ] **CV1.** `_secure()` reads `X-Forwarded-Proto` only when the request comes
+  from a trusted proxy: `request.client.host` inside `TRUSTED_PROXIES`
+  (comma-separated IPs or CIDRs, e.g. the compose network's subnet or the
+  Caddy container's address). From anyone else the header is ignored and the
+  scheme the server saw decides. One place, as now, and still default-no.
+- [ ] **CV2.** The default when `TRUSTED_PROXIES` is unset. Either "trust no
+  proxy" (safe, but a tunnel-only deployment loses Update until it sets the
+  variable) or the compose network only. Decide, write it in `.env.example`,
+  and say in Settings → Fleet updates why Update is refused when a password
+  arrives through an untrusted hop ("not over TLS" today, which is confusing
+  behind a proxy that *is* TLS).
+- [ ] **CV3.** Tests: header from a trusted proxy → secure; same header from an
+  untrusted client → not secure; no header → the scheme; a trusted proxy
+  sending `http` → not secure. Plus one end-to-end refusal: a password POST
+  with a forged header from outside the trusted set is refused and the body
+  never reaches a log line (the existing AL2 guarantee).
+- [ ] **CV4.** `docs/deployment.md`: the proxy in front (Caddy, cloudflared or
+  both) and `TRUSTED_PROXIES` belong together; publishing the backend port on
+  the LAN with a proxy-trusting setting re-opens this.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
