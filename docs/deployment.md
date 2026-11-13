@@ -532,25 +532,43 @@ over HTTPS, and on the plain-HTTP LAN it is refused.
 that grant passwordless sudo never ask.
 
 **The proxy in front and `TRUSTED_PROXIES` go together.** The backend serves
-plain HTTP; TLS ends at the proxy (Caddy, cloudflared), which tells the
-backend so with `X-Forwarded-Proto`. The backend believes that header only
-from the addresses in `TRUSTED_PROXIES` (IPs or CIDRs, comma-separated); from
-anyone else it is ignored. Unset, it is loopback only, which inside the
-container is nobody, so every password is refused. Set it to the proxy's
-address on the Docker network it shares with the backend, and pin that
-address (`ipv4_address`, or a fixed `ipam` subnet) so a restart does not move
-it:
+plain HTTP; TLS ends at the proxy (the Cloudflare tunnel's `cloudflared`, or a
+reverse proxy such as Caddy), which tells the backend so with
+`X-Forwarded-Proto`. The backend believes that header only from the addresses
+in `TRUSTED_PROXIES` (IPs or CIDRs, comma-separated); from anyone else it is
+ignored. Unset, it is loopback only, which inside the container is nobody, so
+a password through the proxy is refused until the proxy is named.
+
+The address is the proxy's as the backend sees it, which depends on where the
+proxy runs:
+
+| The proxy runs | `TRUSTED_PROXIES` is |
+|---|---|
+| on another machine (an LXC, another VM) | that machine's LAN IP |
+| on the same host, pointed at the published port | the gateway of the stack's Docker network (e.g. `172.18.0.1`) |
+| in the stack, on the `sparkdash` network | its container address; pin it with `ipv4_address` and a fixed `ipam` subnet so a restart does not move it |
+
+The simplest way to find it: try an Update with the password. The refusal
+names `TRUSTED_PROXIES` and ends with `(it came from <address>)`; that is
+the address to set.
 
 ```
-TRUSTED_PROXIES=172.30.0.10
+TRUSTED_PROXIES=192.168.1.20
 ```
 
-Keep the trusted set to the proxy. A subnet also covers its gateway, which is
-where connections through a published port can appear to come from, so with
-the backend published on the LAN (`BACKEND_BIND=0.0.0.0`) a subnet re-opens
-what this closes: anyone who can reach the port can claim HTTPS. Behind a
-proxy, publish the backend on `127.0.0.1` or not at all. A refusal that names
-`TRUSTED_PROXIES` means the request said HTTPS from an address not in the list.
+Keep the trusted set to the proxy, never the LAN and never a whole subnet: a
+subnet covers its gateway too, and through the gateway every process on the
+host can claim HTTPS. Behind a proxy on the same host, publish the backend on
+`127.0.0.1` (`BACKEND_BIND=127.0.0.1`).
+
+**Upgrading from a build before roadmap CV (2026-11-13).** Before CV, the
+backend believed `X-Forwarded-Proto` from anyone, so the tunnel worked with
+nothing set, and so did a forged header on the LAN. After upgrading, if you
+update Sparks **with a sudo password through the tunnel or another proxy**,
+the password is refused until `TRUSTED_PROXIES` names the proxy, as above.
+Nothing else changes: Sparks with passwordless sudo, plain-HTTP setups with
+`SPARK_FLEET_ALLOW_PLAIN_PASSWORD=1`, and the rest of the dashboard are
+unaffected.
 
 `/health` reports `fleet_updates: ok | unreachable | not configured`, and
 names any Spark that has stopped refreshing its package lists

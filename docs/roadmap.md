@@ -9052,6 +9052,18 @@ because of how one deployment is wired.
 address on the network it shares with the backend before the new image goes
 out, or Update with a password is refused (safely) until it is.
 
+- [x] **CV5. The upgrade, for deployments already using it.** Before CV the
+  tunnel worked with nothing set, so a deployment that updates Sparks with a
+  sudo password through cloudflared or another proxy has the password refused
+  after upgrading until `TRUSTED_PROXIES` is set. Nobody else notices. The
+  default stays loopback: anything that keeps those deployments working
+  untouched has to guess which address is the proxy, and a wrong guess is the
+  hole again. Instead the refusal ends `(it came from <address>)`, the
+  address as the backend sees it, which is the value to set. Upgrade note in
+  `deployment.md` (with where that address comes from for a proxy on another
+  machine, on the same host, or in the stack), the quick setup's sudo step and
+  troubleshooting table, and one paragraph in the README.
+
 ### J — Single-host profile (everything on one GB10)
 
 **The premise this project was built on:** the GB10 is an inference workhorse,
