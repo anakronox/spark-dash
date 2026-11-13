@@ -64,10 +64,13 @@ ssh -i central/fleet-ssh/id_ed25519 you@your-spark 'echo it works'
 
 Two honest options, and the second is not the wrong one:
 
-- **Type your password each time.** Nothing more to do. The dashboard asks for
-  it when you press Update, holds it for that one run, and writes it nowhere.
-  It is **refused unless the page is on HTTPS** — through a tunnel, or with TLS
-  in front — because a sudo password should not cross a LAN in the clear.
+- **Type your password each time.** The dashboard asks for it when you press
+  Update, holds it for that one run, and writes it nowhere. It is **refused
+  unless the page is on HTTPS** — through a tunnel, or with TLS in front —
+  because a sudo password should not cross a LAN in the clear. The backend
+  also has to know which address is the tunnel or proxy, so set
+  `TRUSTED_PROXIES` in the central `.env`
+  ([how to find the address](deployment.md#dgx-os-updates--optional)).
 - **Passwordless sudo for that login**, if you would rather not be asked. That
   is a change to the Spark, so it is yours to make and not ours to suggest
   lightly.
@@ -152,6 +155,7 @@ sudo systemctl restart dgx-dashboard-admin.service
 | A Spark reads **could not connect** | The key is not on that Spark, or the login is wrong. Re-run step 2 and test it by hand. |
 | **firmware needs the two read-only sudo rules** | Firmware versions come from `dmidecode` and `mstflint`, which need root to read. The row still scores everything else. |
 | Update refuses your password | The page is not on HTTPS. Reach the dashboard through your tunnel, or use passwordless sudo. |
+| The refusal names **`TRUSTED_PROXIES`** | The page is on HTTPS, but the backend does not know your tunnel or proxy. Set `TRUSTED_PROXIES` in the central `.env` to the address at the end of the message and redeploy. New since 2026-11-13: before that, the backend took any client's word for HTTPS. |
 | A Spark says **N packages pinned here** | Somebody ran `apt-mark hold` there. Those will not be installed. `sudo apt-mark unhold <package>` on the Spark undoes it. |
 
 Deeper detail — what NVIDIA actually ships, how releases are scored, what the

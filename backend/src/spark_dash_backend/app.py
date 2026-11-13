@@ -1494,7 +1494,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except FleetError as exc:
             detail = exc.detail
             if detail == PASSWORD_NEEDS_TLS and _forwarded_untrusted(request):
-                detail = PASSWORD_UNTRUSTED_PROXY
+                # The address to add, as this backend sees it: after an
+                # upgrade to CV, finding it is the whole of the fix.
+                peer = request.client.host if request.client else "unknown"
+                detail = f"{PASSWORD_UNTRUSTED_PROXY} (it came from {peer})"
             raise HTTPException(status_code=exc.status, detail=detail) from exc
 
     @app.get("/api/fleet")

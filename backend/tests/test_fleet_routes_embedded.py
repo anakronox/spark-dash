@@ -309,6 +309,7 @@ def test_a_forged_header_is_refused_and_says_why(client, calls, caplog):
     )
     assert resp.status_code == 400
     assert "TRUSTED_PROXIES" in resp.json()["detail"]
+    assert f"(it came from {LAN})" in resp.json()["detail"], "the address to add"
     assert "hunter2" not in resp.text
     assert len(calls) == before, "a refused password still reached a Spark"
     assert "hunter2" not in caplog.text

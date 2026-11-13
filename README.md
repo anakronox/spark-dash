@@ -133,6 +133,10 @@ phone. That's the whole install.
 | Tools for agents (MCP) | Nothing; switch on in Settings | [Tools for agents](docs/deployment.md#tools-for-agents-mcp--optional) |
 | API keys | A llama.cpp router, vLLM, SGLang or TensorFold started with an API key; `AGENT_TOKEN` in the node stack | [API keys](docs/deployment.md#api-keys--optional) |
 
+**Upgrading, with DGX OS updates and a sudo password through a tunnel or
+proxy:** since 2026-11-13 the password is refused until `TRUSTED_PROXIES`
+names the proxy. [What to set](docs/deployment.md#dgx-os-updates--optional).
+
 ## Docs
 
 - [Features](docs/features.md): everything it shows and does.
