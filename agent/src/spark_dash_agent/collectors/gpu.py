@@ -140,7 +140,7 @@ def infer_runtime(name: str, command: str = "", cwd: str = "") -> str | None:
     # path, and a model with "llama" in its name would otherwise read as
     # llama.cpp. The word is the executable (`tensorfold serve ...`) and the
     # process name, never an ordinary English word.
-    if "tensorfold" in haystack:
+    if "tensorfold" in haystack or _looks_like_tensorfold_zig(name, command):
         return "tensorfold"
     # vLLM is checked before llama.cpp: a vLLM process serving a Llama model
     # has "llama" in its argv and would otherwise be misattributed.
@@ -332,6 +332,26 @@ def _looks_like_atlas(name: str, command: str) -> bool:
     if argv0:
         candidates.append(argv0[0].rsplit("/", 1)[-1].lower())
     return any(c == "atlas" or c.startswith(("atlas-", "atlas_")) for c in candidates)
+
+
+def _looks_like_tensorfold_zig(name: str, command: str) -> bool:
+    """TensorFold's zig builds, whose worker rank never says "tensorfold".
+
+    Rank 0 runs as `tensorfold-dsv41 serve ...` and the substring check finds
+    it; rank 1 runs as `tf-dsv41-m1 follow /model /assets`, a per-family binary
+    with no endpoint. Seen 2026-11-14 on sparkjr: 104 GiB of weights read as
+    an unlabelled GPU process, and the node card as "93% not model weights".
+
+    Two signals, like `_looks_like_atlas`: an executable named `tf-...` (the
+    process name or argv[0]'s basename) AND TensorFold's own subcommand,
+    `serve` or `follow`, as the first argument. "tf-" alone is too short to
+    trust.
+    """
+    argv = command.strip().split()
+    if len(argv) < 2 or argv[1] not in ("serve", "follow"):
+        return False
+    candidates = (name.strip().lower(), argv[0].rsplit("/", 1)[-1].lower())
+    return any(c.startswith("tf-") and len(c) > 3 for c in candidates)
 
 
 def _looks_like_comfyui(haystack: str) -> bool:
