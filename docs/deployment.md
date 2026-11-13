@@ -526,10 +526,31 @@ needs the same four environment lines and two mounts, with the mounts made
 absolute. Missing them is silent: the backend comes up healthy and Settings
 says the feature is not set up.
 
-The password rule is not bypassed: through the tunnel (`https://`, where
-cloudflared sets `X-Forwarded-Proto`) an update accepts the sudo password; on
-the plain-HTTP LAN it is refused. `SPARK_FLEET_ALLOW_PLAIN_PASSWORD=1` is the
-opt-out and yours to set. Sparks that grant passwordless sudo never ask.
+The password rule is not bypassed: an update accepts the sudo password only
+over HTTPS, and on the plain-HTTP LAN it is refused.
+`SPARK_FLEET_ALLOW_PLAIN_PASSWORD=1` is the opt-out and yours to set. Sparks
+that grant passwordless sudo never ask.
+
+**The proxy in front and `TRUSTED_PROXIES` go together.** The backend serves
+plain HTTP; TLS ends at the proxy (Caddy, cloudflared), which tells the
+backend so with `X-Forwarded-Proto`. The backend believes that header only
+from the addresses in `TRUSTED_PROXIES` (IPs or CIDRs, comma-separated); from
+anyone else it is ignored. Unset, it is loopback only, which inside the
+container is nobody, so every password is refused. Set it to the proxy's
+address on the Docker network it shares with the backend, and pin that
+address (`ipv4_address`, or a fixed `ipam` subnet) so a restart does not move
+it:
+
+```
+TRUSTED_PROXIES=172.30.0.10
+```
+
+Keep the trusted set to the proxy. A subnet also covers its gateway, which is
+where connections through a published port can appear to come from, so with
+the backend published on the LAN (`BACKEND_BIND=0.0.0.0`) a subnet re-opens
+what this closes: anyone who can reach the port can claim HTTPS. Behind a
+proxy, publish the backend on `127.0.0.1` or not at all. A refusal that names
+`TRUSTED_PROXIES` means the request said HTTPS from an address not in the list.
 
 `/health` reports `fleet_updates: ok | unreachable | not configured`, and
 names any Spark that has stopped refreshing its package lists

@@ -165,6 +165,10 @@ services:
       # The agents' shared token from the stack's secrets (BB20); the same value
       # as AGENT_TOKEN in the node stack. Unset: agent.token, made in Settings.
       - SPARKDASH_AGENT_TOKEN=${SPARKDASH_AGENT_TOKEN:-}
+      # Who may say a request arrived over HTTPS (roadmap CV): the reverse
+      # proxy's IPs or CIDRs. Unset: loopback only, which in this container
+      # is nobody, so a sudo password is refused until the proxy is named.
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
 
     volumes:
       # Writable here — this is the service that renders the target files.

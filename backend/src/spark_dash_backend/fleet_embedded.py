@@ -43,6 +43,12 @@ PASSWORD_NEEDS_TLS = (
     "a password is only accepted over HTTPS — open the dashboard at https://, "
     "or reach it through the tunnel"
 )
+# CV: the request said HTTPS, through a hop the backend does not trust.
+PASSWORD_UNTRUSTED_PROXY = (
+    "a password is only accepted over HTTPS, and this request came through a "
+    "proxy the backend does not trust — add the proxy's address to "
+    "TRUSTED_PROXIES in the stack's .env"
+)
 
 
 class EmbeddedFleet:

@@ -14,6 +14,10 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
+        # The app mounts ProxyHeadersMiddleware itself with TRUSTED_PROXIES
+        # (CV). uvicorn's own copy trusts 127.0.0.1 or FORWARDED_ALLOW_IPS,
+        # a second setting that could disagree; off.
+        proxy_headers=False,
     )
 
 

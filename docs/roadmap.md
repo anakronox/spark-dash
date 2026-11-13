@@ -8994,7 +8994,7 @@ router read as unreachable.
   need per-node provisioning and a path allowlist; central keeps one place to
   set and rotate them).
 
-### CV — Believe `X-Forwarded-Proto` only from the proxy — **open**
+### CV — Believe `X-Forwarded-Proto` only from the proxy — **built 2026-11-13**
 
 Whether a sudo password is accepted for an Update run hangs off one function,
 `_secure()` in `app.py`: `X-Forwarded-Proto`, else the scheme this server saw.
@@ -9011,25 +9011,46 @@ which sets `X-Forwarded-Proto` itself and does not pass a client's value on.
 This entry is the second layer, so the code is right on its own, not only
 because of how one deployment is wired.
 
-- [ ] **CV1.** `_secure()` reads `X-Forwarded-Proto` only when the request comes
+- [x] **CV1.** `_secure()` reads `X-Forwarded-Proto` only when the request comes
   from a trusted proxy: `request.client.host` inside `TRUSTED_PROXIES`
   (comma-separated IPs or CIDRs, e.g. the compose network's subnet or the
   Caddy container's address). From anyone else the header is ignored and the
   scheme the server saw decides. One place, as now, and still default-no.
-- [ ] **CV2.** The default when `TRUSTED_PROXIES` is unset. Either "trust no
+  *Built* with uvicorn's own `ProxyHeadersMiddleware`, mounted in
+  `create_app` with `TRUSTED_PROXIES` (it already takes IPs and CIDRs);
+  `_secure()` is now `request.url.scheme == "https"` and never reads the
+  header. uvicorn's runtime copy (trusts 127.0.0.1 or `FORWARDED_ALLOW_IPS`)
+  is switched off in `__main__`, so there is one setting, not two. Side
+  effect: `request.client` is the real client behind a trusted proxy; nothing
+  read it before.
+- [x] **CV2.** The default when `TRUSTED_PROXIES` is unset. Either "trust no
   proxy" (safe, but a tunnel-only deployment loses Update until it sets the
   variable) or the compose network only. Decide, write it in `.env.example`,
   and say in Settings → Fleet updates why Update is refused when a password
   arrives through an untrusted hop ("not over TLS" today, which is confusing
   behind a proxy that *is* TLS).
-- [ ] **CV3.** Tests: header from a trusted proxy → secure; same header from an
+  *Decided:* loopback only (`127.0.0.1,::1`). Inside the container that is
+  nobody, so a Docker-network proxy (this deployment: Caddy) must be named;
+  an unset variable can only refuse, never trust. A password that arrives with
+  `X-Forwarded-Proto: https` from an untrusted address is refused with its own
+  sentence naming `TRUSTED_PROXIES`; with no header, the old "not over HTTPS"
+  one. In `.env.example`, passed through in `compose.yaml`.
+- [x] **CV3.** Tests: header from a trusted proxy → secure; same header from an
   untrusted client → not secure; no header → the scheme; a trusted proxy
   sending `http` → not secure. Plus one end-to-end refusal: a password POST
   with a forged header from outside the trusted set is refused and the body
   never reaches a log line (the existing AL2 guarantee).
-- [ ] **CV4.** `docs/deployment.md`: the proxy in front (Caddy, cloudflared or
+  *Built* in `test_fleet_routes_embedded.py`, which now calls from a trusted
+  proxy address by default and parametrizes the caller for these.
+- [x] **CV4.** `docs/deployment.md`: the proxy in front (Caddy, cloudflared or
   both) and `TRUSTED_PROXIES` belong together; publishing the backend port on
   the LAN with a proxy-trusting setting re-opens this.
+  *Written* under DGX OS updates, including that a subnet covers its gateway,
+  where published-port connections can appear from.
+
+**Deploying it:** the live VM stack must set `TRUSTED_PROXIES` to Caddy's
+address on the network it shares with the backend before the new image goes
+out, or Update with a password is refused (safely) until it is.
 
 ### J — Single-host profile (everything on one GB10)
 
