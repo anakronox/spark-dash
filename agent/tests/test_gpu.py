@@ -76,6 +76,24 @@ class TestInferRuntime:
         cmd = "/usr/bin/python3 /usr/local/bin/tensorfold serve /m --tp 2 --rank 1"
         assert infer_runtime("tensorfold", cmd) == "tensorfold"
 
+    def test_tensorfold_zig_rank_zero(self):
+        """The zig build's rank 0, as on sparketa 2026-11-14."""
+        cmd = ("tensorfold-dsv41 serve /model --host 0.0.0.0 --port 8003 "
+               "--name DeepSeek-V4.1-Flash-1017")
+        assert infer_runtime("tensorfold-dsv41", cmd) == "tensorfold"
+
+    def test_tensorfold_zig_worker_rank(self):
+        """The zig build's rank 1 never says "tensorfold": `tf-dsv41-m1`."""
+        assert infer_runtime("tf-dsv41-m1", "tf-dsv41-m1 follow /model /assets") == "tensorfold"
+        # by argv[0] when the process name is something else
+        assert infer_runtime("x", "/opt/tf/bin/tf-glm53-m1 follow /m /a") == "tensorfold"
+
+    def test_a_tf_prefix_alone_is_not_tensorfold(self):
+        """Without TensorFold's own subcommand, "tf-" is not evidence."""
+        assert infer_runtime("tf-train", "tf-train --epochs 3") is None
+        assert infer_runtime("tf-", "tf- follow x") is None
+        assert infer_runtime("python3", "python3 tf-serve.py serve") is None
+
     def test_tensorfold_serving_a_llama_model_is_not_llama_cpp(self):
         """Its argv carries the model path; "llama" there must not win."""
         cmd = "/usr/local/bin/tensorfold serve /models/Llama-3.1-70B"

@@ -7393,6 +7393,16 @@ stored: `context_length`, speculative-decoding acceptance
 (`mtp_accepted`/`mtp_drafted`, 71% on the live server), and the latency and
 time-to-first-token histograms.
 
+- [x] **AN2. The zig builds' worker rank (2026-11-14).** TensorFold's zig
+  build of DeepSeek-V4.1 runs rank 0 as `tensorfold-dsv41 serve ...`, still
+  matched, and rank 1 as `tf-dsv41-m1 follow /model /assets`, which never says
+  "tensorfold". sparkjr's 101.6 GiB of weights became an unlabelled GPU
+  process and its card read "memory 93%, 93% not model weights". The
+  `UnexplainedMemoryUse` alert did not fire: it subtracts every GPU process,
+  the card only LLM runtimes. `infer_runtime` now also takes an executable
+  named `tf-...` (process name or argv[0]) whose first argument is `serve` or
+  `follow`; `tf-` alone is too short to trust.
+
 ### AO — Activity charts that can be read — **shipped 2026-10-12**
 
 Brian, 2026-10-12: the System Activity and Network Activity charts are
