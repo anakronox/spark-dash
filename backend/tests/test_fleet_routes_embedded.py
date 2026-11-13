@@ -43,8 +43,20 @@ def calls(monkeypatch):
     return seen
 
 
+# The proxy in front, as TRUSTED_PROXIES names it (CV), and who is calling.
+# By default the caller IS that proxy; a test that wants someone else
+# parametrizes `peer`.
+TRUSTED = "10.9.0.0/24"
+PROXY = "10.9.0.5"
+
+
 @pytest.fixture
-def client(tmp_path, monkeypatch, calls):
+def peer():
+    return PROXY
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch, calls, peer):
     async def fake_healthy(self):
         return True
 
@@ -61,9 +73,10 @@ def client(tmp_path, monkeypatch, calls):
             fleet_ssh_user="brian",
             fleet_ssh_key=key,
             fleet_state_dir=tmp_path / "state",
+            trusted_proxies=TRUSTED,
         )
     )
-    with TestClient(app) as c:
+    with TestClient(app, client=(peer, 50000)) as c:
         yield c
     ssh.configure()
 
@@ -183,8 +196,8 @@ def test_a_password_off_tls_is_refused_and_not_echoed(client):
 
 
 def test_the_real_scheme_is_read_never_assumed(client):
-    """cloudflared's header through the tunnel, else the scheme this server
-    saw. An absent header is plain HTTP, not "probably fine"."""
+    """The trusted proxy's header, else the scheme this server saw. An absent
+    header is plain HTTP, not "probably fine"."""
     enrol(client)
     ok = client.post(
         "/api/fleet/nodes/sparky/update",
@@ -246,6 +259,79 @@ def test_nothing_a_run_wrote_contains_the_password(client, tmp_path):
     assert written, "the run wrote nothing; this would pass vacuously"
     for f in written:
         assert "hunter2" not in f.read_text(errors="replace"), f"the password reached {f.name}"
+
+
+# ------------------------------------------- who may say HTTPS (roadmap CV)
+#
+# X-Forwarded-Proto is believed only from TRUSTED_PROXIES. Before CV any
+# client could send it, so a plain-HTTP request straight to the backend with
+# the header forged was accepted with a password.
+
+LAN = "192.168.50.20"
+
+
+@pytest.mark.parametrize(
+    ("peer", "proto", "secure"),
+    [
+        (PROXY, "https", True),     # the trusted proxy says https
+        (PROXY, "http", False),     # the trusted proxy says http
+        (PROXY, None, False),       # the trusted proxy says nothing: the scheme seen
+        (LAN, "https", False),      # anyone else saying https is ignored
+        (LAN, None, False),
+    ],
+)
+def test_the_scheme_is_believed_only_from_a_trusted_proxy(client, peer, proto, secure):
+    enrol(client)
+    headers = {"X-Forwarded-Proto": proto} if proto else {}
+    resp = client.post(
+        "/api/fleet/nodes/sparky/update", json={"password": "hunter2"}, headers=headers
+    )
+    assert "hunter2" not in resp.text
+    if secure:
+        assert resp.status_code == 200, resp.text
+        client.post(f"/api/fleet/runs/{resp.json()['id']}/stop")
+    else:
+        assert resp.status_code == 400, resp.text
+
+
+@pytest.mark.parametrize("peer", [LAN])
+def test_a_forged_header_is_refused_and_says_why(client, calls, caplog):
+    """The end-to-end refusal: a password from outside the trusted set, with
+    the header forged, never reaches a Spark or a log line, and the refusal
+    names TRUSTED_PROXIES rather than claiming the page is not on HTTPS."""
+    enrol(client)
+    before = len(calls)
+    caplog.set_level("DEBUG")
+    resp = client.post(
+        "/api/fleet/nodes/sparky/update",
+        json={"password": "hunter2"},
+        headers={"X-Forwarded-Proto": "https"},
+    )
+    assert resp.status_code == 400
+    assert "TRUSTED_PROXIES" in resp.json()["detail"]
+    assert "hunter2" not in resp.text
+    assert len(calls) == before, "a refused password still reached a Spark"
+    assert "hunter2" not in caplog.text
+
+
+@pytest.mark.parametrize("peer", [LAN])
+def test_plain_http_without_a_header_keeps_the_plain_refusal(client):
+    enrol(client)
+    resp = client.post("/api/fleet/nodes/sparky/update", json={"password": "hunter2"})
+    assert resp.status_code == 400
+    assert "only accepted over HTTPS" in resp.json()["detail"]
+    assert "TRUSTED_PROXIES" not in resp.json()["detail"]
+
+
+def test_trusted_proxies_defaults_to_loopback(monkeypatch):
+    """Unset, or "" as `${TRUSTED_PROXIES:-}` hands it over: loopback only,
+    which inside a container is the container itself."""
+    monkeypatch.delenv("TRUSTED_PROXIES", raising=False)
+    assert Settings().trusted_proxies == "127.0.0.1,::1"
+    monkeypatch.setenv("TRUSTED_PROXIES", "")
+    assert Settings().trusted_proxies == "127.0.0.1,::1"
+    monkeypatch.setenv("TRUSTED_PROXIES", "172.30.0.0/24")
+    assert Settings().trusted_proxies == "172.30.0.0/24"
 
 
 # ------------------------------------------------------------------- health

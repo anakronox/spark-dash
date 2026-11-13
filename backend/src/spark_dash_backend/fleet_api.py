@@ -11,8 +11,8 @@ What is left is the part that was never about the transport.
 
 1. **A password is accepted only over TLS.** Every call that can carry one
    takes `secure`: the truth about the channel the request arrived on --
-   cloudflared's `X-Forwarded-Proto` through the tunnel, else the scheme this
-   server saw. Never assumed, never defaulted to true.
+   `X-Forwarded-Proto` from a proxy in `TRUSTED_PROXIES` (roadmap CV), else
+   the scheme this server saw. Never assumed, never defaulted to true.
 
 2. **A body is never logged.** An update request carries the user's sudo
    password for that Spark. It is held for one run and written nowhere: not

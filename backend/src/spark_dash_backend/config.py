@@ -47,6 +47,25 @@ class Settings(BaseSettings):
     # the LAN, which is the fleet service's own rule and not ours to relax.
     fleet_allow_plain_password: bool = False
 
+    # ---- the proxy in front (roadmap CV) ----
+    #
+    # Who may tell this backend a request arrived over HTTPS: comma-separated
+    # IPs or CIDRs of the reverse proxy (Caddy, cloudflared). From them,
+    # X-Forwarded-Proto and X-Forwarded-For are believed; from anyone else they
+    # are ignored and the scheme this server saw decides. Whether a sudo
+    # password is accepted hangs off that scheme.
+    #
+    # Default loopback only: inside a container that is the container itself,
+    # so a proxy reaching the backend over a Docker network must be named here.
+    # Never the LAN, and never "*".
+    trusted_proxies: str = "127.0.0.1,::1"
+
+    @field_validator("trusted_proxies", mode="before")
+    @classmethod
+    def _blank_is_loopback(cls, v: object) -> object:
+        """`${TRUSTED_PROXIES:-}` hands over "" when unset; that is the default."""
+        return "127.0.0.1,::1" if isinstance(v, str) and not v.strip() else v
+
     @field_validator("fleet_allow_plain_password", mode="before")
     @classmethod
     def _blank_is_unset(cls, v: object) -> object:

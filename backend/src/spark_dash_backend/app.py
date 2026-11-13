@@ -37,6 +37,7 @@ import httpx
 from pydantic import BaseModel, Field
 from spark_dash_common.models import ENGINE_RUNTIMES, ClusterSnapshot
 from spark_dash_common.sealed import seal
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from spark_dash_backend.alert_history import fetch_episodes, summarise
 from spark_dash_backend.alerts import AlertmanagerClient
@@ -66,7 +67,11 @@ from spark_dash_backend.cluster import (
 )
 from spark_dash_backend.config import Settings
 from spark_dash_backend.fleet_api import FleetError
-from spark_dash_backend.fleet_embedded import EmbeddedFleet
+from spark_dash_backend.fleet_embedded import (
+    PASSWORD_NEEDS_TLS,
+    PASSWORD_UNTRUSTED_PROXY,
+    EmbeddedFleet,
+)
 from spark_dash_backend.inventory import TARGET_WRITE_FAILURES, Inventory
 from spark_dash_backend import agent_tools, assistant, channels, notifications, reports, router_keys, setup
 from spark_dash_backend.latency import latency, latency_over
@@ -365,6 +370,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await asyncio.to_thread(fleet_updates.stop)
 
     app = FastAPI(title="spark-dash", summary="GB10 inference cluster dashboard", lifespan=lifespan)
+    # CV: X-Forwarded-Proto (and -For) only from TRUSTED_PROXIES. After this,
+    # request.url.scheme is the truth about the channel: what a trusted proxy
+    # said, else what this server saw. uvicorn's own copy of the middleware is
+    # off in __main__, so this is the only place the header is believed.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.trusted_proxies)
     app.state.poller = poller
     app.state.inventory = inventory
     app.state.maintenance = maintenance
@@ -1447,13 +1457,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def _secure(request: Request) -> bool:
         """Did this request REALLY arrive over TLS?
 
-        cloudflared's header through the tunnel, else the scheme this server
-        saw. Never true on trust. Whether a sudo password may be accepted
-        hangs off this one line, so it defaults to no: an absent header is
-        plain HTTP, not "probably fine".
+        The scheme after ProxyHeadersMiddleware: X-Forwarded-Proto if a
+        TRUSTED_PROXIES peer sent it, else the scheme this server saw. The raw
+        header is never read here; from anyone else it is a claim, not a fact
+        (CV). Whether a sudo password may be accepted hangs off this one line,
+        so it defaults to no: an absent header is plain HTTP.
         """
-        proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-        return proto.lower() == "https"
+        return request.url.scheme == "https"
+
+    def _forwarded_untrusted(request: Request) -> bool:
+        """The request claims HTTPS, but not from a proxy we trust.
+
+        Only to word the refusal: "not over HTTPS" is confusing behind a
+        proxy that IS on HTTPS but is missing from TRUSTED_PROXIES.
+        """
+        claimed = request.headers.get("x-forwarded-proto", "").strip().lower()
+        return claimed == "https" and not _secure(request)
 
     async def _fleet(request: Request, call, *, needs_on: bool = True) -> dict:
         """Run one fleet intent, turning its refusal into an HTTP one.
@@ -1473,7 +1492,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             return await call(secure=_secure(request))
         except FleetError as exc:
-            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+            detail = exc.detail
+            if detail == PASSWORD_NEEDS_TLS and _forwarded_untrusted(request):
+                detail = PASSWORD_UNTRUSTED_PROXY
+            raise HTTPException(status_code=exc.status, detail=detail) from exc
 
     @app.get("/api/fleet")
     async def api_fleet(request: Request) -> dict:
